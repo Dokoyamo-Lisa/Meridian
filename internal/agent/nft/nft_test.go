@@ -1,6 +1,8 @@
 package nft
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -92,5 +94,32 @@ func TestRenderCountryRule(t *testing.T) {
 	}
 	if strings.Contains(New().render(base), "geo") {
 		t.Error("no rule, but country sets rendered")
+	}
+}
+
+// TestDumpRulesets writes the rulesets the agent can produce to MERIDIAN_NFT_DUMP (a directory), so
+// they can be checked with a server's own nft: nft -c -f FILE parses and validates without applying.
+func TestDumpRulesets(t *testing.T) {
+	dir := os.Getenv("MERIDIAN_NFT_DUMP")
+	if dir == "" {
+		t.Skip("set MERIDIAN_NFT_DUMP to a directory to write the rulesets")
+	}
+	full := Spec{
+		Forwards:  []proto.Forward{{ID: 4, ListenPort: 30002, Network: "tcp+udp", Target: "203.0.113.7:443", Engine: "nft"}},
+		WG:        []WGNat{{NodeID: 1, Iface: "uwg1", Subnet4: "10.66.0.0/20"}},
+		Blocked:   []string{"198.51.100.7", "2001:db8::/32"},
+		TCPPorts:  []int{443},
+		UDPPorts:  []int{443, 51820},
+		LocalOnly: []int{50000, 50001},
+		Geo:       &GeoSpec{V4: []string{"1.0.1.0-1.0.3.255", "36.0.0.0/8"}, V6: []string{"2400:da00::/32"}, Except: []string{"5.5.5.5"}},
+	}
+	for name, spec := range map[string]Spec{
+		"report-only": {LocalOnly: []int{50000, 50001}}, // a server without protocols
+		"full":        full,
+	} {
+		script := "add table inet " + Table + "\ndelete table inet " + Table + "\n" + New().render(spec)
+		if err := os.WriteFile(filepath.Join(dir, name+".nft"), []byte(script), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

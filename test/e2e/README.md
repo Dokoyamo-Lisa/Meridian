@@ -59,6 +59,9 @@ Things worth checking after a change:
 - **Live pause/resume**: pause a subscription → `quick.sh` gives `000` everywhere within seconds;
   resume → `204` everywhere right away.
 - **Accounting**: the subscription's usage in the panel grows by what the tests downloaded.
+- **Firewall rules on other nft versions**: `MERIDIAN_NFT_DUMP=DIR go test ./internal/agent/nft -run
+  TestDumpRulesets` writes the rulesets the agent produces; `nft -c -f DIR/full.nft` on a host checks
+  them with that host's nft without applying anything (nft 1.0.6 on Debian 12 is the oldest checked).
 - **Loopback guard**: as a normal user in the VM, `curl 127.0.0.1:50000` (the agent's Xray API port; 62789 on agents installed before 0.4.2) must be refused; as root
   it connects.
 - **Upgrade**: build agents with a new version, **Upgrade agent** on the server page; traffic keeps

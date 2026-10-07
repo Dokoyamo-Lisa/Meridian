@@ -294,16 +294,17 @@ func (e *Engine) render(spec Spec) string {
 	}
 
 	w("table inet %s {", Table)
-	w("  set block4 { type ipv4_addr; flags interval; auto-merge%s }", elems(blk4))
-	w("  set block6 { type ipv6_addr; flags interval; auto-merge%s }", elems(blk6))
-	w("  set svc_tcp { type inet_service%s }", elemsInt(tcp))
-	w("  set svc_udp { type inet_service%s }", elemsInt(udp))
+	// every item in a set ends with ";": nft before 1.1 refuses "{ type inet_service }"
+	w("  set block4 { type ipv4_addr; flags interval; auto-merge;%s }", elems(blk4))
+	w("  set block6 { type ipv6_addr; flags interval; auto-merge;%s }", elems(blk6))
+	w("  set svc_tcp { type inet_service;%s }", elemsInt(tcp))
+	w("  set svc_udp { type inet_service;%s }", elemsInt(udp))
 	if spec.Geo != nil {
 		v4, v6, ex4, ex6 := spec.Geo.clean()
-		w("  set geo4 { type ipv4_addr; flags interval; auto-merge%s }", bigElems(v4))
-		w("  set geo6 { type ipv6_addr; flags interval; auto-merge%s }", bigElems(v6))
-		w("  set geoex4 { type ipv4_addr; flags interval; auto-merge%s }", elems(ex4))
-		w("  set geoex6 { type ipv6_addr; flags interval; auto-merge%s }", elems(ex6))
+		w("  set geo4 { type ipv4_addr; flags interval; auto-merge;%s }", bigElems(v4))
+		w("  set geo6 { type ipv6_addr; flags interval; auto-merge;%s }", bigElems(v6))
+		w("  set geoex4 { type ipv4_addr; flags interval; auto-merge;%s }", elems(ex4))
+		w("  set geoex6 { type ipv6_addr; flags interval; auto-merge;%s }", elems(ex6))
 		// the country rule: exceptions first, then refuse what the rule says
 		in, out := "!= ", "!= "
 		if !spec.Geo.Allow {
@@ -470,7 +471,7 @@ func bigElems(list []string) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("; elements = {")
+	b.WriteString(" elements = {")
 	for i, e := range list {
 		if i%48 == 0 {
 			b.WriteString("\n    ")
@@ -480,8 +481,7 @@ func bigElems(list []string) string {
 			b.WriteString(", ")
 		}
 	}
-	b.WriteString("\n  ")
-	b.WriteString("}")
+	b.WriteString("\n  };")
 	return b.String()
 }
 
@@ -490,7 +490,7 @@ func elems(list []string) string {
 		return ""
 	}
 	sort.Strings(list)
-	return "; elements = { " + strings.Join(list, ", ") + " }"
+	return " elements = { " + strings.Join(list, ", ") + " };"
 }
 
 var ifaceRE = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,15}$`)
@@ -511,7 +511,7 @@ func elemsInt(list []int) string {
 	for i, p := range list {
 		s[i] = strconv.Itoa(p)
 	}
-	return "; elements = { " + strings.Join(s, ", ") + " }"
+	return " elements = { " + strings.Join(s, ", ") + " };"
 }
 
 func uniqPorts(in []int) []int {

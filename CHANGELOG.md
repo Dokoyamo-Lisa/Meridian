@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3 - 2026-10-07
+
+- The agent's firewall rules load on every nftables version: nft before 1.1 (Ubuntu 24.04, Debian 12)
+  refused how the agent wrote its address and port sets, so those servers reported "could not apply
+  its configuration" (nothing was changed on them - nft applies all or nothing). Upgrade the agent
+  on such servers (server page › More actions › Upgrade agent - nobody is disconnected).
+
 ## 0.4.2 - 2026-10-07
 
 - **Agent ports are a setting** (Settings › Panel › Cores › Agent ports; `agent_port` in the API):
