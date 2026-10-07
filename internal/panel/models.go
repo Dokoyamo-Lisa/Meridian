@@ -31,6 +31,8 @@ type Settings struct {
 	StatusAbout  string          `json:"status_about" doc:"A line of text on the sign-in page, e.g. who runs the service"`
 	StatusHub    *serverLocation `json:"status_hub" doc:"Where the panel is drawn on the status page's globe, with an arc from each server; null = not drawn"`
 
+	AgentPort int `json:"agent_port" doc:"Where new agents put their two loopback-only ports: the Xray API on this port, Hysteria's auth hook on the next (1024-65534, default 50000). Agents already installed keep theirs."`
+
 	LogoAnimation string `json:"logo_animation" doc:"How the logo moves while pages load and when someone signs in: assemble (the built-in umbrella's panels slide in; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo"`
 }
 
@@ -48,6 +50,7 @@ func defaultSettings() Settings {
 		Mirror:          true,
 		StatusPage:      "off",
 		LogoAnimation:   "assemble",
+		AgentPort:       50000,
 	}
 }
 
@@ -56,6 +59,9 @@ func (s *Settings) normalize() {
 	s.SiteTitle = cleanName(s.SiteTitle, 64)
 	if s.SiteTitle == "" {
 		s.SiteTitle = d.SiteTitle
+	}
+	if s.AgentPort < 1024 || s.AgentPort > 65534 {
+		s.AgentPort = d.AgentPort
 	}
 	if !slices.Contains(logoAnimations, s.LogoAnimation) {
 		s.LogoAnimation = d.LogoAnimation

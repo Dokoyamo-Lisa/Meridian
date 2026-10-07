@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meridian API",
-    "version": "0.4.1",
+    "version": "0.4.2",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -4386,6 +4386,9 @@
           },
           "iptables": {
             "type": "boolean"
+          },
+          "api_port": {
+            "type": "integer"
           }
         }
       },
@@ -6307,6 +6310,10 @@
               }
             ],
             "description": "Where the panel is drawn on the status page's globe, with an arc from each server; null = not drawn"
+          },
+          "agent_port": {
+            "description": "Where new agents put their two loopback-only ports: the Xray API on this port, Hysteria's auth hook on the next (1024-65534, default 50000). Agents already installed keep theirs.",
+            "type": "integer"
           },
           "logo_animation": {
             "description": "How the logo moves while pages load and when someone signs in: assemble (the built-in umbrella's panels slide in; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo",

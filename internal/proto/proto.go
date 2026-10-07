@@ -237,6 +237,9 @@ type Caps struct {
 	Conntrack bool `json:"conntrack"`
 	Nftables  bool `json:"nftables"`
 	Iptables  bool `json:"iptables"`
+	// APIPort is the first of the agent's two loopback-only ports: the Xray API on it, Hysteria's
+	// auth hook one up (0 from agents before 0.4.2).
+	APIPort int `json:"api_port,omitempty"`
 }
 
 // Batch holds everything that accumulates. It carries a sequence number so a retried batch is

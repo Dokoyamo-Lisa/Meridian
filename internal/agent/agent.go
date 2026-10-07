@@ -50,6 +50,12 @@ const (
 	BinPath  = "/usr/local/bin/meridian-agent"
 )
 
+// DefaultAPIPort is where the agent's loopback-only ports start: the Xray API on it and Hysteria's
+// auth hook one up. Away from the ports other panels use (x-ui and 3x-ui put Xray's API on 62789),
+// so a server can run them side by side; the installer moves up when the pair is taken. An agent
+// keeps the port it was installed with.
+const DefaultAPIPort = 50000
+
 type Config struct {
 	Panel   string `json:"panel"`
 	Token   string `json:"token"`
@@ -69,7 +75,7 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 	if c.APIPort == 0 {
-		c.APIPort = 62789
+		c.APIPort = DefaultAPIPort
 	}
 	return c, nil
 }
@@ -745,6 +751,7 @@ func (a *Agent) report(ctx context.Context) {
 	if sendHello {
 		h := sys.Hello(Version, a.started)
 		h.Caps = sys.Caps()
+		h.Caps.APIPort = a.cfg.APIPort
 		rep.Hello = h
 	}
 	rctx, cancel := context.WithTimeout(ctx, 30*time.Second)

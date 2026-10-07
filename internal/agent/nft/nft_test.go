@@ -23,7 +23,7 @@ func TestRenderGuardsAndForwards(t *testing.T) {
 		Blocked:   []string{"198.51.100.7", "203.0.113.0/24", "not-an-ip; flush ruleset", "2001:db8::/32"},
 		TCPPorts:  []int{443},
 		UDPPorts:  []int{443, 51820},
-		LocalOnly: []int{62789, 62790},
+		LocalOnly: []int{50000, 50001},
 	}
 	out := e.render(spec)
 	for _, bad := range []string{"accept; table x", "flush ruleset", "evil", "70000"} {
@@ -33,7 +33,7 @@ func TestRenderGuardsAndForwards(t *testing.T) {
 	}
 	for _, want := range []string{
 		"dnat ip to 203.0.113.7:443",
-		`oifname "lo" tcp dport { 62789, 62790 } meta skuid != 0 counter reject with tcp reset`,
+		`oifname "lo" tcp dport { 50000, 50001 } meta skuid != 0 counter reject with tcp reset`,
 		`ip daddr 10.66.0.0/20 meta l4proto { tcp, udp } th dport 53 iifname != "uwg1" drop`,
 		"elements = { 198.51.100.7, 203.0.113.0/24 }",
 		"elements = { 2001:db8::/32 }",
@@ -48,7 +48,7 @@ func TestRenderGuardsAndForwards(t *testing.T) {
 }
 
 func TestRenderIsStable(t *testing.T) {
-	spec := Spec{Blocked: []string{"203.0.113.2", "203.0.113.1"}, LocalOnly: []int{62790, 62789, 62789}}
+	spec := Spec{Blocked: []string{"203.0.113.2", "203.0.113.1"}, LocalOnly: []int{50001, 50000, 50000}}
 	first, second := New().render(spec), New().render(spec)
 	if first != second {
 		t.Fatal("same spec, different ruleset - every report would rewrite the table")

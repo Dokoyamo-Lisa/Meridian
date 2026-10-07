@@ -467,6 +467,9 @@ func (p *Panel) apiPutSettings(w http.ResponseWriter, r *http.Request, a *Accoun
 	if err := validPublicURL(s.SubURL); err != nil {
 		return err
 	}
+	if s.AgentPort != 0 && (s.AgentPort < 1024 || s.AgentPort > 65534) {
+		return errStatus(http.StatusBadRequest, "the agent port must be between 1024 and 65534 (agents use that port and the next)")
+	}
 	if len(s.SiteTitle) > 64 {
 		return errStatus(http.StatusBadRequest, "the panel name can be at most 64 characters")
 	}

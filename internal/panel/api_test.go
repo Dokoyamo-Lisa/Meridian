@@ -583,6 +583,21 @@ func TestInstallCommandPinsTheScript(t *testing.T) {
 	if !bytes.Contains(script, []byte(hex.EncodeToString(agentSum[:]))) {
 		t.Fatal("the script does not pin the agent binary")
 	}
+	// the agents' local ports: 50000 unless set, carried by install commands, never a port <1024
+	if !strings.HasSuffix(cmd, " --api-port 50000") || !bytes.Contains(script, []byte(`--api-port) API_PORT=`)) {
+		t.Fatalf("install command without the agent ports: %q", cmd)
+	}
+	for _, bad := range []int{80, 1023, 65535, 70000} {
+		if code, _, _ := b.do("PUT", "/api/settings", map[string]any{"agent_port": bad}); code != 400 {
+			t.Errorf("agent port %d accepted: %d", bad, code)
+		}
+	}
+	if m := b.must("PUT", "/api/settings", map[string]any{"agent_port": 51000}, 200); id(m["agent_port"]) != 51000 {
+		t.Fatalf("agent port not saved: %v", m["agent_port"])
+	}
+	if got := b.must("GET", "/api/servers/"+itoa(id(srv["server"].(map[string]any)["id"])), nil, 200)["install"].(string); !strings.HasSuffix(got, " --api-port 51000") {
+		t.Fatalf("install command after the change: %q", got)
+	}
 }
 
 func agentRequest(t *testing.T, h *harness, keys *seal.Keys, serverID int64, method, path string, ts int64, nonce string) *http.Response {

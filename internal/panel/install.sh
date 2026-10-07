@@ -13,11 +13,13 @@ PANEL="__PANEL_URL__"
 SHA_AMD64="__SHA_AMD64__"
 SHA_ARM64="__SHA_ARM64__"
 TOKEN="${MERIDIAN_TOKEN:-}"
+API_PORT=""
 ACTION="install"
 while [ $# -gt 0 ]; do
   case "$1" in
     --token) TOKEN="${2:-}"; shift 2 ;;
     --panel) PANEL="${2:-}"; shift 2 ;;
+    --api-port) API_PORT="${2:-}"; shift 2 ;;
     --uninstall) ACTION="uninstall"; shift ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
@@ -58,4 +60,5 @@ install -m 0755 "$TMP/agent" "$BIN.new"
 mv -f "$BIN.new" "$BIN"
 
 # the token goes through the environment, not the command line (which other users can read)
-MERIDIAN_TOKEN="$TOKEN" exec "$BIN" install --panel "$PANEL"
+[ -z "$API_PORT" ] || echo "$API_PORT" | grep -Eq '^[0-9]{4,5}$' || die "--api-port must be a number such as 50000"
+MERIDIAN_TOKEN="$TOKEN" exec "$BIN" install --panel "$PANEL" ${API_PORT:+--api-port "$API_PORT"}

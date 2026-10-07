@@ -368,6 +368,17 @@ export function ServerPage(props: { id: number }) {
             <dd>
               {srv.agent_version || '—'} {srv.agent_started_at > 0 && <span class="faint">· started <Ago ts={srv.agent_started_at} /></span>}
             </dd>
+            {srv.caps?.api_port ? (
+              <>
+                <dt>Local ports</dt>
+                <dd>
+                  <span class="mono">
+                    {srv.caps.api_port}, {srv.caps.api_port + 1}
+                  </span>{' '}
+                  <span class="faint">· the agent's, on this server only (Xray API, Hysteria2)</span>
+                </dd>
+              </>
+            ) : null}
             <dt>Xray</dt>
             <dd>
               {xray ? (

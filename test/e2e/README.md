@@ -59,7 +59,7 @@ Things worth checking after a change:
 - **Live pause/resume**: pause a subscription → `quick.sh` gives `000` everywhere within seconds;
   resume → `204` everywhere right away.
 - **Accounting**: the subscription's usage in the panel grows by what the tests downloaded.
-- **Loopback guard**: as a normal user in the VM, `curl 127.0.0.1:62789` must be refused; as root
+- **Loopback guard**: as a normal user in the VM, `curl 127.0.0.1:50000` (the agent's Xray API port; 62789 on agents installed before 0.4.2) must be refused; as root
   it connects.
 - **Upgrade**: build agents with a new version, **Upgrade agent** on the server page; traffic keeps
   flowing.

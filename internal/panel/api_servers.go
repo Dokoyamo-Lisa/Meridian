@@ -200,8 +200,8 @@ func (p *Panel) installCommand(r *http.Request, s *Server) string {
 		return "# " + err.Error()
 	}
 	sum := sha256.Sum256([]byte(script))
-	return fmt.Sprintf("curl -fsSLo meridian-install.sh %s/agent/install.sh && echo '%s  meridian-install.sh' | sha256sum -c - && bash meridian-install.sh --token '%s'",
-		base, hex.EncodeToString(sum[:]), seal.Token(s.ID, s.Secret))
+	return fmt.Sprintf("curl -fsSLo meridian-install.sh %s/agent/install.sh && echo '%s  meridian-install.sh' | sha256sum -c - && bash meridian-install.sh --token '%s' --api-port %d",
+		base, hex.EncodeToString(sum[:]), seal.Token(s.ID, s.Secret), p.settings().AgentPort)
 }
 
 type serverInput struct {

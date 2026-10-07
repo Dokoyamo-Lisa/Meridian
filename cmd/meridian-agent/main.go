@@ -39,11 +39,12 @@ func main() {
 		fs := flag.NewFlagSet("install", flag.ExitOnError)
 		panel := fs.String("panel", "", "panel URL")
 		token := fs.String("token", "", "server token from the panel (prefer the MERIDIAN_TOKEN environment variable)")
+		apiPort := fs.Int("api-port", 0, "where the agent's two loopback-only ports start (default 50000; kept on reinstall)")
 		fs.Parse(os.Args[2:])
 		if *token == "" {
 			*token = os.Getenv("MERIDIAN_TOKEN")
 		}
-		if err := agent.Install(*panel, *token); err != nil {
+		if err := agent.Install(*panel, *token, *apiPort); err != nil {
 			fatal(err)
 		}
 	case "uninstall":

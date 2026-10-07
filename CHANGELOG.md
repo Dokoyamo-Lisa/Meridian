@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2 - 2026-10-07
+
+- **Agent ports are a setting** (Settings › Panel › Cores › Agent ports; `agent_port` in the API):
+  new agents put the Xray API on that port and Hysteria2's auth hook on the next, both on 127.0.0.1
+  only. The default moves from 62789 - the port x-ui and 3x-ui use for their own Xray API - to
+  50000, so Meridian runs beside them. The installer takes the first free pair from there; agents
+  already installed keep their ports (moving them would restart Xray and Hysteria2), and each
+  server's page shows its own.
+
 ## 0.4.1 - 2026-10-07
 
 - The status page's header is simpler: the brand block in its middle (logo, name, "Service status"

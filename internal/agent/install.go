@@ -39,19 +39,32 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 `
 
+// freePort finds two free loopback ports in a row from start: the Xray API's and, one up, the
+// Hysteria auth hook's.
 func freePort(start int) int {
-	for p := start; p < start+200; p++ {
+	free := func(p int) bool {
 		l, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(p))
-		if err == nil {
-			l.Close()
+		if err != nil {
+			return false
+		}
+		l.Close()
+		return true
+	}
+	for p := start; p+1 <= 65535 && p < start+200; p += 2 {
+		if free(p) && free(p+1) {
 			return p
 		}
 	}
 	return start
 }
 
-// Install configures and starts the agent on this host.
-func Install(panel, token string) error {
+// Install configures and starts the agent on this host. apiPort is where its loopback ports start
+// (0 = DefaultAPIPort); an agent that is already installed keeps its own, as moving them would
+// restart Xray and Hysteria2.
+func Install(panel, token string, apiPort int) error {
+	if apiPort != 0 && (apiPort < 1024 || apiPort > 65534) {
+		return errors.New("--api-port must be between 1024 and 65534 (the agent uses that port and the next)")
+	}
 	if runtime.GOOS != "linux" {
 		return errors.New("the agent runs on Linux")
 	}
@@ -70,7 +83,13 @@ func Install(panel, token string) error {
 	}
 	cfg, err := LoadConfig()
 	if err != nil {
-		cfg = &Config{APIPort: freePort(62789)}
+		start := DefaultAPIPort
+		if apiPort != 0 {
+			start = apiPort
+		}
+		cfg = &Config{APIPort: freePort(start)}
+	} else if apiPort != 0 && apiPort != cfg.APIPort {
+		fmt.Printf("Keeping this agent's local ports %d and %d (moving them would restart Xray and Hysteria2).\n", cfg.APIPort, cfg.APIPort+1)
 	}
 	cfg.Panel, cfg.Token = panel, token
 

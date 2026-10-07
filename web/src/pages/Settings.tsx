@@ -284,6 +284,18 @@ function General() {
           label="Download cores through the panel"
           hint="Servers that cannot reach GitHub fetch Xray, Hysteria and realm from the panel instead. Checksums are verified either way."
         />
+        <Field
+          label="Agent ports"
+          hint={`New agents use two local-only ports on their server: ${v.agent_port || 50000} for the Xray API and ${(v.agent_port || 50000) + 1} for Hysteria2 - pick ports nothing else there uses (1024-65534). The installer moves up when they are taken. Agents already installed keep theirs: each server's page shows its own.`}
+        >
+          <input
+            class="input mono"
+            inputMode="numeric"
+            style="max-width:140px"
+            value={String(v.agent_port || '')}
+            onInput={(e) => set('agent_port', Number(e.currentTarget.value.replace(/[^0-9]/g, '')) || 0)}
+          />
+        </Field>
       </section>
 
       <div class="savebar">

@@ -173,6 +173,7 @@ scripts/api.sh PUT /api/settings '{"site_title":"Acme Net","timezone":"Europe/Be
 | `timezone` | IANA name, e.g. `Asia/Singapore`; days and monthly resets follow it |
 | `public_url` | only behind a reverse proxy: the address users and servers use, e.g. `https://panel.example.com` (with `--domain` it is set for you) |
 | `logo_animation` | `assemble`, `rise`, `pulse`, `spin` or `none` |
+| `agent_port` | where new agents put their two local-only ports (default 50000, then 50001); change it **before** installing agents if something on the servers already uses them |
 | `status_page` | `off` (users sign in at /me), `home` (the status page is the front page), `page` (at /status) |
 | `status_about` | one public line on the sign-in page - nothing private |
 

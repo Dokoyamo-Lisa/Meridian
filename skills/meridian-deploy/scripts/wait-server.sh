@@ -11,11 +11,12 @@ end=$(( $(date +%s) + limit ))
 while :; do
   json="$("$HERE/api.sh" GET "/api/servers/$id")"
   verdict="$(printf '%s' "$json" | python3 -c '
-import json, sys
+import json, sys, time
 s = json.load(sys.stdin)["server"]
-if s.get("apply_errors"):
+fresh = time.time() - (s.get("last_seen_at") or 0) < 60     # a report now, not data from before a reinstall
+if s.get("apply_errors") and fresh:
     print("error\t" + s["apply_errors"].replace("\n", " | "))
-elif s.get("online") and s.get("applied_rev"):
+elif s.get("online") and s.get("applied_rev") and fresh:
     nodes = [n for n in s.get("nodes") or [] if n.get("enabled")]
     print("ready\t%s (%s, agent %s, Xray %s): %s" % (s["name"], s.get("ipv4") or s.get("ipv6") or "?", s.get("agent_version") or "?",
         s.get("xray_version") or "-", ", ".join("%s on %s" % (n["kind"], n["port"]) for n in nodes) or "no protocols yet"))

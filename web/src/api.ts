@@ -213,7 +213,7 @@ export interface Server {
   forwards: Forward[]
   online_subs: number
   online_ips: number
-  caps: { systemd: boolean; wireguard: boolean; conntrack: boolean; nftables: boolean; iptables: boolean }
+  caps: { systemd: boolean; wireguard: boolean; conntrack: boolean; nftables: boolean; iptables: boolean; api_port?: number }
   ports?: number[]
 }
 
@@ -353,6 +353,7 @@ export interface Settings {
   status_about: string
   status_hub: { city: string; cc: string; lat: number; lon: number } | null
   logo_animation: string
+  agent_port: number
 }
 
 export interface ProtocolCatalog {
