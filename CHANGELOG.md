@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 - 2026-10-07
+
+- The status page's header is simpler: the brand block in its middle (logo, name, "Service status"
+  and its outline) is gone - the clock and the page links sit on the left, the buttons on the right.
+  The sign-in page still shows your logo and name.
+
 ## 0.4.0 - 2026-10-07
 
 One supervisor, users with their own page, a status page, country rules and every Xray protocol.

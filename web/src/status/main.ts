@@ -1855,7 +1855,6 @@ function applyStatus(d: StatusPayload) {
   S.pubState = 'ok'
   setPanelZone(d.timezone)
   document.title = `${d.title} · Status`
-  setText($('#brandName'), d.title)
   applyShow()
   updateStatus()
   updateRes()
@@ -1986,19 +1985,6 @@ function markEl(mode: 'once' | 'loop' | 'still'): Element {
   return el
 }
 
-// brandMark puts the chosen logo in the header: the umbrella from the sprite, or the uploaded image.
-function brandMark() {
-  const cur = $('.b-row .b-mark')
-  if (!cur) return
-  const want = brand.custom ? h('img', { class: 'b-mark logo-img', src: logoSrc(), alt: '', 'aria-hidden': 'true' }) : null
-  if (want) cur.replaceWith(want)
-  else if (cur.tagName.toLowerCase() === 'img') {
-    const svg = s('svg', { class: 'b-mark', 'aria-hidden': 'true', focusable: 'false' })
-    svg.append(s('use', { href: '#i-logo' }))
-    cur.replaceWith(svg)
-  }
-}
-
 const site = { title: '', about: '' }
 
 // renderGate is the visitor's page: the mark assembling, the name, and the way in.
@@ -2017,11 +2003,7 @@ async function loadMeta() {
     site.title = m.site_title || ''
     site.about = m.about || ''
     setBrand(m.logo)
-    brandMark()
-    if (site.title && !S.pub) {
-      document.title = site.title
-      setText($('#brandName'), site.title)
-    }
+    if (site.title && !S.pub) document.title = site.title
   } catch {
     /* the defaults stay */
   }

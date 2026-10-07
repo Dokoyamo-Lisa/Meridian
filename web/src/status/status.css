@@ -242,7 +242,7 @@ button { cursor: pointer; }
   z-index: 30;
   height: var(--top);
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 24px;
   padding: 0 var(--pad);
@@ -269,10 +269,6 @@ button { cursor: pointer; }
   transition: transform .45s var(--ease-out);
 }
 .nav a[aria-current="page"]::after { transform: scaleX(1); }
-.brand { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; height: var(--top); padding: 0 52px; min-width: 300px; }
-.brand .plate { position: absolute; left: -60px; right: -60px; bottom: 0; width: calc(100% + 120px); height: 100%; fill: none; stroke: var(--line-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.b-name { font: 500 15px/1 var(--font-d); letter-spacing: .44em; margin-right: -.44em; color: var(--ink); text-transform: uppercase; }
-.b-sub { margin-top: 7px; font-size: 11px; letter-spacing: .5em; margin-right: -.5em; color: var(--ink-3); }
 .tools { display: flex; align-items: center; gap: 10px; }
 .live { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-3); margin-right: 4px; }
 .live i { position: relative; width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
@@ -802,8 +798,6 @@ html.vt-tone::view-transition-new(root) { animation: tone-in .8s var(--ease-out)
   .p-events, .p-flow { flex: none; }
   .flow-chart { min-height: 170px; }
   .top { grid-template-columns: auto 1fr auto; }
-  .brand { min-width: 0; padding: 0 20px; }
-  .brand .plate { display: none; }
 }
 @media (max-width: 860px) {
   :root { --pad: 16px; --top: 56px; }
@@ -822,8 +816,7 @@ html.vt-tone::view-transition-new(root) { animation: tone-in .8s var(--ease-out)
   /* the tabs sit under the header here: the header is solid and the fade moves below the tabs */
   .top { grid-template-columns: 1fr auto; gap: 12px; background: var(--page); }
   .mnav { box-shadow: 0 10px 12px -4px var(--page); }    /* a soft fade (a pseudo-element would be clipped by the scroll) */
-  .top-l .nav, .top-r .nav { display: none; }
-  .brand { display: none; }
+  .top-l .nav { display: none; }
   .clock .c-meta { display: none; }
   .c-time { font-size: 20px; }
   .live span { display: none; }
@@ -931,8 +924,6 @@ tr[data-level="crit"] .dot { background: var(--crit); }
 }
 
 /* the mark next to the name */
-.b-row { display: flex; align-items: center; gap: 12px; }
-.b-mark { width: 18px; height: 18px; flex: none; color: var(--ink-3); object-fit: contain; }
 
 /* first paint: the mark assembling until the page knows what to show */
 .boot { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; background: var(--page); transition: opacity .55s var(--ease), visibility 0s linear .55s; }
@@ -953,7 +944,6 @@ html.ready .boot { opacity: 0; visibility: hidden; }
 .left-v .value { font: var(--num-weight) 40px/1.05 var(--font-d); letter-spacing: -.01em; }
 .left-v .value .unit { font-size: .5em; }
 .left-v .of { color: var(--ink-3); font-size: 12px; }
-.b-mark .w.white { stroke: currentColor; stroke-opacity: .22; stroke-width: .4; }
 body[data-view="signin"] .foot { display: none; }
 
 /* the sign-in, on the page */

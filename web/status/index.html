@@ -15,7 +15,6 @@
 <body>
 <div class="boot" id="boot" role="status" aria-label="Loading"><!--logo--><svg class="umb-mark umb-loop" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="w" d="M12 12L16.02 2.3L7.98 2.3Z" fill="#d8232a" style="--i:0;--dx:0;--dy:-1"/><path class="w white" d="M12 12L21.7 7.98L16.02 2.3Z" fill="#f5f3ef" style="--i:1;--dx:0.7071;--dy:-0.7071"/><path class="w" d="M12 12L21.7 16.02L21.7 7.98Z" fill="#d8232a" style="--i:2;--dx:1;--dy:0"/><path class="w white" d="M12 12L16.02 21.7L21.7 16.02Z" fill="#f5f3ef" style="--i:3;--dx:0.7071;--dy:0.7071"/><path class="w" d="M12 12L7.98 21.7L16.02 21.7Z" fill="#d8232a" style="--i:4;--dx:0;--dy:1"/><path class="w white" d="M12 12L2.3 16.02L7.98 21.7Z" fill="#f5f3ef" style="--i:5;--dx:-0.7071;--dy:0.7071"/><path class="w" d="M12 12L2.3 7.98L2.3 16.02Z" fill="#d8232a" style="--i:6;--dx:-1;--dy:0"/><path class="w white" d="M12 12L7.98 2.3L2.3 7.98Z" fill="#f5f3ef" style="--i:7;--dx:-0.7071;--dy:-0.7071"/></svg><!--/logo--></div>
 <svg class="sprite" aria-hidden="true" focusable="false">
-  <symbol id="i-logo" viewBox="0 0 24 24"><path fill="#d8232a" stroke="none" d="M12 12L16.02 2.3L7.98 2.3ZM12 12L2.3 7.98L2.3 16.02ZM12 12L7.98 21.7L16.02 21.7ZM12 12L21.7 16.02L21.7 7.98Z"/><path fill="#f5f3ef" stroke="none" d="M12 12L21.7 7.98L16.02 2.3ZM12 12L7.98 2.3L2.3 7.98ZM12 12L2.3 16.02L7.98 21.7ZM12 12L16.02 21.7L21.7 16.02Z"/><path fill="none" stroke="currentColor" stroke-opacity=".35" stroke-width=".7" stroke-linejoin="round" d="M16.02 2.3L7.98 2.3L2.3 7.98L2.3 16.02L7.98 21.7L16.02 21.7L21.7 16.02L21.7 7.98Z"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.2 12.4 2.7 2.7 5-5.6"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4.6 3 17.4A2 2 0 0 0 4.7 20.4h14.6a2 2 0 0 0 1.7-3L13.7 4.6a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4"/><path d="M12 16.8h.01"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9.4 9.4 5.2 5.2m0-5.2-5.2 5.2"/></symbol>
@@ -51,21 +50,14 @@
       <span class="c-time" id="clock">--:--:--</span>
       <span class="c-meta"><span id="cDate">&nbsp;</span><span id="cZone">&nbsp;</span></span>
     </div>
-    <nav class="nav need-admin hidden" aria-label="Pages">
-      <a href="#/" data-view="overview">Overview</a>
-      <a href="#/servers" data-view="servers">Servers</a>
-    </nav>
-  </div>
-  <a class="brand" href="#/" aria-label="Status overview">
-    <svg class="plate" viewBox="0 0 600 64" preserveAspectRatio="none" aria-hidden="true"><path d="M0 63.5H150C170 63.5 176 44.5 196 44.5H404C424 44.5 430 63.5 450 63.5H600"/></svg>
-    <span class="b-row"><svg class="b-mark" aria-hidden="true" focusable="false"><use href="#i-logo"/></svg><span class="b-name" id="brandName">Status</span></span>
-    <span class="b-sub" id="brandSub">Service status</span>
-  </a>
-  <div class="top-r">
     <nav class="nav" aria-label="Pages">
+      <a href="#/" data-view="overview" class="need-admin hidden">Overview</a>
+      <a href="#/servers" data-view="servers" class="need-admin hidden">Servers</a>
       <a href="#/events" data-view="events" class="need-admin hidden">Events</a>
       <a href="#/me" data-view="me" class="need-user hidden">Your usage</a>
     </nav>
+  </div>
+  <div class="top-r">
     <div class="tools">
       <span class="live need-admin hidden" id="live" title="Live data"><i aria-hidden="true"></i><span id="liveText">Connecting</span></span>
       <div class="pal">
