@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.2 - 2026-10-07
+
+Panel only: agents stay as they are.
+
+- **WireGuard in Loon**: Loon was sent WireGuard as a `wireguard://` share link, which it does not
+  read, so the tunnel never showed up. Loon now gets every protocol in its own proxy format (as its
+  manual and Sub-Store write it): WireGuard appears, self-signed certificates are pinned
+  (`tls-cert-sha256`), and gRPC, HTTPUpgrade and XHTTP - which Loon's format does not have - are
+  listed as not working in Loon instead of being sent. Loon has a one-tap import button now.
+- **Shadowsocks 2022 in Surge and Quantumult X**: their lines turned the `=` at the end of the keys
+  into `-`, so those protocols could not connect; WebSocket paths with `=` (such as `?ed=2048`) were
+  changed the same way. Values now go in as they are; one with a comma, a double quote or a line
+  break - which these formats cannot carry - leaves that protocol out with the reason.
+- **A protocol that does not work cannot be saved**: the Save button only looked faded (and still
+  lit up under the mouse), so "This combination does not work" seemed to be ignored. It is now grey,
+  says "Does not work yet - see why", and a click points at the warning instead of doing nothing.
+- **The check matches saving**: when editing, the check now knows the stored protocol - leaving the
+  key empty to keep the current one no longer shows a false warning (which blocked saving), and the
+  server's IP version and shared certificates count when adding. Switching a self-signed protocol to
+  "My own certificate" no longer pre-fills (or keeps) the self-signed certificate and key: an
+  unpinned self-signed certificate would have failed in every app. The certificate choices wrap
+  instead of running out of the form. Assistants can check a change with `check_protocol
+  {protocol_id, ...}`.
+
 ## 0.6.1 - 2026-10-07
 
 Panel only: agents stay as they are - 0.5 and 0.6 agents both take everything here.

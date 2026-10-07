@@ -119,7 +119,8 @@ and a generated password (shown once) - pass them on with the sign-in address fr
   syntax is checked: afterwards read `apply_errors` in `get_server` - a refusal leaves the running
   configuration as it was.
 - **Protocols**: draft with `check_protocol` first - it says whether the combination works, what to
-  change if not, and which apps can use it. Then `add_protocol {server_id, kind, ...}` (applied
+  change if not, and which apps can use it (for a change to an existing protocol pass `protocol_id`:
+  what you leave out keeps its value, exactly as saving does). Then `add_protocol {server_id, kind, ...}` (applied
   live). Behind Cloudflare: `transport: "ws"`, `security: "none"`, `cdn: true`, `cdn_host`. TLS with a
   real certificate: `cert_mode: "acme"` with a domain pointing at the server. For proxy pass, set
   `exit_protocol_id` to a protocol on another server.

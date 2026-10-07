@@ -70,7 +70,7 @@ Read (any token):
 | `user_traffic` | daily traffic and per-protocol totals |
 | `events` | the activity timeline |
 | `find_sharing` | users whose link looks shared: over their IP limit, many IPs, countries or networks |
-| `check_protocol` | whether a protocol draft can be saved, what it becomes, which apps can use it |
+| `check_protocol` | whether a protocol draft can be saved, what it becomes, which apps can use it; with `protocol_id`, a change to that protocol (as saving would apply it) |
 | `get_scan` | what a scan found on a server (existing Xray, V2Ray, x-ui, 3x-ui, sing-box, Hysteria2) |
 | `get_access` | the country rules, devices connected now by country, refused packets |
 | `get_status_page` | how the status page is set up, and where users sign in |

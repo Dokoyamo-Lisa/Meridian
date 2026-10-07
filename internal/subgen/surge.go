@@ -16,7 +16,8 @@ func oneLine(s string) string {
 	}, s)), " ")
 }
 
-// lineSafe is oneLine plus no separators of the Surge / Quantumult X line formats.
+// lineSafe makes a name safe for the Surge / Quantumult X / Loon line formats: one line, none of
+// their separators. Only for names - it changes the text.
 func lineSafe(s string) string {
 	return strings.TrimSpace(strings.NewReplacer(",", " ", "=", "-", "\"", "'", "(", "[", ")", "]").Replace(oneLine(s)))
 }
@@ -24,11 +25,26 @@ func lineSafe(s string) string {
 // surgeName makes a proxy name safe for Surge's line format.
 func surgeName(n string) string { return lineSafe(n) }
 
-// safeLineFields cleans every free-form field that goes into a Surge or Quantumult X line.
-func safeLineFields(e Endpoint) Endpoint {
-	e.Host, e.SNI, e.HostHeader, e.Path = lineSafe(e.Host), lineSafe(e.SNI), lineSafe(e.HostHeader), lineSafe(e.Path)
-	e.Username, e.Password = lineSafe(e.Username), lineSafe(e.Password)
-	return e
+// lineFieldsWhy says why an endpoint's values cannot go into a line format (Surge, Quantumult X,
+// Loon). Values are written as they are - "=" is fine (Shadowsocks 2022 keys end in "=", paths
+// such as /ws?ed=2048 have one): options are split at their first "=". A comma, a double quote or a
+// line break would end the option, the quoted value or the line, so such a protocol is left out
+// rather than changed.
+func lineFieldsWhy(e Endpoint) string {
+	vals := []string{e.Host, e.SNI, e.HostHeader, e.Path, e.Username, e.Password, e.UUID, e.Method, e.Flow,
+		e.PublicKey, e.ShortID, e.ObfsPassword, e.Fingerprint}
+	vals = append(vals, e.ALPN...)
+	if e.WG != nil {
+		vals = append(vals, e.WG.PrivateKey, e.WG.PeerPublicKey, e.WG.PresharedKey, e.WG.Address4, e.WG.Address6)
+		vals = append(vals, e.WG.DNS...)
+		vals = append(vals, e.WG.AllowedIPs...)
+	}
+	for _, v := range vals {
+		if strings.ContainsAny(v, ",\"") || strings.IndexFunc(v, unicode.IsControl) >= 0 {
+			return whyLineChars
+		}
+	}
+	return ""
 }
 
 // surgeTLS returns the TLS options of a Surge line, or a reason it cannot be expressed.
@@ -65,7 +81,9 @@ func surgeWS(e Endpoint) (string, string) {
 // Surge cannot use it. Surge has no VLESS.
 func surgeLine(e Endpoint, i int) (line, section, why string) {
 	name := surgeName(e.Name)
-	e = safeLineFields(e)
+	if why := lineFieldsWhy(e); why != "" {
+		return "", "", why
+	}
 	switch e.Kind {
 	case KindVMess, KindTrojan:
 		ws, why := surgeWS(e)
@@ -223,7 +241,9 @@ func quanxTLS(e Endpoint) string {
 // quanxLine renders one endpoint as a Quantumult X server line, or says why it cannot.
 func quanxLine(e Endpoint) (string, string) {
 	tag := lineSafe(e.Name)
-	e = safeLineFields(e)
+	if why := lineFieldsWhy(e); why != "" {
+		return "", why
+	}
 	switch e.Kind {
 	case KindVLESS:
 		obfs, why := quanxObfs(e)

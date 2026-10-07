@@ -8,6 +8,7 @@ package panel
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -420,16 +421,57 @@ func (p *Panel) apiProtocolCatalog(w http.ResponseWriter, r *http.Request, a *Ac
 type protocolDraft struct {
 	Kind     string      `json:"kind" doc:"vless | vmess | trojan | shadowsocks | hysteria2 | wireguard | socks | http"`
 	Settings *protoInput `json:"settings"`
+	NodeID   int64       `json:"node_id,omitempty" doc:"Editing: the protocol being changed. The draft is checked as a change to it - omitted fields and keys keep their stored values, as saving does"`
+	ServerID int64       `json:"server_id,omitempty" doc:"Adding: the server it is for, so what depends on the server (its IP version, shared certificates) is checked too"`
 }
 
 // apiProtocolCheck says whether a protocol draft can be saved, what it becomes, and which apps can
-// use it. Nothing is stored.
+// use it - with the same checks saving runs (as a change to node_id, or for server_id). Nothing is
+// stored.
 func (p *Panel) apiProtocolCheck(w http.ResponseWriter, r *http.Request, a *Account) error {
 	var in protocolDraft
 	if err := readJSON(r, &in); err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusOK, checkProtocol(in.Kind, in.Settings))
+	if in.NodeID == 0 && in.ServerID == 0 {
+		writeJSON(w, http.StatusOK, checkProtocol(in.Kind, in.Settings))
+		return nil
+	}
+	var srv *Server
+	var raw json.RawMessage
+	var err error
+	kind := in.Kind
+	if in.NodeID > 0 {
+		var n *Node
+		if n, srv, err = p.ownNode(r.Context(), a, in.NodeID); err != nil {
+			return err
+		}
+		if kind != "" && kind != n.Kind {
+			return errStatus(http.StatusBadRequest, "a protocol's kind cannot change - add a new protocol instead")
+		}
+		kind = n.Kind
+		raw, err = updateSettings(n.Kind, n.Settings, in.Settings)
+	} else {
+		if srv, err = p.ownServer(r.Context(), a, in.ServerID); err != nil {
+			return err
+		}
+		if _, ok := kindOf(kind); !ok {
+			writeJSON(w, http.StatusOK, checkProtocol(kind, in.Settings))
+			return nil
+		}
+		var nodes []*Node
+		if nodes, err = p.nodesOf(r.Context(), srv.ID); err != nil {
+			return err
+		}
+		raw, err = newSettings(kind, in.Settings, nodes)
+	}
+	if err == nil {
+		err = checkWG6(srv, kind, raw)
+	}
+	if err == nil {
+		err = p.checkSharedCert(r.Context(), srv, kind, raw)
+	}
+	writeJSON(w, http.StatusOK, supportOf(kind, raw, err))
 	return nil
 }
 

@@ -57,8 +57,11 @@ func WhyNot(format string, e Endpoint) string {
 	case FormatSingBox:
 		_, _, why := singboxOutbound(e)
 		return why
-	case FormatShadowrocket, FormatLoon:
+	case FormatShadowrocket:
 		return linkWhy(e, profileRocket)
+	case FormatLoon:
+		_, why := loonLine(e)
+		return why
 	case FormatHiddify:
 		return linkWhy(e, profileSingBox)
 	case FormatBase64, FormatURI:
@@ -83,7 +86,7 @@ type linkProfile int
 const (
 	profileFull    linkProfile = iota // Xray-core apps: everything Xray speaks
 	profileSingBox                    // sing-box-core apps: what sing-box speaks
-	profileRocket                     // Shadowrocket and Loon: the widely supported subset
+	profileRocket                     // Shadowrocket: the widely supported subset
 )
 
 func linkWhy(e Endpoint, p linkProfile) string {

@@ -1,5 +1,5 @@
 // Package subgen turns a subscription's endpoints into client configurations: Clash/mihomo,
-// sing-box, Stash, Surge, Quantumult X, Shadowrocket / v2rayN share links and WireGuard files.
+// sing-box, Stash, Surge, Quantumult X, Loon, Shadowrocket / v2rayN share links and WireGuard files.
 package subgen
 
 // Kinds of endpoints.
@@ -126,6 +126,7 @@ const (
 	whyTransport = "this app does not support this transport"
 	whyProtocol  = "this app does not support this protocol"
 	whyObfs      = "this app does not support the obfuscation"
+	whyLineChars = "a setting holds a comma, a double quote or a line break, which this app's format cannot carry"
 )
 
 // routes are the tunnel's allowed IPs ("everything over IPv4" when none are given).

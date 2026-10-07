@@ -1016,11 +1016,25 @@ var mcpTools = []mcpTool{
 			return m["install"], nil
 		}},
 	{Name: "check_protocol", Title: "Check a protocol",
-		Description: "Before adding a protocol: says whether a combination of protocol, transport and security works (and if not, why and what to do instead), how apps will name it, its usual ports, which apps can use it and what the admin needs to do. Nothing is changed.",
-		Props:       protocolProps(false), Required: []string{"kind"},
+		Description: "Before adding or changing a protocol: says whether a combination of protocol, transport and security works (and if not, why and what to do instead), how apps will name it, its usual ports, which apps can use it and what the admin needs to do. With protocol_id the settings are checked as a change to that protocol (what is left out keeps its value, as saving does); with server_id, for that server. Nothing is changed.",
+		Props: func() map[string]any {
+			m := protocolProps(false)
+			m["protocol_id"] = pInt("Check a change to this existing protocol (list_servers); kind may then be left out")
+			m["server_id"] = pInt("Check a new protocol for this server (its IP version and shared certificates count)")
+			return m
+		}(),
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
 			kind, _ := argStr(a, "kind")
-			return c.api("POST", "/api/protocols/check", map[string]any{"kind": kind, "settings": protocolSettingsArg(a)})
+			body := map[string]any{"kind": kind, "settings": protocolSettingsArg(a)}
+			if id, ok := argInt(a, "protocol_id"); ok {
+				body["node_id"] = id
+			} else if kind == "" {
+				return nil, errors.New("kind is needed (or protocol_id to check a change to an existing protocol)")
+			}
+			if id, ok := argInt(a, "server_id"); ok {
+				body["server_id"] = id
+			}
+			return c.api("POST", "/api/protocols/check", body)
 		}},
 	{Name: "add_protocol", Title: "Add protocol", Write: true,
 		Description: "Add a protocol to a server. It is applied live - nothing restarts. Only combinations that work are accepted (see check_protocol). Good defaults: vless with REALITY for most people; hysteria2 for long or lossy routes; shadowsocks for every app; vmess or vless over ws behind a CDN to hide the server; wireguard for a full VPN; socks or http for apps that need a plain proxy.",

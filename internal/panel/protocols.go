@@ -737,14 +737,14 @@ func (c *certSettings) settle(in *protoInput, sni, oldSNI, oldMode string) error
 	case certACME:
 		c.CertPEM, c.KeyPEM, c.CertSHA256, c.CertExpires = "", "", "", 0
 	case certCustom:
+		if oldMode != certCustom { // another mode's certificate (a self-signed one) is not the operator's own
+			c.CertPEM, c.KeyPEM = "", ""
+		}
 		if in != nil && in.CertPEM != nil {
 			c.CertPEM = strings.TrimSpace(*in.CertPEM)
 		}
 		if in != nil && in.KeyPEM != nil {
 			c.KeyPEM = strings.TrimSpace(*in.KeyPEM)
-		}
-		if oldMode != certCustom && (in == nil || in.CertPEM == nil) {
-			c.CertPEM, c.KeyPEM = "", ""
 		}
 		c.CertSHA256 = ""
 	case certShared:
@@ -1558,11 +1558,16 @@ type fieldHelp struct {
 
 // checkProtocol validates a protocol draft and reports where it works.
 func checkProtocol(kind string, in *protoInput) supportView {
-	k, ok := kindOf(kind)
-	if !ok {
+	if _, ok := kindOf(kind); !ok {
 		return supportView{Error: "unknown protocol - choose one of vless, vmess, trojan, shadowsocks, hysteria2, wireguard, socks, http"}
 	}
 	raw, err := newSettings(kind, in, nil)
+	return supportOf(kind, raw, err)
+}
+
+// supportOf describes settings the way checkProtocol does; err is why they cannot be saved.
+func supportOf(kind string, raw json.RawMessage, err error) supportView {
+	k, _ := kindOf(kind)
 	if err != nil {
 		return supportView{Error: err.Error(), Kind: &k}
 	}

@@ -16,7 +16,7 @@ const (
 	FormatShadowrocket = "shadowrocket"
 	FormatBase64       = "base64"  // share links for Xray-core apps
 	FormatHiddify      = "hiddify" // share links for sing-box-core apps
-	FormatLoon         = "loon"    // share links, the widely supported subset
+	FormatLoon         = "loon"    // Loon's own proxy lines
 	FormatURI          = "uri"
 	FormatSurge        = "surge"
 	FormatQuanX        = "quanx"
@@ -110,7 +110,7 @@ func Render(format string, eps []Endpoint, info Info, subURL string) (body []byt
 		b, s := Base64List(eps, info, profileSingBox, false)
 		return b, "text/plain; charset=utf-8", s
 	case FormatLoon:
-		b, s := Base64List(eps, info, profileRocket, false)
+		b, s := Loon(eps)
 		return b, "text/plain; charset=utf-8", s
 	case FormatURI:
 		list, s := URIList(eps, profileFull)
@@ -166,7 +166,7 @@ func Clients(subURL, name string) []Client {
 		{Name: "v2rayN / v2rayNG / v2Box", Platform: "Windows · Android · iOS", Format: FormatBase64,
 			Link: with(FormatBase64)},
 		{Name: "NekoBox / Karing", Platform: "Windows · Android", Format: FormatHiddify, Link: with(FormatHiddify)},
-		{Name: "Loon", Platform: "iOS", Format: FormatLoon, Link: with(FormatLoon)},
+		{Name: "Loon", Platform: "iOS", Format: FormatLoon, Import: "loon://import?nodelist=" + q(with(FormatLoon)), Link: with(FormatLoon)},
 	}
 }
 

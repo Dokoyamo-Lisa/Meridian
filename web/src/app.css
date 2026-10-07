@@ -183,15 +183,20 @@ h2.h { margin: 0; font-size: 12.5px; font-weight: 600; letter-spacing: .08em; co
   background: transparent; color: var(--ink); font-size: 12.5px; white-space: nowrap;
   transition: background .2s, border-color .2s, color .2s, transform .15s var(--ease-out);
 }
-.btn:hover { background: var(--hover); border-color: color-mix(in srgb, var(--line-2) 100%, var(--ink-4)); }
-.btn:active { transform: scale(.97); }
-.btn:disabled { opacity: .45; cursor: default; transform: none; }
+/* hover and press feedback only where a click does something */
+.btn:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: var(--hover); border-color: color-mix(in srgb, var(--line-2) 100%, var(--ink-4)); }
+.btn:is(:enabled, a, label):not([aria-disabled="true"]):active { transform: scale(.97); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; transform: none; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
-.btn.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+.btn.primary:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+/* a primary action that cannot run is grey, not a faded version of the accent */
+.btn.primary:disabled, .btn.primary[aria-disabled="true"] { background: var(--hover); border-color: var(--line-2); color: var(--ink-3); opacity: 1; }
 .btn.danger { color: var(--crit); border-color: color-mix(in srgb, var(--crit) 40%, transparent); }
-.btn.danger:hover { background: var(--crit-soft); }
+.btn.danger:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: var(--crit-soft); }
 .btn.ghost { border-color: transparent; color: var(--ink-2); }
-.btn.ghost:hover { color: var(--ink); background: var(--hover); }
+.btn.ghost:is(:enabled, a, label):not([aria-disabled="true"]):hover { color: var(--ink); background: var(--hover); }
+.linkish { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.linkish:hover { color: var(--ink-2); }
 .btn.sm { height: 26px; padding: 0 9px; font-size: 12px; border-radius: 7px; }
 .icon-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink-2); transition: color .2s, border-color .2s, background .2s; }
 .icon-btn:hover { color: var(--ink); border-color: var(--line-2); background: var(--hover); }
@@ -218,7 +223,7 @@ textarea.input { height: auto; min-height: 70px; padding: 8px 11px; resize: vert
 .toggle[aria-checked="true"] { background: var(--accent); }
 .toggle[aria-checked="true"]::after { transform: translateX(14px); background: var(--on-accent); }
 
-.seg { position: relative; display: inline-flex; padding: 2px; border-radius: 8px; border: 1px solid var(--line); gap: 2px; }
+.seg { position: relative; display: inline-flex; flex-wrap: wrap; max-width: 100%; padding: 2px; border-radius: 8px; border: 1px solid var(--line); gap: 2px; }
 .seg button { border: 0; background: none; padding: 4px 11px; font-size: 12px; color: var(--ink-3); border-radius: 6px; transition: color .2s, background .2s; white-space: nowrap; }
 .seg button[aria-pressed="true"] { color: var(--ink); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line-2); }
 
@@ -474,6 +479,10 @@ details.adv summary:hover { color: var(--ink); }
 .check-panel.good { background: color-mix(in srgb, var(--good-soft) 55%, transparent); border-color: transparent; }
 .check-panel.bad { background: var(--crit-soft); border-color: transparent; }
 .check-panel.bad p { color: var(--ink-2); }
+.flash > .check-panel.bad { animation: flash-warn 1s var(--ease-out); }
+@keyframes flash-warn { 0%, 40% { box-shadow: 0 0 0 2px var(--crit); } 100% { box-shadow: 0 0 0 2px transparent; } }
+@media (prefers-reduced-motion: reduce) { .flash > .check-panel.bad { animation: none; box-shadow: 0 0 0 2px var(--crit); } }
+.modal-foot .linkish { align-self: center; }
 .app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 14px; margin-top: 10px; }
 .app-cell { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; font-size: 12px; min-width: 0; }
 .app-cell > span:first-child { width: 12px; flex: none; }

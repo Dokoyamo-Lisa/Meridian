@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { AppSupport, Cert, NodeView, ProtocolCatalog, ProtocolCheck, Server, del, get, patch, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
@@ -315,7 +315,7 @@ function draftFrom(kind: string, st: Record<string, any> | undefined): Draft {
     target: s.target || '',
     own_site: !!s.own_site,
     cert_mode: s.cert_mode || 'self',
-    cert_pem: s.cert_pem || '',
+    cert_pem: s.cert_mode === 'custom' ? s.cert_pem || '' : '', // a self-signed certificate is not one's own
     key_pem: '',
     cert_id: s.cert_id || 0,
     path: s.path || '',
@@ -418,19 +418,38 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }))
   const k = cat.data?.kinds.find((x) => x.kind === kind)
 
-  // ask the panel, as the draft changes, whether it works and where
+  // ask the panel, as the draft changes, whether it works and where - with the checks saving runs
+  // (as a change to this protocol when editing: what is left empty keeps its stored value)
   const body = useMemo(() => (kind ? settingsFor(kind, d, editing) : null), [kind, d, editing])
+  const runCheck = () =>
+    post<ProtocolCheck>('/api/protocols/check', { kind, settings: body, ...(editing && n ? { node_id: n.id } : serverId ? { server_id: serverId } : {}) }).catch(
+      (e): ProtocolCheck => ({ valid: false, error: errText(e) }),
+    )
+  const seq = useRef(0) // answers to older drafts are dropped
   useEffect(() => {
     if (!kind || !body) return
+    const my = ++seq.current
     setChecking(true)
     const t = window.setTimeout(() => {
-      post<ProtocolCheck>('/api/protocols/check', { kind, settings: body })
-        .then(setCheck)
-        .catch((e) => setCheck({ valid: false, error: errText(e) }))
-        .finally(() => setChecking(false))
+      void runCheck().then((c) => {
+        if (my !== seq.current) return
+        setCheck(c)
+        setChecking(false)
+      })
     }, 250)
     return () => window.clearTimeout(t)
-  }, [kind, JSON.stringify(body)])
+  }, [kind, JSON.stringify(body), serverId])
+  const blocked = !!kind && !!check && !check.valid
+  const warning = useRef<HTMLDivElement>(null)
+  const showWarning = () =>
+    window.setTimeout(() => {
+      const el = warning.current
+      if (!el) return
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      el.classList.remove('flash')
+      void el.offsetWidth // restart the animation
+      el.classList.add('flash')
+    }, 30)
 
   const choose = (p: (typeof presets)[number]) => {
     setKind(p.kind)
@@ -440,8 +459,22 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
 
   const save = async (e: Event) => {
     e.preventDefault()
-    if (!server || !kind) return
+    if (!server || !kind || busy) return
     setErr('')
+    // only what works is saved: a draft whose check has not come back yet is checked now
+    let c = check
+    if (checking || !c) {
+      const my = ++seq.current
+      c = await runCheck()
+      if (my === seq.current) {
+        setCheck(c)
+        setChecking(false)
+      }
+    }
+    if (!c.valid) {
+      showWarning()
+      return
+    }
     if (editing && n) {
       const old = n.settings || {}
       const changes = ['transport', 'security', 'sni', 'cert_mode', 'path', 'service_name', 'cdn', 'cdn_host', 'method', 'flow'].filter(
@@ -493,10 +526,21 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
       wide
       footer={
         <>
+          {blocked && (
+            <button type="button" class="left linkish faint" onClick={showWarning}>
+              Does not work yet - see why
+            </button>
+          )}
           <button class="btn ghost" onClick={props.onClose}>
             Cancel
           </button>
-          <button class="btn primary" form="proto-form" disabled={busy || !kind || !check?.valid}>
+          <button
+            class="btn primary"
+            form="proto-form"
+            disabled={busy || !kind}
+            aria-disabled={blocked || undefined}
+            title={blocked ? 'This combination does not work - fix what the warning says first' : undefined}
+          >
             {busy ? <span class="spin" /> : editing ? 'Save' : 'Add protocol'}
           </button>
         </>
@@ -576,7 +620,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
           <RealitySite d={d} set={set} sites={cat.data.reality_sites} pick={sitePick} setPick={setSitePick} server={server} />
         )}
 
-        {kind && ((xray && !d.cdn && d.security === 'tls') || kind === 'hysteria2') && <CertFields d={d} set={set} kind={kind} editing={editing} />}
+        {kind && ((xray && !d.cdn && d.security === 'tls') || kind === 'hysteria2') && <CertFields d={d} set={set} kind={kind} editing={editing} keepKey={editing && n?.settings?.cert_mode === 'custom'} />}
 
         {kind && xray && ['ws', 'httpupgrade', 'xhttp'].includes(d.transport) && (
           <div class="inline-fields">
@@ -654,7 +698,11 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
           </>
         )}
 
-        {kind && <CheckPanel check={check} checking={checking} />}
+        {kind && (
+          <div ref={warning}>
+            <CheckPanel check={check} checking={checking} />
+          </div>
+        )}
 
         {kind && (
           <details class="adv">
@@ -862,7 +910,7 @@ function RealitySite(props: { d: Draft; set: (p: Partial<Draft>) => void; sites:
   )
 }
 
-function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: string; editing: boolean }) {
+function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: string; editing: boolean; keepKey?: boolean }) {
   const { d, set } = props
   const certs = useAsync(() => get<Cert[]>('/api/certs'))
   const covers = (c: Cert, name: string) => c.domains.some((x) => x === name || (x.startsWith('*.') && name.endsWith(x.slice(1)) && !name.slice(0, -x.length + 1).includes('.')))
@@ -912,13 +960,18 @@ function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: s
           <Field label="Certificate chain (PEM)">
             <textarea class="input mono" rows={4} value={d.cert_pem} placeholder="-----BEGIN CERTIFICATE-----" onInput={(e) => set({ cert_pem: e.currentTarget.value })} spellcheck={false} />
           </Field>
-          <Field label="Private key (PEM)" hint={props.editing ? 'Leave empty to keep the current key.' : undefined}>
+          <Field label="Private key (PEM)" hint={props.keepKey ? 'Leave empty to keep the current key.' : undefined}>
             <textarea class="input mono" rows={4} value={d.key_pem} placeholder="-----BEGIN PRIVATE KEY-----" onInput={(e) => set({ key_pem: e.currentTarget.value })} spellcheck={false} />
           </Field>
         </div>
       )}
     </div>
   )
+}
+
+// sentence starts a message from the panel with a capital letter.
+function sentence(s?: string) {
+  return s ? s[0].toUpperCase() + s.slice(1) : ''
 }
 
 function CheckPanel(props: { check: ProtocolCheck | null; checking: boolean }) {
@@ -931,7 +984,7 @@ function CheckPanel(props: { check: ProtocolCheck | null; checking: boolean }) {
           <Icon name="alert" size="sm" />
           <b>This combination does not work</b>
         </div>
-        <p style="margin:6px 0 0">{c.error}</p>
+        <p style="margin:6px 0 0">{sentence(c.error)}</p>
       </div>
     )
   const works = (c.apps || []).filter((a) => a.ok)

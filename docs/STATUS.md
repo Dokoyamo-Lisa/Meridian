@@ -1,6 +1,6 @@
 # Meridian status
 
-Last updated 2026-10-07 (version 0.6.1).
+Last updated 2026-10-07 (version 0.6.2).
 
 ## Tested end to end this round (local VMs: Ubuntu with systemd, Alpine with OpenRC)
 
@@ -89,7 +89,9 @@ namespace inside the VM (`test/e2e/`).
 1. Let's Encrypt certificates issued by the agent (needs a public domain pointing at a server).
 2. Proxy pass across two VMs (unit-tested; one VM here).
 3. Third-party apps that are not built on sing-box, mihomo or Xray (Shadowrocket, Surge, Quantumult X,
-   Stash, Loon): their formats are generated and escaped by tested code, but were not run.
+   Stash, Loon): their formats are generated and escaped by tested code, but were not run. Loon's
+   output (every protocol, WireGuard included) was parsed with Sub-Store's Loon parsers: all lines
+   read back with their keys, pins and REALITY settings intact.
 
 ## Hard rules
 
