@@ -1,0 +1,185 @@
+# Getting started
+
+From nothing to the first person connected, in about ten minutes.
+
+## 1. Install the panel
+
+You need a small Linux server (any distribution with systemd; 1 CPU and 512 MB are plenty) and,
+ideally, a domain name pointing to it.
+
+Download the release for the server's CPU from the project's Releases page (`linux-amd64` for most
+servers, `linux-arm64` for ARM), check it against `SHA256SUMS`, unpack it and run the installer as
+root:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+tar xzf meridian-0.4.0-linux-amd64.tar.gz
+cd meridian-0.4.0-linux-amd64
+sudo ./install-panel.sh --domain panel.example.com --email you@example.com
+```
+
+- `--domain` makes the panel serve HTTPS with an automatic Let's Encrypt certificate. Ports 80 and
+  443 must be reachable from the internet. Using it accepts Let's Encrypt's terms.
+- No domain? Use `--listen :8080` and put the panel behind a TLS reverse proxy (see
+  [Operations](operations.md#behind-a-reverse-proxy)). Plain HTTP works, but your sign-in and the
+  install commands then travel unencrypted.
+
+The installer prints the supervisor's first sign-in (user `admin` and a generated password). There
+is one supervisor account: it runs the panel. The people who use the servers are **users** - they
+get links and their own page, never the panel. Sign in, then right away:
+
+1. **Settings › Security**: change the password and turn on two-factor sign-in.
+2. **Settings › Panel**: check the public URL (servers use it to reach the panel) and the timezone
+   (days and monthly resets follow it).
+
+The panel runs as the unprivileged user `meridian`. Its database is `/var/lib/meridian/meridian.db`,
+its settings `/etc/meridian/meridian.env`.
+
+## 2. Add a server
+
+**Servers › Add server**. Give it a name ("Tokyo 1") and, optionally, the domain or IP clients
+should use (empty = the IP the server reports). The server page then shows a guide:
+
+1. **Check the server** - Linux with systemd (Debian 11+, Ubuntu 20.04+, AlmaLinux / Rocky 8+,
+   Fedora, Arch), amd64 or arm64, root access, and the server can reach the panel.
+2. **Paste the command** it shows on the server as root:
+
+   ```bash
+   curl -fsSLo meridian-install.sh https://panel.example.com/agent/install.sh && echo '<checksum>  meridian-install.sh' | sha256sum -c - && bash meridian-install.sh --token '<token>'
+   ```
+
+   The command checks the installer's checksum, the installer checks the agent's, and the agent
+   checks every core it downloads. The token in it is the server's secret - treat it like a
+   password; if it leaks, use **More actions › Rotate agent token** on the server page.
+
+The guide turns green when the agent connects (usually within seconds). If it does not, the guide
+lists what to check: the command's output, `systemctl status meridian-agent`, the server's clock and
+whether it can reach the panel's address.
+
+## 3. Add protocols
+
+**Protocols › Add protocol**, pick the server and a starting point:
+
+| Starting point | When |
+| --- | --- |
+| **VLESS · REALITY** | The default for everyone. No domain or certificate; looks like a visit to a well-known site. |
+| **Hysteria2** | Long or lossy routes (QUIC over UDP). |
+| **VLESS · WebSocket · CDN** | Hides the server behind Cloudflare or another CDN. Needs a domain on the CDN. |
+| **VMess · WebSocket · TLS** | Works in almost every app, including Surge. |
+| **Trojan · TLS** | Looks like an HTTPS server; best with a real domain. |
+| **Shadowsocks 2022** | Simple and supported everywhere, TCP and UDP - including Surge and Quantumult X. |
+| **WireGuard** | A full VPN for laptops, phones and offices. |
+| **SOCKS5 / HTTP proxy** | For apps that only speak a plain proxy. |
+
+Each is only a starting point: change the protocol, transport (raw, WebSocket, gRPC, HTTPUpgrade,
+XHTTP), security (REALITY, TLS, none) and every other setting in the same form.
+
+The form only offers settings that fit together, and checks the whole combination before saving:
+anything that would not work - on the server or in the apps - is refused with a reason and what to
+do instead. Below the form you see which apps can use the protocol as configured.
+
+- **REALITY** borrows a well-known site (the panel tests candidates from the server and picks one
+  that answers quickly) or fronts **your own website** running on the server.
+- **TLS** uses a self-signed certificate pinned by the apps that can check one (no domain needed;
+  apps that cannot are left out - links are never made insecure), a **Let's
+  Encrypt** certificate the agent obtains and renews (needs a domain pointing at the server and
+  port 80 free), or a certificate you paste.
+- Ports are chosen for you (443 first for TLS, REALITY and Hysteria2 where it is free; 8388 for
+  Shadowsocks, 51820 for WireGuard) and can be changed.
+
+**Already running Xray, V2Ray, x-ui, 3x-ui, sing-box or Hysteria2 on the server?** Use **Import
+existing setup** on the server page. The agent reads their configuration (it changes nothing), you
+pick what to bring over, and each protocol keeps its keys, and each user keeps their ID or password
+- devices keep working. With **Take over**, the old service is stopped and Meridian serves the same
+ports; without it, nothing is stopped and the imports use free ports.
+
+## 4. Add users
+
+**Users › New user**. Each user gets:
+
+- a **subscription link** - one link for all their apps; every app picks its own format from it;
+- a **username and password** for their own page at `https://panel.example.com/me` (turn it off
+  if you only want to hand out links). A generated password is shown once - copy the text with the
+  sign-in address, username, password and link and pass it on.
+
+Options:
+
+- **Servers**: all servers (including ones you add later) or only some.
+- **Data per cycle, reset day, valid until, device limit**: these only raise alerts. Nothing is ever
+  paused or cut off automatically - pausing is always your click.
+- **How many**: create `team-01` … `team-20` in one go, each with their own password.
+
+On the user's page in the panel you see their link with a QR code and import buttons, who is
+connected right now, IP history, destinations and daily traffic.
+
+## 5. What users see
+
+A user signs in at `/me` with the username and password you gave them and sees:
+
+- their usage this cycle, what is left, when it starts over and until when their access runs;
+- usage **per server** (today, this cycle, 30 days) and per day;
+- the devices connected right now (address, place, network, server, protocol);
+- their link with a QR code and one-tap import buttons for every app;
+- which servers are up, on the globe; and they can change their own password.
+
+## 6. The status page (optional)
+
+**Settings › Panel › Status page**:
+
+| Setting | Effect |
+| --- | --- |
+| **Only at /me** | The front page is the panel; users sign in at `/me`. |
+| **Front page** | The site's front page is the status page; the panel stays at `/overview`. |
+| **At /status** | The status page is at `/status`; the panel stays at its address. |
+| **Its own domain** | Point a domain such as `status.example.com` at the panel and enter it: that domain shows only the status page and the users' sign-in, never the panel. |
+
+What it shows depends on who looks:
+
+- **Visitors** see the logo, the panel name (Settings › Panel › Panel name), your line of text and a sign-in form - nothing else.
+- **Users** who sign in see their own page: the data they have left, the devices connected now,
+  their link with QR code and one-tap import, and their usage per server.
+- **You** (signed in with the supervisor account) see every server on a live globe: up or down,
+  availability for 24 hours, 30 days and each day, live throughput and daily traffic, CPU / memory /
+  disk, monthly bandwidth and outages. **The panel on the globe** draws an arc from every server to
+  the panel's city.
+
+On each server page, **On the status page** leaves a server off the globe, gives it another name
+there or corrects where it sits (IP databases often place data-centre addresses at the provider's
+office).
+
+## 7. Watch it
+
+- **Overview**: servers, people online, throughput, today's traffic and everything that needs you.
+- **Monitor › Online now**: every connection - user, IP, place, network, server, protocol.
+- **Monitor › IP history**: which IPs used which users' links. A link used from many networks or
+  countries at once is probably shared; open the user and look at their IP history.
+- **Monitor › Destinations**: where traffic goes (domains for Xray and Hysteria, exact bytes for
+  WireGuard with DNS logging on).
+- **Block** an abusive IP from any of these lists; **Pause** a user to stop them.
+
+## 8. Country rules (optional)
+
+**Access**:
+
+- **Country rule for your servers** - block the listed countries, or allow only them, on every
+  protocol and forward (SSH is never touched). Connections that are already open from a blocked
+  country stop at once. A server can follow its own rule instead (server page › Country rule).
+- **Who may open this site** - the same by country for the panel, the users' pages, the status page
+  and (optionally) subscription links. The panel refuses a rule that would lock you out; if you
+  ever are locked out later (travelling, a changed address), see
+  [Operations](operations.md#locked-out-by-the-site-country-rule).
+
+The country lists come from DB-IP's free database, downloaded by the panel once a month.
+
+## 9. Your name and logo (optional)
+
+**Settings › Panel › Name and logo**: the panel's name, your own logo (SVG, PNG, JPEG or WebP, up to
+128 KB) and how it moves - the umbrella assembling, Rise, Pulse, Spin or None. The preview shows it
+as users will see it; **Use the umbrella** brings the built-in logo back.
+
+## Next steps
+
+- [Proxy pass](architecture.md#proxy-pass): users connect to a nearby server and exit elsewhere.
+- **Port forwards** (server page): relay a port to another host with exact byte counts.
+- [API tokens and MCP](mcp.md): let scripts or an AI assistant use the panel.
+- [Operations](operations.md): backups, upgrades, troubleshooting.

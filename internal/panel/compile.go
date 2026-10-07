@@ -1,0 +1,518 @@
+package panel
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"log/slog"
+	"sort"
+	"sync"
+	"time"
+
+	"meridian/internal/proto"
+	"meridian/internal/subgen"
+)
+
+// compiled is a server's desired state, ready to hand to its agent.
+type compiled struct {
+	state *proto.State
+	body  []byte // JSON of state
+}
+
+// hub keeps the latest desired state per server and wakes agents waiting for a change.
+type hub struct {
+	mu      sync.Mutex
+	states  map[int64]*compiled
+	waiters map[int64]chan struct{}
+	dirty   map[int64]bool
+	kick    chan struct{}
+}
+
+func newHub() *hub {
+	return &hub{states: map[int64]*compiled{}, waiters: map[int64]chan struct{}{}, dirty: map[int64]bool{},
+		kick: make(chan struct{}, 1)}
+}
+
+func (h *hub) get(id int64) *compiled {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.states[id]
+}
+
+func (h *hub) set(id int64, c *compiled) {
+	h.mu.Lock()
+	old := h.states[id]
+	h.states[id] = c
+	changed := old == nil || old.state.Rev != c.state.Rev
+	var ch chan struct{}
+	if changed {
+		ch = h.waiters[id]
+		delete(h.waiters, id)
+	}
+	h.mu.Unlock()
+	if ch != nil {
+		close(ch)
+	}
+}
+
+func (h *hub) drop(id int64) {
+	h.mu.Lock()
+	delete(h.states, id)
+	h.mu.Unlock()
+}
+
+// wait returns the state once its rev differs from have, or nil after timeout.
+func (h *hub) wait(ctx context.Context, id int64, have string, timeout time.Duration) *compiled {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	for {
+		h.mu.Lock()
+		c := h.states[id]
+		if c != nil && c.state.Rev != have {
+			h.mu.Unlock()
+			return c
+		}
+		ch := h.waiters[id]
+		if ch == nil {
+			ch = make(chan struct{})
+			h.waiters[id] = ch
+		}
+		h.mu.Unlock()
+		select {
+		case <-ch:
+		case <-deadline.C:
+			return nil
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
+// markDirty schedules servers for recompilation.
+func (h *hub) markDirty(ids ...int64) {
+	h.mu.Lock()
+	for _, id := range ids {
+		h.dirty[id] = true
+	}
+	h.mu.Unlock()
+	select {
+	case h.kick <- struct{}{}:
+	default:
+	}
+}
+
+func (h *hub) takeDirty() []int64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	ids := make([]int64, 0, len(h.dirty))
+	for id := range h.dirty {
+		ids = append(ids, id)
+	}
+	h.dirty = map[int64]bool{}
+	return ids
+}
+
+// compileLoop recompiles dirty servers shortly after they change, batching bursts of edits.
+func (p *Panel) compileLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-p.hub.kick:
+		}
+		time.Sleep(60 * time.Millisecond) // let a burst of edits settle
+		for _, id := range p.hub.takeDirty() {
+			if err := p.recompile(ctx, id); err != nil {
+				slog.Error("compile", "server", id, "err", err)
+			}
+		}
+	}
+}
+
+// touchServers marks servers for recompilation.
+func (p *Panel) touchServers(ids ...int64) { p.hub.markDirty(ids...) }
+
+// touchAccount recompiles every server of an account (a subscription change touches them all).
+func (p *Panel) touchAccount(accountID int64) {
+	rows, err := p.db.Query(`SELECT id FROM servers WHERE account_id = ?`, accountID)
+	if err != nil {
+		slog.Error("touch account", "err", err)
+		return
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	p.touchServers(ids...)
+}
+
+func (p *Panel) compileAll(ctx context.Context) error {
+	rows, err := p.db.QueryContext(ctx, `SELECT id FROM servers`)
+	if err != nil {
+		return err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	for _, id := range ids {
+		if err := p.recompile(ctx, id); err != nil {
+			slog.Error("compile", "server", id, "err", err)
+		}
+	}
+	return nil
+}
+
+func (p *Panel) recompile(ctx context.Context, id int64) error {
+	st, err := p.compileServer(ctx, id)
+	if err == sql.ErrNoRows {
+		p.hub.drop(id)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	body, err := json.Marshal(st)
+	if err != nil {
+		return err
+	}
+	p.hub.set(id, &compiled{state: st, body: body})
+	return nil
+}
+
+// compileServer builds the desired state of one server from the database.
+func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, error) {
+	srv, err := p.serverByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	set := p.settings()
+	st := &proto.State{Contract: proto.Version, ServerID: id,
+		Agent: proto.AgentSettings{ReportInterval: set.ReportInterval, ConnLog: set.ConnLog, DestLog: set.DestLog,
+			LatestVersion: Version},
+		Cores: proto.Cores{Xray: set.XrayVersion, Hysteria: set.HysteriaVersion, Realm: set.RealmVersion,
+			Digests: p.digests.forVersions(map[string]string{"xray": set.XrayVersion, "hysteria": set.HysteriaVersion,
+				"realm": set.RealmVersion})}}
+	if set.Mirror && set.PublicURL != "" {
+		st.Cores.Mirror = set.PublicURL + "/agent/v1/mirror"
+	}
+	if srv.DeletedAt > 0 {
+		st.Decommission = true
+		st.Rev = revOf(st)
+		return st, nil
+	}
+
+	acct, err := p.accountByID(ctx, srv.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := p.nodesOf(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var subs []*Sub
+	if acct.Enabled {
+		all, err := p.subsOf(ctx, srv.AccountID)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range all {
+			if !s.Paused && s.Scope.Has(id) {
+				subs = append(subs, s)
+			}
+		}
+	}
+
+	// proxy pass, exit side: entry nodes elsewhere that leave the internet through our nodes
+	passByExit := map[int64][]passClient{}
+	if prow, err := p.db.QueryContext(ctx, `SELECT `+nodeCols+` FROM nodes WHERE enabled = 1 AND pass_node IN
+		(SELECT id FROM nodes WHERE server_id = ?)`, id); err == nil {
+		var entries []*Node
+		for prow.Next() {
+			if n, err := scanNode(prow); err == nil {
+				entries = append(entries, n)
+			}
+		}
+		prow.Close()
+		for _, e := range entries {
+			es, err := p.serverByID(ctx, e.ServerID)
+			if err != nil || es.DeletedAt > 0 || es.AccountID != srv.AccountID {
+				continue
+			}
+			uuid, pw := passCredentials(es, e)
+			passByExit[e.PassNode] = append(passByExit[e.PassNode], passClient{Entry: e, UUID: uuid, Password: pw})
+		}
+	}
+
+	var passOut, passRules []map[string]any
+	xr := &proto.Xray{}
+	for _, n := range nodes {
+		if !n.Enabled {
+			continue
+		}
+		k, ok := kindOf(n.Kind)
+		if !ok {
+			continue
+		}
+		over := p.credOverrides(ctx, n.ID)
+		switch k.Engine {
+		case "xray":
+			in, err := xrayInbound(n, subs, passByExit[n.ID], over)
+			if err != nil {
+				slog.Error("render inbound", "node", n.ID, "err", err)
+				continue
+			}
+			xr.Inbounds = append(xr.Inbounds, in)
+			// proxy pass, entry side: send this node's traffic out through its exit node
+			if n.PassNode > 0 {
+				if exit, err := p.nodeByID(ctx, n.PassNode); err == nil && exit.Enabled && exit.PassNode == 0 {
+					if xs, err := p.serverByID(ctx, exit.ServerID); err == nil && xs.DeletedAt == 0 &&
+						xs.AccountID == srv.AccountID && xs.ID != srv.ID {
+						if ob, err := passOutbound(srv, n, xs, exit); err == nil {
+							passOut = append(passOut, ob)
+							passRules = append(passRules, map[string]any{"ruleTag": passTag(n.ID),
+								"inboundTag": []string{proto.InboundTag(n.ID)}, "outboundTag": passTag(n.ID)})
+						} else {
+							slog.Warn("proxy pass", "node", n.ID, "err", err)
+						}
+					}
+				}
+			}
+		case "hysteria":
+			hn, err := hyNode(n, subs, passByExit[n.ID], over)
+			if err != nil {
+				slog.Error("render hysteria", "node", n.ID, "err", err)
+				continue
+			}
+			st.Hysteria = append(st.Hysteria, hn)
+		case "wireguard":
+			peers, err := p.ensureWGPeers(ctx, n, subs)
+			if err != nil {
+				slog.Error("wireguard peers", "node", n.ID, "err", err)
+				continue
+			}
+			wg, err := wgInterface(n, peers)
+			if err != nil {
+				slog.Error("render wireguard", "node", n.ID, "err", err)
+				continue
+			}
+			st.WireGuard = append(st.WireGuard, wg)
+		}
+	}
+	xr.Base = xrayBase(passOut, passRules)
+	st.Xray = xr
+
+	fwds, err := p.forwardsOf(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range fwds {
+		if f.Enabled {
+			st.Forwards = append(st.Forwards, proto.Forward{ID: f.ID, ListenPort: f.ListenPort, Network: f.Network,
+				Target: f.Target, Engine: f.Engine, ProxyProtocol: f.ProxyProtocol})
+		}
+	}
+
+	if gr, err := p.geoRule(ctx, srv); err == nil {
+		st.Geo = gr
+	} else {
+		slog.Warn("country rule not applied", "server", srv.ID, "err", err)
+	}
+
+	if brow, err := p.db.QueryContext(ctx, `SELECT ip FROM ip_blocks WHERE account_id = ? AND (expires_at = 0 OR expires_at > ?)
+		ORDER BY ip`, srv.AccountID, now()); err == nil {
+		for brow.Next() {
+			var ip string
+			if brow.Scan(&ip) == nil {
+				st.BlockedIPs = append(st.BlockedIPs, ip)
+			}
+		}
+		brow.Close()
+	}
+
+	rows, err := p.db.QueryContext(ctx, `SELECT id, kind, args FROM actions WHERE server_id = ? AND status = 'pending'
+		ORDER BY id`, id)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var a proto.Action
+		var args string
+		if rows.Scan(&a.ID, &a.Kind, &args) == nil {
+			a.Args = json.RawMessage(args)
+			st.Actions = append(st.Actions, a)
+		}
+	}
+	rows.Close()
+
+	st.Rev = revOf(st)
+	return st, nil
+}
+
+func revOf(st *proto.State) string {
+	st.Rev = ""
+	b, _ := json.Marshal(st)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:10])
+}
+
+// ensureWGPeers returns the peers of a WireGuard node for the given subscriptions, creating keys
+// and addresses for subscriptions that have none yet.
+func (p *Panel) ensureWGPeers(ctx context.Context, n *Node, subs []*Sub) ([]*wgPeer, error) {
+	existing, err := p.wgPeersOf(ctx, n.ID)
+	if err != nil {
+		return nil, err
+	}
+	bySub := map[int64]*wgPeer{}
+	used := map[string]bool{}
+	for _, pr := range existing {
+		bySub[pr.SubID] = pr
+		used[pr.IP4] = true
+	}
+	var missing []*Sub
+	for _, s := range subs {
+		if bySub[s.ID] == nil {
+			missing = append(missing, s)
+		}
+	}
+	if len(missing) > 0 {
+		var ws wgSettings
+		if err := json.Unmarshal(n.Settings, &ws); err != nil {
+			return nil, err
+		}
+		err := p.db.Write(ctx, func(tx *sql.Tx) error {
+			for _, s := range missing {
+				ip4, ip6, err := allocWGAddrs(ws, used)
+				if err != nil {
+					return err
+				}
+				used[ip4] = true
+				priv, pub := x25519Pair(base64.StdEncoding)
+				pr := &wgPeer{SubID: s.ID, NodeID: n.ID, PrivateKey: priv, PublicKey: pub, PSK: randB64(32), IP4: ip4, IP6: ip6}
+				if _, err := tx.Exec(`INSERT OR IGNORE INTO wg_peers (sub_id, node_id, private_key, public_key, psk, ip4, ip6)
+					VALUES (?, ?, ?, ?, ?, ?, ?)`, pr.SubID, pr.NodeID, pr.PrivateKey, pr.PublicKey, pr.PSK, pr.IP4, pr.IP6); err != nil {
+					return err
+				}
+				bySub[s.ID] = pr
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	out := make([]*wgPeer, 0, len(subs))
+	for _, s := range subs {
+		if pr := bySub[s.ID]; pr != nil {
+			out = append(out, pr)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].SubID < out[j].SubID })
+	return out, nil
+}
+
+// endpointsFor lists what a subscription can connect to, in display order.
+func (p *Panel) endpointsFor(ctx context.Context, sub *Sub) ([]subgen.Endpoint, error) {
+	servers, err := p.serversOf(ctx, sub.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	var out []subgen.Endpoint
+	for _, srv := range servers {
+		if !sub.Scope.Has(srv.ID) || srv.Host() == "" {
+			continue
+		}
+		nodes, err := p.nodesOf(ctx, srv.ID)
+		if err != nil {
+			return nil, err
+		}
+		perServer := 0
+		for _, n := range nodes {
+			if n.Enabled {
+				perServer++
+			}
+		}
+		for _, n := range nodes {
+			if !n.Enabled {
+				continue
+			}
+			var peer *wgPeer
+			if n.Kind == subgen.KindWireGuard {
+				peers, err := p.ensureWGPeers(ctx, n, []*Sub{sub})
+				if err != nil || len(peers) == 0 {
+					continue
+				}
+				peer = peers[0]
+			}
+			e, err := endpoint(n, srv, sub, peer, endpointName(srv, n), p.credOverrides(ctx, n.ID))
+			if err != nil {
+				slog.Warn("endpoint", "node", n.ID, "err", err)
+				continue
+			}
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+// credOverrides are credentials imported with a node from another panel, by subscription.
+func (p *Panel) credOverrides(ctx context.Context, nodeID int64) map[int64]creds {
+	rows, err := p.db.QueryContext(ctx, `SELECT sub_id, id, password, username FROM node_creds WHERE node_id = ?`, nodeID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out map[int64]creds
+	for rows.Next() {
+		var sub int64
+		var c creds
+		if rows.Scan(&sub, &c.ID, &c.Password, &c.Username) == nil {
+			if out == nil {
+				out = map[int64]creds{}
+			}
+			out[sub] = c
+		}
+	}
+	return out
+}
+
+// endpointName is "🇯🇵 Tokyo · REALITY", or the node's own name when set.
+func endpointName(srv *Server, n *Node) string {
+	label := n.Name
+	if label == "" {
+		label = protocolLabel(n.Kind, n.Settings)
+	}
+	name := srv.Name + " · " + label
+	if f := flagEmoji(srv.Country); f != "" {
+		name = f + " " + name
+	}
+	return name
+}
+
+func flagEmoji(cc string) string {
+	if len(cc) != 2 {
+		return ""
+	}
+	r := []rune{}
+	for _, c := range cc {
+		if c >= 'a' && c <= 'z' {
+			c -= 32
+		}
+		if c < 'A' || c > 'Z' {
+			return ""
+		}
+		r = append(r, 0x1F1E6+c-'A')
+	}
+	return string(r)
+}

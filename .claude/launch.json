@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "meridian-panel",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "MERIDIAN_NO_GEO_DOWNLOAD=1 exec ./dist/meridian serve --listen 127.0.0.1:18080 --data .dev --agent-dir dist"],
+      "port": 18080
+    }
+  ]
+}

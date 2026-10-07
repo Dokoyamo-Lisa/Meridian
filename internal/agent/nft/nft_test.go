@@ -1,0 +1,96 @@
+package nft
+
+import (
+	"strings"
+	"testing"
+
+	"meridian/internal/proto"
+)
+
+func TestRenderGuardsAndForwards(t *testing.T) {
+	e := New()
+	spec := Spec{
+		Forwards: []proto.Forward{
+			{ID: 1, ListenPort: 30000, Network: "tcp+udp", Target: "203.0.113.7:443", Engine: "nft"},
+			{ID: 2, ListenPort: 30001, Network: "tcp", Target: "203.0.113.8:443 accept; table x", Engine: "nft"}, // hostile port
+			{ID: 3, ListenPort: 70000, Network: "tcp", Target: "203.0.113.9:443", Engine: "nft"},                 // out of range
+			{ID: 4, ListenPort: 30002, Network: "tcp", Target: "203.0.113.9:443", Engine: "realm"},
+		},
+		WG: []WGNat{
+			{NodeID: 1, Iface: "uwg1", Subnet4: "10.66.0.0/20"},
+			{NodeID: 2, Iface: `evil" ; drop`, Subnet4: "10.66.16.0/20"}, // hostile interface name
+		},
+		Blocked:   []string{"198.51.100.7", "203.0.113.0/24", "not-an-ip; flush ruleset", "2001:db8::/32"},
+		TCPPorts:  []int{443},
+		UDPPorts:  []int{443, 51820},
+		LocalOnly: []int{62789, 62790},
+	}
+	out := e.render(spec)
+	for _, bad := range []string{"accept; table x", "flush ruleset", "evil", "70000"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("hostile input %q reached the ruleset:\n%s", bad, out)
+		}
+	}
+	for _, want := range []string{
+		"dnat ip to 203.0.113.7:443",
+		`oifname "lo" tcp dport { 62789, 62790 } meta skuid != 0 counter reject with tcp reset`,
+		`ip daddr 10.66.0.0/20 meta l4proto { tcp, udp } th dport 53 iifname != "uwg1" drop`,
+		"elements = { 198.51.100.7, 203.0.113.0/24 }",
+		"elements = { 2001:db8::/32 }",
+		`tcp dport 30002 counter comment "f4:up"`,
+		"ip daddr @block4 udp sport @svc_udp counter drop",
+		"ip daddr @block4 ct mark and 0xffff0000 == 0x4d520000 counter drop",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestRenderIsStable(t *testing.T) {
+	spec := Spec{Blocked: []string{"203.0.113.2", "203.0.113.1"}, LocalOnly: []int{62790, 62789, 62789}}
+	first, second := New().render(spec), New().render(spec)
+	if first != second {
+		t.Fatal("same spec, different ruleset - every report would rewrite the table")
+	}
+}
+
+func TestRenderCountryRule(t *testing.T) {
+	base := Spec{TCPPorts: []int{443}, UDPPorts: []int{443}}
+	block := base
+	block.Geo = &GeoSpec{V4: []string{"1.0.1.0-1.0.3.255", "36.0.0.0/8", "bogus; flush ruleset", "5.5.5.5-1.1.1.1"},
+		V6: []string{"2400:da00::-2400:daff:ffff:ffff:ffff:ffff:ffff:ffff"}, Except: []string{"203.0.113.9", "nope"}}
+	out := New().render(block)
+	for _, bad := range []string{"bogus", "flush", "5.5.5.5", "nope"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("hostile or malformed entry %q reached the ruleset", bad)
+		}
+	}
+	for _, want := range []string{
+		"1.0.1.0-1.0.3.255, 36.0.0.0/8",
+		"2400:da00::-2400:daff:ffff:ffff:ffff:ffff:ffff:ffff",
+		"10.0.0.0/8", "203.0.113.9", "fc00::/7",
+		`meta nfproto ipv4 ip saddr @geo4 counter drop comment "geo:in"`,
+		"meta nfproto ipv4 ip daddr @geo4 counter drop",
+		"tcp dport @svc_tcp jump geo_in",
+		"udp sport @svc_udp jump geo_out",
+		"ct direction reply jump geo_out",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("block rule: missing %q in:\n%s", want, out)
+		}
+	}
+	allow := base
+	allow.Geo = &GeoSpec{Allow: true, V4: []string{"1.0.1.0/24"}}
+	out = New().render(allow)
+	if !strings.Contains(out, `ip saddr != @geo4 counter drop comment "geo:in"`) || !strings.Contains(out, "ip6 saddr != @geo6") {
+		t.Errorf("allow rule:\n%s", out)
+	}
+	// the exceptions come before the drop, so private networks are never refused
+	if i, j := strings.Index(out, "ip saddr @geoex4 return"), strings.Index(out, "ip saddr != @geo4"); i < 0 || i > j {
+		t.Error("exceptions are not checked first")
+	}
+	if strings.Contains(New().render(base), "geo") {
+		t.Error("no rule, but country sets rendered")
+	}
+}

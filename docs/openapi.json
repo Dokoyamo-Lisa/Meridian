@@ -1,0 +1,6353 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Meridian API",
+    "version": "0.4.0",
+    "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
+  },
+  "tags": [
+    {
+      "description": "Sign-in, password, two-factor and browser sessions. Cookie sessions need the header X-Meridian: 1 on every non-GET request (CSRF protection).",
+      "name": "Session"
+    },
+    {
+      "description": "Tokens for scripts and AI assistants: Authorization: Bearer \u003ctoken\u003e. Read tokens may only GET.",
+      "name": "API tokens"
+    },
+    {
+      "description": "Who is connected, from where, through which subscription, and where the traffic goes.",
+      "name": "Monitoring"
+    },
+    {
+      "description": "Servers run the agent; everything on them is applied live unless an action says otherwise.",
+      "name": "Servers"
+    },
+    {
+      "description": "VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP, Hysteria2 and WireGuard, over raw TCP, WebSocket, gRPC, HTTPUpgrade or XHTTP with TLS, REALITY or a CDN - only combinations that work. Includes proxy pass.",
+      "name": "Protocols"
+    },
+    {
+      "description": "Bring over protocols and users from Xray, V2Ray, 3x-ui, x-ui, sing-box or Hysteria2 already running on a server.",
+      "name": "Import"
+    },
+    {
+      "description": "Port forwards through nftables (kernel) or realm.",
+      "name": "Forwards"
+    },
+    {
+      "description": "The people you serve: each has a subscription link and can sign in to see their own usage. Limits raise alerts only.",
+      "name": "Users"
+    },
+    {
+      "description": "What a signed-in user sees. Uses its own session cookie; the admin API does not accept it.",
+      "name": "User page"
+    },
+    {
+      "description": "The public status page: which servers are up and where. Chosen and shaped in the settings.",
+      "name": "Status page"
+    },
+    {
+      "description": "Who may connect, by country: a rule for the servers' protocols and a rule for this site.",
+      "name": "Access"
+    },
+    {
+      "description": "Manual abuse blocks, applied with nftables on every server.",
+      "name": "IP blocks"
+    },
+    {
+      "description": "Panel-wide settings.",
+      "name": "Settings"
+    },
+    {
+      "description": "What apps fetch. No authentication: the token in the path is the secret.",
+      "name": "Subscription links"
+    },
+    {
+      "description": "Model Context Protocol for AI assistants.",
+      "name": "MCP"
+    }
+  ],
+  "paths": {
+    "/api/login": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Sign in",
+        "description": "One sign-in for everyone: the supervisor gets the panel session (kind admin), a user gets their own page (kind user, a separate cookie). Needs the X-Meridian: 1 header. With two-factor sign-in, the first answer is {totp_required: true}; send the same request again with code.",
+        "operationId": "postLogin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [],
+        "x-scope": "public"
+      }
+    },
+    "/api/logout": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Sign out",
+        "operationId": "postLogout",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/meta": {
+      "get": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Panel name, and for signed-in callers version and protocol catalogue",
+        "operationId": "getMeta",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetaResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [],
+        "x-scope": "public"
+      }
+    },
+    "/api/me": {
+      "get": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "The signed-in account",
+        "operationId": "getMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/me/password": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Change your password",
+        "description": "Signs out every other session.",
+        "operationId": "postMePassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/me/totp/setup": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Start two-factor setup",
+        "operationId": "postMeTotpSetup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpSetup"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/me/totp/enable": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Turn on two-factor sign-in",
+        "operationId": "postMeTotpEnable",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotpEnable"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/me/totp/disable": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Turn off two-factor sign-in",
+        "operationId": "postMeTotpDisable",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordOnly"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/me/sessions": {
+      "get": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Browsers signed in to your account",
+        "operationId": "getMeSessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Session"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/me/sessions/revoke-others": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Sign out every other browser",
+        "operationId": "postMeSessionsRevokeOthers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/tokens": {
+      "get": {
+        "tags": [
+          "API tokens"
+        ],
+        "summary": "Your API tokens",
+        "operationId": "getTokens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/APIToken"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      },
+      "post": {
+        "tags": [
+          "API tokens"
+        ],
+        "summary": "Create an API token",
+        "description": "The token is returned once. Send it as Authorization: Bearer \u003ctoken\u003e.",
+        "operationId": "postTokens",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenCreated"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/tokens/{id}": {
+      "delete": {
+        "tags": [
+          "API tokens"
+        ],
+        "summary": "Revoke an API token",
+        "operationId": "deleteTokensId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/overview": {
+      "get": {
+        "tags": [
+          "Monitoring"
+        ],
+        "summary": "Dashboard numbers and alerts",
+        "operationId": "getOverview",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Overview"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/live": {
+      "get": {
+        "tags": [
+          "Monitoring"
+        ],
+        "summary": "Every connection open right now",
+        "operationId": "getLive",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LiveConnection"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/ips": {
+      "get": {
+        "tags": [
+          "Monitoring"
+        ],
+        "summary": "IP history",
+        "description": "Client IPs that connected, aggregated per IP, most recent first (at most 1000). q matches an IP prefix, organisation, city or country code.",
+        "operationId": "getIps",
+        "parameters": [
+          {
+            "description": "How many days back",
+            "in": "query",
+            "name": "days",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Search text",
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this server",
+            "in": "query",
+            "name": "server",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IPHistoryRow"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/dests": {
+      "get": {
+        "tags": [
+          "Monitoring"
+        ],
+        "summary": "Destinations",
+        "description": "Where traffic went, by bytes then connections (at most 500). Bytes are exact for WireGuard; Xray and Hysteria2 report connections.",
+        "operationId": "getDests",
+        "parameters": [
+          {
+            "description": "How many days back",
+            "in": "query",
+            "name": "days",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Search text",
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this server",
+            "in": "query",
+            "name": "server",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only this user",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Destination"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "tags": [
+          "Monitoring"
+        ],
+        "summary": "Activity timeline, newest first",
+        "operationId": "getEvents",
+        "parameters": [
+          {
+            "description": "Only events with a smaller id (paging)",
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only this server",
+            "in": "query",
+            "name": "server",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only this user",
+            "in": "query",
+            "name": "user",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "warn = warnings only",
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "enum": [
+                "warn"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "1-500, default 100",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Event"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/servers": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "List servers",
+        "operationId": "getServers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Server"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Add a server",
+        "description": "Returns the install command to run on the server. protocols lists what to set up once the agent connects.",
+        "operationId": "postServers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/servers/{id}": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Server details",
+        "operationId": "getServersId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Change a server",
+        "description": "Only the given fields change.",
+        "operationId": "patchServersId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Delete a server",
+        "description": "The agent removes everything Meridian set up and uninstalls itself. Everyone on the server is disconnected.",
+        "operationId": "deleteServersId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/servers/{id}/rotate-token": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Issue a new agent token",
+        "description": "The agent cannot reach the panel until it is reinstalled with the new command. Traffic is not affected.",
+        "operationId": "postServersIdRotateToken",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/servers/{id}/actions": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Restart or upgrade",
+        "description": "Queues an explicit maintenance action. restart_xray and upgrade_xray disconnect Xray users for a moment; upgrade_agent disconnects nobody.",
+        "operationId": "postServersIdActions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionRef"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/actions/{id}": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Result of an action",
+        "operationId": "getActionsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/servers/{id}/metrics": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Load history",
+        "operationId": "getServersIdMetrics",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "1-48, default 1",
+            "in": "query",
+            "name": "hours",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MetricPoint"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/protocols": {
+      "get": {
+        "tags": [
+          "Protocols"
+        ],
+        "summary": "What can be built",
+        "description": "Protocols with their transports and security layers, the apps the panel writes subscriptions for, and the choices for fingerprints, XHTTP modes and certificates.",
+        "operationId": "getProtocols",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtocolCatalog"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/protocols/check": {
+      "post": {
+        "tags": [
+          "Protocols"
+        ],
+        "summary": "Check a protocol before adding it",
+        "description": "Says whether the combination can be saved (and if not, why and what to do instead), how apps will name it, its usual ports, which apps can use it and what the admin needs to do. Nothing is stored.",
+        "operationId": "postProtocolsCheck",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProtocolDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/servers/{id}/nodes": {
+      "post": {
+        "tags": [
+          "Protocols"
+        ],
+        "summary": "Add a protocol to a server",
+        "description": "Applied live without restarting anything. Only combinations that work can be saved (POST /api/protocols/check shows why one cannot). Port 0 picks a free common port. REALITY camouflage is checked from the server.",
+        "operationId": "postServersIdNodes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProtocolInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Protocol"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/nodes/{id}": {
+      "patch": {
+        "tags": [
+          "Protocols"
+        ],
+        "summary": "Change a protocol",
+        "description": "Only the given fields change; the result must still be a working combination. Changing the transport, security or certificate means devices must refresh their subscription.",
+        "operationId": "patchNodesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProtocolInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Protocol"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Protocols"
+        ],
+        "summary": "Remove a protocol",
+        "operationId": "deleteNodesId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/nodes/{id}/regenerate": {
+      "post": {
+        "tags": [
+          "Protocols"
+        ],
+        "summary": "New keys",
+        "description": "New REALITY keys, self-signed certificate, Shadowsocks server key or WireGuard key. Every device using the protocol must refresh its subscription.",
+        "operationId": "postNodesIdRegenerate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Protocol"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/nodes/{id}/test-target": {
+      "post": {
+        "tags": [
+          "Protocols"
+        ],
+        "summary": "Check a REALITY camouflage site from the server",
+        "operationId": "postNodesIdTestTarget",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetTestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionRef"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/servers/{id}/scan": {
+      "post": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Look for proxy software already on the server",
+        "description": "The agent reads (and changes nothing) the configs of Xray, V2Ray, 3x-ui and x-ui, sing-box and Hysteria2. Poll the action, then GET the scan.",
+        "operationId": "postServersIdScan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionRef"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "What the last scan found",
+        "description": "Programs, their protocols, ports and user names, and whether each can be imported. Keys and passwords are never shown.",
+        "operationId": "getServersIdScan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/servers/{id}/import": {
+      "post": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Import protocols found by the scan",
+        "description": "Each detected user becomes a Meridian user (or is matched by name) and keeps their credentials, keys and certificate. With take_over the old service is stopped and the same ports are served, so devices keep working; without it nothing is stopped and busy ports are moved.",
+        "operationId": "postServersIdImport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/servers/{id}/forwards": {
+      "post": {
+        "tags": [
+          "Forwards"
+        ],
+        "summary": "Add a port forward",
+        "operationId": "postServersIdForwards",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForwardInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forward"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/forwards/{id}": {
+      "patch": {
+        "tags": [
+          "Forwards"
+        ],
+        "summary": "Change a port forward",
+        "operationId": "patchForwardsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForwardInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forward"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Forwards"
+        ],
+        "summary": "Remove a port forward",
+        "operationId": "deleteForwardsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "List users",
+        "operationId": "getUsers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Subscription"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Create users",
+        "description": "Each user gets a subscription link and, unless sign_in is false, a username and password for their own page. A generated password is returned once. count \u003e 1 creates name-01, name-02, ... Quota, expiry and IP limit only raise alerts; nothing is paused automatically.",
+        "operationId": "postUsers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Subscription"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/users/{id}": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "User details",
+        "operationId": "getUsersId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Change a user",
+        "description": "Only the given fields change. A new username or password signs the user out everywhere; an empty username removes the sign-in.",
+        "operationId": "patchUsersId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Delete a user",
+        "operationId": "deleteUsersId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/users/{id}/{action}": {
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Pause, resume, new link, new credentials, reset usage, sign out or new password",
+        "description": "pause disconnects every device now; resume lets them back; rotate-link replaces the link (old one stops working); reset-keys gives new credentials (devices must refresh); reset-usage zeroes this cycle; sign-out ends the user's sessions on their own page; new-password generates a sign-in password (and a username if there is none) and returns it once.",
+        "operationId": "postUsersIdAction",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "enum": [
+                "pause",
+                "resume",
+                "rotate-link",
+                "reset-keys",
+                "reset-usage"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/users/{id}/ips": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "IPs that used this user's link",
+        "operationId": "getUsersIdIps",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "How many days back",
+            "in": "query",
+            "name": "days",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IPHistoryRow"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/users/{id}/dests": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Where this user's traffic went",
+        "operationId": "getUsersIdDests",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "How many days back",
+            "in": "query",
+            "name": "days",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Search text",
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Destination"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/users/{id}/traffic": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Daily traffic",
+        "operationId": "getUsersIdTraffic",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "How many days back",
+            "in": "query",
+            "name": "days",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionTraffic"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/users/{id}/preview": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Exactly what an app receives",
+        "operationId": "getUsersIdPreview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "App format",
+            "in": "query",
+            "name": "client",
+            "schema": {
+              "enum": [
+                "clash",
+                "stash",
+                "singbox",
+                "shadowrocket",
+                "base64",
+                "hiddify",
+                "loon",
+                "uri",
+                "surge",
+                "quanx"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionPreview"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/portal/me": {
+      "get": {
+        "tags": [
+          "User page"
+        ],
+        "summary": "The signed-in user's link, limits, devices and usage per server",
+        "operationId": "getPortalMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalMe"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "user": []
+          }
+        ],
+        "x-scope": "user"
+      }
+    },
+    "/api/portal/password": {
+      "post": {
+        "tags": [
+          "User page"
+        ],
+        "summary": "The user changes their password",
+        "description": "Signs the user out everywhere else.",
+        "operationId": "postPortalPassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "user": []
+          }
+        ],
+        "x-scope": "user"
+      }
+    },
+    "/api/portal/logout": {
+      "post": {
+        "tags": [
+          "User page"
+        ],
+        "summary": "The user signs out",
+        "operationId": "postPortalLogout",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "user": []
+          }
+        ],
+        "x-scope": "user"
+      }
+    },
+    "/api/status": {
+      "get": {
+        "tags": [
+          "Status page"
+        ],
+        "summary": "Every server for the live dashboard",
+        "description": "The status page's dashboard, for the supervisor: servers (name, place, up or down, availability over 24 hours and 30 days, throughput, load, monthly bandwidth), totals, traffic per day and outages. Nothing about users, addresses or keys. Users see only their own page (/api/portal/me).",
+        "operationId": "getStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusPayload"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/status/live": {
+      "get": {
+        "tags": [
+          "Status page"
+        ],
+        "summary": "Throughput per server since a time",
+        "operationId": "getStatusLive",
+        "parameters": [
+          {
+            "description": "Unix seconds; only newer points",
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusLive"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/places": {
+      "get": {
+        "tags": [
+          "Status page"
+        ],
+        "summary": "Cities for setting a server's location by hand",
+        "operationId": "getPlaces",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Place"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/access": {
+      "get": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Country rules for the servers and for this site",
+        "description": "Both rules, what each server follows, devices connected now by country, packets the servers' rule refused today and requests this site refused.",
+        "operationId": "getAccess",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/access/servers": {
+      "put": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Set the servers' country rule",
+        "description": "block refuses the listed countries; allow admits only them. It covers every protocol and forward (SSH is never touched), applies within seconds and also cuts connections that are already open. Servers with their own rule (PATCH /api/servers/{id} country_mode) keep it. Private networks and the panel's own servers always get in.",
+        "operationId": "putAccessServers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CountryRule"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/access/site": {
+      "put": {
+        "tags": [
+          "Access"
+        ],
+        "summary": "Set who may open this site",
+        "description": "The same kind of rule for the panel, the users' pages, the status page and subscription links. Agents are never refused. A rule that would lock out the address you send it from is refused.",
+        "operationId": "putAccessSite",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteAccess"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/blocks": {
+      "get": {
+        "tags": [
+          "IP blocks"
+        ],
+        "summary": "Blocked IPs",
+        "operationId": "getBlocks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IPBlock"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "IP blocks"
+        ],
+        "summary": "Block an IP or range",
+        "description": "Applies to every protocol and forward on every server and drops open connections. SSH and other services are not affected.",
+        "operationId": "postBlocks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IPBlock"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/blocks/{id}": {
+      "delete": {
+        "tags": [
+          "IP blocks"
+        ],
+        "summary": "Unblock",
+        "operationId": "deleteBlocksId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Panel settings",
+        "operationId": "getSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Change panel settings",
+        "description": "Send only the fields to change; the others keep their values. Core version changes never restart servers - upgrade each server explicitly.",
+        "operationId": "putSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/settings/logo": {
+      "put": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Upload your own logo",
+        "description": "The raw image as the body: SVG, PNG, JPEG or WebP, up to 128 KB and 2048 x 2048 pixels. It replaces the built-in umbrella everywhere - top bar, sign-in, loading screens, status page, subscription pages and the browser tab. SVGs may only draw (no scripts, links or outside resources): the answer says what to remove otherwise.",
+        "operationId": "putSettingsLogo",
+        "requestBody": {
+          "content": {
+            "image/*": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Use the built-in umbrella logo again",
+        "operationId": "deleteSettingsLogo",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/brand/logo": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "The uploaded logo (404 while the built-in one is used)",
+        "operationId": "getBrandLogo",
+        "responses": {
+          "200": {
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [],
+        "x-scope": "public"
+      }
+    },
+    "/brand/icon": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "The browser tab icon: the uploaded logo, or the built-in one",
+        "operationId": "getBrandIcon",
+        "responses": {
+          "200": {
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [],
+        "x-scope": "public"
+      }
+    },
+    "/api/openapi.json": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "This document",
+        "operationId": "getOpenapiJson",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/s/{token}": {
+      "get": {
+        "tags": [
+          "Subscription links"
+        ],
+        "summary": "A subscription, in the format the app needs",
+        "description": "The app is detected from its User-Agent; ?client= forces a format. Browsers get a page with QR codes and import buttons. Headers carry Subscription-Userinfo (usage, quota, expiry).",
+        "operationId": "getSToken",
+        "parameters": [
+          {
+            "description": "The subscription's secret token",
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Force a format",
+            "in": "query",
+            "name": "client",
+            "schema": {
+              "enum": [
+                "clash",
+                "stash",
+                "singbox",
+                "shadowrocket",
+                "base64",
+                "hiddify",
+                "loon",
+                "uri",
+                "surge",
+                "quanx",
+                "html"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [],
+        "x-scope": "public"
+      }
+    },
+    "/s/{token}/wg/{node}": {
+      "get": {
+        "tags": [
+          "Subscription links"
+        ],
+        "summary": "One WireGuard configuration file",
+        "operationId": "getSTokenWgNode",
+        "parameters": [
+          {
+            "description": "The subscription's secret token",
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Protocol id followed by .conf",
+            "in": "path",
+            "name": "node",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [],
+        "x-scope": "public"
+      }
+    },
+    "/mcp": {
+      "post": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Model Context Protocol endpoint",
+        "description": "Streamable HTTP transport (JSON-RPC 2.0, JSON responses, stateless). Needs an API token; read-only tokens only see read tools. Tools that disconnect people require confirm=true.",
+        "operationId": "postMcp",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "in": "cookie",
+        "name": "mrd_s",
+        "type": "apiKey"
+      },
+      "token": {
+        "description": "API token from Settings › API \u0026 MCP",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "user": {
+        "description": "A user's session on their own page",
+        "in": "cookie",
+        "name": "mrd_u",
+        "type": "apiKey"
+      }
+    },
+    "schemas": {
+      "LoginInput": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          }
+        }
+      },
+      "LoginResult": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "admin (the supervisor: the panel) or user (the user's own page)",
+            "type": "string"
+          },
+          "account": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Account"
+              }
+            ],
+            "description": "kind admin"
+          },
+          "user": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LoginUser"
+              }
+            ],
+            "description": "kind user"
+          },
+          "totp_required": {
+            "description": "Send the request again with code",
+            "type": "boolean"
+          }
+        }
+      },
+      "Account": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "totp": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "max_servers": {
+            "type": "integer"
+          },
+          "max_subs": {
+            "type": "integer"
+          },
+          "note": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_login_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_login_ip": {
+            "type": "string"
+          }
+        }
+      },
+      "LoginUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "OkResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MetaResult": {
+        "type": "object",
+        "properties": {
+          "site_title": {
+            "type": "string"
+          },
+          "about": {
+            "description": "The line the status page shows under its title",
+            "type": "string"
+          },
+          "version": {
+            "description": "Signed-in callers only",
+            "type": "string"
+          },
+          "public_url": {
+            "description": "Signed-in callers only",
+            "type": "string"
+          },
+          "user_url": {
+            "description": "Where users sign in to their own page. Signed-in callers only",
+            "type": "string"
+          },
+          "kinds": {
+            "description": "Protocols the panel can set up. Signed-in callers only",
+            "items": {
+              "$ref": "#/components/schemas/ProtocolKind"
+            },
+            "type": "array"
+          },
+          "reality_targets": {
+            "description": "Suggested REALITY camouflage sites. Signed-in callers only",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "ProtocolKind": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "short": {
+            "type": "string"
+          },
+          "engine": {
+            "description": "xray | hysteria | wireguard",
+            "type": "string"
+          },
+          "blurb": {
+            "type": "string"
+          },
+          "transports": {
+            "description": "Transports this protocol can run over",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "securities": {
+            "description": "Security layers: none, tls, reality",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "methods": {
+            "description": "Shadowsocks ciphers",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "cdn": {
+            "description": "Can run behind a CDN that adds TLS",
+            "type": "boolean"
+          }
+        }
+      },
+      "MeResult": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/Account"
+          },
+          "version": {
+            "type": "string"
+          },
+          "site_title": {
+            "type": "string"
+          }
+        }
+      },
+      "PasswordChange": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "string"
+          },
+          "new": {
+            "description": "10 to 72 bytes",
+            "type": "string"
+          }
+        }
+      },
+      "TotpSetup": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "description": "Base32 key for the authenticator app",
+            "type": "string"
+          },
+          "url": {
+            "description": "otpauth:// URL (render as a QR code)",
+            "type": "string"
+          }
+        }
+      },
+      "TotpEnable": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "description": "The secret from setup",
+            "type": "string"
+          },
+          "code": {
+            "description": "A current 6-digit code",
+            "type": "string"
+          }
+        }
+      },
+      "PasswordOnly": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_seen_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "ua": {
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RevokeResult": {
+        "type": "object",
+        "properties": {
+          "revoked": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "APIToken": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "description": "read: GET requests only; full: everything the account can do except passwords, two-factor, sessions and tokens",
+            "type": "string"
+          },
+          "prefix": {
+            "description": "The first characters of the token, to recognise it",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "expires_at": {
+            "description": "Unix seconds; 0 = never",
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_used_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_used_ip": {
+            "type": "string"
+          }
+        }
+      },
+      "TokenInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Where the token is used",
+            "type": "string"
+          },
+          "scope": {
+            "description": "read or full",
+            "type": "string"
+          },
+          "days": {
+            "description": "Lifetime in days; 0 = never expires",
+            "type": "integer"
+          }
+        }
+      },
+      "TokenCreated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "token": {
+            "description": "Shown only in this response - store it now",
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "Overview": {
+        "type": "object",
+        "properties": {
+          "servers": {
+            "$ref": "#/components/schemas/ServerCounts"
+          },
+          "rx": {
+            "description": "All servers, bytes per second received now",
+            "format": "int64",
+            "type": "integer"
+          },
+          "tx": {
+            "description": "All servers, bytes per second sent now",
+            "format": "int64",
+            "type": "integer"
+          },
+          "users": {
+            "type": "integer"
+          },
+          "paused": {
+            "type": "integer"
+          },
+          "online_users": {
+            "description": "Users with at least one connection now",
+            "type": "integer"
+          },
+          "online_ips": {
+            "description": "Distinct client IPs connected now",
+            "type": "integer"
+          },
+          "today": {
+            "$ref": "#/components/schemas/DayTraffic"
+          },
+          "alerts": {
+            "description": "Everything that needs a person, most severe first",
+            "items": {
+              "$ref": "#/components/schemas/Alert"
+            },
+            "type": "array"
+          },
+          "rates": {
+            "description": "Throughput of all servers over the last 30 minutes",
+            "items": {
+              "$ref": "#/components/schemas/RatePoint"
+            },
+            "type": "array"
+          },
+          "days": {
+            "description": "Users' traffic per day, last 14 days",
+            "items": {
+              "$ref": "#/components/schemas/DayTraffic"
+            },
+            "type": "array"
+          },
+          "map": {
+            "items": {
+              "$ref": "#/components/schemas/ServerPoint"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "ServerCounts": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "online": {
+            "type": "integer"
+          },
+          "pending": {
+            "description": "Created but the agent has not connected yet",
+            "type": "integer"
+          }
+        }
+      },
+      "DayTraffic": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string"
+          },
+          "up": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "Alert": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "user_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "RatePoint": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "rx": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tx": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "ServerPoint": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "lat": {
+            "type": "number"
+          },
+          "lon": {
+            "type": "number"
+          },
+          "status": {
+            "description": "pending | online | offline",
+            "type": "string"
+          },
+          "rx": {
+            "description": "Bytes per second received now",
+            "format": "int64",
+            "type": "integer"
+          },
+          "tx": {
+            "description": "Bytes per second sent now",
+            "format": "int64",
+            "type": "integer"
+          },
+          "online": {
+            "description": "IPs connected now",
+            "type": "integer"
+          }
+        }
+      },
+      "LiveConnection": {
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server": {
+            "type": "string"
+          },
+          "node_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "since": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "country": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "asn": {
+            "type": "integer"
+          },
+          "org": {
+            "type": "string"
+          },
+          "user_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "user": {
+            "type": "string"
+          },
+          "ip_limit": {
+            "type": "integer"
+          },
+          "user_ips": {
+            "description": "Distinct IPs this user has online now",
+            "type": "integer"
+          }
+        }
+      },
+      "IPHistoryRow": {
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "first": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "conns": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "days": {
+            "type": "integer"
+          },
+          "servers": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "users": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "country": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "asn": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "org": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Destination": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "network": {
+            "type": "string"
+          },
+          "conns": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "users": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "servers": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "level": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "user_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "actor_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "description": "Any JSON value"
+          }
+        }
+      },
+      "Server": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "account_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "agent_version": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "kernel": {
+            "type": "string"
+          },
+          "arch": {
+            "type": "string"
+          },
+          "cpu_model": {
+            "type": "string"
+          },
+          "cpu_cores": {
+            "type": "integer"
+          },
+          "mem_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "disk_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ipv4": {
+            "type": "string"
+          },
+          "ipv6": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "lat": {
+            "type": "number"
+          },
+          "lon": {
+            "type": "number"
+          },
+          "boot_time": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "agent_started_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "first_seen_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_seen_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "status_changed_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "applied_rev": {
+            "type": "string"
+          },
+          "apply_errors": {
+            "type": "string"
+          },
+          "pending_restart": {
+            "type": "string"
+          },
+          "xray_version": {
+            "type": "string"
+          },
+          "bw_limit": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "bw_mode": {
+            "type": "string"
+          },
+          "bw_reset_day": {
+            "type": "integer"
+          },
+          "bw_offset": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "cycle_rx": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "cycle_tx": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "cycle_start": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "price": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "billing_cycle": {
+            "type": "string"
+          },
+          "expires_on": {
+            "type": "string"
+          },
+          "country_mode": {
+            "description": "'' = follows the global country rule, off = none, block or allow = its own",
+            "type": "string"
+          },
+          "countries": {
+            "description": "Its own country rule's countries",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "public_name": {
+            "description": "Name on the status page; empty = the server's name",
+            "type": "string"
+          },
+          "status_hidden": {
+            "description": "Left off the status page",
+            "type": "boolean"
+          },
+          "loc_manual": {
+            "description": "The location was set by hand (not from the IP database)",
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "sys": {
+            "$ref": "#/components/schemas/AgentSys"
+          },
+          "cores": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AgentCoreStatus"
+            },
+            "type": "object"
+          },
+          "rates": {
+            "items": {
+              "$ref": "#/components/schemas/RatePoint"
+            },
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/Protocol"
+            },
+            "type": "array"
+          },
+          "forwards": {
+            "items": {
+              "$ref": "#/components/schemas/Forward"
+            },
+            "type": "array"
+          },
+          "online_subs": {
+            "type": "integer"
+          },
+          "online_ips": {
+            "type": "integer"
+          },
+          "bw_used": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "caps": {
+            "$ref": "#/components/schemas/AgentCaps"
+          },
+          "ports": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "AgentSys": {
+        "type": "object",
+        "properties": {
+          "cpu": {
+            "type": "number"
+          },
+          "load1": {
+            "type": "number"
+          },
+          "load5": {
+            "type": "number"
+          },
+          "load15": {
+            "type": "number"
+          },
+          "mem_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mem_used": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "swap_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "swap_used": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "disk_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "disk_used": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uptime": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tcp": {
+            "type": "integer"
+          },
+          "udp": {
+            "type": "integer"
+          },
+          "rx_rate": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tx_rate": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "AgentCoreStatus": {
+        "type": "object",
+        "properties": {
+          "running": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer"
+          },
+          "since": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "Protocol": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "settings": {
+            "additionalProperties": {},
+            "description": "The protocol's settings without private keys",
+            "type": "object"
+          },
+          "host": {
+            "type": "string"
+          },
+          "pass_node": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sort": {
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "label": {
+            "description": "How apps name it, e.g. REALITY or VLESS WS TLS",
+            "type": "string"
+          },
+          "net": {
+            "description": "tcp | udp | both",
+            "type": "string"
+          },
+          "apps": {
+            "description": "Which apps can use it as configured",
+            "items": {
+              "$ref": "#/components/schemas/AppSupport"
+            },
+            "type": "array"
+          },
+          "notes": {
+            "description": "What the admin needs to know or do",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "online": {
+            "type": "integer"
+          },
+          "pass_name": {
+            "description": "The proxy pass exit, as 'server · protocol'",
+            "type": "string"
+          }
+        }
+      },
+      "AppSupport": {
+        "type": "object",
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "why": {
+            "type": "string"
+          }
+        }
+      },
+      "Forward": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "listen_port": {
+            "type": "integer"
+          },
+          "network": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "engine": {
+            "type": "string"
+          },
+          "proxy_protocol": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "up_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "down_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "AgentCaps": {
+        "type": "object",
+        "properties": {
+          "systemd": {
+            "type": "boolean"
+          },
+          "wireguard": {
+            "type": "boolean"
+          },
+          "conntrack": {
+            "type": "boolean"
+          },
+          "nftables": {
+            "type": "boolean"
+          },
+          "iptables": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ServerInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Display name (required on create)",
+            "type": "string"
+          },
+          "address": {
+            "description": "Domain or IP clients connect to; empty = the IP the agent reports",
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "integer"
+          },
+          "bw_limit": {
+            "description": "Monthly bandwidth in bytes, for alerts only; 0 = unlimited",
+            "format": "int64",
+            "type": "integer"
+          },
+          "bw_mode": {
+            "description": "What counts: both | up | down | max",
+            "type": "string"
+          },
+          "bw_reset_day": {
+            "description": "Day of the month the cycle restarts (1-31)",
+            "type": "integer"
+          },
+          "bw_offset": {
+            "description": "Bytes to add to this cycle (to match the provider's meter)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "price": {
+            "type": "number"
+          },
+          "currency": {
+            "description": "Three-letter code",
+            "type": "string"
+          },
+          "billing_cycle": {
+            "description": "month | quarter | half | year",
+            "type": "string"
+          },
+          "expires_on": {
+            "description": "Renewal date, YYYY-MM-DD",
+            "type": "string"
+          },
+          "country_mode": {
+            "description": "Country rule: '' = follow the global rule, off = none, block or allow = its own (with countries)",
+            "type": "string"
+          },
+          "public_name": {
+            "description": "Name on the status page; empty = the server's name",
+            "type": "string"
+          },
+          "status_hidden": {
+            "description": "Leave the server off the status page",
+            "type": "boolean"
+          },
+          "location": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServerLocation"
+              }
+            ],
+            "description": "Set the location by hand (the globe and the status page); send {} with auto_location to go back"
+          },
+          "auto_location": {
+            "description": "Go back to the location from the IP database",
+            "type": "boolean"
+          },
+          "countries": {
+            "description": "With country_mode block or allow: two-letter country codes",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "protocols": {
+            "description": "On create, optional: protocols to set up with their default settings (vless, vmess, trojan, shadowsocks, hysteria2, wireguard, socks, http)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "ServerLocation": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          },
+          "cc": {
+            "description": "Two-letter country code",
+            "type": "string"
+          },
+          "lat": {
+            "type": "number"
+          },
+          "lon": {
+            "type": "number"
+          }
+        }
+      },
+      "ServerDetail": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "$ref": "#/components/schemas/Server"
+          },
+          "install": {
+            "description": "One-line agent install command; contains the agent's secret. Omitted for read-only tokens",
+            "type": "string"
+          }
+        }
+      },
+      "InstallResult": {
+        "type": "object",
+        "properties": {
+          "install": {
+            "type": "string"
+          }
+        }
+      },
+      "ActionInput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "restart_xray | upgrade_xray | upgrade_agent",
+            "type": "string"
+          },
+          "args": {
+            "description": "Any JSON value"
+          }
+        }
+      },
+      "ActionRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "Poll GET /api/actions/{id} for the result",
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "ActionStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "description": "pending | done | failed",
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          },
+          "done_at": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "MetricPoint": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "cpu": {
+            "description": "Percent",
+            "type": "number"
+          },
+          "mem": {
+            "description": "Bytes used",
+            "format": "int64",
+            "type": "integer"
+          },
+          "disk": {
+            "description": "Bytes used",
+            "format": "int64",
+            "type": "integer"
+          },
+          "load": {
+            "type": "number"
+          },
+          "rx": {
+            "description": "Bytes per second",
+            "format": "int64",
+            "type": "integer"
+          },
+          "tx": {
+            "description": "Bytes per second",
+            "format": "int64",
+            "type": "integer"
+          },
+          "tcp": {
+            "description": "Open TCP connections",
+            "format": "int64",
+            "type": "integer"
+          },
+          "online": {
+            "description": "Client IPs connected",
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "ProtocolCatalog": {
+        "type": "object",
+        "properties": {
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/ProtocolKind"
+            },
+            "type": "array"
+          },
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/App"
+            },
+            "type": "array"
+          },
+          "fingerprints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "xhttp_modes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "cert_modes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reality_sites": {
+            "description": "Suggested REALITY camouflage sites",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "cdn_origin_ports": {
+            "description": "Ports Cloudflare forwards over plain HTTP",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "default_self_signed_name": {
+            "type": "string"
+          }
+        }
+      },
+      "App": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          }
+        }
+      },
+      "ProtocolDraft": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "vless | vmess | trojan | shadowsocks | hysteria2 | wireguard | socks | http",
+            "type": "string"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ProtoInput"
+          }
+        }
+      },
+      "ProtoInput": {
+        "type": "object",
+        "properties": {
+          "transport": {
+            "description": "raw | ws | grpc | httpupgrade | xhttp",
+            "type": "string"
+          },
+          "path": {
+            "description": "ws, httpupgrade, xhttp: request path",
+            "type": "string"
+          },
+          "host_header": {
+            "description": "ws, httpupgrade, xhttp: Host header",
+            "type": "string"
+          },
+          "service_name": {
+            "description": "grpc: service name",
+            "type": "string"
+          },
+          "xhttp_mode": {
+            "description": "xhttp: auto | packet-up | stream-up | stream-one",
+            "type": "string"
+          },
+          "security": {
+            "description": "none | tls | reality",
+            "type": "string"
+          },
+          "flow": {
+            "description": "VLESS over raw with TLS or REALITY: xtls-rprx-vision, or empty",
+            "type": "string"
+          },
+          "sni": {
+            "description": "TLS: certificate name. REALITY: the camouflage site. Hysteria2: certificate name",
+            "type": "string"
+          },
+          "fingerprint": {
+            "description": "Browser fingerprint clients present: chrome, firefox, safari, ...",
+            "type": "string"
+          },
+          "target": {
+            "description": "REALITY: where unauthenticated visitors go, host:port",
+            "type": "string"
+          },
+          "own_site": {
+            "description": "REALITY: the target is your own website on this server (127.0.0.1:port)",
+            "type": "boolean"
+          },
+          "cert_mode": {
+            "description": "TLS and Hysteria2: self | acme | custom",
+            "type": "string"
+          },
+          "cert_pem": {
+            "description": "cert_mode custom: the certificate chain (PEM)",
+            "type": "string"
+          },
+          "key_pem": {
+            "description": "cert_mode custom: the private key (PEM)",
+            "type": "string"
+          },
+          "cdn": {
+            "description": "Behind a CDN that adds TLS (ws, httpupgrade, xhttp)",
+            "type": "boolean"
+          },
+          "cdn_host": {
+            "description": "CDN: the domain clients connect to",
+            "type": "string"
+          },
+          "cdn_port": {
+            "description": "CDN: the port clients connect to (default 443)",
+            "type": "integer"
+          },
+          "method": {
+            "description": "Shadowsocks cipher",
+            "type": "string"
+          },
+          "udp": {
+            "description": "SOCKS5: allow UDP",
+            "type": "boolean"
+          },
+          "obfs": {
+            "description": "Hysteria2: salamander obfuscation",
+            "type": "boolean"
+          },
+          "up_mbps": {
+            "description": "Hysteria2: server upload limit, 0 = none",
+            "type": "integer"
+          },
+          "down_mbps": {
+            "description": "Hysteria2: server download limit, 0 = none",
+            "type": "integer"
+          },
+          "mtu": {
+            "description": "WireGuard",
+            "type": "integer"
+          },
+          "dns_logging": {
+            "description": "WireGuard: clients use the server's logging resolver",
+            "type": "boolean"
+          },
+          "full_tunnel": {
+            "description": "WireGuard: send all traffic through the VPN",
+            "type": "boolean"
+          },
+          "keepalive": {
+            "description": "WireGuard: seconds, 0 = off",
+            "type": "integer"
+          }
+        }
+      },
+      "SupportView": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          },
+          "error": {
+            "description": "Why the combination cannot be saved",
+            "type": "string"
+          },
+          "label": {
+            "description": "How the protocol is named in apps",
+            "type": "string"
+          },
+          "net": {
+            "description": "tcp | udp | both",
+            "type": "string"
+          },
+          "ports": {
+            "description": "Usual ports for this combination",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/AppSupport"
+            },
+            "type": "array"
+          },
+          "notes": {
+            "description": "What the admin needs to know or do",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "settings": {
+            "description": "The settings as they would be saved (keys left out)"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ProtocolKind"
+          },
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldHelp"
+            },
+            "type": "object"
+          }
+        }
+      },
+      "FieldHelp": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "help": {
+            "type": "string"
+          }
+        }
+      },
+      "ProtocolInput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "On create: vless | vmess | trojan | shadowsocks | hysteria2 | wireguard | socks | http",
+            "type": "string"
+          },
+          "name": {
+            "description": "Optional label shown in apps",
+            "type": "string"
+          },
+          "port": {
+            "description": "0 or omitted on create = pick a free common port",
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "host": {
+            "description": "Address override for this protocol only; empty = the server's address",
+            "type": "string"
+          },
+          "sort": {
+            "type": "integer"
+          },
+          "pass_node": {
+            "description": "Proxy pass: id of the exit protocol on another server; 0 = leave directly",
+            "format": "int64",
+            "type": "integer"
+          },
+          "settings": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProtoInput"
+              }
+            ],
+            "description": "Transport, security and the protocol's own options; omitted fields keep their value (or the default on create). POST /api/protocols/check shows what a draft becomes"
+          }
+        }
+      },
+      "TargetTestInput": {
+        "type": "object",
+        "properties": {
+          "auto": {
+            "description": "Switch a new protocol (less than a day old) to the fastest working site",
+            "type": "boolean"
+          }
+        }
+      },
+      "ScanView": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "description": "When the scan ran; 0 = never",
+            "format": "int64",
+            "type": "integer"
+          },
+          "found": {
+            "items": {
+              "$ref": "#/components/schemas/ScanFoundView"
+            },
+            "type": "array"
+          },
+          "pending": {
+            "description": "A scan is running",
+            "type": "boolean"
+          },
+          "action_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "ScanFoundView": {
+        "type": "object",
+        "properties": {
+          "software": {
+            "type": "string"
+          },
+          "config": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "inbounds": {
+            "items": {
+              "$ref": "#/components/schemas/ScanInboundView"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "ScanInboundView": {
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "label": {
+            "description": "How it would be named, e.g. REALITY or VMess WS",
+            "type": "string"
+          },
+          "users": {
+            "description": "User names (credentials are not shown)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "importable": {
+            "type": "boolean"
+          },
+          "why": {
+            "description": "Why it cannot be imported, or what changes",
+            "type": "string"
+          },
+          "imported": {
+            "description": "Already imported to this server",
+            "type": "boolean"
+          }
+        }
+      },
+      "ImportInput": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "items": {
+              "type": "object",
+              "properties": {
+                "config": {
+                  "description": "The config the scan found it in",
+                  "type": "string"
+                },
+                "tag": {
+                  "type": "string"
+                },
+                "port": {
+                  "type": "integer"
+                }
+              }
+            },
+            "type": "array"
+          },
+          "take_over": {
+            "description": "Stop the old service and serve the same ports (devices keep working). Without it the import uses new ports and nothing is stopped",
+            "type": "boolean"
+          },
+          "confirm": {
+            "description": "Required with take_over: the old service's users are disconnected for a moment",
+            "type": "boolean"
+          }
+        }
+      },
+      "ImportResult": {
+        "type": "object",
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/Protocol"
+            },
+            "type": "array"
+          },
+          "users": {
+            "description": "Users created by the import; generated passwords are shown once",
+            "items": {
+              "$ref": "#/components/schemas/Subscription"
+            },
+            "type": "array"
+          },
+          "matched": {
+            "description": "Detected users that matched an existing user by name",
+            "type": "integer"
+          },
+          "stop_actions": {
+            "description": "Actions stopping the old services; poll GET /api/actions/{id}",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "Subscription": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "username": {
+            "description": "Sign-in name for the user's own page; empty = no sign-in",
+            "type": "string"
+          },
+          "can_sign_in": {
+            "description": "A username and password are set",
+            "type": "boolean"
+          },
+          "last_login_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_login_ip": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "paused_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "quota": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reset_day": {
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ip_limit": {
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "cycle_up": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "cycle_down": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "cycle_start": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total_up": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total_down": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_online_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_fetch_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_fetch_ip": {
+            "type": "string"
+          },
+          "last_fetch_ua": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "link": {
+            "description": "The subscription link - give it to the user",
+            "type": "string"
+          },
+          "status": {
+            "description": "active | paused",
+            "type": "string"
+          },
+          "flags": {
+            "description": "Soft limits reached: over_quota, near_quota, expired, expiring, over_ip_limit",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "online_ips": {
+            "type": "integer"
+          },
+          "online": {
+            "items": {
+              "$ref": "#/components/schemas/OnlineIP"
+            },
+            "type": "array"
+          },
+          "ips_24h": {
+            "type": "integer"
+          },
+          "password": {
+            "description": "Only right after the panel generated a password: show it to the user once",
+            "type": "string"
+          }
+        }
+      },
+      "Scope": {
+        "type": "object",
+        "properties": {
+          "servers": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "OnlineIP": {
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server": {
+            "type": "string"
+          },
+          "node_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "since": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "country": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "asn": {
+            "type": "integer"
+          },
+          "org": {
+            "type": "string"
+          }
+        }
+      },
+      "ForwardInput": {
+        "type": "object",
+        "properties": {
+          "engine": {
+            "description": "nft (kernel, default) or realm",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "listen_port": {
+            "description": "Port on the server; 0 or omitted = pick a free one",
+            "type": "integer"
+          },
+          "network": {
+            "description": "tcp | udp | tcp+udp (default)",
+            "type": "string"
+          },
+          "target": {
+            "description": "host:port to forward to; nft needs an IP address",
+            "type": "string"
+          },
+          "proxy_protocol": {
+            "description": "realm only: send PROXY protocol v2 to the target",
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SubscriptionInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Required on create",
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "username": {
+            "description": "Sign-in name for the user's own page (3-32 of a-z 0-9 . _ -); empty = no sign-in. On create with count \u003e 1 it is the prefix of generated names",
+            "type": "string"
+          },
+          "password": {
+            "description": "Sets the sign-in password (10-72 characters). On create, leave it out to have one generated and returned once",
+            "type": "string"
+          },
+          "sign_in": {
+            "description": "On create: give the user a sign-in (default true)",
+            "type": "boolean"
+          },
+          "quota": {
+            "description": "Bytes per cycle; 0 = unlimited (alerts only)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "reset_day": {
+            "description": "Day of the month usage resets (1-31); 0 = never",
+            "type": "integer"
+          },
+          "expires_at": {
+            "description": "Unix seconds; 0 = never (alerts only)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "ip_limit": {
+            "description": "Alert when more IPs are online at once; 0 = no limit",
+            "type": "integer"
+          },
+          "servers": {
+            "description": "Server ids; empty = all servers, including ones added later",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "count": {
+            "description": "On create: how many users (1-500)",
+            "type": "integer"
+          }
+        }
+      },
+      "SubscriptionDetail": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/Subscription"
+          },
+          "endpoints": {
+            "description": "What the subscription contains, one entry per protocol",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionEndpoint"
+            },
+            "type": "array"
+          },
+          "clients": {
+            "description": "One-tap import links for common apps",
+            "items": {
+              "$ref": "#/components/schemas/Client"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "SubscriptionEndpoint": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "server": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "node_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uri": {
+            "description": "Share link (vless://, hy2://, ss://) - contains credentials",
+            "type": "string"
+          },
+          "wg_config": {
+            "description": "WireGuard configuration file - contains the private key",
+            "type": "string"
+          }
+        }
+      },
+      "Client": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "import": {
+            "type": "string"
+          },
+          "link": {
+            "type": "string"
+          }
+        }
+      },
+      "SubscriptionTraffic": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DayTraffic"
+            },
+            "type": "array"
+          },
+          "nodes": {
+            "description": "Totals per protocol over the period",
+            "items": {
+              "$ref": "#/components/schemas/ProtocolTotal"
+            },
+            "type": "array"
+          },
+          "servers": {
+            "description": "Totals per server over the period",
+            "items": {
+              "$ref": "#/components/schemas/ServerTotal"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "ProtocolTotal": {
+        "type": "object",
+        "properties": {
+          "node_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "description": "server · protocol",
+            "type": "string"
+          },
+          "up": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "ServerTotal": {
+        "type": "object",
+        "properties": {
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "up": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "SubscriptionPreview": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "skipped": {
+            "description": "Protocols the chosen app does not support",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "PortalMe": {
+        "type": "object",
+        "properties": {
+          "site_title": {
+            "type": "string"
+          },
+          "timezone": {
+            "description": "The panel's time zone: days and resets follow it",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "status": {
+            "description": "active | paused",
+            "type": "string"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "link": {
+            "description": "The user's subscription link",
+            "type": "string"
+          },
+          "clients": {
+            "description": "One-tap import links",
+            "items": {
+              "$ref": "#/components/schemas/Client"
+            },
+            "type": "array"
+          },
+          "quota": {
+            "description": "Bytes per cycle; 0 = unlimited",
+            "format": "int64",
+            "type": "integer"
+          },
+          "used": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Usage"
+              }
+            ],
+            "description": "This cycle"
+          },
+          "cycle_start": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "next_reset": {
+            "description": "Unix seconds; 0 = never",
+            "format": "int64",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ip_limit": {
+            "type": "integer"
+          },
+          "devices": {
+            "description": "Connected right now: one per address, however many servers and protocols it uses",
+            "items": {
+              "$ref": "#/components/schemas/PortalDevice"
+            },
+            "type": "array"
+          },
+          "servers": {
+            "items": {
+              "$ref": "#/components/schemas/PortalServer"
+            },
+            "type": "array"
+          },
+          "days": {
+            "description": "The last 30 days",
+            "items": {
+              "$ref": "#/components/schemas/PortalDay"
+            },
+            "type": "array"
+          },
+          "total": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Usage"
+              }
+            ],
+            "description": "Since the user was created"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "up": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "PortalDevice": {
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "since": {
+            "description": "When its oldest open connection started",
+            "format": "int64",
+            "type": "integer"
+          },
+          "country": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "org": {
+            "type": "string"
+          },
+          "via": {
+            "description": "Each server and protocol it is connected through",
+            "items": {
+              "$ref": "#/components/schemas/PortalVia"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "PortalVia": {
+        "type": "object",
+        "properties": {
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string"
+          }
+        }
+      },
+      "PortalServer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "online": {
+            "description": "The server is up",
+            "type": "boolean"
+          },
+          "protocols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "today": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "cycle": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Usage"
+              }
+            ],
+            "description": "Since the start of the current cycle (whole days)"
+          },
+          "days30": {
+            "$ref": "#/components/schemas/Usage"
+          },
+          "devices": {
+            "description": "The user's devices connected to this server now",
+            "type": "integer"
+          }
+        }
+      },
+      "PortalDay": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string"
+          },
+          "up": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "servers": {
+            "additionalProperties": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "description": "Bytes per server id",
+            "type": "object"
+          }
+        }
+      },
+      "StatusPayload": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "about": {
+            "type": "string"
+          },
+          "timezone": {
+            "description": "The panel's time zone: days and monthly resets follow it",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "servers": {
+            "items": {
+              "$ref": "#/components/schemas/StatusServer"
+            },
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/StatusTotals"
+          },
+          "history": {
+            "additionalProperties": {
+              "items": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "description": "Bytes per day per server id, aligned with days",
+            "type": "object"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/StatusEvent"
+            },
+            "type": "array"
+          },
+          "hub": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StatusHub"
+              }
+            ],
+            "description": "Where the panel is drawn on the globe"
+          }
+        }
+      },
+      "StatusServer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "cc": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "loc": {
+            "description": "[latitude, longitude]",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "tz": {
+            "description": "IANA time zone of the city, when known",
+            "type": "string"
+          },
+          "approx": {
+            "description": "The location comes from the IP database and may be off (set it by hand on the server page)",
+            "type": "boolean"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "since": {
+            "description": "When it last went up or down",
+            "format": "int64",
+            "type": "integer"
+          },
+          "availability": {
+            "$ref": "#/components/schemas/Availability"
+          },
+          "speed": {
+            "$ref": "#/components/schemas/StatusSpeed"
+          },
+          "bandwidth": {
+            "$ref": "#/components/schemas/StatusBW"
+          },
+          "sys": {
+            "$ref": "#/components/schemas/StatusSys"
+          }
+        }
+      },
+      "Availability": {
+        "type": "object",
+        "properties": {
+          "h24": {
+            "description": "Percent of the last 24 hours the server was up; null = no data",
+            "type": "number"
+          },
+          "d30": {
+            "description": "Percent of the last 30 days",
+            "type": "number"
+          },
+          "days": {
+            "description": "Percent per day, oldest first, 30 days; null = no data",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "StatusSpeed": {
+        "type": "object",
+        "properties": {
+          "up": {
+            "description": "Bytes per second sent",
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "description": "Bytes per second received",
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "StatusBW": {
+        "type": "object",
+        "properties": {
+          "used": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "limit": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reset_day": {
+            "type": "integer"
+          },
+          "next_reset": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "StatusSys": {
+        "type": "object",
+        "properties": {
+          "cpu": {
+            "type": "number"
+          },
+          "mem": {
+            "description": "Percent used",
+            "type": "number"
+          },
+          "disk": {
+            "description": "Percent used",
+            "type": "number"
+          },
+          "uptime": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "cores": {
+            "type": "integer"
+          }
+        }
+      },
+      "StatusTotals": {
+        "type": "object",
+        "properties": {
+          "servers": {
+            "type": "integer"
+          },
+          "online": {
+            "type": "integer"
+          },
+          "up": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "today": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "StatusEvent": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "offline | online",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "StatusHub": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          },
+          "cc": {
+            "type": "string"
+          },
+          "loc": {
+            "description": "[latitude, longitude]",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "tz": {
+            "type": "string"
+          }
+        }
+      },
+      "StatusLive": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "servers": {
+            "additionalProperties": {
+              "items": {
+                "items": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "description": "Per server id: [time, up, down] since the given time",
+            "type": "object"
+          }
+        }
+      },
+      "Place": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "cc": {
+            "type": "string"
+          },
+          "lat": {
+            "type": "number"
+          },
+          "lon": {
+            "type": "number"
+          },
+          "tz": {
+            "type": "string"
+          }
+        }
+      },
+      "AccessView": {
+        "type": "object",
+        "properties": {
+          "servers": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CountryRule"
+              }
+            ],
+            "description": "The country rule every server follows unless it has its own"
+          },
+          "site": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SiteAccess"
+              }
+            ],
+            "description": "Who may open this site"
+          },
+          "country_db": {
+            "description": "The country database is downloaded (country rules work)",
+            "type": "boolean"
+          },
+          "your_ip": {
+            "type": "string"
+          },
+          "your_country": {
+            "type": "string"
+          },
+          "server_rules": {
+            "description": "What each server follows",
+            "items": {
+              "$ref": "#/components/schemas/ServerRuleView"
+            },
+            "type": "array"
+          },
+          "online_now": {
+            "description": "Devices connected now, by country",
+            "items": {
+              "$ref": "#/components/schemas/CountryCount"
+            },
+            "type": "array"
+          },
+          "site_denials_24h": {
+            "description": "Requests to this site refused in the last 24 hours",
+            "type": "integer"
+          },
+          "site_denials": {
+            "description": "The latest refused requests",
+            "items": {
+              "$ref": "#/components/schemas/SiteDenial"
+            },
+            "type": "array"
+          },
+          "site_denials_by_country": {
+            "items": {
+              "$ref": "#/components/schemas/CountryCount"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "CountryRule": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "description": "off | block (these countries may not connect) | allow (only these countries may)",
+            "type": "string"
+          },
+          "countries": {
+            "description": "Two-letter country codes",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "exceptions": {
+            "description": "Addresses or networks that always get in, e.g. 203.0.113.7 or 198.51.100.0/24",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "SiteAccess": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "description": "off | block (these countries may not connect) | allow (only these countries may)",
+            "type": "string"
+          },
+          "countries": {
+            "description": "Two-letter country codes",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "exceptions": {
+            "description": "Addresses or networks that always get in, e.g. 203.0.113.7 or 198.51.100.0/24",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "admin": {
+            "description": "The panel and its API (MCP included)",
+            "type": "boolean"
+          },
+          "users": {
+            "description": "The users' own pages",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "The public status page",
+            "type": "boolean"
+          },
+          "links": {
+            "description": "Subscription links (apps fetching updates)",
+            "type": "boolean"
+          }
+        }
+      },
+      "ServerRuleView": {
+        "type": "object",
+        "properties": {
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "follows": {
+            "description": "global | none | own",
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "countries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "dropped_today": {
+            "description": "Packets the rule refused today",
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "CountryCount": {
+        "type": "object",
+        "properties": {
+          "country": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
+      },
+      "SiteDenial": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "IPBlock": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "created_by": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "BlockInput": {
+        "type": "object",
+        "properties": {
+          "ip": {
+            "description": "An IP address or CIDR range (IPv4 /8 or narrower, IPv6 /32 or narrower)",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "hours": {
+            "description": "How long; 0 = until removed",
+            "type": "integer"
+          }
+        }
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "site_title": {
+            "description": "Panel name shown on pages and in apps",
+            "type": "string"
+          },
+          "public_url": {
+            "description": "How agents and browsers reach the panel, e.g. https://panel.example.com",
+            "type": "string"
+          },
+          "sub_url": {
+            "description": "Optional separate base URL for subscription links",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "IANA timezone for day boundaries, e.g. Asia/Shanghai",
+            "type": "string"
+          },
+          "conn_log": {
+            "description": "Record connecting IPs",
+            "type": "boolean"
+          },
+          "dest_log": {
+            "description": "Record destinations",
+            "type": "boolean"
+          },
+          "log_retention": {
+            "description": "Days to keep IP and destination history (1-400)",
+            "type": "integer"
+          },
+          "report_interval": {
+            "description": "Seconds between agent reports (5-120)",
+            "type": "integer"
+          },
+          "xray_version": {
+            "description": "Xray version new servers install, e.g. 26.3.27",
+            "type": "string"
+          },
+          "hysteria_version": {
+            "description": "Hysteria version new servers install",
+            "type": "string"
+          },
+          "realm_version": {
+            "description": "realm version new servers install",
+            "type": "string"
+          },
+          "mirror": {
+            "description": "Agents may download cores through the panel",
+            "type": "boolean"
+          },
+          "status_page": {
+            "description": "off | home (the site's front page is the status page: a sign-in for users, the live dashboard for you; the panel stays at /overview) | page (at /status)",
+            "type": "string"
+          },
+          "status_domain": {
+            "description": "Optional domain that shows only the status page and the users' sign-in, e.g. status.example.com (point it at the panel)",
+            "type": "string"
+          },
+          "status_about": {
+            "description": "A line of text on the sign-in page, e.g. who runs the service",
+            "type": "string"
+          },
+          "status_hub": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServerLocation"
+              }
+            ],
+            "description": "Where the panel is drawn on the status page's globe, with an arc from each server; null = not drawn"
+          },
+          "logo_animation": {
+            "description": "How the logo moves while pages load and when someone signs in: assemble (the built-in umbrella's panels slide in; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo",
+            "type": "string"
+          }
+        }
+      },
+      "LogoInfo": {
+        "type": "object",
+        "properties": {
+          "custom": {
+            "description": "An uploaded logo replaces the built-in umbrella",
+            "type": "boolean"
+          },
+          "v": {
+            "description": "Changes whenever the logo does: add it to /brand/logo?v= so browsers fetch the new one",
+            "type": "string"
+          },
+          "animation": {
+            "description": "assemble | rise | pulse | spin | none",
+            "type": "string"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "description": "What went wrong, in plain English",
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "token": []
+    },
+    {
+      "session": []
+    }
+  ]
+}

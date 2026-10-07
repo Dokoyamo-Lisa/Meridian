@@ -1,0 +1,105 @@
+/* The umbrella mark, assembling: each panel slides in from outside the canopy and settles into
+   place, one after another, clockwise from the top.
+     .umb-once  assembles once and stays (sign-in pages)
+     .umb-loop  assembles, holds, drifts apart and assembles again (loading)
+   Panels at rest are plain; the white ones get a faint edge so the canopy reads on light tones. */
+.umb-mark { overflow: visible; display: block; }
+.umb-mark .w { --far: 6.5px; transform-box: view-box; transform-origin: 12px 12px; }
+.umb-mark .w.white { stroke: currentColor; stroke-opacity: .22; stroke-width: .4; stroke-linejoin: round; }
+
+.umb-once .w {
+  animation: umb-in .72s cubic-bezier(.16, 1, .3, 1) both;
+  animation-delay: calc(var(--i) * 85ms + 120ms);
+}
+@keyframes umb-in {
+  from { transform: translate(calc(var(--dx) * var(--far)), calc(var(--dy) * var(--far))) rotate(-10deg); opacity: 0; }
+  60% { opacity: 1; }
+  to { transform: none; opacity: 1; }
+}
+
+.umb-loop .w {
+  animation: umb-cycle 2.8s cubic-bezier(.45, 0, .2, 1) infinite both;
+  animation-delay: calc(var(--i) * 90ms);
+}
+@keyframes umb-cycle {
+  0% { transform: translate(calc(var(--dx) * var(--far)), calc(var(--dy) * var(--far))) rotate(-12deg); opacity: 0; }
+  18% { transform: none; opacity: 1; }
+  68% { transform: none; opacity: 1; }
+  86% { transform: translate(calc(var(--dx) * var(--far) * .7), calc(var(--dy) * var(--far) * .7)) rotate(8deg); opacity: 0; }
+  100% { transform: translate(calc(var(--dx) * var(--far)), calc(var(--dy) * var(--far))) rotate(-12deg); opacity: 0; }
+}
+
+/* the loading block: the mark and an optional word under it */
+.umb-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 48px 0; color: var(--ink-3, #6f7a89); }
+.umb-loading .umb-mark, .umb-loading .logo-img { width: 40px; height: 40px; }
+.umb-loading span { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
+
+@media (prefers-reduced-motion: reduce) {
+  .umb-once .w, .umb-loop .w { animation: none; transform: none; opacity: 1; }
+  .umb-loop { animation: umb-breathe 1.8s ease-in-out infinite; }
+  @keyframes umb-breathe { 50% { opacity: .45; } }
+}
+
+/* signing in: the umbrella opens - its panels fly outward - and the page spreads out of it as a
+   growing octagon, the canopy's own shape, centred on the mark (--vx/--vy, set by the script) */
+.umb-open .w {
+  animation: umb-out .5s cubic-bezier(.55, 0, .8, .2) both;
+  animation-delay: calc(var(--i) * 26ms);
+}
+@keyframes umb-out {
+  from { transform: none; opacity: 1; }
+  to { transform: translate(calc(var(--dx) * 16px), calc(var(--dy) * 16px)) rotate(16deg) scale(1.2); opacity: 0; }
+}
+html.vt-open::view-transition-old(root) { animation: umb-vt-old .55s ease both; }
+html.vt-open::view-transition-new(root) { animation: umb-vt-new .95s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes umb-vt-old { to { opacity: 0; } }
+@keyframes umb-vt-new {
+  from {
+    clip-path: polygon(var(--vx) var(--vy), var(--vx) var(--vy), var(--vx) var(--vy), var(--vx) var(--vy),
+      var(--vx) var(--vy), var(--vx) var(--vy), var(--vx) var(--vy), var(--vx) var(--vy));
+  }
+  to {
+    clip-path: polygon(
+      calc(var(--vx) + 65vmax) calc(var(--vy) - 157vmax), calc(var(--vx) + 157vmax) calc(var(--vy) - 65vmax),
+      calc(var(--vx) + 157vmax) calc(var(--vy) + 65vmax), calc(var(--vx) + 65vmax) calc(var(--vy) + 157vmax),
+      calc(var(--vx) - 65vmax) calc(var(--vy) + 157vmax), calc(var(--vx) - 157vmax) calc(var(--vy) + 65vmax),
+      calc(var(--vx) - 157vmax) calc(var(--vy) - 65vmax), calc(var(--vx) - 65vmax) calc(var(--vy) - 157vmax));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .umb-open .w { animation: none; }
+  html.vt-open::view-transition-old(root), html.vt-open::view-transition-new(root) { animation: none; }
+}
+
+/* Any logo moving as one piece - an uploaded image, or the umbrella when another animation is chosen
+   (Settings › Panel › Logo): .lg-<animation> with .lg-once (sign-in pages) or .lg-loop (loading). */
+.logo-img { display: block; object-fit: contain; user-select: none; -webkit-user-drag: none; }
+.lg-once.lg-rise { animation: lg-rise .7s cubic-bezier(.16, 1, .3, 1) both; }
+.lg-once.lg-pulse { animation: lg-fade .6s ease both; }
+.lg-once.lg-spin { animation: lg-spin-in .9s cubic-bezier(.16, 1, .3, 1) both; }
+.lg-loop.lg-rise { animation: lg-rise-loop 2.4s cubic-bezier(.45, 0, .2, 1) infinite both; }
+.lg-loop.lg-pulse { animation: lg-breathe 1.8s ease-in-out infinite both; }
+.lg-loop.lg-spin { animation: lg-turn 2.4s cubic-bezier(.6, 0, .4, 1) infinite both; }
+@keyframes lg-rise { from { opacity: 0; transform: translateY(8px) scale(.86); } }
+@keyframes lg-fade { from { opacity: 0; } }
+@keyframes lg-spin-in { from { opacity: 0; transform: rotate(-120deg) scale(.7); } }
+@keyframes lg-rise-loop {
+  0% { opacity: 0; transform: translateY(8px) scale(.86); }
+  30%, 70% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-6px) scale(1.04); }
+}
+@keyframes lg-breathe { 50% { opacity: .45; transform: scale(.94); } }
+@keyframes lg-turn { to { transform: rotate(360deg); } }
+
+/* signing in with any other logo: it grows and fades, and the page spreads out of it as a circle */
+.lg-open { animation: lg-open .5s cubic-bezier(.55, 0, .8, .2) both !important; }
+@keyframes lg-open { to { opacity: 0; transform: scale(1.6); } }
+html.vt-open.vt-circle::view-transition-new(root) { animation-name: lg-vt-circle; }
+@keyframes lg-vt-circle {
+  from { clip-path: circle(0 at var(--vx) var(--vy)); }
+  to { clip-path: circle(160vmax at var(--vx) var(--vy)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-once, .lg-loop, .lg-open { animation: none !important; }
+  .lg-loop { animation: umb-breathe 1.8s ease-in-out infinite !important; }
+}

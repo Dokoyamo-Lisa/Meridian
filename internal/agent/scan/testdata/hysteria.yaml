@@ -1,0 +1,13 @@
+listen: :8443
+tls:
+  cert: /nonexistent/cert.pem
+  key: /nonexistent/key.pem
+auth:
+  type: userpass
+  userpass:
+    henry: hpass
+    ivy: ipass
+obfs:
+  type: salamander
+  salamander:
+    password: sal-pw

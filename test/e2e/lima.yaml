@@ -1,0 +1,9 @@
+# limactl create --name meridian-test test/e2e/lima.yaml && limactl start meridian-test
+base: template:ubuntu-lts
+vmType: vz
+cpus: 2
+memory: "2GiB"
+disk: "20GiB"
+networks:
+  - vzNAT: true
+mounts: []

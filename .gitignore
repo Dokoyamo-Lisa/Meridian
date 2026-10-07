@@ -1,0 +1,17 @@
+# build output (web/dist keeps an empty .gitkeep so the Go build works before the UI is built)
+/dist/
+/web/node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
+
+# local data and secrets
+/.dev/
+*.db
+*.db-wal
+*.db-shm
+*.token
+.env
+
+# editors and the OS
+.DS_Store
+/.claude/settings.local.json

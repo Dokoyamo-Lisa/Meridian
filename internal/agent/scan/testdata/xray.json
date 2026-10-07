@@ -1,0 +1,24 @@
+// a typical 3x-ui generated config, with comments
+{
+  "log": {"loglevel": "warning"},
+  "inbounds": [
+    {"tag": "api", "listen": "127.0.0.1", "port": 62789, "protocol": "dokodemo-door", "settings": {"address": "127.0.0.1"}},
+    {"tag": "inbound-443", "port": 443, "protocol": "vless",
+     "settings": {"clients": [{"id": "11111111-1111-4111-8111-111111111111", "email": "alice", "flow": "xtls-rprx-vision"},
+                              {"id": "22222222-2222-4222-8222-222222222222", "email": "bob", "flow": "xtls-rprx-vision"}],
+                  "decryption": "none"},
+     "streamSettings": {"network": "tcp", "security": "reality",
+       "realitySettings": {"dest": "www.microsoft.com:443", "serverNames": ["www.microsoft.com"],
+         "privateKey": "aGVsbG8taGVsbG8taGVsbG8taGVsbG8taGVsbG8tMTI", "shortIds": ["6ba85179e30d4fc2", ""]}}},
+    {"tag": "inbound-8080", "port": "8080", "protocol": "vmess",
+     "settings": {"clients": [{"id": "33333333-3333-4333-8333-333333333333", "email": "carol"}]},
+     "streamSettings": {"network": "ws", "wsSettings": {"path": "/vm", "headers": {"Host": "cdn.example.com"}}}},
+    {"tag": "ss", "port": 8388, "protocol": "shadowsocks",
+     "settings": {"method": "2022-blake3-aes-128-gcm", "password": "c2VydmVyLWtleS0xNmJ5dA==",
+                  "clients": [{"password": "dXNlci1rZXktMTZieXRlcw==", "email": "dave"}], "network": "tcp,udp"}},
+    {"tag": "socks", "port": 1080, "protocol": "socks", "settings": {"auth": "password", "udp": true,
+      "accounts": [{"user": "erin", "pass": "pw"}]}},
+    {"tag": "kcp", "port": 9000, "protocol": "vless", "settings": {"clients": []},
+     "streamSettings": {"network": "kcp"}}
+  ]
+}

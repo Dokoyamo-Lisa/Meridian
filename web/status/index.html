@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en" data-theme="ice">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#07090d">
+<title>Status</title>
+<link rel="icon" href="/brand/icon">
+<script src="/boot.js"></script>
+<script src="/status/globe.js" defer></script>
+<script type="module" src="/src/status/main.ts"></script>
+</head>
+<body>
+<div class="boot" id="boot" role="status" aria-label="Loading"><!--logo--><svg class="umb-mark umb-loop" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="w" d="M12 12L16.02 2.3L7.98 2.3Z" fill="#d8232a" style="--i:0;--dx:0;--dy:-1"/><path class="w white" d="M12 12L21.7 7.98L16.02 2.3Z" fill="#f5f3ef" style="--i:1;--dx:0.7071;--dy:-0.7071"/><path class="w" d="M12 12L21.7 16.02L21.7 7.98Z" fill="#d8232a" style="--i:2;--dx:1;--dy:0"/><path class="w white" d="M12 12L16.02 21.7L21.7 16.02Z" fill="#f5f3ef" style="--i:3;--dx:0.7071;--dy:0.7071"/><path class="w" d="M12 12L7.98 21.7L16.02 21.7Z" fill="#d8232a" style="--i:4;--dx:0;--dy:1"/><path class="w white" d="M12 12L2.3 16.02L7.98 21.7Z" fill="#f5f3ef" style="--i:5;--dx:-0.7071;--dy:0.7071"/><path class="w" d="M12 12L2.3 7.98L2.3 16.02Z" fill="#d8232a" style="--i:6;--dx:-1;--dy:0"/><path class="w white" d="M12 12L7.98 2.3L2.3 7.98Z" fill="#f5f3ef" style="--i:7;--dx:-0.7071;--dy:-0.7071"/></svg><!--/logo--></div>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-logo" viewBox="0 0 24 24"><path fill="#d8232a" stroke="none" d="M12 12L16.02 2.3L7.98 2.3ZM12 12L2.3 7.98L2.3 16.02ZM12 12L7.98 21.7L16.02 21.7ZM12 12L21.7 16.02L21.7 7.98Z"/><path fill="#f5f3ef" stroke="none" d="M12 12L21.7 7.98L16.02 2.3ZM12 12L7.98 2.3L2.3 7.98ZM12 12L2.3 16.02L7.98 21.7ZM12 12L16.02 21.7L21.7 16.02Z"/><path fill="none" stroke="currentColor" stroke-opacity=".35" stroke-width=".7" stroke-linejoin="round" d="M16.02 2.3L7.98 2.3L2.3 7.98L2.3 16.02L7.98 21.7L16.02 21.7L21.7 16.02L21.7 7.98Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.2 12.4 2.7 2.7 5-5.6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4.6 3 17.4A2 2 0 0 0 4.7 20.4h14.6a2 2 0 0 0 1.7-3L13.7 4.6a2 2 0 0 0-3.4 0Z"/><path d="M12 9.5v4"/><path d="M12 16.8h.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9.4 9.4 5.2 5.2m0-5.2-5.2 5.2"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m18.5 12.5-6.5 6.5-6.5-6.5"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13.5 6.5 5.5 5.5-5.5 5.5"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11m0-11-11 11"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2.4"/><path d="M8.3 10.5V8a3.7 3.7 0 0 1 7.4 0v2.5"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14.5 4.5h3a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-3"/><path d="m10 16.5-4.5-4.5L10 7.5"/><path d="M5.5 12h10"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6"/><path d="M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4m7-4v4"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="6.5" rx="2"/><rect x="4" y="13" width="16" height="6.5" rx="2"/><path d="M7.6 7.75h.01M7.6 16.25h.01"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3L4.5 8.8"/><path d="M4.5 4.5v4.3h4.3"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.5v8"/><path d="M6.6 7a7.5 7.5 0 1 0 10.8 0"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.6 2.4 14.4 0 17M12 3.5c-2.4 2.6-2.4 14.4 0 17"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1-3.4 3.7-5.2 7-5.2s6 1.8 7 5.2"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></symbol>
+  <symbol id="i-mem" viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="9.5" rx="1.8"/><path d="M7.5 10.5v2.5M11 10.5v2.5M14.5 10.5v2.5M7 16.5v2.5M17 16.5v2.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5.5 12h13"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.6a8.4 8.4 0 1 0 0 16.8c1.2 0 1.8-.9 1.4-1.9-.5-1.1.2-2.3 1.4-2.3h1.7a3.9 3.9 0 0 0 3.9-3.9C20.4 7 16.6 3.6 12 3.6Z"/><circle cx="7.9" cy="11.2" r="1.1" fill="currentColor" stroke="none"/><circle cx="10.6" cy="7.6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="7.9" r="1.1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 14h2M14 18h2M18 18h2v2"/></symbol>
+  <symbol id="i-device" viewBox="0 0 24 24"><rect x="6.5" y="3.5" width="11" height="17" rx="2.4"/><path d="M11 17.5h2"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="3.5"/><path d="m10.5 12.5 8-8M15.5 7.5l2.5 2.5M17.5 5.5l1.5 1.5"/></symbol>
+</svg>
+
+<header class="top" id="top">
+  <div class="top-l">
+    <div class="clock" aria-label="Current time">
+      <span class="c-time" id="clock">--:--:--</span>
+      <span class="c-meta"><span id="cDate">&nbsp;</span><span id="cZone">&nbsp;</span></span>
+    </div>
+    <nav class="nav need-admin hidden" aria-label="Pages">
+      <a href="#/" data-view="overview">Overview</a>
+      <a href="#/servers" data-view="servers">Servers</a>
+    </nav>
+  </div>
+  <a class="brand" href="#/" aria-label="Status overview">
+    <svg class="plate" viewBox="0 0 600 64" preserveAspectRatio="none" aria-hidden="true"><path d="M0 63.5H150C170 63.5 176 44.5 196 44.5H404C424 44.5 430 63.5 450 63.5H600"/></svg>
+    <span class="b-row"><svg class="b-mark" aria-hidden="true" focusable="false"><use href="#i-logo"/></svg><span class="b-name" id="brandName">Status</span></span>
+    <span class="b-sub" id="brandSub">Service status</span>
+  </a>
+  <div class="top-r">
+    <nav class="nav" aria-label="Pages">
+      <a href="#/events" data-view="events" class="need-admin hidden">Events</a>
+      <a href="#/me" data-view="me" class="need-user hidden">Your usage</a>
+    </nav>
+    <div class="tools">
+      <span class="live need-admin hidden" id="live" title="Live data"><i aria-hidden="true"></i><span id="liveText">Connecting</span></span>
+      <div class="pal">
+        <button class="icon-btn" id="palBtn" type="button" aria-label="Colour tone" aria-haspopup="true" aria-expanded="false"><svg class="ic"><use href="#i-palette"/></svg></button>
+        <div class="pal-pop" id="palPop" role="menu" aria-label="Colour tone" hidden>
+          <button type="button" role="menuitemradio" data-tone="ice"><i class="sw"></i><span>Ice</span></button>
+          <button type="button" role="menuitemradio" data-tone="celadon"><i class="sw"></i><span>Celadon</span></button>
+          <button type="button" role="menuitemradio" data-tone="ink"><i class="sw"></i><span>Ink</span></button>
+          <button type="button" role="menuitemradio" data-tone="paper"><i class="sw"></i><span>Paper</span></button>
+          <button type="button" role="menuitemradio" data-tone="mist"><i class="sw"></i><span>Mist</span></button>
+        </div>
+      </div>
+      <a class="pill-btn hidden" id="userBtn" href="#/me" title="Your usage"><span class="avatar" id="avatar">?</span><span id="userName"></span></a>
+      <button class="pill-btn hidden" id="adminBtn" type="button" title="Sign out"><span class="avatar">S</span><span>Supervisor</span><svg class="ic sm"><use href="#i-logout"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<nav class="mnav" aria-label="Pages">
+  <a href="#/" data-view="overview" class="need-admin hidden">Overview</a>
+  <a href="#/servers" data-view="servers" class="need-admin hidden">Servers</a>
+  <a href="#/events" data-view="events" class="need-admin hidden">Events</a>
+  <a href="#/me" data-view="me" class="need-user hidden">Your usage</a>
+</nav>
+
+<main id="main">
+  <!-- ================================================================ the way in: the sign-in, on the page -->
+  <section class="view page" id="v-signin" data-view="signin" aria-labelledby="hSignin" hidden>
+    <div class="gate">
+      <div class="gate-mark" id="gateMark"></div>
+      <h1 id="hSignin">Welcome</h1>
+      <p class="gate-about hidden" id="gateAbout"></p>
+      <form class="gate-form" id="loginForm" autocomplete="on">
+        <p class="gate-text" id="loginText">Sign in with the username and password you were given.</p>
+        <label class="field" id="fUser">Username<input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required></label>
+        <label class="field" id="fPass">Password<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
+        <label class="field hidden" id="fCode">Two-factor code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7"></label>
+        <p class="err" id="loginErr" role="alert"></p>
+        <button type="submit" class="btn primary lg" id="loginSubmit"><svg class="ic sm"><use href="#i-lock"/></svg><span>Sign in</span></button>
+        <button type="button" class="btn ghost hidden" id="loginBack">Back</button>
+      </form>
+      <p class="gate-note" id="gateText">You will see the data you have left, the devices connected now and your link.</p>
+    </div>
+  </section>
+
+  <!-- ================================================================ overview -->
+  <section class="view" id="v-overview" data-view="overview" aria-label="Overview" hidden>
+    <div class="dash">
+      <div class="col col-l">
+        <section class="panel p-status rv" id="pStatus" aria-labelledby="hStatus">
+          <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hStatus">Status</h2></header>
+          <div class="pb">
+            <div class="verdict" id="verdict">
+              <span class="v-ic"><svg class="ic"><use href="#i-check" id="verdictIcon"/></svg></span>
+              <b id="vTitle">Loading…</b>
+            </div>
+            <p class="about hidden" id="about"></p>
+            <div class="avail">
+              <div class="a-fig"><span class="a-num" id="avail24">—</span><span class="a-lab">Available, last 24 h</span></div>
+              <div class="a-fig"><span class="a-num" id="avail30">—</span><span class="a-lab">Available, last 30 days</span></div>
+            </div>
+            <div class="strip" id="availStrip" role="img" aria-label="Availability of all servers for each of the last 30 days"></div>
+            <div class="strip-foot"><span id="stripFrom"></span><span>Today</span></div>
+            <div class="attn" id="attn" aria-live="polite"></div>
+          </div>
+        </section>
+        <section class="panel p-res rv" id="pRes" aria-labelledby="hRes">
+          <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hRes">Resources</h2><span class="pm" id="resMeta"></span></header>
+          <div class="pb"><div class="res" id="res" role="table" aria-label="CPU, memory and disk per server"></div><p class="res-note" id="resNote"></p></div>
+        </section>
+        <section class="panel p-events rv" id="pEvents" aria-labelledby="hEvents">
+          <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hEvents">Events</h2><a class="pm link" href="#/events">All<svg class="ic sm"><use href="#i-chev"/></svg></a></header>
+          <div class="pb"><div class="ev-mini" id="evMini"></div></div>
+        </section>
+      </div>
+
+      <div class="col col-c">
+        <section class="globe-area rv" id="pGlobe" aria-labelledby="hGlobe">
+          <header class="ph ghost"><span class="pn" aria-hidden="true"></span><h2 id="hGlobe">Locations</h2></header>
+          <div class="g-stage">
+            <div class="globe" id="globe" role="img" aria-label="Globe with the cities of the servers" title="Scroll to zoom, drag to turn, click for full screen"></div>
+            <div class="g-legend" id="gLegend" aria-hidden="true">
+              <span><i class="lg-srv"></i><span id="lgSrv">Servers</span></span>
+              <span class="hidden" id="lgHub"><i class="lg-hub"></i>Panel</span>
+              <span class="hidden" id="lgApprox"><i class="lg-approx"></i>Dashed ring: approximate location (IP database)</span>
+            </div>
+            <div class="g-ctrl hidden" id="gCtrl">
+              <button class="icon-btn" id="gZoomIn" type="button" aria-label="Zoom in"><svg class="ic"><use href="#i-plus"/></svg></button>
+              <button class="icon-btn" id="gZoomOut" type="button" aria-label="Zoom out"><svg class="ic"><use href="#i-minus"/></svg></button>
+              <button class="icon-btn" id="gClose" type="button" aria-label="Leave full screen"><svg class="ic"><use href="#i-close"/></svg></button>
+            </div>
+            <div class="g-note" aria-hidden="true"><span class="g-hint" id="gHint">Scroll to zoom · click for full screen</span><span class="g-sun" id="gSun"></span><span class="g-src">Natural Earth 1:50m · DB-IP</span></div>
+          </div>
+          <div class="kpis" id="kpis">
+            <div class="kpi"><span class="k-lab">Online</span><span class="k-val" id="kOnline">—</span><span class="k-sub" id="kOnlineSub"></span></div>
+            <div class="kpi"><span class="k-lab">Throughput now</span><span class="k-val" id="kRate">—</span><span class="k-sub" id="kRateSub"></span></div>
+            <div class="kpi"><span class="k-lab">Traffic today</span><span class="k-val" id="kToday">—</span><span class="k-sub">all servers</span></div>
+            <div class="kpi hidden" id="kpiUsed"><span class="k-lab" id="kUsedLab">Used this cycle</span><span class="k-val" id="kUsed">—</span><span class="k-sub" id="kUsedSub"></span></div>
+          </div>
+        </section>
+        <section class="panel p-table rv" id="pTable" aria-labelledby="hTable">
+          <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hTable">Servers</h2><span class="pm" id="tableMeta"></span></header>
+          <div class="pb"><div class="tbl-wrap" id="tableHost"></div></div>
+        </section>
+      </div>
+
+      <div class="col col-r">
+        <section class="panel p-mine rv need-user hidden" id="pMine" aria-labelledby="hMine">
+          <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hMine">Your usage</h2><a class="pm link" href="#/me">Details<svg class="ic sm"><use href="#i-chev"/></svg></a></header>
+          <div class="pb"><div class="mine" id="mine"></div></div>
+        </section>
+        <section class="panel p-quota rv hidden" id="pQuota" aria-labelledby="hQuota">
+          <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hQuota">Bandwidth</h2><span class="pm" id="quotaMeta"></span></header>
+          <div class="pb"><div class="quota" id="quota"></div></div>
+        </section>
+        <section class="panel p-flow rv" id="pFlow" aria-labelledby="hFlow">
+          <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hFlow">Throughput</h2>
+            <div class="seg" id="flowSeg" role="group" aria-label="Time range">
+              <button type="button" data-v="live" aria-pressed="true">30 min</button>
+              <button type="button" data-v="30d" aria-pressed="false">30 days</button>
+              <span class="ind" aria-hidden="true"></span>
+            </div>
+          </header>
+          <div class="pb">
+            <div class="flow-stats" id="flowStats"></div>
+            <div class="flow-chart" id="flowChart"><canvas id="flowCanvas" role="img" aria-label="Total throughput of all servers over time"></canvas><div class="bars hidden" id="flowBars"></div><div class="chart-note hidden" id="flowNote">Collecting data…</div></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================ servers -->
+  <section class="view page" id="v-servers" data-view="servers" aria-labelledby="hServers" hidden>
+    <header class="page-h"><h1 id="hServers">Servers</h1><p id="serversSub"></p></header>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <!-- ================================================================ events -->
+  <section class="view page" id="v-events" data-view="events" aria-labelledby="hEventsPage" hidden>
+    <header class="page-h"><h1 id="hEventsPage">Events</h1><p>Outages and recoveries of the last 30 days, and what comes next.</p></header>
+    <div class="two">
+      <section class="panel"><header class="ph"><h2>Last 30 days</h2><span class="pm" id="feedMeta"></span></header><div class="pb"><div class="feed" id="feed"></div></div></section>
+      <section class="panel"><header class="ph"><h2>Coming up</h2></header><div class="pb"><div class="feed" id="upcoming"></div></div></section>
+    </div>
+  </section>
+
+  <!-- ================================================================ the user's own page -->
+  <section class="view page" id="v-me" data-view="me" aria-labelledby="hMe" hidden>
+    <header class="page-h me-h">
+      <div>
+        <h1 id="hMe">Your usage</h1>
+        <p id="meSub"></p>
+      </div>
+      <div class="me-actions">
+        <button class="btn" type="button" id="pwBtn"><svg class="ic sm"><use href="#i-key"/></svg>Change password</button>
+        <button class="btn" type="button" id="logoutBtn"><svg class="ic sm"><use href="#i-logout"/></svg>Sign out</button>
+      </div>
+    </header>
+    <form class="panel pw-panel hidden" id="pwForm">
+      <header class="ph"><h2>Change your password</h2><span class="pm">at least 10 characters · your other signed-in browsers are signed out</span></header>
+      <input type="text" name="username" autocomplete="username" hidden>
+      <div class="pw-fields">
+        <label class="field">Current password<input name="current" type="password" autocomplete="current-password" maxlength="128" required></label>
+        <label class="field">New password<input name="new" type="password" autocomplete="new-password" minlength="10" maxlength="72" required></label>
+        <label class="field">New password again<input name="again" type="password" autocomplete="new-password" minlength="10" maxlength="72" required></label>
+      </div>
+      <p class="err" id="pwErr" role="alert"></p>
+      <div class="row-end">
+        <button type="button" class="btn ghost" id="pwCancel">Cancel</button>
+        <button type="submit" class="btn primary" id="pwSubmit">Change password</button>
+      </div>
+    </form>
+    <div class="me-flags" id="meFlags"></div>
+    <div class="me-grid">
+      <section class="panel me-cycle">
+        <header class="ph"><h2>Data left</h2><span class="pm" id="cycleMeta"></span></header>
+        <div class="pb" id="meCycle"></div>
+      </section>
+      <section class="panel me-link">
+        <header class="ph"><h2>Your link</h2><span class="pm">for your apps</span></header>
+        <div class="pb" id="meLink"></div>
+      </section>
+    </div>
+    <div class="me-grid">
+      <section class="panel">
+        <header class="ph"><h2>Connected now</h2><span class="pm" id="meDevMeta"></span></header>
+        <div class="pb"><div class="mini-list" id="meDevices"></div></div>
+      </section>
+      <section class="panel">
+        <header class="ph"><h2>Last 30 days</h2><span class="pm" id="meDaysMeta"></span></header>
+        <div class="pb"><div class="bars me-bars" id="meDays"></div></div>
+      </section>
+    </div>
+    <section class="panel">
+      <header class="ph"><h2>By server</h2><span class="pm" id="meSrvMeta"></span></header>
+      <div class="pb"><div class="tbl-wrap" id="meServers"></div></div>
+    </section>
+  </section>
+</main>
+
+<footer class="foot">
+  <span id="footText">Live data from the servers' agents</span>
+  <span>Map: Natural Earth · <a href="https://db-ip.com" rel="noopener noreferrer" target="_blank">IP Geolocation by DB-IP</a> (CC BY 4.0) · <a href="https://github.com/Dokoyamo-Lisa/Meridian" rel="noopener noreferrer" target="_blank">Source code</a> (AGPL-3.0)</span>
+</footer>
+
+<div class="drawer" id="drawer" aria-hidden="true">
+  <div class="scrim" data-close></div>
+  <div class="panel-d" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+    <div class="d-head">
+      <span class="flag" id="dFlag"></span>
+      <div class="t"><h3 id="dTitle"></h3><p id="dSub"></p></div>
+      <button class="icon-btn" type="button" data-close aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    <div class="d-body" id="dBody"></div>
+  </div>
+</div>
+
+<div class="tip" id="tip" role="tooltip"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

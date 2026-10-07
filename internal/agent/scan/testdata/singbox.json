@@ -1,0 +1,11 @@
+{
+  "inbounds": [
+    {"type": "trojan", "tag": "tj", "listen": "::", "listen_port": 8443,
+     "users": [{"name": "frank", "password": "frank-pass"}],
+     "tls": {"enabled": true, "server_name": "proxy.example.com"},
+     "transport": {"type": "grpc", "service_name": "tun"}},
+    {"type": "hysteria2", "tag": "hy", "listen_port": 4443, "users": [{"name": "gina", "password": "gina-pass"}],
+     "obfs": {"type": "salamander", "password": "obfs-pw"}, "tls": {"enabled": true, "acme": {"domain": ["hy.example.com"]}}},
+    {"type": "tun", "tag": "tun-in"}
+  ]
+}
