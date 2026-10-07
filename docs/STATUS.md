@@ -1,8 +1,15 @@
 # Meridian status
 
-Last updated 2026-10-07 (version 0.6.0).
+Last updated 2026-10-07 (version 0.6.1).
 
 ## Tested end to end this round (local VMs: Ubuntu with systemd, Alpine with OpenRC)
+
+- **A protocol's own Xray settings** (panel 0.6.1, agent 0.5): a REALITY protocol's code added two
+  outbounds and two rules - one site through its own freedom outbound, another into its own
+  blackhole - live (same Xray PID), while the same sites through Shadowsocks on that server were
+  untouched. The merged inbound kept REALITY, its port and its three users, with sniffing and
+  sockopt merged in. Code Xray refuses (an unknown outbound protocol) showed Xray's reason on the
+  server and the running configuration stayed; removing the code restored the original.
 
 - **Every protocol with real clients** (`test/e2e/matrix.py`) on the Ubuntu server: 62 of 62 work in
   sing-box, mihomo and Xray - names without the server prefix for named protocols, WireGuard now

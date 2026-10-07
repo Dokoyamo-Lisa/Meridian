@@ -322,7 +322,7 @@ type Node struct {
 	PassNode  int64           `json:"pass_node"`
 	PassOnly  bool            `json:"pass_only" doc:"Serves only proxy passes from other servers: users cannot connect to it directly and it is left out of their links"`
 	BindIP    string          `json:"bind_ip" doc:"The server address this protocol has to itself: it listens there, its traffic leaves from there and links use it (a public one). Empty = all of the server's addresses"`
-	Code      string          `json:"code" doc:"Hysteria2: your own configuration (YAML), merged on top of what the panel generates. Only the syntax is checked"`
+	Code      string          `json:"code" doc:"The protocol's own settings, merged on top of what the panel generates: JSON for Xray protocols (inbound fields, outbounds, rules for its traffic), YAML for Hysteria2. Only the syntax is checked"`
 	Sort      int             `json:"sort"`
 	CreatedAt int64           `json:"created_at"`
 	UpdatedAt int64           `json:"updated_at"`

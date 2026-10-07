@@ -843,7 +843,7 @@ type nodeInput struct {
 	Sort     *int        `json:"sort"`
 	PassNode *int64      `json:"pass_node" doc:"Proxy pass: id of the exit protocol on another server; 0 = leave directly"`
 	PassOnly *bool       `json:"pass_only" doc:"Serve only proxy passes from other servers: users cannot connect directly and it is left out of their links (not for WireGuard)"`
-	Code     *string     `json:"code" doc:"Hysteria2 only: your own configuration (YAML), merged on top of what the panel generates. Only the syntax is checked; empty removes it. Saving restarts this Hysteria2 protocol"`
+	Code     *string     `json:"code" doc:"The protocol's own settings, merged on top of what the panel generates. Xray protocols: JSON (comments allowed) - fields merged into the inbound (sniffing, streamSettings.sockopt, fallbacks, ...), outbounds added (own tags), rules for this protocol's traffic only; tag, port and users stay the panel's. Hysteria2: YAML; auth and trafficStats stay the panel's (saving restarts it). Only the syntax is checked; empty removes it"`
 	BindIP   *string     `json:"bind_ip" doc:"One of the server's addresses (see addrs on the server) for this protocol alone: it listens there, its traffic leaves from there, and links use it when it is public. Protocols on different addresses may share a port. Empty = all addresses"`
 	Settings *protoInput `json:"settings" doc:"Transport, security and the protocol's own options; omitted fields keep their value (or the default on create). POST /api/protocols/check shows what a draft becomes"`
 }

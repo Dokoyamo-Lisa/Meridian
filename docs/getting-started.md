@@ -168,8 +168,34 @@ A replacement that no longer covers a domain some protocol uses is refused.
 
 ### Configuration as code
 
-For what the forms do not offer, a server's **Configuration as code** section takes your own Xray
-configuration - JSON, comments allowed - merged on top of what the panel generates:
+For what the forms do not offer, each protocol and each server take your own settings as code,
+merged on top of what the panel generates. Only the syntax is checked: Xray and Hysteria decide the
+rest. If the core refuses the result, the server's page shows why and the running configuration
+stays. **What the server gets** shows the merged result.
+
+**A protocol's own settings** (*Port, name and more › Advanced Xray settings*) - JSON, comments
+allowed:
+
+- its fields are merged into the protocol's inbound: `sniffing`, `streamSettings.sockopt`,
+  `fallbacks`, ... Its tag, port and users stay the panel's;
+- `outbounds` are added, with your own tags (`direct` and `block` are the panel's). A tag is one
+  outbound on the server: protocols naming the same tag share the first one, and the server's
+  settings below replace it - define an outbound several protocols use there once;
+- `rules` route this protocol's traffic only (private addresses stay blocked).
+
+```jsonc
+{
+  "sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"] },
+  "outbounds": [ { "tag": "warp", "protocol": "wireguard", "settings": { /* ... */ } } ],
+  "rules": [ { "domain": ["geosite:openai"], "outboundTag": "warp" } ]
+}
+```
+
+A Hysteria2 protocol takes YAML the same way (*Advanced Hysteria2 settings*); `auth` and
+`trafficStats` stay Meridian's, and saving restarts it.
+
+**A server's settings** (the server's **Configuration as code** section) - Xray JSON for everything
+on it, merged last:
 
 - `outbounds` are added, or replace the one with the same tag;
 - `routing.rules` come before the panel's own rules;
@@ -177,11 +203,6 @@ configuration - JSON, comments allowed - merged on top of what the panel generat
   added as your own inbounds, with the users written in them;
 - other sections (`dns`, `fakedns`, ...) are merged; `api`, `stats`, `log` and `policy` stay
   Meridian's.
-
-A Hysteria2 protocol takes its own YAML the same way (*Port, name and more › Configuration as
-code*). Only the syntax is checked: Xray and Hysteria decide the rest. If the core refuses the
-result, the server's page shows why and the running configuration stays. **What the server gets**
-shows the merged result.
 
 ## 4. Add users
 

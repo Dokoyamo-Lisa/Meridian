@@ -140,8 +140,57 @@ func TestConfigCode(t *testing.T) {
 	if code, m, _ := b.do("PATCH", fmt.Sprintf("/api/nodes/%d", hy), map[string]any{"code": "auth:\n  type: password\n"}); code != 400 || !strings.Contains(fmt.Sprint(m["error"]), `"auth" is Meridian's own`) {
 		t.Errorf("hysteria auth: %d %v", code, m)
 	}
-	if code, m, _ := b.do("PATCH", fmt.Sprintf("/api/nodes/%d", vless), map[string]any{"code": "x: 1"}); code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "server's Xray configuration") {
-		t.Errorf("xray protocol code: %d %v", code, m)
+	// an Xray protocol's own settings: merged into its inbound, its outbounds, rules for its traffic only
+	own := `{
+  // this protocol only
+  "sniffing": {"enabled": false},
+  "streamSettings": {"sockopt": {"tcpFastOpen": true}},
+  "outbounds": [{"tag": "warp", "protocol": "freedom"}],
+  "rules": [{"domain": ["example.net"], "outboundTag": "warp"}]
+}`
+	n = b.must("PATCH", fmt.Sprintf("/api/nodes/%d", vless), map[string]any{"code": own}, 200)
+	if !strings.Contains(fmt.Sprint(n["code"]), "this protocol only") {
+		t.Errorf("stored: %v", n["code"])
+	}
+	st, _ = h.p.compileServer(context.Background(), sid)
+	var in map[string]any
+	_ = json.Unmarshal(st.Xray.Inbounds[0].Config, &in)
+	ss := fmt.Sprint(in["streamSettings"])
+	if in["sniffing"].(map[string]any)["enabled"] != false || !strings.Contains(ss, "tcpFastOpen:true") || !strings.Contains(ss, "realitySettings") ||
+		in["tag"] != proto.InboundTag(vless) {
+		t.Errorf("merged inbound: %v", in)
+	}
+	var base struct {
+		Outbounds []map[string]any `json:"outbounds"`
+		Routing   struct {
+			Rules []map[string]any `json:"rules"`
+		} `json:"routing"`
+	}
+	_ = json.Unmarshal(st.Xray.Base, &base)
+	if !strings.Contains(fmt.Sprint(base.Outbounds), "tag:warp") {
+		t.Errorf("outbounds: %v", base.Outbounds)
+	}
+	found := false
+	for _, r := range base.Routing.Rules {
+		if fmt.Sprint(r["domain"]) == "[example.net]" {
+			found = true
+			if fmt.Sprint(r["inboundTag"]) != "["+proto.InboundTag(vless)+"]" {
+				t.Errorf("a protocol's rule must apply to its traffic only: %v", r)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("rules: %v", base.Routing.Rules)
+	}
+	for body, want := range map[string]string{
+		`{"port": 1}`:                   `"port" is set with the protocol's Port field`,
+		`{"settings": {"clients": []}}`: `the panel manages them`,
+		`{"outbounds": [{"tag": "direct", "protocol": "freedom"}]}`: `the outbound tag "direct" is the panel's`,
+		`{"rules": "x"}`: `"rules" must be a list`,
+	} {
+		if code, m, _ := b.do("PATCH", fmt.Sprintf("/api/nodes/%d", vless), map[string]any{"code": body}); code != 400 || !strings.Contains(fmt.Sprint(m["error"]), want) {
+			t.Errorf("%s: %d %v", body, code, m)
+		}
 	}
 
 	// read-only tokens see neither the code nor the merged configuration

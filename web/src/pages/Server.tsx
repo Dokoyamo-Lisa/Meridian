@@ -1144,7 +1144,7 @@ function CodePanel(props: { server: Server; onSaved: () => void }) {
       ) : (
         <>
           <p class="muted" style="margin-top:0">
-            JSON (comments allowed), merged on top of the generated Xray configuration: <span class="mono">outbounds</span> are added (or replace one with the same tag), <span class="mono">routing.rules</span> come before the panel's,{' '}
+            For the whole server's Xray - one protocol's own settings are in its editor (Port, name and more › Advanced Xray settings). JSON (comments allowed), merged on top of the generated Xray configuration: <span class="mono">outbounds</span> are added (or replace one with the same tag), <span class="mono">routing.rules</span> come before the panel's,{' '}
             <span class="mono">inbounds</span> change a protocol by its tag or add your own, other sections (<span class="mono">dns</span>, …) are merged. Only the syntax is checked here - Xray decides the rest: what it refuses is shown on this page and the running configuration stays. Outbounds and rules apply live; other sections wait for “Restart Xray”.
           </p>
           {xrayNodes.length > 0 && (

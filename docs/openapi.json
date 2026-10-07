@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meridian API",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -4550,7 +4550,7 @@
             "type": "string"
           },
           "code": {
-            "description": "Hysteria2: your own configuration (YAML), merged on top of what the panel generates. Only the syntax is checked",
+            "description": "The protocol's own settings, merged on top of what the panel generates: JSON for Xray protocols (inbound fields, outbounds, rules for its traffic), YAML for Hysteria2. Only the syntax is checked",
             "type": "string"
           },
           "sort": {
@@ -5227,7 +5227,7 @@
             "type": "boolean"
           },
           "code": {
-            "description": "Hysteria2 only: your own configuration (YAML), merged on top of what the panel generates. Only the syntax is checked; empty removes it. Saving restarts this Hysteria2 protocol",
+            "description": "The protocol's own settings, merged on top of what the panel generates. Xray protocols: JSON (comments allowed) - fields merged into the inbound (sniffing, streamSettings.sockopt, fallbacks, ...), outbounds added (own tags), rules for this protocol's traffic only; tag, port and users stay the panel's. Hysteria2: YAML; auth and trafficStats stay the panel's (saving restarts it). Only the syntax is checked; empty removes it",
             "type": "string"
           },
           "bind_ip": {

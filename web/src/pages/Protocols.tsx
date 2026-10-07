@@ -210,6 +210,7 @@ export function ProtocolCard(props: { node: NodeView; server: Server; onEdit: ()
   if (n.kind === 'wireguard') facts.push(['Network', <span class="mono ellipsis">{st.subnet4}</span>])
   if (n.pass_node > 0) facts.push(['Proxy pass', <span class="ellipsis">{n.pass_name || `protocol #${n.pass_node}`}</span>])
   if (n.pass_only) facts.push(['Users', <span class="ellipsis">only through proxy passes</span>])
+  if (n.code) facts.push(['Settings', <span class="ellipsis">its own, as code{n.kind !== 'hysteria2' ? <span class="faint"> · tag n{n.id}</span> : null}</span>])
   facts.push(['Online', <span>{n.online} IPs</span>])
 
   return (
@@ -461,7 +462,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
       if (port.trim()) req.port = Number(port)
       if (k?.engine === 'xray') req.pass_node = passNode
       if (kind !== 'wireguard') req.pass_only = passOnly
-      if (kind === 'hysteria2') req.code = code
+      if (kind !== 'wireguard') req.code = code
       if (editing && n) await patch(`/api/nodes/${n.id}`, req)
       else await post(`/api/servers/${server.id}/nodes`, { ...req, kind })
       const exit = passNode ? exitOf(passNode) : undefined
@@ -744,10 +745,31 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
             )}
             {kind === 'hysteria2' && (
               <Field
-                label="Configuration as code (YAML)"
+                label="Advanced Hysteria2 settings (YAML)"
                 hint="Your own Hysteria2 settings, merged on top of what the panel generates (auth and trafficStats stay Meridian's). Only the syntax is checked; saving restarts this protocol and its devices reconnect by themselves."
               >
                 <textarea class="input mono code-edit" rows={6} style="min-height:120px" value={code} placeholder={'quic:\n  maxIdleTimeout: 60s\noutbounds:\n  - name: direct\n    type: direct'} onInput={(e) => setCode(e.currentTarget.value)} spellcheck={false} />
+              </Field>
+            )}
+            {xray && (
+              <Field
+                label="Advanced Xray settings (JSON)"
+                hint={
+                  <>
+                    For this protocol alone, merged on top of what the panel generates: fields of its inbound (<span class="mono">sniffing</span>, <span class="mono">streamSettings.sockopt</span>, <span class="mono">fallbacks</span>, …),{' '}
+                    <span class="mono">outbounds</span> to add (own tags) and <span class="mono">rules</span> for this protocol’s traffic only. Its tag{editing && n ? ` (n${n.id})` : ''}, port and users stay the panel’s. Comments are fine; only the syntax is checked - Xray decides the rest, and what it refuses shows on the server’s page. Saving re-opens this protocol: its open connections reconnect by themselves.
+                  </>
+                }
+              >
+                <textarea
+                  class="input mono code-edit"
+                  rows={7}
+                  style="min-height:140px"
+                  value={code}
+                  placeholder={'{\n  // e.g. turn sniffing off and send one site through your own outbound\n  "sniffing": { "enabled": false },\n  "outbounds": [ { "tag": "warp", "protocol": "wireguard", "settings": { } } ],\n  "rules": [ { "domain": ["geosite:openai"], "outboundTag": "warp" } ]\n}'}
+                  onInput={(e) => setCode(e.currentTarget.value)}
+                  spellcheck={false}
+                />
               </Field>
             )}
           </details>

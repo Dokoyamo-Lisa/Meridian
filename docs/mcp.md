@@ -86,6 +86,7 @@ Change (full-access token):
 | `add_server`, `get_install_command` | return the install command (it contains the server's secret) |
 | `update_server`, `set_server_ports` | name, address (an IP also sets the location from DB-IP), IP version, ports from the provider, Xray configuration code - nothing restarts |
 | `add_protocol`, `add_forward`, `unblock_ip`, `scan_server` | applied live; a scan changes nothing; a protocol can have its own server address (`bind_ip`) or serve only proxy passes (`pass_only`) |
+| `set_protocol_code` | a protocol's own settings as code: Xray JSON (its inbound, outbounds, rules for its traffic only) or Hysteria2 YAML (it restarts) |
 | `replace_certificate` | replaces a shared certificate once for every server that uses it |
 | `set_status_page`, `set_server_on_status_page` | where the status page is, and how each server appears on its globe |
 | `set_branding` | the panel's name, its logo (SVG markup or a base64 image; checked like an upload) and how the logo moves |

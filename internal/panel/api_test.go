@@ -480,6 +480,17 @@ func TestMCP(t *testing.T) {
 	if isErr || !strings.Contains(out, `"port":20010`) {
 		t.Fatalf("add_protocol on a NAT server: %s", out)
 	}
+	// its own Xray settings; what the panel decides (its port) is refused with the reason
+	var vp map[string]any
+	_ = json.Unmarshal([]byte(out), &vp)
+	pid := strconv.FormatInt(id(vp["id"]), 10)
+	out, isErr = text(call(full, `{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"set_protocol_code","arguments":{"protocol_id":`+pid+`,"code":"{\"sniffing\": {\"enabled\": false}}"}}}`))
+	if isErr || !strings.Contains(out, `sniffing`) {
+		t.Fatalf("set_protocol_code: %s", out)
+	}
+	if out, isErr = text(call(full, `{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"set_protocol_code","arguments":{"protocol_id":`+pid+`,"code":"{\"port\": 1}"}}}`)); !isErr || !strings.Contains(out, "Port field") {
+		t.Fatalf("a port in protocol code: %v %s", isErr, out)
+	}
 	if out, isErr = text(call(full, `{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"set_server_ports","arguments":{"server_id":`+nat+`,"public_ports":"20000-20019:"}}}`)); !isErr || !strings.Contains(out, "not a port or range") {
 		t.Fatalf("a bad port list: %v %s", isErr, out)
 	}

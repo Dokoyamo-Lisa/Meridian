@@ -327,17 +327,129 @@ func jsonable(v any) any {
 	return v
 }
 
-// nodeCode checks a protocol's own configuration: YAML for Hysteria2; Xray protocols take theirs in
-// the server's Xray configuration (by the protocol's tag).
+// nodeCode checks a protocol's own configuration: JSON for an Xray protocol (checkXrayNodeCode),
+// YAML for Hysteria2. WireGuard runs in the kernel and has none.
 func nodeCode(kind string, in *string) (string, error) {
 	if in == nil || strings.TrimSpace(*in) == "" {
 		return "", nil
 	}
-	if kind != "hysteria2" {
-		return "", errStatus(http.StatusBadRequest, "only Hysteria2 protocols take their own configuration - for Xray protocols use the server's Xray configuration, with the protocol's tag")
+	switch kind {
+	case "hysteria2":
+		code, _, err := checkHyCode(*in)
+		return code, err
+	case "wireguard":
+		return "", errStatus(http.StatusBadRequest, "WireGuard runs in the kernel and takes no configuration code")
 	}
-	code, _, err := checkHyCode(*in)
-	return code, err
+	return checkXrayNodeCode(*in)
+}
+
+// Outbound tags a protocol's own settings may not take: the panel's, everyone's.
+var reservedOutbound = regexp.MustCompile(`^(direct|block|direct-ipver|api|pass-n\d+|bind-n\d+)$`)
+
+// checkXrayNodeCode checks an Xray protocol's own settings: fields merged into its inbound
+// (sniffing, streamSettings.sockopt, fallbacks, ...), plus "outbounds" (added, each with its own
+// tag) and "rules" (routing for this protocol's traffic only). The tag, the port and the users stay
+// the panel's.
+func checkXrayNodeCode(src string) (string, error) {
+	doc, err := parseJSONC(src)
+	if err != nil || doc == nil {
+		return "", err
+	}
+	if _, ok := doc["tag"]; ok {
+		return "", errStatus(http.StatusBadRequest, `"tag" is the panel's (other settings refer to the protocol by it) - leave it out`)
+	}
+	if _, ok := doc["port"]; ok {
+		return "", errStatus(http.StatusBadRequest, `"port" is set with the protocol's Port field - leave it out`)
+	}
+	if st, ok := doc["settings"].(map[string]any); ok {
+		for _, k := range []string{"clients", "accounts"} {
+			if _, ok := st[k]; ok {
+				return "", errStatus(http.StatusBadRequest, fmt.Sprintf(`"settings.%s" are the protocol's users - the panel manages them: add users in Users`, k))
+			}
+		}
+	}
+	if v, ok := doc["outbounds"]; ok {
+		list, ok := v.([]any)
+		if !ok {
+			return "", errStatus(http.StatusBadRequest, `"outbounds" must be a list: [ { "tag": "...", ... } ]`)
+		}
+		for i, o := range list {
+			m, ok := o.(map[string]any)
+			if !ok || m["tag"] == nil || fmt.Sprint(m["tag"]) == "" {
+				return "", errStatus(http.StatusBadRequest, fmt.Sprintf("outbound %d needs a \"tag\" (its rules point at it by tag)", i+1))
+			}
+			if reservedOutbound.MatchString(fmt.Sprint(m["tag"])) {
+				return "", errStatus(http.StatusBadRequest, fmt.Sprintf("the outbound tag %q is the panel's - choose another one (or change it in the server's configuration code)", m["tag"]))
+			}
+		}
+	}
+	if v, ok := doc["rules"]; ok {
+		list, ok := v.([]any)
+		if !ok {
+			return "", errStatus(http.StatusBadRequest, `"rules" must be a list: [ { "domain": [...], "outboundTag": "..." } ]`)
+		}
+		for i, r := range list {
+			if _, ok := r.(map[string]any); !ok {
+				return "", errStatus(http.StatusBadRequest, fmt.Sprintf("rule %d must be an object", i+1))
+			}
+		}
+	}
+	return strings.TrimSpace(src), nil
+}
+
+// nodeXray splits an Xray protocol's own settings into what is merged into its inbound, its
+// outbounds, and its routing rules - each limited to the protocol's own traffic.
+func nodeXray(n *Node) (patch map[string]any, outbounds, rules []map[string]any, err error) {
+	doc, err := parseJSONC(n.Code)
+	if err != nil || doc == nil {
+		return nil, nil, nil, err
+	}
+	patch = map[string]any{}
+	for k, v := range doc {
+		list, _ := v.([]any) // checked when saved; anything else is skipped here
+		switch k {
+		case "outbounds":
+			for _, o := range list {
+				if m, ok := o.(map[string]any); ok {
+					if tag, _ := m["tag"].(string); tag != "" && !reservedOutbound.MatchString(tag) {
+						outbounds = append(outbounds, m)
+					}
+				}
+			}
+		case "rules":
+			for i, r := range list {
+				if m, ok := r.(map[string]any); ok {
+					rules = append(rules, mergePatch(m, map[string]any{"inboundTag": []any{proto.InboundTag(n.ID)},
+						"ruleTag": fmt.Sprintf("n%d-code-%d", n.ID, i+1)}).(map[string]any))
+				}
+			}
+		case "tag", "port":
+		default:
+			patch[k] = v
+		}
+	}
+	return patch, outbounds, rules, nil
+}
+
+// withNodeCode merges an Xray protocol's own settings into its rendered inbound.
+func withNodeCode(in proto.XrayInbound, patch map[string]any) (proto.XrayInbound, error) {
+	if len(patch) == 0 {
+		return in, nil
+	}
+	var cur map[string]any
+	d := json.NewDecoder(bytes.NewReader(in.Config))
+	d.UseNumber()
+	if err := d.Decode(&cur); err != nil {
+		return in, err
+	}
+	merged := mergePatch(cur, patch).(map[string]any)
+	merged["tag"], merged["port"] = cur["tag"], cur["port"] // the panel's, whatever the patch says
+	b, err := json.Marshal(merged)
+	if err != nil {
+		return in, err
+	}
+	in.Config = b
+	return in, nil
 }
 
 // apiServerConfig shows a server's Xray configuration as the agent gets it: generated, with the

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.1 - 2026-10-07
+
+Panel only: agents stay as they are - 0.5 and 0.6 agents both take everything here.
+
+- **Advanced Xray settings for each protocol** (a protocol's *Port, name and more*): JSON, comments
+  allowed, merged into that protocol alone - fields of its inbound such as `sniffing`,
+  `streamSettings.sockopt` or `fallbacks`, outbounds of your own, and routing rules for its traffic
+  only (private addresses stay blocked). Its tag, port and users stay the panel's. Only the syntax is
+  checked: what Xray refuses shows on the server's page and the running configuration stays as it
+  was. Protocols with their own settings say so on their cards; assistants set them with the new
+  `set_protocol_code` MCP tool.
+- A protocol's app list put the reason an app cannot use it on top of the app's name; it now sits
+  under it.
+
 ## 0.6.0 - 2026-10-07
 
 Upgrade agents for the new server-side parts (server page › More actions › Upgrade agent - nobody is

@@ -257,6 +257,8 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 	}
 
 	var passOut, passRules []map[string]any
+	var codeOut, codeRules []map[string]any // from protocols' own settings
+	codeTags := map[string]bool{}
 	xr := &proto.Xray{}
 	shared := p.sharedCertsFor(ctx, nodes)
 	st.Certs = stateCerts(shared)
@@ -275,6 +277,22 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			if err != nil {
 				slog.Error("render inbound", "node", n.ID, "err", err)
 				continue
+			}
+			if n.Code != "" { // the protocol's own settings: merged into it, its outbounds, its rules
+				if patch, obs, rules, err := nodeXray(n); err == nil {
+					if merged, err := withNodeCode(in, patch); err == nil {
+						in = merged
+					}
+					for _, ob := range obs {
+						if tag := fmt.Sprint(ob["tag"]); !codeTags[tag] { // one outbound per tag
+							codeTags[tag] = true
+							codeOut = append(codeOut, ob)
+						}
+					}
+					codeRules = append(codeRules, rules...)
+				} else {
+					slog.Warn("protocol code not merged", "node", n.ID, "err", err)
+				}
 			}
 			xr.Inbounds = append(xr.Inbounds, in)
 			// a protocol with its own address sends its traffic from there (a proxy pass from there too)
@@ -339,7 +357,8 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			st.WireGuard = append(st.WireGuard, wg)
 		}
 	}
-	xr.Base = xrayBase(srv, passOut, passRules)
+	// a protocol's own rules come before its proxy pass or address: they are the more specific
+	xr.Base = xrayBase(srv, append(codeOut, passOut...), append(codeRules, passRules...))
 	if srv.XrayCode != "" { // the operator's own configuration on top
 		if base, ins, err := mergeXray(xr.Base, xr.Inbounds, srv.XrayCode); err == nil {
 			xr.Base, xr.Inbounds = base, ins

@@ -87,7 +87,9 @@ marked `pass_only` serves only proxy passes. Shared certificates (`certs` table)
 `State.Certs`: Xray inbounds refer to them as `@cert/<id>/cert` files the agent writes (Xray reloads
 them every ten minutes), Hysteria2 gets the content; agents report the leaf they hold and the one
 each TLS inbound serves (`Live.Certs`). Configuration code (`servers.xray_code`, `nodes.code`) is
-merged on top of the generated configuration in `code.go`; the agent tests the result with
+merged on top of the generated configuration in `code.go`: a protocol's code into its inbound (merge
+patch), its outbounds into the base and its rules - limited to its inbound tag, after `no-private` -
+before the panel's other rules; the server's code last. The agent tests the result with
 `xray run -test` before applying anything.
 
 Servers whose provider decides their ports (NAT servers, LXC and Incus containers) carry the

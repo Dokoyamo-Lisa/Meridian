@@ -384,6 +384,9 @@ func findTool(name string) *mcpTool {
 func pInt(desc string) map[string]any { return map[string]any{"type": "integer", "description": desc} }
 func pStr(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
 
+// protocolCodeHelp explains a protocol's own settings as code.
+const protocolCodeHelp = "A protocol's own settings: for an Xray protocol JSON (comments allowed) - fields merged into its inbound (sniffing, streamSettings.sockopt, fallbacks, ...), \"outbounds\" to add (own tags, not the panel's direct/block) and \"rules\" routing this protocol's traffic only (e.g. [{\"domain\": [\"geosite:openai\"], \"outboundTag\": \"warp\"}]); its tag, port and users stay the panel's. For Hysteria2 YAML (auth and trafficStats stay the panel's; saving restarts it). Only the syntax is checked."
+
 // publicPortsHelp explains the ports a NAT server's provider forwards, for the tools that take them.
 const publicPortsHelp = "Only for servers whose provider decides their ports (NAT servers, LXC and Incus containers): the ports it forwards, as on the provider's page - e.g. '20000-20019'. Where the number on the server differs from the public one write PUBLIC:LOCAL, e.g. '40001-40010:10001-10010' or '10022:22'. Add /tcp or /udp when only one is forwarded. Omit for an ordinary server (every port)."
 
@@ -957,6 +960,19 @@ var mcpTools = []mcpTool{
 			srv, _ := m["server"].(map[string]any)
 			return pick(srv, "id", "name", "address", "ip_version", "addrs", "public_ports", "country", "city", "limits"), nil
 		}},
+	{Name: "set_protocol_code", Title: "A protocol's own settings", Write: true,
+		Description: "Set (or with an empty string remove) a protocol's own advanced settings as code, merged on top of what the panel generates. " + protocolCodeHelp + " Afterwards read apply_errors in get_server: what the core refuses leaves the running configuration as it was.",
+		Props:       map[string]any{"protocol_id": pInt("Protocol id (list_servers)"), "code": pStr("The settings: JSON for Xray protocols, YAML for Hysteria2")},
+		Required:    []string{"protocol_id", "code"},
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			id, err := needInt(a, "protocol_id")
+			if err != nil {
+				return nil, err
+			}
+			code, _ := argStr(a, "code")
+			v, err := c.api("PATCH", fmt.Sprintf("/api/nodes/%d", id), map[string]any{"code": code})
+			return pick(v, "id", "kind", "label", "port", "code", "notes"), err
+		}},
 	{Name: "list_certificates", Title: "Shared certificates",
 		Description: "The shared certificates (kept once, used by TLS and Hysteria2 protocols on any server): names, domains, expiry, and for each protocol using one whether its server serves it yet (live), holds it (installed, Xray loads it within ten minutes), has not taken it (pending), is offline or needs agent 0.6. Private keys are never shown.",
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
@@ -1030,6 +1046,9 @@ var mcpTools = []mcpTool{
 			}
 			if v, ok := argStr(a, "bind_ip"); ok {
 				b["bind_ip"] = v
+			}
+			if v, ok := argStr(a, "code"); ok {
+				b["code"] = v
 			}
 			v, err := c.api("POST", fmt.Sprintf("/api/servers/%d/nodes", id), b)
 			return pick(v, "id", "kind", "label", "net", "port", "public_port", "enabled", "settings", "apps", "notes", "pass_name", "pass_only"), err
@@ -1407,6 +1426,7 @@ func protocolProps(withServer bool) map[string]any {
 		m["exit_protocol_id"] = pInt("Proxy pass: send this protocol's traffic out through that protocol on another server (an Xray entry; any exit but WireGuard)")
 		m["pass_only"] = map[string]any{"type": "boolean", "description": "Serve only proxy passes from other servers: users cannot connect to it directly and it is left out of their links. Use it for an exit that people should reach only through a relay"}
 		m["bind_ip"] = pStr("One of the server's addresses (addrs in get_server) for this protocol alone: it listens there, its traffic leaves from there, links use it. Protocols on different addresses may share a port. Omit for all addresses")
+		m["code"] = pStr(protocolCodeHelp)
 	}
 	return m
 }

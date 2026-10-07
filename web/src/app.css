@@ -475,12 +475,12 @@ details.adv summary:hover { color: var(--ink); }
 .check-panel.bad { background: var(--crit-soft); border-color: transparent; }
 .check-panel.bad p { color: var(--ink-2); }
 .app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 14px; margin-top: 10px; }
-.app-cell { display: flex; gap: 8px; align-items: baseline; font-size: 12px; min-width: 0; }
+.app-cell { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; font-size: 12px; min-width: 0; }
 .app-cell > span:first-child { width: 12px; flex: none; }
 .app-cell.ok > span:first-child { color: var(--good); }
 .app-cell.no { color: var(--ink-3); }
 .app-cell.no > span:first-child { color: var(--crit); }
-.app-cell .mini { flex-basis: 100%; }
+.app-cell .mini { flex-basis: 100%; width: auto; padding-left: 20px; font-size: 10.5px; letter-spacing: 0; }
 .check-panel .notes { margin: 10px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
 .check-panel .notes li + li { margin-top: 4px; }
 .apps-row { font-size: 11.5px; color: var(--ink-3); }
