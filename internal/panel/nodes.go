@@ -70,8 +70,9 @@ func wgGateway(prefix string) (netip.Prefix, netip.Addr, error) {
 	return p, p.Addr().Next(), nil
 }
 
-// wgInterface renders a WireGuard node and its peers.
-func wgInterface(n *Node, peers []*wgPeer) (proto.WGInterface, error) {
+// wgInterface renders a WireGuard node and its peers: IPv6 inside only where the server routes it
+// (wg6), the devices' traffic leaving from the protocol's own address when it has one.
+func wgInterface(n *Node, peers []*wgPeer, srv *Server) (proto.WGInterface, error) {
 	var s wgSettings
 	if err := json.Unmarshal(n.Settings, &s); err != nil {
 		return proto.WGInterface{}, err
@@ -80,17 +81,18 @@ func wgInterface(n *Node, peers []*wgPeer) (proto.WGInterface, error) {
 	if err != nil {
 		return proto.WGInterface{}, err
 	}
+	v6 := wg6(srv, s)
 	addrs := []string{netip.PrefixFrom(gw4, p4.Bits()).String()}
-	if s.Subnet6 != "" {
+	if v6 {
 		if p6, gw6, err := wgGateway(s.Subnet6); err == nil {
 			addrs = append(addrs, netip.PrefixFrom(gw6, p6.Bits()).String())
 		}
 	}
 	out := proto.WGInterface{NodeID: n.ID, Name: proto.WGName(n.ID), PrivateKey: s.PrivateKey, ListenPort: n.Port,
-		Address: addrs, MTU: s.MTU, DNS: s.DNSLogging}
+		Address: addrs, MTU: s.MTU, DNS: s.DNSLogging, SNAT: n.BindIP}
 	for _, p := range peers {
 		allowed := []string{p.IP4 + "/32"}
-		if p.IP6 != "" {
+		if v6 && p.IP6 != "" {
 			allowed = append(allowed, p.IP6+"/128")
 		}
 		out.Peers = append(out.Peers, proto.WGPeer{SubID: p.SubID, PublicKey: p.PublicKey, PresharedKey: p.PSK,

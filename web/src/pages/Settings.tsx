@@ -6,8 +6,9 @@ import { setQuery, useLocation } from '../router'
 import { loadSession, setMeta, useSession } from '../session'
 import { Ago, Check, Code, Empty, ErrorBox, Field, Loading, Modal, PageHead, QR, Seg, Tabs, ask, errText, run, toast, toastError, useAsync } from '../ui'
 import { ApiReference } from './ApiDocs'
+import { Certificates } from './Certificates'
 
-type Tab = 'general' | 'security' | 'api'
+type Tab = 'general' | 'certs' | 'security' | 'api'
 
 export function Settings() {
   const s = useSession()
@@ -21,11 +22,13 @@ export function Settings() {
         onChange={(t) => setQuery('tab', t)}
         tabs={[
           ['general', 'Panel'],
+          ['certs', 'Certificates'],
           ['security', 'Security'],
           ['api', 'API & MCP'],
         ]}
       />
       {tab === 'general' && <General />}
+      {tab === 'certs' && <Certificates />}
       {tab === 'security' && <Security />}
       {tab === 'api' && <ApiTab />}
     </>

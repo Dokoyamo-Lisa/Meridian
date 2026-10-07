@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sort"
 	"sync"
@@ -228,7 +229,7 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			return nil, err
 		}
 		for _, s := range all {
-			if !s.Paused && s.Scope.Has(id) {
+			if !s.Paused && s.Scope.HasServer(id, nodes) {
 				subs = append(subs, s)
 			}
 		}
@@ -257,6 +258,8 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 
 	var passOut, passRules []map[string]any
 	xr := &proto.Xray{}
+	shared := p.sharedCertsFor(ctx, nodes)
+	st.Certs = stateCerts(shared)
 	for _, n := range nodes {
 		if !n.Enabled {
 			continue
@@ -268,18 +271,27 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 		over := p.credOverrides(ctx, n.ID)
 		switch k.Engine {
 		case "xray":
-			in, err := xrayInbound(n, subs, passByExit[n.ID], over)
+			in, err := xrayInbound(n, usersOf(subs, n), passByExit[n.ID], over)
 			if err != nil {
 				slog.Error("render inbound", "node", n.ID, "err", err)
 				continue
 			}
 			xr.Inbounds = append(xr.Inbounds, in)
+			// a protocol with its own address sends its traffic from there (a proxy pass from there too)
+			if n.BindIP != "" && n.PassNode == 0 {
+				passOut = append(passOut, bindOutbound(srv, n))
+				passRules = append(passRules, map[string]any{"ruleTag": bindTag(n.ID),
+					"inboundTag": []string{proto.InboundTag(n.ID)}, "outboundTag": bindTag(n.ID)})
+			}
 			// proxy pass, entry side: send this node's traffic out through its exit node
 			if n.PassNode > 0 {
 				if exit, err := p.nodeByID(ctx, n.PassNode); err == nil && exit.Enabled && exit.PassNode == 0 {
 					if xs, err := p.serverByID(ctx, exit.ServerID); err == nil && xs.DeletedAt == 0 &&
 						xs.AccountID == srv.AccountID && xs.ID != srv.ID {
 						if ob, err := passOutbound(srv, n, xs, exit); err == nil {
+							if n.BindIP != "" {
+								ob["sendThrough"] = n.BindIP
+							}
 							passOut = append(passOut, ob)
 							passRules = append(passRules, map[string]any{"ruleTag": passTag(n.ID),
 								"inboundTag": []string{proto.InboundTag(n.ID)}, "outboundTag": passTag(n.ID)})
@@ -290,19 +302,36 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 				}
 			}
 		case "hysteria":
-			hn, err := hyNode(n, subs, passByExit[n.ID], over)
+			hn, err := hyNode(n, usersOf(subs, n), passByExit[n.ID], over)
 			if err != nil {
 				slog.Error("render hysteria", "node", n.ID, "err", err)
 				continue
 			}
+			hn.Bind = n.BindIP
+			if _, custom, err := checkHyCode(n.Code); err == nil {
+				hn.Custom = custom
+			}
+			if id, _ := certName(n.Kind, n.Settings); id > 0 { // a shared certificate: its current version
+				if c := shared[id]; c != nil {
+					hn.CertPEM, hn.KeyPEM = c.CertPEM, c.KeyPEM
+				} else {
+					continue
+				}
+			}
+			switch domainStrategy(srv, "") {
+			case "UseIPv4":
+				hn.Mode = "4"
+			case "UseIPv6":
+				hn.Mode = "6"
+			}
 			st.Hysteria = append(st.Hysteria, hn)
 		case "wireguard":
-			peers, err := p.ensureWGPeers(ctx, n, subs)
+			peers, err := p.ensureWGPeers(ctx, n, usersOf(subs, n))
 			if err != nil {
 				slog.Error("wireguard peers", "node", n.ID, "err", err)
 				continue
 			}
-			wg, err := wgInterface(n, peers)
+			wg, err := wgInterface(n, peers, srv)
 			if err != nil {
 				slog.Error("render wireguard", "node", n.ID, "err", err)
 				continue
@@ -310,7 +339,14 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			st.WireGuard = append(st.WireGuard, wg)
 		}
 	}
-	xr.Base = xrayBase(passOut, passRules)
+	xr.Base = xrayBase(srv, passOut, passRules)
+	if srv.XrayCode != "" { // the operator's own configuration on top
+		if base, ins, err := mergeXray(xr.Base, xr.Inbounds, srv.XrayCode); err == nil {
+			xr.Base, xr.Inbounds = base, ins
+		} else {
+			slog.Warn("xray code not merged", "server", srv.ID, "err", err)
+		}
+	}
 	st.Xray = xr
 
 	fwds, err := p.forwardsOf(ctx, id)
@@ -375,24 +411,35 @@ func (p *Panel) ensureWGPeers(ctx context.Context, n *Node, subs []*Sub) ([]*wgP
 		return nil, err
 	}
 	bySub := map[int64]*wgPeer{}
-	used := map[string]bool{}
 	for _, pr := range existing {
 		bySub[pr.SubID] = pr
-		used[pr.IP4] = true
 	}
-	var missing []*Sub
+	missing := false
 	for _, s := range subs {
-		if bySub[s.ID] == nil {
-			missing = append(missing, s)
-		}
+		missing = missing || bySub[s.ID] == nil
 	}
-	if len(missing) > 0 {
+	if missing {
 		var ws wgSettings
 		if err := json.Unmarshal(n.Settings, &ws); err != nil {
 			return nil, err
 		}
+		// read, pick and store in one write: a link fetched while the server is being compiled must
+		// not give one user two key pairs (the server would get the other one) or two users one address
+		made := false
 		err := p.db.Write(ctx, func(tx *sql.Tx) error {
-			for _, s := range missing {
+			fresh, err := queryPeers(ctx, tx, n.ID)
+			if err != nil {
+				return err
+			}
+			used := map[string]bool{}
+			for _, pr := range fresh {
+				bySub[pr.SubID] = pr
+				used[pr.IP4] = true
+			}
+			for _, s := range subs {
+				if bySub[s.ID] != nil {
+					continue
+				}
 				ip4, ip6, err := allocWGAddrs(ws, used)
 				if err != nil {
 					return err
@@ -400,16 +447,20 @@ func (p *Panel) ensureWGPeers(ctx context.Context, n *Node, subs []*Sub) ([]*wgP
 				used[ip4] = true
 				priv, pub := x25519Pair(base64.StdEncoding)
 				pr := &wgPeer{SubID: s.ID, NodeID: n.ID, PrivateKey: priv, PublicKey: pub, PSK: randB64(32), IP4: ip4, IP6: ip6}
-				if _, err := tx.Exec(`INSERT OR IGNORE INTO wg_peers (sub_id, node_id, private_key, public_key, psk, ip4, ip6)
+				if _, err := tx.Exec(`INSERT INTO wg_peers (sub_id, node_id, private_key, public_key, psk, ip4, ip6)
 					VALUES (?, ?, ?, ?, ?, ?, ?)`, pr.SubID, pr.NodeID, pr.PrivateKey, pr.PublicKey, pr.PSK, pr.IP4, pr.IP6); err != nil {
 					return err
 				}
 				bySub[s.ID] = pr
+				made = true
 			}
 			return nil
 		})
 		if err != nil {
 			return nil, err
+		}
+		if made { // a peer made for a link must reach the server too
+			p.touchServers(n.ServerID)
 		}
 	}
 	out := make([]*wgPeer, 0, len(subs))
@@ -430,21 +481,15 @@ func (p *Panel) endpointsFor(ctx context.Context, sub *Sub) ([]subgen.Endpoint, 
 	}
 	var out []subgen.Endpoint
 	for _, srv := range servers {
-		if !sub.Scope.Has(srv.ID) || srv.Host() == "" {
+		if srv.Host() == "" {
 			continue
 		}
 		nodes, err := p.nodesOf(ctx, srv.ID)
 		if err != nil {
 			return nil, err
 		}
-		perServer := 0
 		for _, n := range nodes {
-			if n.Enabled {
-				perServer++
-			}
-		}
-		for _, n := range nodes {
-			if !n.Enabled {
+			if !n.Enabled || len(usersOf([]*Sub{sub}, n)) == 0 {
 				continue
 			}
 			var peer *wgPeer
@@ -463,6 +508,7 @@ func (p *Panel) endpointsFor(ctx context.Context, sub *Sub) ([]subgen.Endpoint, 
 			out = append(out, e)
 		}
 	}
+	uniqueNames(out)
 	return out, nil
 }
 
@@ -488,16 +534,49 @@ func (p *Panel) credOverrides(ctx context.Context, nodeID int64) map[int64]creds
 }
 
 // endpointName is "🇯🇵 Tokyo · REALITY", or the node's own name when set.
+// endpointName is how apps list a protocol: by its own name when it has one, otherwise by the
+// server's name and the protocol - with the flag of the server's country in front, unless the name
+// starts with a flag already.
 func endpointName(srv *Server, n *Node) string {
-	label := n.Name
-	if label == "" {
-		label = protocolLabel(n.Kind, n.Settings)
+	name := n.Name
+	if name == "" {
+		name = srv.Name + " · " + protocolLabel(n.Kind, n.Settings)
 	}
-	name := srv.Name + " · " + label
-	if f := flagEmoji(srv.Country); f != "" {
+	if f := flagEmoji(srv.Country); f != "" && !startsWithFlag(name) {
 		name = f + " " + name
 	}
 	return name
+}
+
+func startsWithFlag(s string) bool {
+	for _, r := range s {
+		return r >= 0x1F1E6 && r <= 0x1F1FF
+	}
+	return false
+}
+
+// uniqueNames numbers repeated names ("IPLC", "IPLC 2"): apps such as Clash refuse a list in which
+// two proxies share a name.
+func uniqueNames(eps []subgen.Endpoint) {
+	seen := map[string]int{}
+	for _, e := range eps {
+		seen[e.Name] = 0
+	}
+	for i := range eps {
+		n := eps[i].Name
+		if seen[n]++; seen[n] == 1 {
+			continue
+		}
+		for k := seen[n]; ; k++ {
+			alt := fmt.Sprintf("%s %d", n, k)
+			if _, taken := seen[alt]; !taken {
+				seen[alt] = 1
+				seen[n] = k
+				eps[i].Name = alt
+				break
+			}
+		}
+	}
 }
 
 func flagEmoji(cc string) string {

@@ -119,12 +119,69 @@ do instead. Below the form you see which apps can use the protocol as configured
 - Ports are chosen for you (443 first for TLS, REALITY and Hysteria2 where it is free; 8388 for
   Shadowsocks, 51820 for WireGuard) and can be changed. On a server whose provider decides the
   ports, only those ports are used (see above).
+- **One address per protocol**: on a server with several IP addresses, give a protocol one of them
+  (**Server address for this protocol**, under *Port, name and more*). It listens there, its
+  traffic leaves from there, and links use it - so several protocols can each have port 443 on
+  their own address. The agent lists the server's addresses after it connects (agent 0.6).
+- **Names**: a protocol with a name is listed in apps under that name alone; without one, as
+  "server · protocol". Repeated names are numbered, so every app accepts the list.
+- **Certificate**: self-signed, Let's Encrypt, pasted, or **shared** - one certificate kept once in
+  *Settings › Certificates* and replaced there once for every server (see below).
+- **WireGuard** tunnels carry IPv4 by default: devices keep their own IPv6 and full tunnels do not
+  route `::/0`. Turn on **IPv6 through the tunnel** where the server has IPv6 (agent 0.6): devices
+  then get an IPv6 address inside and reach IPv6 sites through the server.
+- **Proxy pass** sends a protocol's traffic out through a protocol on another server. Whether users
+  may also connect to that exit directly is up to you: untick **Users can also connect to the exit
+  directly** (or tick **Only for proxy passes** on the exit) and the exit leaves users' links and
+  accepts only the pass.
 
 **Already running Xray, V2Ray, x-ui, 3x-ui, sing-box or Hysteria2 on the server?** Use **Import
 existing setup** on the server page. The agent reads their configuration (it changes nothing), you
 pick what to bring over, and each protocol keeps its keys, and each user keeps their ID or password
 - devices keep working. With **Take over**, the old service is stopped and Meridian serves the same
 ports; without it, nothing is stopped and the imports use free ports.
+
+### IP version
+
+A server uses IPv4 and IPv6 by default. In its **Edit** dialog, **IP version** can make it IPv4
+only (protocols reach sites over IPv4, links use the IPv4 address, WireGuard carries no IPv6) or
+IPv6 only. A server whose kernel has IPv6 turned off is used as IPv4 only by itself - nothing IPv6
+is configured there, so applying never fails over it. Changing it applies to Xray live; Hysteria2
+protocols restart once (their devices reconnect by themselves).
+
+### Shared certificates
+
+When several servers use one certificate - a wildcard such as `*.example.com`, or one your own
+ACME client renews - keep it once in **Settings › Certificates** and choose **Shared certificate**
+in each protocol. Replacing it there updates every server that uses it: Xray loads the new one
+within ten minutes without disconnecting anyone, Hysteria2 restarts once. The list shows, per
+server and protocol, whether it is serving the new certificate yet (the agent checks what each
+TLS port actually presents). A renewal hook can do the same with one API call:
+
+```bash
+curl -fsS -X PATCH https://panel.example.com/api/certs/ID -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  --data "$(jq -n --rawfile c fullchain.pem --rawfile k privkey.pem '{cert_pem: $c, key_pem: $k}')"
+```
+
+A replacement that no longer covers a domain some protocol uses is refused.
+
+### Configuration as code
+
+For what the forms do not offer, a server's **Configuration as code** section takes your own Xray
+configuration - JSON, comments allowed - merged on top of what the panel generates:
+
+- `outbounds` are added, or replace the one with the same tag;
+- `routing.rules` come before the panel's own rules;
+- `inbounds` with a protocol's tag (`n12`, listed in the section) change that protocol; others are
+  added as your own inbounds, with the users written in them;
+- other sections (`dns`, `fakedns`, ...) are merged; `api`, `stats`, `log` and `policy` stay
+  Meridian's.
+
+A Hysteria2 protocol takes its own YAML the same way (*Port, name and more › Configuration as
+code*). Only the syntax is checked: Xray and Hysteria decide the rest. If the core refuses the
+result, the server's page shows why and the running configuration stays. **What the server gets**
+shows the merged result.
 
 ## 4. Add users
 
@@ -137,7 +194,8 @@ ports; without it, nothing is stopped and the imports use free ports.
 
 Options:
 
-- **Servers**: all servers (including ones you add later) or only some.
+- **Access**: everything (including servers you add later), or only some - whole servers (with the
+  protocols added to them later) and single protocols, in any mix.
 - **Data per cycle, reset day, valid until, device limit**: these only raise alerts. Nothing is ever
   paused or cut off automatically - pausing is always your click.
 - **How many**: create `team-01` … `team-20` in one go, each with their own password.

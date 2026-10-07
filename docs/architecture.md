@@ -76,6 +76,20 @@ Cores run as their own services - systemd units, or OpenRC services on Alpine Li
 or upgrading the agent never interrupts traffic. `internal/agent/service` describes each service once
 and writes it for whichever init system the server runs.
 
+A protocol can have one of the server's addresses to itself (`bind_ip`): Xray listens there and a
+`bind-n<id>` outbound with `sendThrough` sends its traffic from there; Hysteria2 gets `listen` and a
+bound `direct` outbound; WireGuard traffic is SNATed to it. A server's IP version adds a final
+`ipver` rule to an outbound with that domain strategy (the `direct` outbound itself never changes:
+re-adding Xray's default outbound live could make another one the default).
+
+Users can have whole servers or single protocols (`Scope.Servers` / `Scope.Nodes`); a protocol
+marked `pass_only` serves only proxy passes. Shared certificates (`certs` table) reach servers in
+`State.Certs`: Xray inbounds refer to them as `@cert/<id>/cert` files the agent writes (Xray reloads
+them every ten minutes), Hysteria2 gets the content; agents report the leaf they hold and the one
+each TLS inbound serves (`Live.Certs`). Configuration code (`servers.xray_code`, `nodes.code`) is
+merged on top of the generated configuration in `code.go`; the agent tests the result with
+`xray run -test` before applying anything.
+
 Servers whose provider decides their ports (NAT servers, LXC and Incus containers) carry the
 provider's forwarding as `public_ports` (`internal/panel/ports.go`): new protocols and forwards get
 one of those ports, others are refused, links and proxy passes use the public number, and Let's

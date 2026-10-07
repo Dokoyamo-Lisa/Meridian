@@ -74,16 +74,19 @@ Read (any token):
 | `get_scan` | what a scan found on a server (existing Xray, V2Ray, x-ui, 3x-ui, sing-box, Hysteria2) |
 | `get_access` | the country rules, devices connected now by country, refused packets |
 | `get_status_page` | how the status page is set up, and where users sign in |
+| `list_certificates` | shared certificates, the protocols using each and whether each server serves it yet (no private keys) |
 | `list_blocked_ips`, `action_status` | |
 
 Change (full-access token):
 
 | Tool | Notes |
 | --- | --- |
-| `create_user`, `update_user`, `new_user_password`, `resume_user`, `reset_user_usage`, `sign_out_user` | generated passwords come back once |
+| `create_user`, `update_user`, `new_user_password`, `resume_user`, `reset_user_usage`, `sign_out_user` | generated passwords come back once; access by whole servers (`server_ids`) and single protocols (`protocol_ids`) |
 | `pause_user`, `rotate_user_link`, `reset_user_credentials`, `delete_user` | disconnect people - need `confirm=true` |
 | `add_server`, `get_install_command` | return the install command (it contains the server's secret) |
-| `add_protocol`, `add_forward`, `unblock_ip`, `scan_server` | applied live; a scan changes nothing |
+| `update_server`, `set_server_ports` | name, address (an IP also sets the location from DB-IP), IP version, ports from the provider, Xray configuration code - nothing restarts |
+| `add_protocol`, `add_forward`, `unblock_ip`, `scan_server` | applied live; a scan changes nothing; a protocol can have its own server address (`bind_ip`) or serve only proxy passes (`pass_only`) |
+| `replace_certificate` | replaces a shared certificate once for every server that uses it |
 | `set_status_page`, `set_server_on_status_page` | where the status page is, and how each server appears on its globe |
 | `set_branding` | the panel's name, its logo (SVG markup or a base64 image; checked like an upload) and how the logo moves |
 | `import_protocols`, `set_country_rule`, `set_protocol_enabled`, `remove_forward`, `block_ip`, `server_action` | can disconnect people or stop services - need `confirm=true` |

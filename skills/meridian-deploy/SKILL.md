@@ -317,6 +317,24 @@ Then tell the human, in one message:
 
 Delete `server.json` files and any other files holding secrets.
 
+## Shared certificates (optional)
+
+When several servers use one certificate (a wildcard such as `*.example.com`, or one an ACME client
+renews), add it once and point the protocols at it:
+
+```bash
+python3 -c 'import json,sys; print(json.dumps({"name": "wildcard", "cert_pem": open("fullchain.pem").read(), "key_pem": open("privkey.pem").read()}))' > cert.json
+scripts/api.sh POST /api/certs "$(cat cert.json)"     # note the "id" in the answer
+rm cert.json
+scripts/api.sh POST /api/servers/ID/nodes '{"kind":"trojan","settings":{"security":"tls","cert_mode":"shared","cert_id":CERT_ID,"sni":"tokyo.example.com"}}'
+```
+
+After each renewal, the **same** call with `PATCH /api/certs/CERT_ID` replaces it on every server -
+put it in the ACME client's deploy hook. `scripts/api.sh GET /api/certs` then shows each server's
+`state`: `live` = serving it; `installed` = Xray loads it within ten minutes; `pending` = not taken
+yet (server offline, or its agent is older than 0.6: upgrade it). Never copy the certificate onto
+servers yourself.
+
 ## Later
 
 **Upgrade the panel** (servers keep running; agents reconnect within seconds):

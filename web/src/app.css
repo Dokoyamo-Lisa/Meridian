@@ -402,6 +402,17 @@ details.adv summary:hover { color: var(--ink); }
 
 .share { display: flex; gap: 22px; align-items: flex-start; }
 .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0 14px; margin: -6px 0 10px; }
+.code-edit { font-size: 12px; line-height: 1.5; tab-size: 2; white-space: pre; resize: vertical; min-height: 220px; }
+
+/* shared certificates */
+.cert-card { border-top: 1px solid var(--line); padding: 14px 0; }
+.cert-card:first-of-type { border-top: 0; }
+
+/* access: servers, and under each its protocols */
+.scope-tree { display: flex; flex-direction: column; gap: 4px; margin: -6px 0 12px; }
+.scope-srv { border-top: 1px solid var(--line); padding-top: 4px; }
+.scope-srv:first-child { border-top: 0; padding-top: 0; }
+.scope-nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 14px; padding-left: 26px; }
 .pick label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .pick .check { padding: 11px 13px; }
 .savebar { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: flex-end; gap: 8px; padding: 14px 0 6px; background: linear-gradient(transparent, var(--page) 40%); }

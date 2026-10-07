@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"meridian/internal/proto"
 )
 
 // ---------------------------------------------------------------- settings
@@ -205,15 +207,19 @@ type Server struct {
 	StatusHidden    bool     `json:"status_hidden" doc:"Left off the status page"`
 	LocManual       bool     `json:"loc_manual" doc:"The location was set by hand (not from the IP database)"`
 	PublicPorts     string   `json:"public_ports" doc:"Ports the server's provider forwards to it (NAT servers, LXC and Incus containers), e.g. '20000-20019, 40001-40010:10001-10010'; empty = every port"`
+	IPVersion       string   `json:"ip_version" doc:"'' = IPv4 and IPv6, ipv4 = IPv4 only, ipv6 = IPv6 only: how protocols reach sites, which address links use, and whether WireGuard may route IPv6"`
+	Addrs           []string `json:"addrs" doc:"The addresses on the server's own interfaces, as the agent reports them: what a protocol can be bound to"`
+	XrayCode        string   `json:"xray_code" doc:"Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates: outbounds (added, or replacing one with the same tag), routing.rules (before the panel's), inbounds by tag (merged into that protocol, or added as your own) and other sections (dns, ...). Only the syntax is checked; Xray decides the rest"`
 
-	ports portMap // PublicPorts, parsed
+	ports    portMap // PublicPorts, parsed
+	addrList string  // Addrs as stored
 }
 
 const serverCols = `id, account_id, name, secret, address, note, sort, created_at, deleted_at, instance_id, last_seq,
 agent_version, hostname, os, kernel, arch, cpu_model, cpu_cores, mem_total, disk_total, ipv4, ipv6, country, city,
 lat, lon, caps, boot_time, agent_started_at, first_seen_at, last_seen_at, online, status_changed_at, applied_rev,
 apply_errors, pending_restart, xray_version, bw_limit, bw_mode, bw_reset_day, bw_offset, cycle_rx, cycle_tx,
-cycle_start, price, currency, billing_cycle, expires_on, country_mode, country_list, public_name, status_hidden, loc_manual, public_ports`
+cycle_start, price, currency, billing_cycle, expires_on, country_mode, country_list, public_name, status_hidden, loc_manual, public_ports, ip_version, addrs, xray_code`
 
 func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 	s := &Server{}
@@ -224,11 +230,16 @@ func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 		&s.AgentStartedAt, &s.FirstSeenAt, &s.LastSeenAt, &s.Online, &s.StatusChangedAt, &s.AppliedRev,
 		&s.ApplyErrors, &s.PendingRestart, &s.XrayVersion, &s.BwLimit, &s.BwMode, &s.BwResetDay, &s.BwOffset,
 		&s.CycleRX, &s.CycleTX, &s.CycleStart, &s.Price, &s.Currency, &s.BillingCycle, &s.ExpiresOn, &s.CountryMode,
-		&s.CountryList, &s.PublicName, &s.StatusHidden, &s.LocManual, &s.PublicPorts)
+		&s.CountryList, &s.PublicName, &s.StatusHidden, &s.LocManual, &s.PublicPorts, &s.IPVersion, &s.addrList,
+		&s.XrayCode)
 	if err != nil {
 		return nil, err
 	}
 	s.ports, _ = parsePortMap(s.PublicPorts) // stored as parsePortMap wrote it
+	_ = json.Unmarshal([]byte(s.addrList), &s.Addrs)
+	if s.Addrs == nil {
+		s.Addrs = []string{}
+	}
 	_ = json.Unmarshal([]byte(s.CountryList), &s.Countries)
 	if s.Countries == nil {
 		s.Countries = []string{}
@@ -248,16 +259,38 @@ func (s *Server) addrIP() string {
 	return ""
 }
 
-// Host is the address clients connect to.
+// Host is the address clients connect to: the one set by hand, else the public IP the agent
+// reports - IPv4 first, or IPv6 first on a server set to IPv6 only (and never the other kind on a
+// server set to one).
 func (s *Server) Host() string {
 	if s.Address != "" {
 		return s.Address
+	}
+	switch s.IPVersion {
+	case "ipv4":
+		return s.IPv4
+	case "ipv6":
+		return s.IPv6
 	}
 	if s.IPv4 != "" {
 		return s.IPv4
 	}
 	return s.IPv6
 }
+
+// caps is what the server's agent says it supports (nothing before it first connects).
+func (s *Server) caps() proto.Caps {
+	var c proto.Caps
+	_ = json.Unmarshal([]byte(s.Caps), &c)
+	return c
+}
+
+// v6 says whether the server uses IPv6 at all: not when set to IPv4 only, nor when its kernel has
+// IPv6 turned off.
+func (s *Server) v6() bool { return s.IPVersion != "ipv4" && !s.caps().NoIPv6 }
+
+// v4 says whether the server uses IPv4.
+func (s *Server) v4() bool { return s.IPVersion != "ipv6" }
 
 // BwUsed applies the server's counting mode to its cycle counters.
 func (s *Server) BwUsed() int64 {
@@ -287,18 +320,22 @@ type Node struct {
 	Settings  json.RawMessage `json:"settings"`
 	Host      string          `json:"host"`
 	PassNode  int64           `json:"pass_node"`
+	PassOnly  bool            `json:"pass_only" doc:"Serves only proxy passes from other servers: users cannot connect to it directly and it is left out of their links"`
+	BindIP    string          `json:"bind_ip" doc:"The server address this protocol has to itself: it listens there, its traffic leaves from there and links use it (a public one). Empty = all of the server's addresses"`
+	Code      string          `json:"code" doc:"Hysteria2: your own configuration (YAML), merged on top of what the panel generates. Only the syntax is checked"`
 	Sort      int             `json:"sort"`
 	CreatedAt int64           `json:"created_at"`
 	UpdatedAt int64           `json:"updated_at"`
 }
 
-const nodeCols = `id, server_id, kind, name, port, enabled, settings, host, pass_node, sort, created_at, updated_at`
+const nodeCols = `id, server_id, kind, name, port, enabled, settings, host, pass_node, pass_only, bind_ip, code, sort,
+created_at, updated_at`
 
 func scanNode(r interface{ Scan(...any) error }) (*Node, error) {
 	n := &Node{}
 	var settings string
-	err := r.Scan(&n.ID, &n.ServerID, &n.Kind, &n.Name, &n.Port, &n.Enabled, &settings, &n.Host, &n.PassNode, &n.Sort,
-		&n.CreatedAt, &n.UpdatedAt)
+	err := r.Scan(&n.ID, &n.ServerID, &n.Kind, &n.Name, &n.Port, &n.Enabled, &settings, &n.Host, &n.PassNode, &n.PassOnly,
+		&n.BindIP, &n.Code, &n.Sort, &n.CreatedAt, &n.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -372,18 +409,29 @@ type Sub struct {
 	UpdatedAt    int64  `json:"updated_at"`
 }
 
-// Scope says which servers a subscription covers. Empty Servers means all of the account's
-// servers, including ones added later.
+// Scope says what a subscription can connect to: whole servers (with the protocols added to them
+// later) and single protocols. Both empty means everything on all of the account's servers,
+// including ones added later.
 type Scope struct {
 	Servers []int64 `json:"servers,omitempty"`
+	Nodes   []int64 `json:"protocols,omitempty"`
 }
 
-func (sc Scope) Has(serverID int64) bool {
-	if len(sc.Servers) == 0 {
+// All says whether the scope is everything.
+func (sc Scope) All() bool { return len(sc.Servers) == 0 && len(sc.Nodes) == 0 }
+
+// HasNode says whether the subscription can use one protocol.
+func (sc Scope) HasNode(serverID, nodeID int64) bool {
+	return sc.All() || slices.Contains(sc.Servers, serverID) || slices.Contains(sc.Nodes, nodeID)
+}
+
+// HasServer says whether the subscription can use any of a server's protocols (nodes).
+func (sc Scope) HasServer(serverID int64, nodes []*Node) bool {
+	if sc.All() || slices.Contains(sc.Servers, serverID) {
 		return true
 	}
-	for _, id := range sc.Servers {
-		if id == serverID {
+	for _, n := range nodes {
+		if slices.Contains(sc.Nodes, n.ID) {
 			return true
 		}
 	}
@@ -391,11 +439,26 @@ func (sc Scope) Has(serverID int64) bool {
 }
 
 func (sc Scope) String() string {
-	if len(sc.Servers) == 0 {
+	if sc.All() {
 		return ""
 	}
 	b, _ := json.Marshal(sc)
 	return string(b)
+}
+
+// usersOf are the subscriptions that may connect to a protocol: those whose scope has it, and none
+// for a protocol that serves only proxy passes.
+func usersOf(subs []*Sub, n *Node) []*Sub {
+	if n.PassOnly {
+		return nil
+	}
+	out := make([]*Sub, 0, len(subs))
+	for _, s := range subs {
+		if s.Scope.HasNode(n.ServerID, n.ID) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 const subCols = `id, account_id, name, note, token, uuid, secret, paused, paused_at, quota, reset_day, expires_at,

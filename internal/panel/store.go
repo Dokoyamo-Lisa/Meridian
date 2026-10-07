@@ -122,7 +122,14 @@ func (p *Panel) subByToken(ctx context.Context, token string) (*Sub, error) {
 }
 
 func (p *Panel) wgPeersOf(ctx context.Context, nodeID int64) ([]*wgPeer, error) {
-	rows, err := p.db.QueryContext(ctx, `SELECT sub_id, node_id, private_key, public_key, psk, ip4, ip6 FROM wg_peers
+	return queryPeers(ctx, p.db, nodeID)
+}
+
+// queryPeers reads a WireGuard node's peers, from the database or inside a transaction.
+func queryPeers(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, nodeID int64) ([]*wgPeer, error) {
+	rows, err := q.QueryContext(ctx, `SELECT sub_id, node_id, private_key, public_key, psk, ip4, ip6 FROM wg_peers
 		WHERE node_id = ?`, nodeID)
 	if err != nil {
 		return nil, err

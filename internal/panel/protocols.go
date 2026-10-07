@@ -43,6 +43,7 @@ const (
 	certSelf   = "self"   // self-signed, pinned in every client that can pin it
 	certACME   = "acme"   // Let's Encrypt, obtained and renewed by the agent
 	certCustom = "custom" // pasted by the admin
+	certShared = "shared" // one of the panel's shared certificates (updated once, for every server)
 )
 
 var (
@@ -53,7 +54,7 @@ var (
 	ss2022Methods  = []string{"2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm"}
 	ssClassic      = []string{"aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305"}
 	ssMethods      = append(append([]string{}, ss2022Methods...), ssClassic...)
-	certModes      = []string{certSelf, certACME, certCustom}
+	certModes      = []string{certSelf, certACME, certCustom, certShared}
 	pathRE         = regexp.MustCompile(`^/[A-Za-z0-9._~%!$&'()*+,;=:@/-]{0,127}$`)
 	serviceNameRE  = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 	shortIDRE      = regexp.MustCompile(`^[0-9a-f]{0,16}$`)
@@ -116,6 +117,7 @@ type certSettings struct {
 	KeyPEM      string `json:"key_pem,omitempty"`
 	CertSHA256  string `json:"cert_sha256,omitempty"` // of the DER certificate; set for self-signed ones
 	CertExpires int64  `json:"cert_expires,omitempty"`
+	CertID      int64  `json:"cert_id,omitempty"` // the shared certificate, for cert_mode shared
 }
 
 // xraySettings is the configuration of an Xray protocol: VLESS, VMess, Trojan, Shadowsocks, SOCKS5
@@ -174,6 +176,9 @@ type wgSettings struct {
 	DNSLogging bool   `json:"dns_logging"` // clients use the server's logging resolver
 	FullTunnel bool   `json:"full_tunnel"` // route everything (else only the VPN subnet)
 	Keepalive  int    `json:"keepalive"`
+	// IPv6 routes the devices' IPv6 through the tunnel too (Subnet6 inside, NAT66 out). Off, the
+	// tunnel is IPv4 only and full tunnels leave ::/0 out.
+	IPv6 bool `json:"ipv6"`
 }
 
 // protoInput is what the API accepts for a protocol's settings. Every field is optional: on create
@@ -190,7 +195,8 @@ type protoInput struct {
 	Fingerprint *string `json:"fingerprint" doc:"Browser fingerprint clients present: chrome, firefox, safari, ..."`
 	Target      *string `json:"target" doc:"REALITY: where unauthenticated visitors go, host:port"`
 	OwnSite     *bool   `json:"own_site" doc:"REALITY: the target is your own website on this server (127.0.0.1:port)"`
-	CertMode    *string `json:"cert_mode" doc:"TLS and Hysteria2: self | acme | custom"`
+	CertMode    *string `json:"cert_mode" doc:"TLS and Hysteria2: self | acme | custom | shared"`
+	CertID      *int64  `json:"cert_id" doc:"With cert_mode shared: the shared certificate (GET /api/certs)"`
 	CertPEM     *string `json:"cert_pem" doc:"cert_mode custom: the certificate chain (PEM)"`
 	KeyPEM      *string `json:"key_pem" doc:"cert_mode custom: the private key (PEM)"`
 	CDN         *bool   `json:"cdn" doc:"Behind a CDN that adds TLS (ws, httpupgrade, xhttp)"`
@@ -204,6 +210,7 @@ type protoInput struct {
 	MTU         *int    `json:"mtu" doc:"WireGuard"`
 	DNSLogging  *bool   `json:"dns_logging" doc:"WireGuard: clients use the server's logging resolver"`
 	FullTunnel  *bool   `json:"full_tunnel" doc:"WireGuard: send all traffic through the VPN"`
+	IPv6        *bool   `json:"ipv6" doc:"WireGuard: route IPv6 through the VPN too (needs IPv6 on the server and agent 0.6); off = IPv4 only, and full tunnels leave ::/0 out"`
 	Keepalive   *int    `json:"keepalive" doc:"WireGuard: seconds, 0 = off"`
 }
 
@@ -219,7 +226,7 @@ func (in *protoInput) unknownFor(kind string) []string {
 		in.XHTTPMode != nil || in.Security != nil || in.Flow != nil || in.Fingerprint != nil || in.Target != nil ||
 		in.OwnSite != nil || in.CDN != nil || in.CDNHost != nil || in.CDNPort != nil || in.Method != nil || in.UDP != nil
 	hyOnly := in.Obfs != nil || in.UpMbps != nil || in.DownMbps != nil
-	wgOnly := in.MTU != nil || in.DNSLogging != nil || in.FullTunnel != nil || in.Keepalive != nil
+	wgOnly := in.MTU != nil || in.DNSLogging != nil || in.FullTunnel != nil || in.Keepalive != nil || in.IPv6 != nil
 	certish := in.SNI != nil || in.CertMode != nil || in.CertPEM != nil || in.KeyPEM != nil
 	switch kind {
 	case subgen.KindHysteria2:
@@ -740,8 +747,17 @@ func (c *certSettings) settle(in *protoInput, sni, oldSNI, oldMode string) error
 			c.CertPEM, c.KeyPEM = "", ""
 		}
 		c.CertSHA256 = ""
+	case certShared:
+		// the certificate lives in the panel's store (checked by the API against the name)
+		c.CertPEM, c.KeyPEM, c.CertSHA256, c.CertExpires = "", "", "", 0
+		if in != nil && in.CertID != nil {
+			c.CertID = *in.CertID
+		}
 	default:
-		return errors.New("certificate must be self (self-signed, pinned), acme (Let's Encrypt) or custom")
+		return errors.New("certificate must be self (self-signed, pinned), acme (Let's Encrypt), custom or shared")
+	}
+	if c.CertMode != certShared {
+		c.CertID = 0
 	}
 	return nil
 }
@@ -779,8 +795,12 @@ func (c *certSettings) check(sni string) error {
 			return fmt.Errorf("the certificate is not valid for %s", sni)
 		}
 		c.CertExpires = leaf.NotAfter.Unix()
+	case certShared:
+		if c.CertID <= 0 {
+			return errors.New("choose one of the shared certificates (Settings › Certificates)")
+		}
 	default:
-		return errors.New("certificate must be self, acme or custom")
+		return errors.New("certificate must be self, acme, custom or shared")
 	}
 	return nil
 }
@@ -836,6 +856,62 @@ func (s *wgSettings) apply(in *protoInput) {
 	if in.Keepalive != nil {
 		s.Keepalive = clamp(*in.Keepalive, 0, 120)
 	}
+	if in.IPv6 != nil {
+		s.IPv6 = *in.IPv6
+		if s.IPv6 && s.Subnet6 == "" {
+			s.Subnet6 = fmt.Sprintf("fd%02x:%04x:%04x::/64", randUint32()%256, randUint32()%65536, randUint32()%65536)
+		}
+	}
+}
+
+// wg6 says whether a WireGuard protocol routes IPv6 on its server: asked for, the server uses IPv6,
+// and its agent can route it (0.6 and later, with nftables).
+func wg6(srv *Server, s wgSettings) bool {
+	return s.IPv6 && s.Subnet6 != "" && srv.v6() && srv.caps().WG6
+}
+
+// checkWG6 refuses IPv6 inside a WireGuard tunnel where the server cannot route it.
+func checkWG6(srv *Server, kind string, raw json.RawMessage) error {
+	if kind != subgen.KindWireGuard {
+		return nil
+	}
+	var s wgSettings
+	if json.Unmarshal(raw, &s) != nil || !s.IPv6 {
+		return nil
+	}
+	c := srv.caps()
+	switch {
+	case srv.IPVersion == "ipv4":
+		return errStatus(400, "this server is set to IPv4 only - change its IP version, or leave IPv6 off in the tunnel")
+	case c.NoIPv6:
+		return errStatus(400, "IPv6 is turned off in this server's kernel - turn it on, or leave IPv6 off in the tunnel")
+	case srv.FirstSeenAt > 0 && !c.WG6:
+		return errStatus(400, "routing IPv6 through WireGuard needs agent 0.6 or later and nftables - upgrade the agent first")
+	}
+	return nil
+}
+
+// bindAddr checks a protocol's own address: one of the server's (as its agent lists them), of a
+// kind the server uses. Empty means all addresses.
+func bindAddr(srv *Server, raw string) (string, error) {
+	raw = strings.Trim(strings.TrimSpace(raw), "[]")
+	if raw == "" {
+		return "", nil
+	}
+	a, err := netip.ParseAddr(raw)
+	if err != nil || a.Zone() != "" || !a.Unmap().IsGlobalUnicast() {
+		return "", errStatus(400, "a protocol's address is one of the server's IP addresses, e.g. 203.0.113.7")
+	}
+	a = a.Unmap()
+	switch {
+	case len(srv.Addrs) > 0 && !slices.Contains(srv.Addrs, a.String()):
+		return "", errStatus(400, fmt.Sprintf("%s is not an address of %s - it has %s", a, srv.Name, strings.Join(srv.Addrs, ", ")))
+	case a.Is6() && !srv.v6():
+		return "", errStatus(400, "this server does not use IPv6 (set to IPv4 only, or IPv6 is off in its kernel)")
+	case a.Is4() && !srv.v4():
+		return "", errStatus(400, "this server is set to IPv6 only")
+	}
+	return a.String(), nil
 }
 
 func optionalHost(v, what string) (string, error) {
@@ -1048,6 +1124,10 @@ func (c *certSettings) xrayCertificate(sni string) map[string]any {
 		return map[string]any{"certificateFile": ACMEFileRef(sni, "cert"), "keyFile": ACMEFileRef(sni, "key"),
 			"ocspStapling": 3600, "oneTimeLoading": false}
 	}
+	if c.CertMode == certShared { // files the agent keeps; Xray loads an update within ten minutes
+		return map[string]any{"certificateFile": proto.CertRef(c.CertID, "cert"), "keyFile": proto.CertRef(c.CertID, "key"),
+			"ocspStapling": 600, "oneTimeLoading": false}
+	}
 	return map[string]any{"certificate": pemLines(c.CertPEM), "key": pemLines(c.KeyPEM)}
 }
 
@@ -1063,6 +1143,9 @@ func xrayInbound(n *Node, subs []*Sub, pass []passClient, over map[int64]creds) 
 	}
 	tag := proto.InboundTag(n.ID)
 	in := map[string]any{"tag": tag, "port": n.Port, "sniffing": sniffing}
+	if n.BindIP != "" { // the protocol's own address
+		in["listen"] = n.BindIP
+	}
 	var clients []proto.XrayClient
 	add := func(email string, obj map[string]any, acc proto.XrayAccount) {
 		obj["email"] = email
@@ -1154,6 +1237,9 @@ func xrayInbound(n *Node, subs []*Sub, pass []passClient, over map[int64]creds) 
 	if acmeNeeded(s) {
 		out.ACME = s.SNI // the agent leaves the inbound out until it has the certificate
 	}
+	if s.Security == secTLS && s.CertMode == certShared {
+		out.Cert = s.CertID
+	}
 	return out, nil
 }
 
@@ -1199,6 +1285,33 @@ func passCredentials(entryServer *Server, entry *Node) (uuid, password string) {
 
 func passEmail(entry int64) string { return fmt.Sprintf("p%d", entry) }
 
+// domainStrategy is how Xray reaches sites from an address of the server ("" = any address): only
+// by IPv4 from an IPv4 address or on an IPv4-only server, only by IPv6 likewise; "" = as Xray does
+// by itself (both).
+func domainStrategy(srv *Server, bind string) string {
+	if a, err := netip.ParseAddr(bind); err == nil {
+		if a.Is4() {
+			return "UseIPv4"
+		}
+		return "UseIPv6"
+	}
+	switch {
+	case !srv.v4():
+		return "UseIPv6"
+	case !srv.v6():
+		return "UseIPv4"
+	}
+	return ""
+}
+
+func bindTag(node int64) string { return fmt.Sprintf("bind-n%d", node) }
+
+// bindOutbound sends a bound protocol's traffic out from its own address.
+func bindOutbound(srv *Server, n *Node) map[string]any {
+	return map[string]any{"tag": bindTag(n.ID), "protocol": "freedom", "sendThrough": n.BindIP,
+		"settings": map[string]any{"domainStrategy": domainStrategy(srv, n.BindIP)}}
+}
+
 func passTag(entry int64) string { return fmt.Sprintf("pass-n%d", entry) }
 
 // passOutbound renders the hop from an entry node's server to its exit node: the exit as a client
@@ -1241,12 +1354,19 @@ func nz(s, d string) string {
 }
 
 // xrayBase is everything around the inbounds: outbounds and routing. Outbounds and rules are
-// applied live by the agent, so a proxy pass change never restarts Xray.
-func xrayBase(passOut []map[string]any, passRules []map[string]any) json.RawMessage {
+// applied live by the agent, so a proxy pass or binding change never restarts Xray. A server set
+// to one IP version sends what no other rule takes through an outbound of that version; "direct"
+// itself never changes (re-adding the default outbound live could make another one the default).
+func xrayBase(srv *Server, extraOut []map[string]any, extraRules []map[string]any) json.RawMessage {
 	outbounds := []map[string]any{{"tag": "direct", "protocol": "freedom"}, {"tag": "block", "protocol": "blackhole"}}
-	outbounds = append(outbounds, passOut...)
+	outbounds = append(outbounds, extraOut...)
 	rules := []map[string]any{{"ruleTag": "no-private", "ip": []string{"geoip:private"}, "outboundTag": "block"}}
-	rules = append(rules, passRules...)
+	rules = append(rules, extraRules...)
+	if ds := domainStrategy(srv, ""); ds != "" {
+		outbounds = append(outbounds, map[string]any{"tag": "direct-ipver", "protocol": "freedom",
+			"settings": map[string]any{"domainStrategy": ds}})
+		rules = append(rules, map[string]any{"ruleTag": "ipver", "network": "tcp,udp", "outboundTag": "direct-ipver"})
+	}
 	b, _ := json.Marshal(map[string]any{"outbounds": outbounds,
 		"routing": map[string]any{"domainStrategy": "AsIs", "rules": rules}})
 	return b
@@ -1257,6 +1377,9 @@ func xrayBase(passOut []map[string]any, passRules []map[string]any) json.RawMess
 // clientEndpoint is a node as a client connects to it, with the given credentials.
 func clientEndpoint(n *Node, srv *Server, c creds, peer *wgPeer, name string) (subgen.Endpoint, error) {
 	host := n.Host
+	if a, err := netip.ParseAddr(n.BindIP); host == "" && err == nil && publicAddr(a) {
+		host = n.BindIP // the protocol's own public address (behind a provider's NAT, the server's)
+	}
 	if host == "" {
 		host = srv.Host()
 	}
@@ -1297,18 +1420,27 @@ func clientEndpoint(n *Node, srv *Server, c creds, peer *wgPeer, name string) (s
 		if err != nil {
 			return e, err
 		}
+		v6 := wg6(srv, s)
 		wg := &subgen.WireGuard{PrivateKey: peer.PrivateKey, PeerPublicKey: s.PublicKey, PresharedKey: peer.PSK,
-			Address4: peer.IP4, Address6: peer.IP6, MTU: s.MTU, Keepalive: s.Keepalive}
+			Address4: peer.IP4, MTU: s.MTU, Keepalive: s.Keepalive}
+		if v6 {
+			wg.Address6 = peer.IP6
+		}
 		if s.DNSLogging {
 			wg.DNS = []string{gw4.String()}
 		} else {
 			wg.DNS = []string{"1.1.1.1", "8.8.8.8"}
 		}
+		// IPv6 goes into the tunnel only where the server routes it: elsewhere ::/0 would swallow the
+		// device's IPv6
 		if s.FullTunnel {
-			wg.AllowedIPs = []string{"0.0.0.0/0", "::/0"}
+			wg.AllowedIPs = []string{"0.0.0.0/0"}
+			if v6 {
+				wg.AllowedIPs = append(wg.AllowedIPs, "::/0")
+			}
 		} else {
 			wg.AllowedIPs = []string{s.Subnet4}
-			if s.Subnet6 != "" {
+			if v6 {
 				wg.AllowedIPs = append(wg.AllowedIPs, s.Subnet6)
 			}
 		}

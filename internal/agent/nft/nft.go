@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -28,12 +29,15 @@ const (
 	markBase = 0x4d520000 // forward marks: base + forward id
 )
 
-// WGNat describes one WireGuard interface whose clients are NATed to the internet.
+// WGNat describes one WireGuard interface whose clients are NATed to the internet: from SNAT when
+// set (the protocol's own address), else from the outgoing interface's address. A Subnet6 routes
+// IPv6 too.
 type WGNat struct {
 	NodeID  int64
 	Iface   string
 	Subnet4 string
 	Subnet6 string
+	SNAT    string
 }
 
 // WGMark marks connections from WireGuard clients so the agent can read just those from conntrack.
@@ -176,7 +180,7 @@ func (e *Engine) Apply(spec Spec) error {
 		return nil
 	}
 	if needsForwarding(spec) {
-		enableForwarding()
+		enableForwarding(needsForwarding6(spec))
 	}
 	e.readCounters() // keep the counts gathered under the old rules
 	script := "add table inet " + Table + "\ndelete table inet " + Table + "\n" + text
@@ -196,6 +200,16 @@ func needsForwarding(spec Spec) bool {
 		}
 	}
 	return len(spec.WG) > 0
+}
+
+// needsForwarding6 says whether a WireGuard interface routes IPv6.
+func needsForwarding6(spec Spec) bool {
+	for _, g := range spec.WG {
+		if g.Subnet6 != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Remove deletes the table (decommission).
@@ -277,8 +291,14 @@ func (e *Engine) render(spec Spec) string {
 	var wgs []WGNat
 	for _, g := range spec.WG {
 		if ifaceRE.MatchString(g.Iface) {
-			if _, err := netip.ParsePrefix(g.Subnet4); err != nil {
+			if p, err := netip.ParsePrefix(g.Subnet4); err != nil || !p.Addr().Is4() {
 				g.Subnet4 = ""
+			}
+			if p, err := netip.ParsePrefix(g.Subnet6); err != nil || !p.Addr().Is6() {
+				g.Subnet6 = ""
+			}
+			if a, err := netip.ParseAddr(g.SNAT); err != nil || !a.IsGlobalUnicast() {
+				g.SNAT = ""
 			}
 			wgs = append(wgs, g)
 		}
@@ -401,8 +421,20 @@ func (e *Engine) render(spec Spec) string {
 		w("    ct mark 0x%08x masquerade", markBase+uint32(f.ID&0xffff))
 	}
 	for _, g := range spec.WG {
+		snat, _ := netip.ParseAddr(g.SNAT)
 		if g.Subnet4 != "" {
-			w("    ip saddr %s oifname != %q masquerade", g.Subnet4, g.Iface)
+			if snat.Is4() {
+				w("    ip saddr %s oifname != %q snat ip to %s", g.Subnet4, g.Iface, snat)
+			} else {
+				w("    ip saddr %s oifname != %q masquerade", g.Subnet4, g.Iface)
+			}
+		}
+		if g.Subnet6 != "" {
+			if snat.Is6() {
+				w("    ip6 saddr %s oifname != %q snat ip6 to %s", g.Subnet6, g.Iface, snat)
+			} else {
+				w("    ip6 saddr %s oifname != %q masquerade", g.Subnet6, g.Iface)
+			}
 		}
 	}
 	w("  }")
@@ -631,33 +663,65 @@ func run(script string) error {
 	return nil
 }
 
-// enableForwarding turns on IPv4 forwarding now and on boot. IPv6 forwarding is left alone: on hosts
-// that learn their IPv6 route by router advertisement it would drop that route.
-func enableForwarding() {
+// enableForwarding turns on IPv4 forwarding now and on boot, and IPv6 forwarding when a WireGuard
+// interface routes IPv6. A router ignores router advertisements - and a host that learns its IPv6
+// route from them would lose it - so every interface that takes them is told to keep taking them
+// (accept_ra 2) first. Once on, IPv6 forwarding stays on.
+func enableForwarding(v6 bool) {
 	_ = os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1\n"), 0o644)
 	_ = os.WriteFile("/proc/sys/net/netfilter/nf_conntrack_acct", []byte("1\n"), 0o644)
 	conf := "# written by meridian-agent\nnet.ipv4.ip_forward = 1\nnet.netfilter.nf_conntrack_acct = 1\n"
-	if old, _ := os.ReadFile("/etc/sysctl.d/99-meridian.conf"); string(old) != conf {
+	old, _ := os.ReadFile("/etc/sysctl.d/99-meridian.conf")
+	if v6 || strings.Contains(string(old), "net.ipv6.conf.all.forwarding") {
+		if fileExists("/proc/sys/net/ipv6/conf/all/forwarding") {
+			dirs, _ := filepath.Glob("/proc/sys/net/ipv6/conf/*")
+			for _, d := range dirs {
+				name := filepath.Base(d)
+				if name == "all" || name == "lo" || strings.HasPrefix(name, "uwg") || !ifaceRE.MatchString(name) {
+					continue
+				}
+				if b, err := os.ReadFile(d + "/accept_ra"); err == nil && strings.TrimSpace(string(b)) != "0" {
+					_ = os.WriteFile(d+"/accept_ra", []byte("2\n"), 0o644)
+					conf += "net.ipv6.conf." + name + ".accept_ra = 2\n"
+				}
+			}
+			_ = os.WriteFile("/proc/sys/net/ipv6/conf/all/forwarding", []byte("1\n"), 0o644)
+			conf += "net.ipv6.conf.all.forwarding = 1\n"
+		}
+	}
+	if string(old) != conf {
 		_ = os.WriteFile("/etc/sysctl.d/99-meridian.conf", []byte(conf), 0o644)
 	}
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 // ensureForwardAccept handles hosts whose iptables FORWARD policy is DROP (Docker sets that): our
 // own accept cannot override a drop in another table, so we add explicit accepts there.
 func ensureForwardAccept(spec Spec) {
-	if _, err := exec.LookPath("iptables"); err != nil {
+	ensureForwardAcceptWith("iptables", spec)
+	if needsForwarding6(spec) {
+		ensureForwardAcceptWith("ip6tables", Spec{WG: spec.WG})
+	}
+}
+
+func ensureForwardAcceptWith(tool string, spec Spec) {
+	if _, err := exec.LookPath(tool); err != nil {
 		return
 	}
-	out, err := exec.Command("iptables", "-S", "FORWARD").Output()
+	out, err := exec.Command(tool, "-S", "FORWARD").Output()
 	if err != nil || !strings.Contains(string(out), "-P FORWARD DROP") {
 		return
 	}
 	add := func(args ...string) {
 		check := append([]string{"-C", "FORWARD"}, args...)
-		if exec.Command("iptables", check...).Run() == nil {
+		if exec.Command(tool, check...).Run() == nil {
 			return
 		}
-		_ = exec.Command("iptables", append([]string{"-I", "FORWARD", "1"}, args...)...).Run()
+		_ = exec.Command(tool, append([]string{"-I", "FORWARD", "1"}, args...)...).Run()
 	}
 	for _, f := range spec.Forwards {
 		if f.Engine == "realm" {

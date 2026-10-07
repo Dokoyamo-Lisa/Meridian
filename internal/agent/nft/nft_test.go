@@ -42,6 +42,7 @@ func TestRenderGuardsAndForwards(t *testing.T) {
 		`tcp dport 30002 counter comment "f4:up"`,
 		"ip daddr @block4 udp sport @svc_udp counter drop",
 		"ip daddr @block4 ct mark and 0xffff0000 == 0x4d520000 counter drop",
+		`ip saddr 10.66.0.0/20 oifname != "uwg1" masquerade`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
@@ -105,8 +106,10 @@ func TestDumpRulesets(t *testing.T) {
 		t.Skip("set MERIDIAN_NFT_DUMP to a directory to write the rulesets")
 	}
 	full := Spec{
-		Forwards:  []proto.Forward{{ID: 4, ListenPort: 30002, Network: "tcp+udp", Target: "203.0.113.7:443", Engine: "nft"}},
-		WG:        []WGNat{{NodeID: 1, Iface: "uwg1", Subnet4: "10.66.0.0/20"}},
+		Forwards: []proto.Forward{{ID: 4, ListenPort: 30002, Network: "tcp+udp", Target: "203.0.113.7:443", Engine: "nft"}},
+		WG: []WGNat{{NodeID: 1, Iface: "uwg1", Subnet4: "10.66.0.0/20"},
+			{NodeID: 2, Iface: "uwg2", Subnet4: "10.66.16.0/20", Subnet6: "fd12:3456:789a::/64", SNAT: "203.0.113.70"},
+			{NodeID: 3, Iface: "uwg3", Subnet4: "10.66.32.0/20", Subnet6: "fd12:3456:789b::/64", SNAT: "2001:db8::70"}},
 		Blocked:   []string{"198.51.100.7", "2001:db8::/32"},
 		TCPPorts:  []int{443},
 		UDPPorts:  []int{443, 51820},
@@ -121,5 +124,34 @@ func TestDumpRulesets(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, name+".nft"), []byte(script), 0o644); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestRenderWireGuardNAT: the devices' traffic leaves from the protocol's own address when it has
+// one, and IPv6 is NATed only where the tunnel carries it.
+func TestRenderWireGuardNAT(t *testing.T) {
+	out := New().render(Spec{WG: []WGNat{
+		{NodeID: 1, Iface: "uwg1", Subnet4: "10.66.0.0/20", SNAT: "203.0.113.70"},
+		{NodeID: 2, Iface: "uwg2", Subnet4: "10.66.16.0/20", Subnet6: "fd12:3456:789a::/64"},
+		{NodeID: 3, Iface: "uwg3", Subnet4: "10.66.32.0/20", Subnet6: "fd12::/64", SNAT: "2001:db8::70"},
+		{NodeID: 4, Iface: "uwg4", Subnet4: "10.66.48.0/20", Subnet6: "10.0.0.0/8; flush ruleset", SNAT: "not an ip"},
+	}})
+	for _, want := range []string{
+		`ip saddr 10.66.0.0/20 oifname != "uwg1" snat ip to 203.0.113.70`,
+		`ip saddr 10.66.16.0/20 oifname != "uwg2" masquerade`,
+		`ip6 saddr fd12:3456:789a::/64 oifname != "uwg2" masquerade`,
+		`ip saddr 10.66.32.0/20 oifname != "uwg3" masquerade`,
+		`ip6 saddr fd12::/64 oifname != "uwg3" snat ip6 to 2001:db8::70`,
+		`ip saddr 10.66.48.0/20 oifname != "uwg4" masquerade`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "flush ruleset") || strings.Contains(out, "not an ip") {
+		t.Errorf("hostile input reached the ruleset:\n%s", out)
+	}
+	if !needsForwarding6(Spec{WG: []WGNat{{Subnet6: "fd12::/64"}}}) || needsForwarding6(Spec{WG: []WGNat{{Subnet4: "10.66.0.0/20"}}}) {
+		t.Error("IPv6 forwarding only for tunnels that carry IPv6")
 	}
 }

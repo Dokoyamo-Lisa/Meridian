@@ -531,14 +531,16 @@ func (c *mcpCall) subBody(a map[string]any) (map[string]any, error) {
 	if ok {
 		b["expires_at"] = exp
 	}
-	if raw, ok := a["server_ids"].([]any); ok {
-		ids := []int64{}
-		for _, x := range raw {
-			if f, ok := x.(float64); ok && f > 0 {
-				ids = append(ids, int64(f))
+	for arg, field := range map[string]string{"server_ids": "servers", "protocol_ids": "protocols"} {
+		if raw, ok := a[arg].([]any); ok {
+			ids := []int64{}
+			for _, x := range raw {
+				if f, ok := x.(float64); ok && f > 0 {
+					ids = append(ids, int64(f))
+				}
 			}
+			b[field] = ids
 		}
-		b["servers"] = ids
 	}
 	return b, nil
 }
@@ -567,8 +569,8 @@ var mcpTools = []mcpTool{
 				m, _ := x.(map[string]any)
 				s := pick(m, "id", "name", "status", "address", "ipv4", "country", "city", "online_ips", "online_subs",
 					"bw_used", "bw_limit", "pending_restart", "apply_errors", "agent_version", "last_seen_at", "public_ports",
-					"limits").(map[string]any)
-				s["protocols"] = pick(m["nodes"], "id", "kind", "label", "name", "port", "public_port", "net", "enabled", "online", "pass_name")
+					"ip_version", "addrs", "limits").(map[string]any)
+				s["protocols"] = pick(m["nodes"], "id", "kind", "label", "name", "port", "public_port", "bind_ip", "net", "enabled", "online", "pass_name", "pass_only")
 				s["forwards"] = pick(m["forwards"], "id", "listen_port", "public_port", "target", "network", "engine", "enabled")
 				if sys, ok := m["sys"].(map[string]any); ok {
 					s["load"] = pick(sys, "cpu", "mem_used", "mem_total", "rx_rate", "tx_rate")
@@ -763,17 +765,18 @@ var mcpTools = []mcpTool{
 	{Name: "create_user", Title: "Create user", Write: true,
 		Description: "Create a user: they get a subscription link and, unless sign_in is false, a username and password to see their own usage on the panel's site. A generated password is returned once - pass it on to the user. By default the link covers all servers, including future ones. Limits only raise alerts.",
 		Props: map[string]any{
-			"name":       pStr("Who it is for"),
-			"username":   pStr("Sign-in name (3-26 of a-z 0-9 . _ -); omit to make one from the name"),
-			"password":   pStr("Sign-in password (10-72 characters); omit to have one generated"),
-			"sign_in":    pBool("Give the user a sign-in (default true)"),
-			"quota_gb":   pNum("Monthly quota in GB; 0 or omitted = unlimited"),
-			"reset_day":  pInt("Day of the month usage resets (1-31); 0 = never"),
-			"expires_on": pStr("Last valid day, YYYY-MM-DD; omit for no end"),
-			"ip_limit":   pInt("Alert when more IPs than this are online at once; 0 = no limit"),
-			"server_ids": pInts("Only these servers; omit for all"),
-			"note":       pStr("Private note"),
-			"count":      pInt("Create several at once (max 500), numbered name-01, name-02, ... (as many digits as the count needs), each with a generated password"),
+			"name":         pStr("Who it is for"),
+			"username":     pStr("Sign-in name (3-26 of a-z 0-9 . _ -); omit to make one from the name"),
+			"password":     pStr("Sign-in password (10-72 characters); omit to have one generated"),
+			"sign_in":      pBool("Give the user a sign-in (default true)"),
+			"quota_gb":     pNum("Monthly quota in GB; 0 or omitted = unlimited"),
+			"reset_day":    pInt("Day of the month usage resets (1-31); 0 = never"),
+			"expires_on":   pStr("Last valid day, YYYY-MM-DD; omit for no end"),
+			"ip_limit":     pInt("Alert when more IPs than this are online at once; 0 = no limit"),
+			"server_ids":   pInts("Only these whole servers (with protocols added to them later); omit both server_ids and protocol_ids for everything"),
+			"protocol_ids": pInts("Single protocols (ids from list_servers), besides whole servers"),
+			"note":         pStr("Private note"),
+			"count":        pInt("Create several at once (max 500), numbered name-01, name-02, ... (as many digits as the count needs), each with a generated password"),
 		},
 		Required: []string{"name"},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
@@ -796,16 +799,17 @@ var mcpTools = []mcpTool{
 	{Name: "update_user", Title: "Change user", Write: true,
 		Description: "Change a user's name, sign-in, limits, servers or note. Only the given fields change. A new username or password signs the user out of their page; an empty username removes the sign-in. Changing servers takes effect within seconds; devices pick up new servers when they refresh.",
 		Props: map[string]any{
-			"user_id":    pInt("User id"),
-			"name":       pStr("New name"),
-			"username":   pStr("New sign-in name; empty = no sign-in"),
-			"password":   pStr("New sign-in password (10-72 characters)"),
-			"quota_gb":   pNum("Monthly quota in GB; 0 = unlimited"),
-			"reset_day":  pInt("Day of the month usage resets (1-31); 0 = never"),
-			"expires_on": pStr("Last valid day, YYYY-MM-DD, or 'never'"),
-			"ip_limit":   pInt("IP limit; 0 = none"),
-			"server_ids": pInts("Only these servers; [] = all servers"),
-			"note":       pStr("Private note"),
+			"user_id":      pInt("User id"),
+			"name":         pStr("New name"),
+			"username":     pStr("New sign-in name; empty = no sign-in"),
+			"password":     pStr("New sign-in password (10-72 characters)"),
+			"quota_gb":     pNum("Monthly quota in GB; 0 = unlimited"),
+			"reset_day":    pInt("Day of the month usage resets (1-31); 0 = never"),
+			"expires_on":   pStr("Last valid day, YYYY-MM-DD, or 'never'"),
+			"ip_limit":     pInt("IP limit; 0 = none"),
+			"server_ids":   pInts("Whole servers the user can use; [] for none (with protocol_ids []: everything)"),
+			"protocol_ids": pInts("Single protocols the user can use, besides whole servers; [] for none"),
+			"note":         pStr("Private note"),
 		},
 		Required: []string{"user_id"},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
@@ -916,6 +920,67 @@ var mcpTools = []mcpTool{
 			out["protocols"] = pick(srv["nodes"], "id", "label", "port", "public_port")
 			return out, nil
 		}},
+	{Name: "update_server", Title: "Change a server", Write: true,
+		Description: "Change a server's name, address, IP version or ports from its provider. Only the given fields change; Xray takes them live (an IP version change restarts Hysteria2 protocols once). An IP as address also sets its location (DB-IP). Links change with the address, IP version and ports: devices pick that up when they refresh.",
+		Props: map[string]any{
+			"server_id":    pInt("Server id"),
+			"name":         pStr("Display name"),
+			"address":      pStr("Domain or IP clients connect to; empty = the IP the agent reports"),
+			"ip_version":   pEnum("both (IPv4 and IPv6), ipv4 or ipv6: how protocols reach sites, which address links use, whether WireGuard routes IPv6", "both", "ipv4", "ipv6"),
+			"public_ports": pStr(publicPortsHelp + " Empty string = every port."),
+			"note":         pStr("A note for yourself"),
+			"xray_code":    pStr("Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates: outbounds (added, or replacing the one with the same tag), routing.rules (before the panel's), inbounds by a protocol's tag n<id> (merged into it) or new ones, other sections such as dns. api, stats, log and policy are Meridian's. Only the syntax is checked; Xray's refusals show in get_server (apply_errors). Empty string removes it"),
+		},
+		Required: []string{"server_id"},
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			id, err := needInt(a, "server_id")
+			if err != nil {
+				return nil, err
+			}
+			b := map[string]any{}
+			for _, k := range []string{"name", "address", "public_ports", "note", "xray_code"} {
+				if v, ok := argStr(a, k); ok {
+					b[k] = v
+				}
+			}
+			if v, ok := argStr(a, "ip_version"); ok {
+				if v == "both" {
+					v = ""
+				}
+				b["ip_version"] = v
+			}
+			v, err := c.api("PATCH", fmt.Sprintf("/api/servers/%d", id), b)
+			if err != nil {
+				return nil, err
+			}
+			m, _ := v.(map[string]any)
+			srv, _ := m["server"].(map[string]any)
+			return pick(srv, "id", "name", "address", "ip_version", "addrs", "public_ports", "country", "city", "limits"), nil
+		}},
+	{Name: "list_certificates", Title: "Shared certificates",
+		Description: "The shared certificates (kept once, used by TLS and Hysteria2 protocols on any server): names, domains, expiry, and for each protocol using one whether its server serves it yet (live), holds it (installed, Xray loads it within ten minutes), has not taken it (pending), is offline or needs agent 0.6. Private keys are never shown.",
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			v, err := c.api("GET", "/api/certs", nil)
+			return pick(v, "id", "name", "domains", "not_after", "sha256", "uses", "live"), err
+		}},
+	{Name: "replace_certificate", Title: "Replace a shared certificate", Write: true,
+		Description: "Replace a shared certificate once for every server that uses it - after a renewal. The new certificate must cover every domain its protocols use. Xray loads it within ten minutes without disconnecting anyone; Hysteria2 restarts briefly. Then list_certificates shows each server taking it.",
+		Props: map[string]any{
+			"cert_id":  pInt("Shared certificate id (list_certificates)"),
+			"cert_pem": pStr("The new certificate chain, PEM (fullchain.pem)"),
+			"key_pem":  pStr("Its private key, PEM (privkey.pem)"),
+		},
+		Required: []string{"cert_id", "cert_pem", "key_pem"},
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			id, err := needInt(a, "cert_id")
+			if err != nil {
+				return nil, err
+			}
+			certPEM, _ := argStr(a, "cert_pem")
+			keyPEM, _ := argStr(a, "key_pem")
+			v, err := c.api("PATCH", fmt.Sprintf("/api/certs/%d", id), map[string]any{"cert_pem": certPEM, "key_pem": keyPEM})
+			return pick(v, "id", "name", "domains", "not_after", "sha256", "uses", "live"), err
+		}},
 	{Name: "get_install_command", Title: "Install command", Write: true,
 		Description: "The one-line agent install command of a server (contains its secret token).",
 		Props:       map[string]any{"server_id": pInt("Server id")}, Required: []string{"server_id"},
@@ -960,8 +1025,14 @@ var mcpTools = []mcpTool{
 			if v, ok := argInt(a, "exit_protocol_id"); ok {
 				b["pass_node"] = v
 			}
+			if v, ok := a["pass_only"].(bool); ok {
+				b["pass_only"] = v
+			}
+			if v, ok := argStr(a, "bind_ip"); ok {
+				b["bind_ip"] = v
+			}
 			v, err := c.api("POST", fmt.Sprintf("/api/servers/%d/nodes", id), b)
-			return pick(v, "id", "kind", "label", "net", "port", "enabled", "settings", "apps", "notes", "pass_name"), err
+			return pick(v, "id", "kind", "label", "net", "port", "public_port", "enabled", "settings", "apps", "notes", "pass_name", "pass_only"), err
 		}},
 	{Name: "scan_server", Title: "Look for existing proxies", Write: true,
 		Description: "Ask a server's agent to look for proxy software already running there (Xray, V2Ray, 3x-ui, x-ui, sing-box, Hysteria2). It only reads. Returns an action id; when action_status says done, call get_scan.",
@@ -1327,12 +1398,15 @@ func protocolProps(withServer bool) map[string]any {
 		"mtu":          pInt("WireGuard MTU"),
 		"full_tunnel":  pBool("WireGuard: send all traffic through the VPN (default true)"),
 		"dns_logging":  pBool("WireGuard: clients use the server's resolver, which logs lookups (default true)"),
+		"ipv6":         pBool("WireGuard: route IPv6 through the tunnel too (default false: IPv4 only; needs IPv6 on the server and agent 0.6)"),
 	}
 	if withServer {
 		m["server_id"] = pInt("Server id")
 		m["port"] = pInt("Port; omit to pick a free common one")
 		m["label"] = pStr("Optional label shown in apps")
 		m["exit_protocol_id"] = pInt("Proxy pass: send this protocol's traffic out through that protocol on another server (an Xray entry; any exit but WireGuard)")
+		m["pass_only"] = map[string]any{"type": "boolean", "description": "Serve only proxy passes from other servers: users cannot connect to it directly and it is left out of their links. Use it for an exit that people should reach only through a relay"}
+		m["bind_ip"] = pStr("One of the server's addresses (addrs in get_server) for this protocol alone: it listens there, its traffic leaves from there, links use it. Protocols on different addresses may share a port. Omit for all addresses")
 	}
 	return m
 }
@@ -1352,7 +1426,7 @@ func protocolSettingsArg(a map[string]any) map[string]any {
 		}
 		out["flow"] = v
 	}
-	for _, k := range []string{"own_site", "cdn", "udp", "obfs", "full_tunnel", "dns_logging"} {
+	for _, k := range []string{"own_site", "cdn", "udp", "obfs", "full_tunnel", "dns_logging", "ipv6"} {
 		if v, ok := argBool(a, k); ok {
 			out[k] = v
 		}

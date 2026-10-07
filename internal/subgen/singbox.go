@@ -120,7 +120,7 @@ func singboxOutbound(e Endpoint) (out omap, endpoint bool, why string) {
 		if e.WG.PresharedKey != "" {
 			peer = peer.set("pre_shared_key", e.WG.PresharedKey)
 		}
-		peer = peer.set("allowed_ips", []string{"0.0.0.0/0", "::/0"})
+		peer = peer.set("allowed_ips", e.WG.routes())
 		if e.WG.Keepalive > 0 {
 			peer = peer.set("persistent_keepalive_interval", e.WG.Keepalive)
 		}

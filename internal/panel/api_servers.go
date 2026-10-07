@@ -138,6 +138,13 @@ func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*server
 		if n.PassNode > 0 {
 			nv.PassName = p.passName(ctx, n.PassNode)
 		}
+		if n.PassOnly {
+			if len(p.passEntries(ctx, n.ID)) == 0 {
+				nv.Notes = append(nv.Notes, "Serves only proxy passes, and no protocol passes through it yet: nobody can use it.")
+			} else {
+				nv.Notes = append(nv.Notes, "Serves only proxy passes: users connect through the protocols that pass through it, never to it directly.")
+			}
+		}
 		v.Nodes = append(v.Nodes, nv)
 	}
 	fw, err := p.forwardsOf(ctx, s.ID)
@@ -149,7 +156,43 @@ func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*server
 	}
 	v.Forwards = append(v.Forwards, fw...)
 	v.Limits = append(v.Limits, portIssues(s, nodes, fw)...)
+	v.Limits = append(v.Limits, addressIssues(s, nodes)...)
 	return v, nil
+}
+
+// ipVersion checks a server's IP version setting.
+func ipVersion(v string) (string, error) {
+	switch v = strings.ToLower(strings.TrimSpace(v)); v {
+	case "", "ipv4", "ipv6":
+		return v, nil
+	case "both", "dual", "ipv4+ipv6":
+		return "", nil
+	}
+	return "", errStatus(http.StatusBadRequest, "ip_version must be ipv4, ipv6, or empty for both")
+}
+
+// addressIssues lists what the server's addresses and IP version leave not working.
+func addressIssues(s *Server, nodes []*Node) []string {
+	var out []string
+	c := s.caps()
+	if s.IPVersion == "ipv6" && c.NoIPv6 {
+		out = append(out, "This server is set to IPv6 only, but IPv6 is turned off in its kernel: nothing can connect or reach sites. Turn IPv6 on, or set the server to IPv4.")
+	} else if s.IPVersion == "ipv6" && s.FirstSeenAt > 0 && s.IPv6 == "" && s.Address == "" {
+		out = append(out, "This server is set to IPv6 only, but it has no public IPv6 address: links have no address to use.")
+	}
+	for _, n := range nodes {
+		label := protocolLabel(n.Kind, n.Settings)
+		if n.BindIP != "" && len(s.Addrs) > 0 && !slices.Contains(s.Addrs, n.BindIP) {
+			out = append(out, fmt.Sprintf("%s is bound to %s, which is no longer an address of this server - choose another one.", label, n.BindIP))
+		}
+		if n.Kind == subgen.KindWireGuard {
+			var ws wgSettings
+			if json.Unmarshal(n.Settings, &ws) == nil && ws.IPv6 && !wg6(s, ws) {
+				out = append(out, label+": IPv6 stays out of the tunnel here - it needs IPv6 on the server (not set to IPv4 only) and agent 0.6 with nftables.")
+			}
+		}
+	}
+	return out
 }
 
 func (p *Panel) apiServers(w http.ResponseWriter, r *http.Request, a *Account) error {
@@ -163,6 +206,7 @@ func (p *Panel) apiServers(w http.ResponseWriter, r *http.Request, a *Account) e
 		if err != nil {
 			return err
 		}
+		redactCode(r, v)
 		out = append(out, v)
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -182,6 +226,7 @@ func (p *Panel) apiServer(w http.ResponseWriter, r *http.Request, a *Account) er
 	if err != nil {
 		return err
 	}
+	redactCode(r, v)
 	out := map[string]any{"server": v}
 	if canWrite(r) { // the command carries the agent's secret: not for read-only tokens
 		out["install"] = p.installCommand(r, s)
@@ -258,6 +303,8 @@ type serverInput struct {
 	AutoLocation bool            `json:"auto_location" doc:"Go back to the location from the IP database"`
 	Countries    []string        `json:"countries" doc:"With country_mode block or allow: two-letter country codes"`
 	Protocols    []string        `json:"protocols" doc:"On create, optional: protocols to set up with their default settings (vless, vmess, trojan, shadowsocks, hysteria2, wireguard, socks, http)"`
+	XrayCode     *string         `json:"xray_code" doc:"Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates. Only the syntax is checked; empty removes it"`
+	IPVersion    *string         `json:"ip_version" doc:"'' = IPv4 and IPv6 (the default), ipv4 = IPv4 only, ipv6 = IPv6 only: how protocols reach sites, which address links use, and whether WireGuard may route IPv6. Xray takes it live; Hysteria2 protocols restart once"`
 	PublicPorts  *string         `json:"public_ports" doc:"Only for servers whose provider decides their ports (NAT servers, LXC and Incus containers): the ports it forwards, e.g. '20000-20019'; PUBLIC:LOCAL where the number on the server differs ('40001-40010:10001-10010'); /tcp or /udp where only one is forwarded. Protocols and forwards then use only these ports and links carry the public numbers. Empty = every port"`
 }
 
@@ -285,15 +332,19 @@ func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Accou
 	if err != nil {
 		return errStatus(http.StatusBadRequest, err.Error())
 	}
-	srv := &Server{Address: addr, PublicPorts: pm.String(), ports: pm}
+	ipv, err := ipVersion(deref(in.IPVersion, ""))
+	if err != nil {
+		return err
+	}
+	srv := &Server{Address: addr, PublicPorts: pm.String(), ports: pm, IPVersion: ipv}
 	// an IP set by hand is where the server is: DB-IP places it right away
 	country, city, lat, lon := p.lookupPlace(srv.addrIP())
 	t := now()
 	var id int64
 	err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
-		res, err := tx.Exec(`INSERT INTO servers (account_id, name, secret, address, public_ports, country, city, lat, lon,
-			created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, owner, name, seal.NewSecret(), addr, srv.PublicPorts, country,
-			city, lat, lon, t)
+		res, err := tx.Exec(`INSERT INTO servers (account_id, name, secret, address, public_ports, ip_version, country, city,
+			lat, lon, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, owner, name, seal.NewSecret(), addr, srv.PublicPorts,
+			ipv, country, city, lat, lon, t)
 		if err != nil {
 			return err
 		}
@@ -307,7 +358,7 @@ func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Accou
 			if err != nil {
 				return errStatus(http.StatusBadRequest, err.Error())
 			}
-			port := p.pickPort(srv, kind, settings, made, nil, nil)
+			port := p.pickPort(srv, kind, settings, "", made, nil, nil)
 			if port == 0 {
 				return errStatus(http.StatusConflict, noFreePort(srv))
 			}
@@ -384,6 +435,24 @@ func (p *Panel) apiUpdateServer(w http.ResponseWriter, r *http.Request, a *Accou
 		}
 		set("public_ports", pm.String())
 		linked = linked || pm.String() != s.PublicPorts
+	}
+	if in.IPVersion != nil {
+		ipv, err := ipVersion(*in.IPVersion)
+		if err != nil {
+			return err
+		}
+		set("ip_version", ipv)
+		linked = linked || ipv != s.IPVersion
+	}
+	if in.XrayCode != nil {
+		code, err := checkXrayCode(*in.XrayCode)
+		if err != nil {
+			return err
+		}
+		set("xray_code", code)
+		if code != s.XrayCode {
+			p.event(s.AccountID, "info", "config_code", s.ID, 0, a.ID, "Xray configuration code of "+s.Name+" changed", nil)
+		}
 	}
 	if in.Note != nil {
 		set("note", cleanNote(*in.Note, 2000))
@@ -706,8 +775,23 @@ func fwdNets(network string) (tcp, udp bool) {
 	return strings.Contains(network, "tcp"), strings.Contains(network, "udp")
 }
 
-// portConflict explains why port cannot be used, or returns "".
+// portConflict explains why port cannot be used on all of the server's addresses, or returns "".
 func portConflict(port int, tcp, udp bool, nodes []*Node, fwds []*Forward, skipNode, skipFwd int64, hostPorts []int) string {
+	return portConflictAt(port, tcp, udp, "", nodes, fwds, skipNode, skipFwd, hostPorts)
+}
+
+// listenAddr is the address a protocol listens on for port checks: its own, except WireGuard,
+// which the kernel opens on every address ("" = all).
+func listenAddr(kind, bind string) string {
+	if kind == subgen.KindWireGuard {
+		return ""
+	}
+	return bind
+}
+
+// portConflictAt explains why port cannot be used on one address of the server ("" = all of
+// them), or returns "". Protocols on different addresses may share a port.
+func portConflictAt(port int, tcp, udp bool, bind string, nodes []*Node, fwds []*Forward, skipNode, skipFwd int64, hostPorts []int) string {
 	if port < 1 || port > 65535 {
 		return "port must be between 1 and 65535"
 	}
@@ -717,6 +801,9 @@ func portConflict(port int, tcp, udp bool, nodes []*Node, fwds []*Forward, skipN
 			continue
 		}
 		ours = true
+		if other := listenAddr(n.Kind, n.BindIP); bind != "" && other != "" && bind != other {
+			continue
+		}
 		t, u := nodeNets(n.Kind, n.Settings)
 		if (t && tcp) || (u && udp) {
 			return fmt.Sprintf("port %d is already used by %s on this server", port, protocolLabel(n.Kind, n.Settings))
@@ -755,6 +842,9 @@ type nodeInput struct {
 	Host     *string     `json:"host" doc:"Address override for this protocol only; empty = the server's address"`
 	Sort     *int        `json:"sort"`
 	PassNode *int64      `json:"pass_node" doc:"Proxy pass: id of the exit protocol on another server; 0 = leave directly"`
+	PassOnly *bool       `json:"pass_only" doc:"Serve only proxy passes from other servers: users cannot connect directly and it is left out of their links (not for WireGuard)"`
+	Code     *string     `json:"code" doc:"Hysteria2 only: your own configuration (YAML), merged on top of what the panel generates. Only the syntax is checked; empty removes it. Saving restarts this Hysteria2 protocol"`
+	BindIP   *string     `json:"bind_ip" doc:"One of the server's addresses (see addrs on the server) for this protocol alone: it listens there, its traffic leaves from there, and links use it when it is public. Protocols on different addresses may share a port. Empty = all addresses"`
 	Settings *protoInput `json:"settings" doc:"Transport, security and the protocol's own options; omitted fields keep their value (or the default on create). POST /api/protocols/check shows what a draft becomes"`
 }
 
@@ -824,15 +914,31 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	if err != nil {
 		return errStatus(http.StatusBadRequest, err.Error())
 	}
+	if err := checkWG6(s, in.Kind, settings); err != nil {
+		return err
+	}
+	if err := p.checkSharedCert(r.Context(), s, in.Kind, settings); err != nil {
+		return err
+	}
+	bind := ""
+	if in.BindIP != nil {
+		if bind, err = bindAddr(s, *in.BindIP); err != nil {
+			return err
+		}
+	}
+	code, err := nodeCode(in.Kind, in.Code)
+	if err != nil {
+		return err
+	}
 	hostPorts := p.hostPorts(id)
 	port := 0
 	if in.Port != nil && *in.Port > 0 {
 		port = *in.Port
 		tcp, udp := nodeNets(in.Kind, settings)
-		if msg := portConflict(port, tcp, udp, nodes, fwds, 0, 0, hostPorts); msg != "" {
+		if msg := portConflictAt(port, tcp, udp, listenAddr(in.Kind, bind), nodes, fwds, 0, 0, hostPorts); msg != "" {
 			return errStatus(http.StatusConflict, msg)
 		}
-	} else if port = p.pickPort(s, in.Kind, settings, nodes, fwds, hostPorts); port == 0 {
+	} else if port = p.pickPort(s, in.Kind, settings, bind, nodes, fwds, hostPorts); port == 0 {
 		return errStatus(http.StatusConflict, noFreePort(s))
 	}
 	if err := checkNodePort(s, in.Kind, settings, port); err != nil {
@@ -847,6 +953,10 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 			return err
 		}
 	}
+	passOnly := in.PassOnly != nil && *in.PassOnly
+	if passOnly && !canExit(in.Kind) {
+		return errStatus(http.StatusBadRequest, "WireGuard cannot be a proxy pass exit, so it cannot serve only proxy passes")
+	}
 	var passNode int64
 	var exitSrv *Server
 	if in.PassNode != nil && *in.PassNode > 0 {
@@ -856,8 +966,9 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 		passNode = *in.PassNode
 	}
 	t := now()
-	res, err := p.db.Exec1(`INSERT INTO nodes (server_id, kind, name, port, settings, host, pass_node, sort, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, in.Kind, name, port, string(settings), host, passNode, len(nodes), t, t)
+	res, err := p.db.Exec1(`INSERT INTO nodes (server_id, kind, name, port, settings, host, pass_node, pass_only, bind_ip,
+		code, sort, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, in.Kind, name, port,
+		string(settings), host, passNode, passOnly, bind, code, len(nodes), t, t)
 	if err != nil {
 		return err
 	}
@@ -912,9 +1023,25 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 		}
 		n.Settings = updated
 	}
+	if in.Settings != nil {
+		if err := checkWG6(s, n.Kind, n.Settings); err != nil {
+			return err
+		}
+		if err := p.checkSharedCert(r.Context(), s, n.Kind, n.Settings); err != nil {
+			return err
+		}
+	}
 	t0, u0 := nodeNets(n.Kind, oldSettings)
 	t1, u1 := nodeNets(n.Kind, n.Settings)
-	moved := (in.Port != nil && *in.Port != n.Port) || (t1 && !t0) || (u1 && !u0)
+	rebound := false
+	if in.BindIP != nil {
+		bind, err := bindAddr(s, *in.BindIP)
+		if err != nil {
+			return err
+		}
+		rebound, n.BindIP = bind != n.BindIP, bind
+	}
+	moved := (in.Port != nil && *in.Port != n.Port) || (t1 && !t0) || (u1 && !u0) || rebound
 	if moved {
 		port := n.Port
 		if in.Port != nil {
@@ -922,7 +1049,7 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 		}
 		nodes, _ := p.nodesOf(r.Context(), n.ServerID)
 		fwds, _ := p.forwardsOf(r.Context(), n.ServerID)
-		if msg := portConflict(port, t1, u1, nodes, fwds, n.ID, 0, p.hostPorts(n.ServerID)); msg != "" {
+		if msg := portConflictAt(port, t1, u1, listenAddr(n.Kind, n.BindIP), nodes, fwds, n.ID, 0, p.hostPorts(n.ServerID)); msg != "" {
 			return errStatus(http.StatusConflict, msg)
 		}
 		n.Port = port
@@ -945,6 +1072,17 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	if in.Sort != nil {
 		n.Sort = *in.Sort
+	}
+	if in.Code != nil {
+		if n.Code, err = nodeCode(n.Kind, in.Code); err != nil {
+			return err
+		}
+	}
+	if in.PassOnly != nil {
+		if *in.PassOnly && !canExit(n.Kind) {
+			return errStatus(http.StatusBadRequest, "WireGuard cannot be a proxy pass exit, so it cannot serve only proxy passes")
+		}
+		n.PassOnly = *in.PassOnly
 	}
 	touch := []int64{s.ID}
 	if in.PassNode != nil && *in.PassNode != n.PassNode {
@@ -975,9 +1113,9 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 		}
 	}
 	n.UpdatedAt = now()
-	if _, err := p.db.Exec1(`UPDATE nodes SET name = ?, port = ?, enabled = ?, settings = ?, host = ?, pass_node = ?, sort = ?,
-		updated_at = ? WHERE id = ?`, n.Name, n.Port, n.Enabled, string(n.Settings), n.Host, n.PassNode, n.Sort, n.UpdatedAt,
-		n.ID); err != nil {
+	if _, err := p.db.Exec1(`UPDATE nodes SET name = ?, port = ?, enabled = ?, settings = ?, host = ?, pass_node = ?,
+		pass_only = ?, bind_ip = ?, code = ?, sort = ?, updated_at = ? WHERE id = ?`, n.Name, n.Port, n.Enabled,
+		string(n.Settings), n.Host, n.PassNode, n.PassOnly, n.BindIP, n.Code, n.Sort, n.UpdatedAt, n.ID); err != nil {
 		return err
 	}
 	if in.Settings != nil && isReality(n.Kind, n.Settings) && realityChanged(oldSettings, n.Settings) {

@@ -155,7 +155,7 @@ func clashProxy(e Endpoint, stash bool) (omap, string) {
 		if e.WG.PresharedKey != "" {
 			m = m.set("pre-shared-key", e.WG.PresharedKey)
 		}
-		m = m.set("allowed-ips", []string{"0.0.0.0/0", "::/0"}).set("udp", true).set("mtu", e.WG.MTU)
+		m = m.set("allowed-ips", e.WG.routes()).set("udp", true).set("mtu", e.WG.MTU)
 		if e.WG.Keepalive > 0 && !stash {
 			m = m.set("persistent-keepalive", e.WG.Keepalive)
 		}

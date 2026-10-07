@@ -231,15 +231,18 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 		for _, n := range nodes {
 			labels[n.ID] = protocolLabel(n.Kind, n.Settings)
 		}
-		if !s.Scope.Has(srv.ID) || srv.DeletedAt > 0 {
+		if !s.Scope.HasServer(srv.ID, nodes) || srv.DeletedAt > 0 {
 			continue
 		}
 		ps := portalServer{ID: srv.ID, Name: srv.ShownName(), Country: srv.Country, City: srv.City, Online: srv.Online,
 			Protocols: []string{}, Devices: len(perServer[srv.ID])}
 		for _, n := range nodes {
-			if n.Enabled {
+			if n.Enabled && len(usersOf([]*Sub{s}, n)) > 0 {
 				ps.Protocols = append(ps.Protocols, labels[n.ID])
 			}
+		}
+		if len(ps.Protocols) == 0 {
+			continue
 		}
 		me.Servers = append(me.Servers, ps)
 	}

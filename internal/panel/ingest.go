@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -75,6 +76,13 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 				int64(h.DiskTotal), h.IPv4, h.IPv6, string(caps), h.BootTime, h.StartedAt, country, city, lat, lon,
 				first, srv.ID); err != nil {
 				return err
+			}
+			// agents before 0.6 do not list their addresses: keep what is known
+			if h.Addrs != nil {
+				addrs, _ := json.Marshal(h.Addrs)
+				if _, err := tx.Exec(`UPDATE servers SET addrs = ? WHERE id = ?`, string(addrs), srv.ID); err != nil {
+					return err
+				}
 			}
 			if srv.AgentStartedAt != 0 && h.StartedAt != srv.AgentStartedAt {
 				events = append(events, func(tx *sql.Tx) {
@@ -256,6 +264,21 @@ func sanitizeLive(lv *proto.Live) {
 	if len(lv.Online) > batchLimit {
 		lv.Online = lv.Online[:batchLimit]
 	}
+	// what the server holds and serves of the shared certificates: a few entries, short texts
+	if len(lv.Certs) > 256 {
+		lv.Certs = lv.Certs[:256]
+	}
+	for i := range lv.Certs {
+		c := &lv.Certs[i]
+		c.Installed = truncate(c.Installed, 64)
+		if len(c.Served) > 256 {
+			c.Served = c.Served[:256]
+		}
+		for j := range c.Served {
+			c.Served[j].SHA256 = truncate(c.Served[j].SHA256, 64)
+			c.Served[j].Error = cleanNote(c.Served[j].Error, 200)
+		}
+	}
 	for i := range lv.Online {
 		u := &lv.Online[i]
 		at := map[string]int{}
@@ -293,6 +316,16 @@ func sanitizeHello(h *proto.Hello) {
 			*s = ""
 		}
 	}
+	var addrs []string
+	for _, s := range h.Addrs {
+		if a, err := netip.ParseAddr(s); err == nil && a.Zone() == "" && a.IsGlobalUnicast() && !slices.Contains(addrs, a.Unmap().String()) {
+			addrs = append(addrs, a.Unmap().String())
+		}
+		if len(addrs) == 64 {
+			break
+		}
+	}
+	h.Addrs = addrs
 }
 
 // batchLimit caps how many entries of each kind one report may carry.

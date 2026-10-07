@@ -1,8 +1,29 @@
 # Meridian status
 
-Last updated 2026-10-07 (version 0.4.0).
+Last updated 2026-10-07 (version 0.6.0).
 
-## Tested end to end in the local VM (this round)
+## Tested end to end this round (local VMs: Ubuntu with systemd, Alpine with OpenRC)
+
+- **Every protocol with real clients** (`test/e2e/matrix.py`) on the Ubuntu server: 62 of 62 work in
+  sing-box, mihomo and Xray - names without the server prefix for named protocols, WireGuard now
+  IPv4 only (no `::/0`).
+- **One address per protocol**: with a second address on the VM, two VLESS protocols shared port
+  9443 on 192.168.64.222 and 192.168.64.2 (`ss` shows both), each with a `bind-n<id>` outbound
+  sending from its address; a third on all addresses was refused. Both carried traffic.
+- **Access per protocol**: a user given one protocol got exactly that one in their link and it worked;
+  the same protocol refused that user's id on another protocol of the server.
+- **IPv4 only**: Xray took it live (same PID) with the `direct-ipver` outbound; Hysteria2 configs got
+  mode 4; traffic flowed.
+- **Shared certificate** on the Alpine server: files written root-only, Xray took it live (same PID)
+  and the agent reported it served within about a minute; a replacement was installed within 10 s
+  and served after Xray's reload.
+- **Configuration code**: a routing rule from the operator's JSON blocked one site live (same Xray
+  PID) while others passed; a Hysteria2 YAML setting was merged (Meridian's auth kept) and the
+  protocol restarted once and worked; a `dns` section stayed "restart needed" across the agent's
+  checks (it used to drop after one) until the restart, which applied it.
+- **Firewall rules** for WireGuard SNAT and IPv6 NAT checked with `nft -c` on nftables 1.1.5 and 1.1.6.
+
+## Tested end to end in the local VM (0.4.0)
 
 A Lima VM (Ubuntu, arm64) runs the agent; the panel runs on the Mac; real clients run in a network
 namespace inside the VM (`test/e2e/`).

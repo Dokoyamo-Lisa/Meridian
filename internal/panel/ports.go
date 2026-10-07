@@ -290,9 +290,10 @@ func checkNodePort(s *Server, kind string, raw json.RawMessage, port int) error 
 
 // pickPort chooses a free port for a new protocol: a usual one if free, otherwise any free one. On
 // a server whose provider decides its ports, only those - a usual public number first.
-func (p *Panel) pickPort(srv *Server, kind string, settings json.RawMessage, nodes []*Node, fwds []*Forward, hostPorts []int) int {
+func (p *Panel) pickPort(srv *Server, kind string, settings json.RawMessage, bind string, nodes []*Node, fwds []*Forward, hostPorts []int) int {
 	tcp, udp := nodeNets(kind, settings)
-	free := func(port int) bool { return portConflict(port, tcp, udp, nodes, fwds, 0, 0, hostPorts) == "" }
+	at := listenAddr(kind, bind)
+	free := func(port int) bool { return portConflictAt(port, tcp, udp, at, nodes, fwds, 0, 0, hostPorts) == "" }
 	if pm := srv.ports; pm != nil {
 		rt, ru := reachNets(kind)
 		for _, pub := range preferredPorts(kind, settings) {

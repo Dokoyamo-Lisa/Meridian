@@ -176,16 +176,30 @@ func randHex(n int) string {
 
 func (e *Engine) render(n proto.HyNode, pi portInfo) ([]byte, error) {
 	dir := e.ConfDir
+	// the node's own address: it listens there and its traffic leaves from there
+	listen := ":" + strconv.Itoa(n.Port)
+	direct := map[string]any{"mode": "46"} // IPv4 first, IPv6 when a site has no IPv4
+	switch n.Mode {
+	case "4", "6", "46", "64":
+		direct["mode"] = n.Mode
+	}
+	if ip, err := netip.ParseAddr(n.Bind); err == nil && n.Bind != "" {
+		listen = net.JoinHostPort(ip.String(), strconv.Itoa(n.Port))
+		if ip.Is4() {
+			direct["mode"], direct["bindIPv4"] = "4", ip.String()
+		} else {
+			direct["mode"], direct["bindIPv6"] = "6", ip.String()
+		}
+	}
 	cfg := map[string]any{
-		"listen": ":" + strconv.Itoa(n.Port),
+		"listen": listen,
 		"tls": map[string]any{"cert": filepath.Join(dir, fmt.Sprintf("%d.crt", n.NodeID)),
 			"key": filepath.Join(dir, fmt.Sprintf("%d.key", n.NodeID))},
 		"auth": map[string]any{"type": "http", "http": map[string]any{
 			"url": fmt.Sprintf("http://127.0.0.1:%d/hy2/%d/auth", e.AuthPort, n.NodeID)}},
 		"trafficStats": map[string]any{"listen": "127.0.0.1:" + strconv.Itoa(pi.Port), "secret": pi.Secret},
 		"sniff":        map[string]any{"enable": true, "timeout": "2s"},
-		// prefer IPv4 for outgoing connections and fall back to IPv6
-		"outbounds": []any{map[string]any{"name": "direct", "type": "direct", "direct": map[string]any{"mode": "46"}}},
+		"outbounds":    []any{map[string]any{"name": "direct", "type": "direct", "direct": direct}},
 		"acl": map[string]any{"inline": []string{
 			"reject(127.0.0.0/8)", "reject(10.0.0.0/8)", "reject(172.16.0.0/12)", "reject(192.168.0.0/16)",
 			"reject(169.254.0.0/16)", "reject(100.64.0.0/10)", "reject(fc00::/7)", "reject(fe80::/10)",
@@ -196,6 +210,23 @@ func (e *Engine) render(n proto.HyNode, pi portInfo) ([]byte, error) {
 	}
 	if n.UpMbps > 0 && n.DownMbps > 0 {
 		cfg["bandwidth"] = map[string]any{"up": fmt.Sprintf("%d mbps", n.UpMbps), "down": fmt.Sprintf("%d mbps", n.DownMbps)}
+	}
+	// the operator's own configuration on top; users and traffic counting stay the agent's
+	if len(n.Custom) > 0 {
+		var custom map[string]any
+		if err := json.Unmarshal(n.Custom, &custom); err != nil {
+			return nil, fmt.Errorf("node %d: its own configuration: %w", n.NodeID, err)
+		}
+		for k, v := range custom {
+			if k == "auth" || k == "trafficStats" {
+				continue
+			}
+			if v == nil {
+				delete(cfg, k)
+				continue
+			}
+			cfg[k] = mergePatch(cfg[k], v)
+		}
 	}
 	var b bytes.Buffer
 	enc := yaml.NewEncoder(&b)
@@ -676,6 +707,31 @@ func (e *Engine) readLog(node int64, destLog bool) []proto.DestSeen {
 	out := make([]proto.DestSeen, 0, len(agg))
 	for _, d := range agg {
 		out = append(out, *d)
+	}
+	return out
+}
+
+// mergePatch applies an RFC 7386 merge patch: objects merge key by key, null removes a key, anything
+// else replaces.
+func mergePatch(base, patch any) any {
+	pm, ok := patch.(map[string]any)
+	if !ok {
+		return patch
+	}
+	bm, ok := base.(map[string]any)
+	if !ok {
+		bm = map[string]any{}
+	}
+	out := make(map[string]any, len(bm)+len(pm))
+	for k, v := range bm {
+		out[k] = v
+	}
+	for k, v := range pm {
+		if v == nil {
+			delete(out, k)
+			continue
+		}
+		out[k] = mergePatch(out[k], v)
 	}
 	return out
 }

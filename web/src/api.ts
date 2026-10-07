@@ -136,6 +136,12 @@ export interface NodeView {
   settings: Record<string, any>
   host: string
   pass_node: number
+  /** Serves only proxy passes: users cannot connect to it directly. */
+  pass_only: boolean
+  /** The server address this protocol has to itself ('' = all of them). */
+  bind_ip: string
+  /** Hysteria2: the operator's own configuration (YAML), merged on top of the generated one. */
+  code: string
   sort: number
   label: string
   net: string
@@ -213,6 +219,12 @@ export interface Server {
   public_ports: string
   /** The address whose DB-IP entry gives the location. */
   loc_from?: string
+  /** '' = IPv4 and IPv6, 'ipv4' or 'ipv6' only. */
+  ip_version: '' | 'ipv4' | 'ipv6'
+  /** The addresses on the server's own interfaces (what a protocol can be bound to). */
+  addrs: string[]
+  /** The operator's own Xray configuration (JSON with comments), merged on top of the generated one. */
+  xray_code: string
   created_at: number
   sys?: Sys
   cores?: Record<string, CoreStatus>
@@ -221,7 +233,7 @@ export interface Server {
   forwards: Forward[]
   online_subs: number
   online_ips: number
-  caps: { systemd: boolean; wireguard: boolean; conntrack: boolean; nftables: boolean; iptables: boolean; api_port?: number }
+  caps: { systemd: boolean; wireguard: boolean; conntrack: boolean; nftables: boolean; iptables: boolean; api_port?: number; no_ipv6?: boolean; wg6?: boolean }
   desired_rev?: string
   limits?: string[]
   ports?: number[]
@@ -257,7 +269,8 @@ export interface User {
   reset_day: number
   expires_at: number
   ip_limit: number
-  scope: { servers?: number[] }
+  /** What the user can connect to: whole servers and single protocols; both empty = everything. */
+  scope: { servers?: number[]; protocols?: number[] }
   cycle_up: number
   cycle_down: number
   total_up: number
@@ -532,3 +545,29 @@ export function pct(used: number, total: number): number {
 }
 
 export const GB = 1024 ** 3
+
+/** A protocol that uses a shared certificate, and where its server stands with it. */
+export interface CertUse {
+  node_id: number
+  server_id: number
+  server: string
+  label: string
+  sni: string
+  state: 'live' | 'installed' | 'pending' | 'failed' | 'offline' | 'old_agent'
+  detail?: string
+}
+
+/** A shared certificate: kept once, used by protocols on any server, replaced once for all. */
+export interface Cert {
+  id: number
+  name: string
+  cert_pem: string
+  domains: string[]
+  not_before: number
+  not_after: number
+  sha256: string
+  created_at: number
+  updated_at: number
+  uses: CertUse[]
+  live: number
+}

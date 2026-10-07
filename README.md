@@ -50,11 +50,15 @@ the same.
 | WireGuard | Linux kernel | official apps; destinations logged per device |
 | Port forwards | nftables (kernel) or realm | TCP/UDP relays with exact byte counts |
 
-TLS certificates are obtained from Let's Encrypt by the agent, pasted in, or self-signed - a
+TLS certificates are obtained from Let's Encrypt by the agent, pasted in, self-signed, or
+**shared**: kept once and replaced once for every server, with each server's copy checked - a
 self-signed certificate is pinned in every app that can check it and left out of the others:
 certificate checks are never turned off. REALITY can borrow a well-known site or front your own website on the server.
 **Proxy pass** chains a protocol through another server: users connect to a nearby entry server and
-leave the internet at the exit server.
+leave the internet at the exit server (which can be kept for passes only).
+Each protocol can have **its own server address** (listening, outgoing and in links), each user can
+get **whole servers or single protocols**, servers can be **IPv4 or IPv6 only**, and anything the
+forms do not offer can be written as **configuration code** merged on top of the generated one.
 
 Links work in Clash Verge / FlClash / mihomo, Stash, sing-box, Shadowrocket, Surge, Quantumult X,
 Hiddify, Loon, v2rayN / v2rayNG / v2Box, NekoBox / Karing and the official WireGuard apps. The link

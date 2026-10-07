@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"net"
+	"net/netip"
 	"os"
 	"runtime"
 	"sort"
@@ -30,7 +31,53 @@ func Hello(version string, started time.Time) *proto.Hello {
 	h.DiskTotal, _ = disk("/")
 	h.BootTime = bootTime()
 	h.IPv4, h.IPv6 = PublicIPs()
+	h.Addrs = LocalAddrs()
 	return h
+}
+
+// LocalAddrs lists the addresses on the host's own interfaces that a protocol can be bound to:
+// global ones (public, or private behind a provider's NAT), not loopback, link-local, multicast or
+// the addresses of Meridian's own WireGuard interfaces.
+func LocalAddrs() []string {
+	ifs, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, ifc := range ifs {
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 || strings.HasPrefix(ifc.Name, "uwg") {
+			continue
+		}
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			pfx, err := netip.ParsePrefix(a.String())
+			if err != nil {
+				continue
+			}
+			ip := pfx.Addr().Unmap()
+			if !ip.IsGlobalUnicast() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			out = append(out, ip.String())
+		}
+	}
+	sort.Strings(out)
+	if len(out) > 64 {
+		out = out[:64]
+	}
+	return out
+}
+
+// IPv6Off says whether the kernel has IPv6 turned off: booted with ipv6.disable=1 (no IPv6 at all)
+// or disable_ipv6 set for all interfaces.
+func IPv6Off() bool {
+	if !fileExists("/proc/net/if_inet6") {
+		return true
+	}
+	return strings.TrimSpace(readFile("/proc/sys/net/ipv6/conf/all/disable_ipv6")) == "1"
 }
 
 func readFile(p string) string {
@@ -339,6 +386,8 @@ func Caps() proto.Caps {
 	c.Conntrack = err == nil || fileExists("/proc/sys/net/netfilter/nf_conntrack_acct")
 	c.Nftables = lookPath("nft")
 	c.Iptables = lookPath("iptables")
+	c.NoIPv6 = IPv6Off()
+	c.WG6 = c.Nftables && !c.NoIPv6 // IPv6 through WireGuard needs NAT66 and forwarding
 	return c
 }
 

@@ -389,4 +389,32 @@ ALTER TABLE nodes ADD COLUMN imported TEXT NOT NULL DEFAULT '';
 	`
 ALTER TABLE servers ADD COLUMN public_ports TEXT NOT NULL DEFAULT '';
 `,
+	// 9: protocols that serve only proxy passes; a protocol's own address; a server's IP version and
+	// the addresses on its interfaces
+	`
+ALTER TABLE nodes ADD COLUMN pass_only INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE nodes ADD COLUMN bind_ip TEXT NOT NULL DEFAULT '';
+ALTER TABLE servers ADD COLUMN ip_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE servers ADD COLUMN addrs TEXT NOT NULL DEFAULT '';
+-- configuration as code: the operator's own Xray JSON (per server) and Hysteria2 YAML (per protocol),
+-- merged on top of what the panel generates
+ALTER TABLE servers ADD COLUMN xray_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE nodes ADD COLUMN code TEXT NOT NULL DEFAULT '';
+
+-- shared certificates: kept once, used by protocols on any server, updated once for all of them
+CREATE TABLE certs (
+  id         INTEGER PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name       TEXT    NOT NULL,
+  cert_pem   TEXT    NOT NULL,
+  key_pem    TEXT    NOT NULL,
+  domains    TEXT    NOT NULL DEFAULT '[]',
+  not_before INTEGER NOT NULL DEFAULT 0,
+  not_after  INTEGER NOT NULL DEFAULT 0,
+  sha256     TEXT    NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX certs_account ON certs(account_id);
+`,
 }

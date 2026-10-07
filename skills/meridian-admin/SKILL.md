@@ -99,6 +99,21 @@ and a generated password (shown once) - pass them on with the sign-in address fr
   numbers differ, `/tcp` or `/udp` when only one is forwarded. Then leave `port` out of
   `add_protocol` and `add_forward`: they pick a forwarded port, and links carry the public number.
   `get_server` lists under `limits` what cannot be reached as configured.
+- **Several IP addresses on a server**: `get_server` lists them (`addrs`); `add_protocol` with
+  `bind_ip` gives a protocol one of them - it listens there, its traffic leaves from there, links
+  use it, and protocols on different addresses may share a port.
+- **IPv4 or IPv6 only**: `update_server {server_id, ip_version: "ipv4" | "ipv6" | "both"}`.
+- **What a user gets**: `create_user` / `update_user` with `server_ids` (whole servers, with protocols
+  added later) and/or `protocol_ids` (single protocols, ids from `list_servers`); omit both for
+  everything.
+- **A relay whose exit nobody should use directly**: set `pass_only: true` on the exit protocol - it
+  leaves users' links and accepts only the pass.
+- **Shared certificates**: `list_certificates` shows each one and, per server, whether it serves it
+  (`live`), holds it (`installed`: Xray loads it within ten minutes), or has not taken it (`pending`).
+  After a renewal, `replace_certificate {cert_id, cert_pem, key_pem}` updates every server at once.
+- **Configuration code**: `update_server {server_id, xray_code}` merges the operator's own Xray JSON
+  on top (outbounds, routing rules first, inbounds by tag `n<id>`, dns...). Only the syntax is checked:
+  afterwards read `apply_errors` in `get_server` - a refusal leaves the running configuration as it was.
 - **Protocols**: draft with `check_protocol` first - it says whether the combination works, what to
   change if not, and which apps can use it. Then `add_protocol {server_id, kind, ...}` (applied
   live). Behind Cloudflare: `transport: "ws"`, `security: "none"`, `cdn: true`, `cdn_host`. TLS with a

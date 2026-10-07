@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -268,9 +269,10 @@ func syncAddrs(name string, addrs []string) error {
 		}
 	}
 	want := map[string]bool{}
+	v6off := ipv6Off()
 	for _, a := range addrs {
 		p, err := netip.ParsePrefix(a)
-		if err != nil {
+		if err != nil || (p.Addr().Is6() && v6off) { // a kernel without IPv6 refuses IPv6 addresses
 			continue
 		}
 		want[p.String()] = true
@@ -389,3 +391,12 @@ func joinErr(errs []string) error {
 }
 
 var _ = context.Background
+
+// ipv6Off says whether the kernel has IPv6 turned off (ipv6.disable=1, or disable_ipv6 for all).
+func ipv6Off() bool {
+	if _, err := os.Stat("/proc/net/if_inet6"); err != nil {
+		return true
+	}
+	b, _ := os.ReadFile("/proc/sys/net/ipv6/conf/all/disable_ipv6")
+	return strings.TrimSpace(string(b)) == "1"
+}

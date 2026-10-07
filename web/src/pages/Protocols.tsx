@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { AppSupport, NodeView, ProtocolCatalog, ProtocolCheck, Server, del, get, patch, post } from '../api'
+import { AppSupport, Cert, NodeView, ProtocolCatalog, ProtocolCheck, Server, del, get, patch, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import { Check, Empty, ErrorBox, Field, Loading, Menu, Modal, PageHead, Seg, Toggle, ask, errText, run, toast, useAsync, usePoll } from '../ui'
@@ -134,7 +134,7 @@ export function ProtocolCard(props: { node: NodeView; server: Server; onEdit: ()
   const st = n.settings || {}
   const [testing, setTesting] = useState(false)
   const [result, setResult] = useState<{ target: string; addr?: string; ok: boolean; ms?: number; error?: string }[] | null>(null)
-  const host = n.host || props.server.address || props.server.ipv4 || props.server.ipv6
+  const host = n.host || n.bind_ip || props.server.address || props.server.ipv4 || props.server.ipv6
 
   const toggle = (on: boolean) =>
     run(async () => {
@@ -200,15 +200,16 @@ export function ProtocolCard(props: { node: NodeView; server: Server; onEdit: ()
       </span>,
     ],
   ]
-  facts.push(['Address', <span class="mono ellipsis">{st.cdn ? `${st.cdn_host}:${st.cdn_port} (CDN)` : host || '—'}</span>])
+  facts.push(['Address', <span class="mono ellipsis">{st.cdn ? `${st.cdn_host}:${st.cdn_port} (CDN)` : host || '—'}{n.bind_ip ? <span class="faint"> · its own</span> : null}</span>])
   if (st.security === 'reality') facts.push(['Camouflage', <span class="ellipsis">{st.own_site ? `your site ${st.sni} (${st.target})` : st.sni}</span>])
   if (st.security === 'tls' || n.kind === 'hysteria2')
-    facts.push(['Certificate', <span class="ellipsis">{st.sni} <span class="faint">· {({ self: 'self-signed, pinned', acme: "Let's Encrypt", custom: 'your own' } as Record<string, string>)[st.cert_mode] || st.cert_mode}</span></span>])
+    facts.push(['Certificate', <span class="ellipsis">{st.sni} <span class="faint">· {({ self: 'self-signed, pinned', acme: "Let's Encrypt", custom: 'your own', shared: 'shared' } as Record<string, string>)[st.cert_mode] || st.cert_mode}</span></span>])
   if (st.path) facts.push(['Path', <span class="mono ellipsis">{st.path}</span>])
   if (st.service_name) facts.push(['Service', <span class="mono ellipsis">{st.service_name}</span>])
   if (n.kind === 'shadowsocks') facts.push(['Cipher', <span class="ellipsis">{st.method}</span>])
   if (n.kind === 'wireguard') facts.push(['Network', <span class="mono ellipsis">{st.subnet4}</span>])
   if (n.pass_node > 0) facts.push(['Proxy pass', <span class="ellipsis">{n.pass_name || `protocol #${n.pass_node}`}</span>])
+  if (n.pass_only) facts.push(['Users', <span class="ellipsis">only through proxy passes</span>])
   facts.push(['Online', <span>{n.online} IPs</span>])
 
   return (
@@ -282,6 +283,7 @@ interface Draft {
   cert_mode: string
   cert_pem: string
   key_pem: string
+  cert_id: number
   path: string
   host_header: string
   service_name: string
@@ -298,6 +300,7 @@ interface Draft {
   dns_logging: boolean
   full_tunnel: boolean
   keepalive: string
+  ipv6: boolean
 }
 
 function draftFrom(kind: string, st: Record<string, any> | undefined): Draft {
@@ -313,6 +316,7 @@ function draftFrom(kind: string, st: Record<string, any> | undefined): Draft {
     cert_mode: s.cert_mode || 'self',
     cert_pem: s.cert_pem || '',
     key_pem: '',
+    cert_id: s.cert_id || 0,
     path: s.path || '',
     host_header: s.host_header || '',
     service_name: s.service_name || '',
@@ -329,16 +333,18 @@ function draftFrom(kind: string, st: Record<string, any> | undefined): Draft {
     dns_logging: s.dns_logging ?? true,
     full_tunnel: s.full_tunnel ?? true,
     keepalive: s.keepalive !== undefined ? String(s.keepalive) : '25',
+    ipv6: !!s.ipv6,
   }
 }
 
 // settingsFor is what the API gets for a draft - only the fields this protocol uses.
 function settingsFor(kind: string, d: Draft, editing: boolean): Record<string, unknown> {
-  if (kind === 'wireguard') return { mtu: Number(d.mtu) || 1420, dns_logging: d.dns_logging, full_tunnel: d.full_tunnel, keepalive: Number(d.keepalive) || 0 }
+  if (kind === 'wireguard') return { mtu: Number(d.mtu) || 1420, dns_logging: d.dns_logging, full_tunnel: d.full_tunnel, keepalive: Number(d.keepalive) || 0, ipv6: d.ipv6 }
   if (kind === 'hysteria2') {
     const o: Record<string, unknown> = { sni: d.sni.trim(), cert_mode: d.cert_mode, obfs: d.obfs, up_mbps: Number(d.up_mbps) || 0, down_mbps: Number(d.down_mbps) || 0 }
     if (d.cert_mode === 'custom' && (d.cert_pem || !editing)) o.cert_pem = d.cert_pem
     if (d.cert_mode === 'custom' && d.key_pem) o.key_pem = d.key_pem
+    if (d.cert_mode === 'shared') o.cert_id = d.cert_id
     return o
   }
   const o: Record<string, unknown> = { transport: d.transport, security: d.cdn ? 'none' : d.security }
@@ -359,6 +365,7 @@ function settingsFor(kind: string, d: Draft, editing: boolean): Record<string, u
     o.cert_mode = d.cert_mode
     if (d.cert_mode === 'custom' && (d.cert_pem || !editing)) o.cert_pem = d.cert_pem
     if (d.cert_mode === 'custom' && d.key_pem) o.key_pem = d.key_pem
+    if (d.cert_mode === 'shared') o.cert_id = d.cert_id
   }
   if (d.security !== 'none' || d.cdn) o.fingerprint = d.fingerprint
   if (['vless', 'vmess', 'trojan'].includes(kind)) {
@@ -395,7 +402,13 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
   const [name, setName] = useState(n?.name || '')
   const [port, setPort] = useState(n ? String(n.port) : '')
   const [host, setHost] = useState(n?.host || '')
+  const [bindIP, setBindIP] = useState(n?.bind_ip || '')
+  const [code, setCode] = useState(n?.code || '')
   const [passNode, setPassNode] = useState(n?.pass_node || 0)
+  const [passOnly, setPassOnly] = useState(!!n?.pass_only)
+  // whether users may also connect to the chosen exit directly (a setting of the exit)
+  const exitOf = (id: number) => props.servers.flatMap((x) => x.nodes).find((e) => e.id === id)
+  const [exitDirect, setExitDirect] = useState(!exitOf(n?.pass_node || 0)?.pass_only)
   const [check, setCheck] = useState<ProtocolCheck | null>(null)
   const [checking, setChecking] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -444,11 +457,15 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
     }
     setBusy(true)
     try {
-      const req: Record<string, unknown> = { name: name.trim(), host: host.trim(), settings: body }
+      const req: Record<string, unknown> = { name: name.trim(), host: host.trim(), settings: body, bind_ip: bindIP }
       if (port.trim()) req.port = Number(port)
       if (k?.engine === 'xray') req.pass_node = passNode
+      if (kind !== 'wireguard') req.pass_only = passOnly
+      if (kind === 'hysteria2') req.code = code
       if (editing && n) await patch(`/api/nodes/${n.id}`, req)
       else await post(`/api/servers/${server.id}/nodes`, { ...req, kind })
+      const exit = passNode ? exitOf(passNode) : undefined
+      if (exit && !!exit.pass_only === exitDirect) await patch(`/api/nodes/${exit.id}`, { pass_only: !exitDirect })
       toast(editing ? 'Saved - applied without restarting anything' : 'Protocol added - the server sets it up in a few seconds')
       props.onSaved()
     } catch (e) {
@@ -614,6 +631,17 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
           <>
             <Check checked={d.full_tunnel} onChange={(v) => set({ full_tunnel: v })} label="Route all traffic" hint="Off: devices only reach the VPN subnet (a company network); everything else goes out directly." />
             <Check checked={d.dns_logging} onChange={(v) => set({ dns_logging: v })} label="Log the names devices look up" hint="Devices use the server's resolver, so destinations show as names." />
+            <Check
+              checked={d.ipv6}
+              onChange={(v) => set({ ipv6: v })}
+              disabled={server?.ip_version === 'ipv4' || !!server?.caps?.no_ipv6}
+              label="IPv6 through the tunnel"
+              hint={
+                server?.ip_version === 'ipv4' || server?.caps?.no_ipv6
+                  ? 'This server does not use IPv6.'
+                  : 'Devices get an IPv6 address inside and reach IPv6 sites through the server (needs agent 0.6). Off: IPv4 only, and devices keep their own IPv6.'
+              }
+            />
             <div class="inline-fields">
               <Field label="MTU">
                 <input class="input" inputMode="numeric" value={d.mtu} onInput={(e) => set({ mtu: e.currentTarget.value.replace(/[^0-9]/g, '') })} />
@@ -629,7 +657,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
 
         {kind && (
           <details class="adv">
-            <summary>Port, label and more</summary>
+            <summary>Port, name and more</summary>
             <div class="inline-fields">
               <Field
                 label="Port"
@@ -643,18 +671,43 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
               >
                 <input class="input mono" inputMode="numeric" value={port} placeholder="auto" onInput={(e) => setPort(e.currentTarget.value.replace(/[^0-9]/g, ''))} />
               </Field>
-              <Field label="Label" hint="Optional, shown in apps next to the server name.">
+              <Field label="Name" hint="Optional: apps list the protocol by this name alone. Empty = the server’s name and the protocol.">
                 <input class="input" value={name} maxLength={40} onInput={(e) => setName(e.currentTarget.value)} />
               </Field>
             </div>
+            <Field
+              label="Server address for this protocol"
+              hint={
+                server && server.addrs?.length > 1
+                  ? kind === 'wireguard'
+                    ? 'One of the server’s addresses for this protocol alone: devices’ traffic leaves from there and links use it. Protocols on different addresses can share a port.'
+                    : 'One of the server’s addresses for this protocol alone: it listens there, its traffic leaves from there, and links use it. Protocols on different addresses can share a port.'
+                  : 'Servers with several IP addresses can give each protocol its own (the agent lists them after it connects; needs agent 0.6).'
+              }
+            >
+              <select class="input mono" value={bindIP} onChange={(e) => setBindIP(e.currentTarget.value)} disabled={!server?.addrs?.length && !bindIP}>
+                <option value="">All of the server’s addresses</option>
+                {[...new Set([...(server?.addrs || []), ...(bindIP ? [bindIP] : [])])].map((a) => (
+                  <option value={a}>{a}</option>
+                ))}
+              </select>
+            </Field>
             {xray && !d.cdn && (
-              <Field label="Address override" hint="A different domain or IP for this protocol only. Empty = the server's address.">
-                <input class="input mono" value={host} placeholder={server?.address || server?.ipv4 || ''} onInput={(e) => setHost(e.currentTarget.value)} autoComplete="off" spellcheck={false} />
+              <Field label="Address override" hint="A different domain or IP in links for this protocol only. Empty = its own address, or the server's.">
+                <input class="input mono" value={host} placeholder={bindIP || server?.address || server?.ipv4 || ''} onInput={(e) => setHost(e.currentTarget.value)} autoComplete="off" spellcheck={false} />
               </Field>
             )}
             {xray && (
               <Field label="Proxy pass" hint="Traffic arriving here leaves through a protocol on another server: users connect nearby and appear at the exit's location.">
-                <select class="input" value={passNode} onChange={(e) => setPassNode(Number(e.currentTarget.value))}>
+                <select
+                  class="input"
+                  value={passNode}
+                  onChange={(e) => {
+                    const id = Number(e.currentTarget.value)
+                    setPassNode(id)
+                    setExitDirect(!exitOf(id)?.pass_only)
+                  }}
+                >
                   <option value={0}>Off - leave directly from {server?.name || 'this server'}</option>
                   {exits.map((x) => (
                     <option value={x.node.id}>
@@ -664,6 +717,22 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                 </select>
               </Field>
             )}
+            {xray && passNode > 0 && (
+              <Check
+                checked={exitDirect}
+                onChange={setExitDirect}
+                label="Users can also connect to the exit directly"
+                hint={exitDirect ? 'The exit stays in users’ links as its own entry.' : 'The exit serves only proxy passes: it leaves users’ links and accepts only the pass.'}
+              />
+            )}
+            {kind && kind !== 'wireguard' && (
+              <Check
+                checked={passOnly}
+                onChange={setPassOnly}
+                label="Only for proxy passes"
+                hint="Users cannot connect to this protocol directly and it is left out of their links - it serves protocols on other servers that pass through it."
+              />
+            )}
             {xray && (d.security !== 'none' || d.cdn) && (
               <Field label="Browser fingerprint" hint="What the TLS handshake of apps looks like.">
                 <select class="input" value={d.fingerprint} onChange={(e) => set({ fingerprint: e.currentTarget.value })}>
@@ -671,6 +740,14 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                     <option value={f}>{f}</option>
                   ))}
                 </select>
+              </Field>
+            )}
+            {kind === 'hysteria2' && (
+              <Field
+                label="Configuration as code (YAML)"
+                hint="Your own Hysteria2 settings, merged on top of what the panel generates (auth and trafficStats stay Meridian's). Only the syntax is checked; saving restarts this protocol and its devices reconnect by themselves."
+              >
+                <textarea class="input mono code-edit" rows={6} style="min-height:120px" value={code} placeholder={'quic:\n  maxIdleTimeout: 60s\noutbounds:\n  - name: direct\n    type: direct'} onInput={(e) => setCode(e.currentTarget.value)} spellcheck={false} />
               </Field>
             )}
           </details>
@@ -765,6 +842,8 @@ function RealitySite(props: { d: Draft; set: (p: Partial<Draft>) => void; sites:
 
 function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: string; editing: boolean }) {
   const { d, set } = props
+  const certs = useAsync(() => get<Cert[]>('/api/certs'))
+  const covers = (c: Cert, name: string) => c.domains.some((x) => x === name || (x.startsWith('*.') && name.endsWith(x.slice(1)) && !name.slice(0, -x.length + 1).includes('.')))
   return (
     <div class="subsection">
       <Field label="Certificate">
@@ -775,9 +854,23 @@ function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: s
             ['self', 'Self-signed (no domain)'],
             ['acme', "Let's Encrypt (free, automatic)"],
             ['custom', 'My own certificate'],
+            ['shared', 'Shared certificate'],
           ]}
         />
       </Field>
+      {d.cert_mode === 'shared' && (
+        <Field label="Shared certificate" hint={<>Kept once in Settings › Certificates and replaced there once for every server that uses it. <a href="/settings?tab=certs">Manage certificates</a></>}>
+          <select class="input" value={d.cert_id} onChange={(e) => set({ cert_id: Number(e.currentTarget.value) })}>
+            <option value={0}>Choose…</option>
+            {(certs.data || []).map((c) => (
+              <option value={c.id}>
+                {c.name} · {c.domains.join(', ')}
+                {d.sni.trim() && !covers(c, d.sni.trim()) ? ' (not for this domain)' : ''}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <Field
         label={d.cert_mode === 'self' ? 'Name in the certificate' : 'Domain'}
         hint={
@@ -785,7 +878,9 @@ function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: s
             ? 'Any name. Apps that can check a pinned certificate do so; apps that cannot are left out of their subscription - see below.'
             : d.cert_mode === 'acme'
               ? 'A domain whose DNS record points at this server. TCP port 80 must be free: the agent gets the certificate there and renews it by itself.'
-              : 'The domain the certificate is for.'
+              : d.cert_mode === 'shared'
+                ? 'A domain the shared certificate covers, e.g. tokyo.example.com for a *.example.com certificate.'
+                : 'The domain the certificate is for.'
         }
       >
         <input class="input mono" value={d.sni} placeholder={d.cert_mode === 'self' ? 'www.bing.com' : 'proxy.your-domain.com'} onInput={(e) => set({ sni: e.currentTarget.value })} autoComplete="off" spellcheck={false} />

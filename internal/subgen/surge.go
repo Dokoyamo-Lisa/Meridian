@@ -123,8 +123,8 @@ func surgeLine(e Endpoint, i int) (line, section, why string) {
 			fmt.Fprintf(&b, "dns-server = %s\n", strings.Join(e.WG.DNS, ", "))
 		}
 		fmt.Fprintf(&b, "mtu = %d\n", e.WG.MTU)
-		peer := fmt.Sprintf("public-key = %s, allowed-ips = \"0.0.0.0/0, ::/0\", endpoint = %s",
-			e.WG.PeerPublicKey, hostPort(e.Host, e.Port))
+		peer := fmt.Sprintf("public-key = %s, allowed-ips = \"%s\", endpoint = %s",
+			e.WG.PeerPublicKey, strings.Join(e.WG.routes(), ", "), hostPort(e.Host, e.Port))
 		if e.WG.Keepalive > 0 {
 			peer += fmt.Sprintf(", keepalive = %d", e.WG.Keepalive)
 		}

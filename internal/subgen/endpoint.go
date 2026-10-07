@@ -88,7 +88,7 @@ type WireGuard struct {
 	Address6      string   `json:"address6,omitempty"`
 	DNS           []string `json:"dns,omitempty"`
 	MTU           int      `json:"mtu"`
-	AllowedIPs    []string `json:"allowed_ips"`
+	AllowedIPs    []string `json:"allowed_ips"` // what goes through the tunnel; ::/0 only where the server routes IPv6
 	Keepalive     int      `json:"keepalive"`
 }
 
@@ -127,3 +127,11 @@ const (
 	whyProtocol  = "this app does not support this protocol"
 	whyObfs      = "this app does not support the obfuscation"
 )
+
+// routes are the tunnel's allowed IPs ("everything over IPv4" when none are given).
+func (w *WireGuard) routes() []string {
+	if len(w.AllowedIPs) == 0 {
+		return []string{"0.0.0.0/0"}
+	}
+	return w.AllowedIPs
+}

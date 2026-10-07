@@ -428,7 +428,7 @@ func (p *Panel) apiImport(w http.ResponseWriter, r *http.Request, a *Account) er
 					return errStatus(http.StatusConflict, pk.in.Tag+": "+msg)
 				}
 			} else if msg := portConflict(port, tcp, udp, all, fwds, 0, 0, hostPorts); msg != "" {
-				if port = p.pickPort(srv, kind, raw, all, fwds, hostPorts); port == 0 {
+				if port = p.pickPort(srv, kind, raw, "", all, fwds, hostPorts); port == 0 {
 					return errStatus(http.StatusConflict, fmt.Sprintf("%s: port %d is in use, and %s", pk.in.Tag, pk.in.Port, noFreePort(srv)))
 				}
 				out.Notes = append(out.Notes, fmt.Sprintf("%s: port %d is in use, imported on port %d - devices must refresh their subscription", pk.in.Tag, pk.in.Port, port))

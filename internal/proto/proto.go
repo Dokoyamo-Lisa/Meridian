@@ -32,6 +32,7 @@ type State struct {
 	WireGuard    []WGInterface `json:"wireguard,omitempty"`
 	Forwards     []Forward     `json:"forwards,omitempty"`
 	BlockedIPs   []string      `json:"blocked_ips,omitempty"` // dropped by nftables before reaching any service
+	Certs        []SharedCert  `json:"certs,omitempty"`       // shared certificates the inbounds refer to
 	Geo          *GeoRule      `json:"geo,omitempty"`         // who may connect, by country
 	Actions      []Action      `json:"actions,omitempty"`
 }
@@ -91,10 +92,43 @@ type XrayInbound struct {
 	// the files as ACMEPrefix+domain+"/cert" and ".../key"; the agent resolves them and leaves the
 	// inbound out until the certificate exists.
 	ACME string `json:"acme,omitempty"`
+	// Cert is the shared certificate (State.Certs) the inbound's config refers to as CertRef.
+	Cert int64 `json:"cert,omitempty"`
 }
 
 // ACMEPrefix marks a certificate file reference the agent resolves to its own certificate store.
 const ACMEPrefix = "@acme/"
+
+// CertPrefix marks a reference to a shared certificate's file ("@cert/12/cert"), which the agent
+// writes from State.Certs.
+const CertPrefix = "@cert/"
+
+// CertRef names a shared certificate's file for the agent to resolve.
+func CertRef(id int64, which string) string {
+	return CertPrefix + strconv.FormatInt(id, 10) + "/" + which
+}
+
+// SharedCert is one of the panel's shared certificates, for the inbounds that use it.
+type SharedCert struct {
+	ID      int64  `json:"id"`
+	CertPEM string `json:"cert_pem"`
+	KeyPEM  string `json:"key_pem"`
+}
+
+// CertState is what a server holds of a shared certificate: the SHA-256 of the leaf on disk, and
+// of the leaf each TLS inbound using it serves right now.
+type CertState struct {
+	ID        int64        `json:"id"`
+	Installed string       `json:"installed,omitempty"`
+	Served    []ServedCert `json:"served,omitempty"`
+}
+
+type ServedCert struct {
+	Node   int64  `json:"node"`
+	SHA256 string `json:"sha256,omitempty"`
+	Error  string `json:"error,omitempty"`
+	At     int64  `json:"at"`
+}
 
 type XrayClient struct {
 	Email   string          `json:"email"`
@@ -125,6 +159,13 @@ type HyNode struct {
 	UpMbps       int      `json:"up_mbps,omitempty"`
 	DownMbps     int      `json:"down_mbps,omitempty"`
 	Users        []HyUser `json:"users"`
+	// Bind is the server address the node listens on and its traffic leaves from; empty = every
+	// address. Mode is how it reaches sites: 4, 6, 46 (IPv4 first, the default) or 64.
+	Bind string `json:"bind,omitempty"`
+	Mode string `json:"mode,omitempty"`
+	// Custom is the operator's own configuration (a JSON object, from their YAML), merged on top of
+	// what the agent writes; auth and trafficStats stay the agent's.
+	Custom json.RawMessage `json:"custom,omitempty"`
 }
 
 type HyUser struct {
@@ -141,6 +182,9 @@ type WGInterface struct {
 	MTU        int      `json:"mtu"`
 	DNS        bool     `json:"dns"` // serve DNS on the gateway address (and log the lookups)
 	Peers      []WGPeer `json:"peers"`
+	// SNAT is the server address the devices' traffic leaves from (the protocol's own address); empty
+	// = the address of the outgoing interface. An IPv6 gateway address means IPv6 is routed too.
+	SNAT string `json:"snat,omitempty"`
 }
 
 type WGPeer struct {
@@ -232,6 +276,9 @@ type Hello struct {
 	BootTime     int64  `json:"boot_time"`
 	StartedAt    int64  `json:"started_at"`
 	Caps         Caps   `json:"caps"`
+	// Addrs are the addresses on the server's own interfaces (not loopback, link-local or Meridian's
+	// WireGuard): what a protocol can be bound to. Agents before 0.6 leave it out.
+	Addrs []string `json:"addrs,omitempty"`
 }
 
 type Caps struct {
@@ -239,7 +286,13 @@ type Caps struct {
 	WireGuard bool `json:"wireguard"`
 	Conntrack bool `json:"conntrack"`
 	Nftables  bool `json:"nftables"`
-	Iptables  bool `json:"iptables"`
+	// NoIPv6: the kernel has IPv6 turned off (ipv6.disable=1 or disable_ipv6=1): nothing IPv6 may be
+	// configured. WG6: the agent can route IPv6 through WireGuard (0.6 and later, with nftables).
+	NoIPv6 bool `json:"no_ipv6,omitempty"`
+	WG6    bool `json:"wg6,omitempty"`
+	// Certs: the agent resolves shared certificates (0.6 and later).
+	Certs    bool `json:"certs,omitempty"`
+	Iptables bool `json:"iptables"`
 	// APIPort is the first of the agent's two loopback-only ports: the Xray API on it, Hysteria's
 	// auth hook one up (0 from agents before 0.4.2).
 	APIPort int `json:"api_port,omitempty"`
@@ -312,6 +365,7 @@ type Live struct {
 	Online []OnlineUser          `json:"online,omitempty"`
 	Cores  map[string]CoreStatus `json:"cores,omitempty"`
 	Ports  []int                 `json:"ports,omitempty"` // TCP+UDP ports in use on the host
+	Certs  []CertState           `json:"certs,omitempty"` // the shared certificates held and served
 }
 
 type Sys struct {

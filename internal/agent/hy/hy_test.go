@@ -1,8 +1,12 @@
 package hy
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
+
+	"meridian/internal/proto"
 )
 
 func TestPruneDevices(t *testing.T) {
@@ -23,5 +27,25 @@ func TestPruneDevices(t *testing.T) {
 	}
 	if _, ok := e.devices["1/s2.n1"]; ok {
 		t.Error("a user unseen for a week is still remembered")
+	}
+}
+
+// TestRenderCustom: the operator's configuration is merged in; auth and trafficStats stay the agent's.
+func TestRenderCustom(t *testing.T) {
+	e := &Engine{ConfDir: t.TempDir(), AuthPort: 50001}
+	n := proto.HyNode{NodeID: 7, Port: 443, Custom: json.RawMessage(`{"quic":{"maxIdleTimeout":"60s"},
+		"auth":{"type":"password","password":"x"},"sniff":{"timeout":"5s"},"obfs":null}`)}
+	out, err := e.render(n, portInfo{Port: 1234, Secret: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	y := string(out)
+	for _, want := range []string{"maxIdleTimeout: 60s", "type: http", "timeout: 5s", "enable: true"} {
+		if !strings.Contains(y, want) {
+			t.Errorf("missing %q in:\n%s", want, y)
+		}
+	}
+	if strings.Contains(y, "password") {
+		t.Errorf("the operator's auth replaced the agent's:\n%s", y)
 	}
 }

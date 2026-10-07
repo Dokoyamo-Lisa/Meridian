@@ -114,6 +114,7 @@ type Agent struct {
 	applyMu   sync.Mutex
 	geo       *geoCache
 	scanned   map[string]bool // units the last scan found: the only ones a takeover may stop
+	shared    sharedCerts     // the panel's shared certificates this server holds and serves
 }
 
 // geoCache keeps the address list of the country rule, by hash, in memory and on disk (so the rule
@@ -162,6 +163,7 @@ func (a *Agent) reapply() {
 // ready get the files, the others are left out until it is (they are listed in waiting).
 func (a *Agent) withCerts(st *proto.State) (*proto.Xray, []proto.HyNode, []string) {
 	var domains, waiting []string
+	installed := a.shared.install(st.Certs)
 	if st.Xray != nil {
 		for _, in := range st.Xray.Inbounds {
 			if in.ACME != "" {
@@ -187,6 +189,15 @@ func (a *Agent) withCerts(st *proto.State) (*proto.Xray, []proto.HyNode, []strin
 	if st.Xray != nil {
 		xr = &proto.Xray{Base: st.Xray.Base}
 		for _, in := range st.Xray.Inbounds {
+			if in.Cert > 0 { // a shared certificate: the files are installed above
+				in, msg := resolveShared(in, installed)
+				if msg != "" {
+					waiting = append(waiting, msg)
+					continue
+				}
+				xr.Inbounds = append(xr.Inbounds, in)
+				continue
+			}
 			if in.ACME == "" {
 				xr.Inbounds = append(xr.Inbounds, in)
 				continue
@@ -306,6 +317,7 @@ func (a *Agent) reconcileLoop(ctx context.Context) {
 		case <-t.C:
 			if st := a.current(); st != nil {
 				a.apply(ctx, st, false)
+				a.shared.check(ctx, st)
 			}
 		}
 	}
@@ -525,11 +537,13 @@ func (a *Agent) nftSpec(st *proto.State) nft.Spec {
 	spec.UDPPorts = append(spec.UDPPorts, hy.Ports(st.Hysteria)...)
 	for _, w := range st.WireGuard {
 		spec.UDPPorts = append(spec.UDPPorts, w.ListenPort)
-		g := nft.WGNat{NodeID: w.NodeID, Iface: w.Name}
+		g := nft.WGNat{NodeID: w.NodeID, Iface: w.Name, SNAT: w.SNAT}
 		for _, ad := range w.Address {
-			if strings.Contains(ad, ".") {
-				if _, n, err := net.ParseCIDR(ad); err == nil {
+			if _, n, err := net.ParseCIDR(ad); err == nil {
+				if strings.Contains(ad, ".") {
 					g.Subnet4 = n.String()
+				} else if !sys.IPv6Off() {
+					g.Subnet6 = n.String()
 				}
 			}
 		}
@@ -715,7 +729,7 @@ func (a *Agent) report(ctx context.Context) {
 	a.sampler.Sample()
 
 	live := &proto.Live{TS: time.Now().Unix(), Sys: a.sampler.Sys(), Ports: sys.ListeningPorts(),
-		Cores: map[string]proto.CoreStatus{}}
+		Cores: map[string]proto.CoreStatus{}, Certs: a.shared.report()}
 	var traffic []proto.UserTraffic
 	var ips []proto.IPSeen
 	var dests []proto.DestSeen
@@ -758,6 +772,7 @@ func (a *Agent) report(ctx context.Context) {
 	// the host facts every 10 minutes - or at once when what it supports changes (nftables installed)
 	caps := sys.Caps()
 	caps.APIPort = a.cfg.APIPort
+	caps.Certs = true // resolves the panel's shared certificates
 	sendHello := time.Since(a.lastHello) > 10*time.Minute || caps != a.lastCaps
 	a.mu.Unlock()
 

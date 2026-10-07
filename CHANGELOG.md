@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.6.0 - 2026-10-07
+
+Upgrade agents for the new server-side parts (server page › More actions › Upgrade agent - nobody is
+disconnected): own addresses for protocols, IPv6 through WireGuard and shared certificates need
+agent 0.6. 0.5 agents keep working with this panel for everything else.
+
+- **What each user gets, per protocol**: a user's access is everything, or any mix of whole servers
+  (with protocols added to them later) and single protocols. Their links and the servers carry
+  exactly that.
+- **One address per protocol**: on a server with several IP addresses each protocol can have its
+  own - it listens there, its traffic leaves from there, and links use it, so several protocols can
+  each have port 443 on their own address. The agent lists the server's addresses.
+- **IPv4 or IPv6 only**: a server's IP version decides how its protocols reach sites, which address
+  links use and whether WireGuard routes IPv6. A server whose kernel has IPv6 off is used as IPv4
+  only by itself, so applying a configuration never fails over IPv6. Xray takes a change live;
+  Hysteria2 protocols restart once.
+- **WireGuard carries IPv4 unless asked to carry IPv6**: tunnels used to hand devices an IPv6
+  address and route `::/0` that the server never forwarded, so devices' IPv6 went nowhere. Now
+  tunnels are IPv4 only by default (devices keep their own IPv6), and **IPv6 through the tunnel**
+  really routes it (the agent turns on IPv6 forwarding - keeping routes learnt from router
+  advertisements - and NATs it). Every app format follows the tunnel's routes.
+- **Shared certificates** (Settings › Certificates): keep a certificate once, use it in protocols on
+  any server, replace it once - in the panel or with one API call from a renewal hook - and every
+  server gets it: Xray loads it within ten minutes without disconnecting anyone, Hysteria2 restarts
+  once. Each server reports what it holds and what each TLS port serves, so the list shows where
+  the new one is live. A replacement that drops a domain in use is refused.
+- **Configuration as code**: a server's Xray configuration can take your own JSON (comments
+  allowed) on top of what the panel generates - outbounds, routing rules (first), changes to a
+  protocol by its tag, your own inbounds, dns and more - and a Hysteria2 protocol its own YAML. Only
+  the syntax is checked; the cores decide the rest, and a refusal leaves the running configuration
+  as it was. "What the server gets" shows the merged result.
+- **Proxy pass exits for passes only**: an exit can stop taking direct connections - it leaves users'
+  links and accepts only the pass. The entry's proxy pass setting offers it right there.
+- **Names in links**: a protocol with a name is listed in apps under that name alone (no server
+  prefix). Repeated names are numbered: apps such as Clash refused a list with two equal names.
+- WireGuard links fetched while the server was being prepared could give a user keys the server
+  never got; keys and addresses are now chosen in one step.
+
 ## 0.5.0 - 2026-10-07
 
 The agent contract is unchanged: 0.4 agents keep working with this panel. Upgrade an agent when

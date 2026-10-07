@@ -187,8 +187,9 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
   const [resetDay, setResetDay] = useState(String(v?.reset_day ?? 1))
   const [expires, setExpires] = useState(toDateInput(v?.expires_at || 0))
   const [ipLimit, setIpLimit] = useState(v?.ip_limit ? String(v.ip_limit) : '')
-  const [scopeAll, setScopeAll] = useState(!v?.scope?.servers?.length)
+  const [scopeAll, setScopeAll] = useState(!v?.scope?.servers?.length && !v?.scope?.protocols?.length)
   const [picked, setPicked] = useState<number[]>(v?.scope?.servers || [])
+  const [pickedNodes, setPickedNodes] = useState<number[]>(v?.scope?.protocols || [])
   const [note, setNote] = useState(v?.note || '')
   const [servers, setServers] = useState<Server[]>([])
   const [busy, setBusy] = useState(false)
@@ -201,8 +202,8 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
 
   const save = async (e: Event) => {
     e.preventDefault()
-    if (!scopeAll && picked.length === 0) {
-      setErr('Pick at least one server, or choose “All servers”.')
+    if (!scopeAll && picked.length === 0 && pickedNodes.length === 0) {
+      setErr('Pick at least one server or protocol, or choose “Everything”.')
       return
     }
     setBusy(true)
@@ -216,6 +217,8 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
         expires_at: endOfDay(expires),
         ip_limit: Number(ipLimit) || 0,
         servers: scopeAll ? [] : picked,
+        // a protocol of a whole server is covered already
+        protocols: scopeAll ? [] : pickedNodes.filter((nid) => !servers.some((x) => picked.includes(x.id) && x.nodes.some((n) => n.id === nid))),
       }
       if (v) {
         body.username = signIn ? username.trim() : ''
@@ -303,27 +306,46 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
           <Icon name="info" size="sm" />
           <div>Limits only raise alerts. Nothing is ever paused or cut off automatically - pausing is always your click.</div>
         </div>
-        <Field label="Servers">
+        <Field label="Access" hint={scopeAll ? undefined : 'A whole server includes the protocols added to it later. Or pick single protocols.'}>
           <Seg
             value={scopeAll ? 'all' : 'some'}
             onChange={(x) => setScopeAll(x === 'all')}
             options={[
-              ['all', 'All servers, including new ones'],
+              ['all', 'Everything, including new servers'],
               ['some', 'Only these'],
             ]}
           />
         </Field>
         {!scopeAll && (
-          <div class="pick-grid">
+          <div class="scope-tree">
             {servers.length === 0 && <span class="muted">There are no servers yet.</span>}
-            {servers.map((x) => (
-              <Check
-                checked={picked.includes(x.id)}
-                onChange={(on) => setPicked(on ? [...picked, x.id] : picked.filter((id) => id !== x.id))}
-                label={x.name}
-                hint={x.nodes.map((n) => n.label).join(' · ') || 'no protocols yet'}
-              />
-            ))}
+            {servers.map((x) => {
+              const whole = picked.includes(x.id)
+              const usable = x.nodes.filter((n) => !n.pass_only)
+              return (
+                <div class="scope-srv">
+                  <Check
+                    checked={whole}
+                    onChange={(on) => setPicked(on ? [...picked, x.id] : picked.filter((id) => id !== x.id))}
+                    label={x.name}
+                    hint={whole ? 'The whole server, with protocols added later' : usable.length ? 'Whole server' : 'no protocols yet'}
+                  />
+                  {usable.length > 0 && (
+                    <div class="scope-nodes">
+                      {usable.map((n) => (
+                        <Check
+                          checked={whole || pickedNodes.includes(n.id)}
+                          disabled={whole}
+                          onChange={(on) => setPickedNodes(on ? [...pickedNodes, n.id] : pickedNodes.filter((id) => id !== n.id))}
+                          label={n.name || n.label}
+                          hint={`${n.name ? n.label + ' · ' : ''}port ${n.public_port || n.port}${n.enabled ? '' : ' · off'}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
         <Field label="Note">

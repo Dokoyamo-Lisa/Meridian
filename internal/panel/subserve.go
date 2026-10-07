@@ -133,9 +133,8 @@ func (p *Panel) handleSubWG(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	want := endpointName(srv, n)
 	for _, e := range eps {
-		if e.Name == want && e.WG != nil {
+		if e.NodeID == n.ID && e.WG != nil {
 			name := fmt.Sprintf("%s-%s.conf", safeFile(srv.Name), safeFile(s.Name))
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.Header().Set("Content-Disposition", "attachment; filename=\""+name+"\"")

@@ -71,6 +71,14 @@ func (p *Panel) Handler() http.Handler {
 	handle("PATCH /api/forwards/{id}", p.authed(p.apiUpdateForward))
 	handle("DELETE /api/forwards/{id}", p.authed(p.apiDeleteForward))
 
+	// shared certificates
+	handle("GET /api/certs", p.authed(p.apiCerts))
+	handle("POST /api/certs", p.authed(p.apiCreateCert))
+	handle("GET /api/certs/{id}", p.authed(p.apiCert))
+	handle("PATCH /api/certs/{id}", p.authed(p.apiUpdateCert))
+	handle("DELETE /api/certs/{id}", p.authed(p.apiDeleteCert))
+	handle("GET /api/servers/{id}/config", p.authed(p.apiServerConfig))
+
 	// users (each with a subscription link and an optional sign-in)
 	handle("GET /api/users", p.authed(p.apiSubs))
 	handle("POST /api/users", p.authed(p.apiCreateSub))

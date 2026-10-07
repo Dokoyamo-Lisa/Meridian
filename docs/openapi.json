@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meridian API",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -33,6 +33,10 @@
     {
       "description": "Port forwards through nftables (kernel) or realm.",
       "name": "Forwards"
+    },
+    {
+      "description": "Shared certificates: kept once, used by TLS and Hysteria2 protocols on any server, replaced once for all of them.",
+      "name": "Certificates"
     },
     {
       "description": "The people you serve: each has a subscription link and can sign in to see their own usage. Limits raise alerts only.",
@@ -1835,6 +1839,249 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/certs": {
+      "get": {
+        "tags": [
+          "Certificates"
+        ],
+        "summary": "List shared certificates, the protocols using each and where each server stands with it",
+        "operationId": "getCerts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CertView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Certificates"
+        ],
+        "summary": "Add a shared certificate",
+        "operationId": "postCerts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CertInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/certs/{id}": {
+      "get": {
+        "tags": [
+          "Certificates"
+        ],
+        "summary": "A shared certificate, with per-server status",
+        "operationId": "getCertsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Certificates"
+        ],
+        "summary": "Rename or replace a shared certificate - one call updates every server that uses it (for renewal hooks)",
+        "operationId": "patchCertsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CertInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CertView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Certificates"
+        ],
+        "summary": "Remove a shared certificate that no protocol uses",
+        "operationId": "deleteCertsId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/servers/{id}/config": {
+      "get": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "The Xray configuration a server gets, with your code merged in (users left out)",
+        "operationId": "getServersIdConfig",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigView"
                 }
               }
             },
@@ -4098,6 +4345,21 @@
             "description": "Ports the server's provider forwards to it (NAT servers, LXC and Incus containers), e.g. '20000-20019, 40001-40010:10001-10010'; empty = every port",
             "type": "string"
           },
+          "ip_version": {
+            "description": "'' = IPv4 and IPv6, ipv4 = IPv4 only, ipv6 = IPv6 only: how protocols reach sites, which address links use, and whether WireGuard may route IPv6",
+            "type": "string"
+          },
+          "addrs": {
+            "description": "The addresses on the server's own interfaces, as the agent reports them: what a protocol can be bound to",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "xray_code": {
+            "description": "Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates: outbounds (added, or replacing one with the same tag), routing.rules (before the panel's), inbounds by tag (merged into that protocol, or added as your own) and other sections (dns, ...). Only the syntax is checked; Xray decides the rest",
+            "type": "string"
+          },
           "status": {
             "type": "string"
           },
@@ -4279,6 +4541,18 @@
             "format": "int64",
             "type": "integer"
           },
+          "pass_only": {
+            "description": "Serves only proxy passes from other servers: users cannot connect to it directly and it is left out of their links",
+            "type": "boolean"
+          },
+          "bind_ip": {
+            "description": "The server address this protocol has to itself: it listens there, its traffic leaves from there and links use it (a public one). Empty = all of the server's addresses",
+            "type": "string"
+          },
+          "code": {
+            "description": "Hysteria2: your own configuration (YAML), merged on top of what the panel generates. Only the syntax is checked",
+            "type": "string"
+          },
           "sort": {
             "type": "integer"
           },
@@ -4411,6 +4685,15 @@
           "nftables": {
             "type": "boolean"
           },
+          "no_ipv6": {
+            "type": "boolean"
+          },
+          "wg6": {
+            "type": "boolean"
+          },
+          "certs": {
+            "type": "boolean"
+          },
           "iptables": {
             "type": "boolean"
           },
@@ -4506,6 +4789,14 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "xray_code": {
+            "description": "Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates. Only the syntax is checked; empty removes it",
+            "type": "string"
+          },
+          "ip_version": {
+            "description": "'' = IPv4 and IPv6 (the default), ipv4 = IPv4 only, ipv6 = IPv6 only: how protocols reach sites, which address links use, and whether WireGuard may route IPv6. Xray takes it live; Hysteria2 protocols restart once",
+            "type": "string"
           },
           "public_ports": {
             "description": "Only for servers whose provider decides their ports (NAT servers, LXC and Incus containers): the ports it forwards, e.g. '20000-20019'; PUBLIC:LOCAL where the number on the server differs ('40001-40010:10001-10010'); /tcp or /udp where only one is forwarded. Protocols and forwards then use only these ports and links carry the public numbers. Empty = every port",
@@ -4768,8 +5059,13 @@
             "type": "boolean"
           },
           "cert_mode": {
-            "description": "TLS and Hysteria2: self | acme | custom",
+            "description": "TLS and Hysteria2: self | acme | custom | shared",
             "type": "string"
+          },
+          "cert_id": {
+            "description": "With cert_mode shared: the shared certificate (GET /api/certs)",
+            "format": "int64",
+            "type": "integer"
           },
           "cert_pem": {
             "description": "cert_mode custom: the certificate chain (PEM)",
@@ -4821,6 +5117,10 @@
           },
           "full_tunnel": {
             "description": "WireGuard: send all traffic through the VPN",
+            "type": "boolean"
+          },
+          "ipv6": {
+            "description": "WireGuard: route IPv6 through the VPN too (needs IPv6 on the server and agent 0.6); off = IPv4 only, and full tunnels leave ::/0 out",
             "type": "boolean"
           },
           "keepalive": {
@@ -4921,6 +5221,18 @@
             "description": "Proxy pass: id of the exit protocol on another server; 0 = leave directly",
             "format": "int64",
             "type": "integer"
+          },
+          "pass_only": {
+            "description": "Serve only proxy passes from other servers: users cannot connect directly and it is left out of their links (not for WireGuard)",
+            "type": "boolean"
+          },
+          "code": {
+            "description": "Hysteria2 only: your own configuration (YAML), merged on top of what the panel generates. Only the syntax is checked; empty removes it. Saving restarts this Hysteria2 protocol",
+            "type": "string"
+          },
+          "bind_ip": {
+            "description": "One of the server's addresses (see addrs on the server) for this protocol alone: it listens there, its traffic leaves from there, and links use it when it is public. Protocols on different addresses may share a port. Empty = all addresses",
+            "type": "string"
           },
           "settings": {
             "allOf": [
@@ -5233,6 +5545,13 @@
               "type": "integer"
             },
             "type": "array"
+          },
+          "protocols": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
           }
         }
       },
@@ -5309,6 +5628,115 @@
           }
         }
       },
+      "CertView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "cert_pem": {
+            "description": "The certificate chain (PEM). The private key is never shown",
+            "type": "string"
+          },
+          "domains": {
+            "description": "The names it is valid for",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "not_before": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "not_after": {
+            "description": "When it expires (Unix seconds)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "sha256": {
+            "description": "SHA-256 of the leaf certificate (DER, hex): what servers report holding and serving",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "uses": {
+            "items": {
+              "$ref": "#/components/schemas/CertUse"
+            },
+            "type": "array"
+          },
+          "live": {
+            "description": "How many of the protocols using it serve it now",
+            "type": "integer"
+          }
+        }
+      },
+      "CertUse": {
+        "type": "object",
+        "properties": {
+          "node_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "sni": {
+            "type": "string"
+          },
+          "state": {
+            "description": "live: serving it | installed: held, Xray loads it within ten minutes | pending: not taken yet | failed: the check failed | offline | old_agent: needs agent 0.6",
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "CertInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "cert_pem": {
+            "description": "The certificate chain (PEM), e.g. fullchain.pem",
+            "type": "string"
+          },
+          "key_pem": {
+            "description": "Its private key (PEM), e.g. privkey.pem",
+            "type": "string"
+          }
+        }
+      },
+      "ConfigView": {
+        "type": "object",
+        "properties": {
+          "xray": {
+            "additionalProperties": {},
+            "description": "The Xray configuration this server gets, with your code merged in (users are managed live and left out; the agent adds its api, stats, log and policy)",
+            "type": "object"
+          }
+        }
+      },
       "SubscriptionInput": {
         "type": "object",
         "properties": {
@@ -5350,7 +5778,15 @@
             "type": "integer"
           },
           "servers": {
-            "description": "Server ids; empty = all servers, including ones added later",
+            "description": "Whole servers the user can use (with protocols added to them later). Empty servers and empty protocols = everything, including servers added later",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "protocols": {
+            "description": "Single protocols (ids) the user can use, besides whole servers",
             "items": {
               "format": "int64",
               "type": "integer"

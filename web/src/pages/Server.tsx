@@ -374,6 +374,15 @@ export function ServerPage(props: { id: number }) {
             <dd>
               {srv.agent_version || '—'} {srv.agent_started_at > 0 && <span class="faint">· started <Ago ts={srv.agent_started_at} /></span>}
             </dd>
+            {srv.addrs?.length ? (
+              <>
+                <dt>Addresses</dt>
+                <dd>
+                  <span class="mono">{srv.addrs.join(', ')}</span>
+                  {srv.ip_version ? <span class="faint"> · {srv.ip_version === 'ipv4' ? 'IPv4 only' : 'IPv6 only'}</span> : srv.caps?.no_ipv6 ? <span class="faint"> · IPv6 is off in the kernel</span> : null}
+                </dd>
+              </>
+            ) : null}
             {srv.public_ports ? (
               <>
                 <dt>From the provider</dt>
@@ -454,9 +463,11 @@ export function ServerPage(props: { id: number }) {
         <CountryRulePanel server={srv} onChanged={res.reload} />
       </div>
 
+      <CodePanel server={srv} onSaved={res.reload} />
+
       <section class="panel">
         <div class="ph">
-          <span class="pn">09</span>
+          <span class="pn">10</span>
           <h2 class="h">Activity</h2>
           <a class="pm" href={`/monitor?tab=events&server=${srv.id}`}>
             All events
@@ -652,6 +663,7 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
   const [name, setName] = useState(v.name)
   const [address, setAddress] = useState(v.address)
   const [ports, setPorts] = useState(v.public_ports || '')
+  const [ipv, setIpv] = useState<string>(v.ip_version || '')
   const [note, setNote] = useState(v.note)
   const [limit, setLimit] = useState(v.bw_limit ? String(Math.round(v.bw_limit / 1024 ** 3)) : '')
   const [mode, setMode] = useState(v.bw_mode || 'both')
@@ -680,6 +692,7 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
         name: name.trim(),
         address: address.trim(),
         public_ports: ports.trim(),
+        ip_version: ipv,
         note,
         bw_limit: Math.round((Number(limit) || 0) * 1024 ** 3),
         bw_mode: mode,
@@ -727,6 +740,28 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
         </div>
         <Field label="Ports from the provider" hint={<>Only for servers whose provider decides their ports (NAT servers, LXC and Incus containers) - empty = every port. {portsHint}</>}>
           <input class="input mono" value={ports} placeholder="every port" onInput={(e) => setPorts(e.currentTarget.value)} autoComplete="off" spellcheck={false} />
+        </Field>
+        <Field
+          label="IP version"
+          hint={
+            ipv === 'ipv4'
+              ? 'Protocols reach sites over IPv4 only, links use the IPv4 address, and WireGuard tunnels carry no IPv6. Xray takes it live; Hysteria2 protocols restart once.'
+              : ipv === 'ipv6'
+                ? 'Protocols reach sites over IPv6 only and links use the IPv6 address. Xray takes it live; Hysteria2 protocols restart once.'
+                : v.caps?.no_ipv6
+                  ? 'IPv6 is turned off in this server’s kernel, so it is used as IPv4 only.'
+                  : 'Protocols reach sites over either; links use the IPv4 address when there is one.'
+          }
+        >
+          <Seg
+            value={ipv}
+            onChange={setIpv}
+            options={[
+              ['', 'IPv4 and IPv6'],
+              ['ipv4', 'IPv4 only'],
+              ['ipv6', 'IPv6 only'],
+            ]}
+          />
         </Field>
         <div class="label" style="margin:6px 0 8px">
           Bandwidth plan
@@ -1039,5 +1074,106 @@ function CountryRuleEdit(props: { server: Server; global: string; onClose: () =>
         )}
       </form>
     </Modal>
+  )
+}
+
+// ---------------------------------------------------------------- configuration as code
+
+const codeExample = `{
+  // Merged on top of what the panel generates. Comments are fine.
+  // Send some sites through your own outbound:
+  "outbounds": [
+    { "tag": "warp", "protocol": "wireguard", "settings": { /* ... */ } }
+  ],
+  "routing": {
+    "rules": [ { "domain": ["geosite:openai"], "outboundTag": "warp" } ]
+  }
+  // Change one protocol by its tag (on its card), e.g.
+  // "inbounds": [ { "tag": "n12", "sniffing": { "enabled": false } } ]
+}`
+
+function CodePanel(props: { server: Server; onSaved: () => void }) {
+  const srv = props.server
+  const [code, setCode] = useState(srv.xray_code || '')
+  const [open, setOpen] = useState(!!srv.xray_code)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [shown, setShown] = useState<string | null>(null)
+  const xrayNodes = srv.nodes.filter((n) => !['hysteria2', 'wireguard'].includes(n.kind))
+
+  const save = async () => {
+    setBusy(true)
+    setErr('')
+    try {
+      await patch(`/api/servers/${srv.id}`, { xray_code: code })
+      toast(code.trim() ? 'Saved - the server applies it within seconds' : 'Removed')
+      props.onSaved()
+    } catch (e) {
+      setErr(errText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const show = async () => {
+    try {
+      const v = await get<{ xray: unknown }>(`/api/servers/${srv.id}/config`)
+      setShown(JSON.stringify(v.xray, null, 2))
+    } catch (e) {
+      toast(errText(e))
+    }
+  }
+
+  return (
+    <section class="panel">
+      <div class="ph">
+        <span class="pn">09</span>
+        <h2 class="h">Configuration as code</h2>
+        <span class="pm">
+          <button class="btn sm ghost" onClick={show}>
+            What the server gets
+          </button>
+          <button class="btn sm ghost" onClick={() => setOpen(!open)} aria-expanded={open}>
+            {open ? 'Hide' : srv.xray_code ? 'Edit' : 'Write'}
+          </button>
+        </span>
+      </div>
+      {!open ? (
+        <p class="muted" style="margin:0">
+          {srv.xray_code ? 'Your own Xray configuration is merged on top of what the panel generates.' : 'For what the forms do not offer: your own Xray configuration, merged on top of what the panel generates.'}
+        </p>
+      ) : (
+        <>
+          <p class="muted" style="margin-top:0">
+            JSON (comments allowed), merged on top of the generated Xray configuration: <span class="mono">outbounds</span> are added (or replace one with the same tag), <span class="mono">routing.rules</span> come before the panel's,{' '}
+            <span class="mono">inbounds</span> change a protocol by its tag or add your own, other sections (<span class="mono">dns</span>, …) are merged. Only the syntax is checked here - Xray decides the rest: what it refuses is shown on this page and the running configuration stays. Outbounds and rules apply live; other sections wait for “Restart Xray”.
+          </p>
+          {xrayNodes.length > 0 && (
+            <p class="faint" style="font-size:11.5px;margin:-4px 0 8px">
+              Tags: {xrayNodes.map((n) => `n${n.id} = ${n.name || n.label}`).join(' · ')}
+            </p>
+          )}
+          {err && <ErrorBox error={err} />}
+          <textarea class="input mono code-edit" rows={14} value={code} placeholder={codeExample} onInput={(e) => setCode(e.currentTarget.value)} spellcheck={false} />
+          <div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px">
+            {srv.xray_code && (
+              <button class="btn ghost" onClick={() => setCode(srv.xray_code)} disabled={busy || code === srv.xray_code}>
+                Undo changes
+              </button>
+            )}
+            <button class="btn primary" onClick={save} disabled={busy || code === (srv.xray_code || '')}>
+              {busy ? <span class="spin" /> : 'Save'}
+            </button>
+          </div>
+        </>
+      )}
+      {shown !== null && (
+        <Modal title={`What ${srv.name} gets (Xray)`} onClose={() => setShown(null)} wide>
+          <p class="muted" style="margin-top:0">
+            Generated, with your code merged in. Users are managed live and left out; the agent adds its own api, stats, log and policy.
+          </p>
+          <Code text={shown} pre />
+        </Modal>
+      )}
+    </section>
   )
 }

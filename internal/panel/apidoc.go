@@ -215,6 +215,14 @@ var apiOps = []opDoc{
 	{Method: "PATCH", Path: "/api/forwards/{id}", Tag: "Forwards", Summary: "Change a port forward", Body: forwardInput{}, Resp: Forward{}},
 	{Method: "DELETE", Path: "/api/forwards/{id}", Tag: "Forwards", Summary: "Remove a port forward", Resp: okResult{}},
 
+	// shared certificates
+	{Method: "GET", Path: "/api/certs", Tag: "Certificates", Summary: "List shared certificates, the protocols using each and where each server stands with it", Resp: []certView{}},
+	{Method: "POST", Path: "/api/certs", Tag: "Certificates", Summary: "Add a shared certificate", Body: certInput{}, Resp: certView{}, Status: 201},
+	{Method: "GET", Path: "/api/certs/{id}", Tag: "Certificates", Summary: "A shared certificate, with per-server status", Resp: certView{}},
+	{Method: "PATCH", Path: "/api/certs/{id}", Tag: "Certificates", Summary: "Rename or replace a shared certificate - one call updates every server that uses it (for renewal hooks)", Body: certInput{}, Resp: certView{}},
+	{Method: "DELETE", Path: "/api/certs/{id}", Tag: "Certificates", Summary: "Remove a shared certificate that no protocol uses", Resp: okResult{}},
+	{Method: "GET", Path: "/api/servers/{id}/config", Tag: "Servers", Summary: "The Xray configuration a server gets, with your code merged in (users left out)", Resp: configView{}},
+
 	// users
 	{Method: "GET", Path: "/api/users", Tag: "Users", Summary: "List users", Resp: []subView{}},
 	{Method: "POST", Path: "/api/users", Tag: "Users", Summary: "Create users",
@@ -297,6 +305,7 @@ var tagDocs = []struct{ Name, Desc string }{
 	{"Protocols", "VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP, Hysteria2 and WireGuard, over raw TCP, WebSocket, gRPC, HTTPUpgrade or XHTTP with TLS, REALITY or a CDN - only combinations that work. Includes proxy pass."},
 	{"Import", "Bring over protocols and users from Xray, V2Ray, 3x-ui, x-ui, sing-box or Hysteria2 already running on a server."},
 	{"Forwards", "Port forwards through nftables (kernel) or realm."},
+	{"Certificates", "Shared certificates: kept once, used by TLS and Hysteria2 protocols on any server, replaced once for all of them."},
 	{"Users", "The people you serve: each has a subscription link and can sign in to see their own usage. Limits raise alerts only."},
 	{"User page", "What a signed-in user sees. Uses its own session cookie; the admin API does not accept it."},
 	{"Status page", "The public status page: which servers are up and where. Chosen and shaped in the settings."},

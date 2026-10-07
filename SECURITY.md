@@ -105,6 +105,10 @@ Report vulnerabilities privately - through the repository's private security adv
 
 ### Servers
 
+- Shared certificates' private keys are stored like the panel's other secrets and are never
+  returned by the API (only the certificate chain is). Configuration code may hold keys too: read-only
+  API tokens see neither it nor the merged configuration (`GET /api/servers/{id}/config` needs a
+  full-access token). The agent checks that an inbound refers only to the shared certificate it names.
 - The agent runs as root because it manages nftables, WireGuard and the services. Under systemd,
   cores run in their own units with a capability bounding set, `NoNewPrivileges`, `ProtectSystem`,
   `ProtectHome`; realm runs as an unprivileged dynamic user.

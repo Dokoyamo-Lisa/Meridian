@@ -173,6 +173,10 @@ func (e *Engine) render(d *proto.Xray, accessLog bool) (*rendered, error) {
 			list = append(list, co)
 		}
 		r.clients[in.Tag] = cm
+		if operatorOwn(in.Tag) { // an inbound from the operator's own code keeps the users written in it
+			inbounds = append(inbounds, obj)
+			continue
+		}
 		withClients := withClients(obj, list)
 		inbounds = append(inbounds, withClients)
 	}
@@ -342,7 +346,8 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 			outbounds: map[string]any{}, rest: next.rest}
 	}
 
-	if !same(prev.rest, next.rest) {
+	restPending := !same(prev.rest, next.rest)
+	if restPending {
 		if allowRestart {
 			if err := e.writeConfig(body); err != nil {
 				return res, err
@@ -356,6 +361,9 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 			return res, nil
 		}
 		res.Pending = append(res.Pending, "global Xray settings changed")
+		// on disk, the sections that wait for the restart stay as Xray runs them: a crash restart runs
+		// what ran, and the next check still sees the restart pending
+		body = marshal(withRunning(next.full, prev.rest))
 	}
 
 	var errs []string
@@ -366,7 +374,10 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 	}
 
 	// outbounds before inbounds and rules, so new rules never point at a missing outbound
-	for tag, ob := range next.outbounds {
+	// in configuration order: re-adding "direct" (the first) before any new outbound keeps it the
+	// default one
+	for _, tag := range next.outOrder {
+		ob := next.outbounds[tag]
 		if old, ok := prev.outbounds[tag]; ok && same(old, ob) {
 			continue
 		}
@@ -568,6 +579,9 @@ func (e *Engine) reconcile(ctx context.Context, next *rendered) error {
 			}
 			continue
 		}
+		if operatorOwn(tag) { // its users are the operator's, written in its configuration
+			continue
+		}
 		emails, err := e.api.InboundUsers(ctx, tag)
 		if err != nil {
 			continue
@@ -616,7 +630,11 @@ func (e *Engine) addInbound(ctx context.Context, next *rendered, tag string) err
 		_ = json.Unmarshal(next.clients[tag][k].JSON, &c)
 		clients = append(clients, c)
 	}
-	if err := e.cli(ctx, "adi", map[string]any{"inbounds": []any{withClients(next.inbounds[tag], clients)}}); err != nil {
+	in := next.inbounds[tag]
+	if !operatorOwn(tag) {
+		in = withClients(in, clients)
+	}
+	if err := e.cli(ctx, "adi", map[string]any{"inbounds": []any{in}}); err != nil {
 		return fmt.Errorf("start %s: %w", tag, err)
 	}
 	return nil
@@ -788,11 +806,47 @@ func (e *Engine) Restart(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.init()
+	// the restart is what applies the settings that wait for one: write the desired configuration
+	if e.desired != nil {
+		next, err := e.render(e.desired, e.logOn)
+		if err != nil {
+			return err
+		}
+		body := marshal(next.full)
+		if err := e.validate(body); err != nil {
+			return err
+		}
+		if err := e.writeConfig(body); err != nil {
+			return err
+		}
+	}
 	if err := service.Restart(Unit); err != nil {
 		return err
 	}
 	e.waitAPI(ctx)
 	return nil
+}
+
+// withRunning is the desired configuration with the sections that need a restart (everything but
+// inbounds, outbounds and routing rules, which apply live) as Xray runs them now.
+func withRunning(full map[string]any, running map[string]any) map[string]any {
+	out := map[string]any{"inbounds": full["inbounds"], "outbounds": full["outbounds"]}
+	for k, v := range running {
+		if k != "routing" {
+			out[k] = v
+		}
+	}
+	rt := map[string]any{}
+	if old, ok := running["routing"].(map[string]any); ok {
+		for k, v := range old {
+			rt[k] = v
+		}
+	}
+	if nr, ok := full["routing"].(map[string]any); ok && nr["rules"] != nil {
+		rt["rules"] = nr["rules"]
+	}
+	out["routing"] = rt
+	return out
 }
 
 // Upgrade installs version, checks the current config with it, switches and restarts. If the new
@@ -972,3 +1026,10 @@ func (e *Engine) DesiredEqual(d *proto.Xray) bool {
 }
 
 var _ = slog.Info
+
+// operatorOwn says whether an inbound comes from the operator's own code rather than from a protocol
+// of the panel ("n12"): its users are the ones written in it.
+func operatorOwn(tag string) bool {
+	_, ok := proto.ParseInboundTag(tag)
+	return !ok
+}

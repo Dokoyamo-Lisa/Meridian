@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -284,7 +285,8 @@ type subInput struct {
 	ResetDay  *int     `json:"reset_day" doc:"Day of the month usage resets (1-31); 0 = never"`
 	ExpiresAt *int64   `json:"expires_at" doc:"Unix seconds; 0 = never (alerts only)"`
 	IPLimit   *int     `json:"ip_limit" doc:"Alert when more IPs are online at once; 0 = no limit"`
-	Servers   *[]int64 `json:"servers" doc:"Server ids; empty = all servers, including ones added later"`
+	Servers   *[]int64 `json:"servers" doc:"Whole servers the user can use (with protocols added to them later). Empty servers and empty protocols = everything, including servers added later"`
+	Nodes     *[]int64 `json:"protocols" doc:"Single protocols (ids) the user can use, besides whole servers"`
 	Count     int      `json:"count" doc:"On create: how many users (1-500)"`
 }
 
@@ -301,14 +303,39 @@ func (in *subInput) validate() error {
 	return nil
 }
 
-func (p *Panel) checkScope(ctx context.Context, accountID int64, ids []int64) error {
-	for _, id := range ids {
-		s, err := p.serverByID(ctx, id)
-		if err != nil || s.AccountID != accountID || s.DeletedAt > 0 {
-			return errStatus(http.StatusBadRequest, fmt.Sprintf("there is no server %d", id))
+// scopeFrom builds a user's scope from the request: whole servers and single protocols of the
+// account. Fields left out keep the current value.
+func (p *Panel) scopeFrom(ctx context.Context, accountID int64, in *subInput, cur Scope) (Scope, error) {
+	sc := cur
+	if in.Servers != nil {
+		sc.Servers = []int64{}
+		for _, id := range *in.Servers {
+			s, err := p.serverByID(ctx, id)
+			if err != nil || s.AccountID != accountID || s.DeletedAt > 0 {
+				return sc, errStatus(http.StatusBadRequest, fmt.Sprintf("there is no server %d", id))
+			}
+			if !slices.Contains(sc.Servers, id) {
+				sc.Servers = append(sc.Servers, id)
+			}
 		}
 	}
-	return nil
+	if in.Nodes != nil {
+		sc.Nodes = []int64{}
+		for _, id := range *in.Nodes {
+			n, err := p.nodeByID(ctx, id)
+			if err != nil {
+				return sc, errStatus(http.StatusBadRequest, fmt.Sprintf("there is no protocol %d", id))
+			}
+			s, err := p.serverByID(ctx, n.ServerID)
+			if err != nil || s.AccountID != accountID || s.DeletedAt > 0 {
+				return sc, errStatus(http.StatusBadRequest, fmt.Sprintf("there is no protocol %d", id))
+			}
+			if !slices.Contains(sc.Nodes, id) {
+				sc.Nodes = append(sc.Nodes, id)
+			}
+		}
+	}
+	return sc, nil
 }
 
 var loginRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$`)
@@ -432,16 +459,13 @@ func (p *Panel) apiCreateSub(w http.ResponseWriter, r *http.Request, a *Account)
 			made[i] = newLogin{login: login, password: pw, hash: h}
 		}
 	}
-	var scope Scope
-	if in.Servers != nil {
-		if err := p.checkScope(r.Context(), owner, *in.Servers); err != nil {
-			return err
-		}
-		scope.Servers = *in.Servers
+	scope, err := p.scopeFrom(r.Context(), owner, &in, Scope{})
+	if err != nil {
+		return err
 	}
 	t := now()
 	var ids []int64
-	err := p.db.Write(r.Context(), func(tx *sql.Tx) error {
+	err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
 		for i := 1; i <= count; i++ {
 			nm := name
 			if count > 1 {
@@ -558,11 +582,10 @@ func (p *Panel) apiUpdateSub(w http.ResponseWriter, r *http.Request, a *Account)
 	if in.IPLimit != nil {
 		s.IPLimit = *in.IPLimit
 	}
-	if in.Servers != nil {
-		if err := p.checkScope(r.Context(), s.AccountID, *in.Servers); err != nil {
+	if in.Servers != nil || in.Nodes != nil {
+		if s.Scope, err = p.scopeFrom(r.Context(), s.AccountID, &in, s.Scope); err != nil {
 			return err
 		}
-		s.Scope = Scope{Servers: *in.Servers}
 		touch = true
 	}
 	s.UpdatedAt = now()
