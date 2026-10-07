@@ -33,7 +33,10 @@ export function ServerSetup(props: { server: Server; install: string; onDone: ()
           <h3>Check the server</h3>
           <div class="body">
             <ul>
-              <li>Linux with systemd: Debian 11+, Ubuntu 20.04+, AlmaLinux / Rocky 8+, Fedora or Arch - 64-bit (amd64 or arm64).</li>
+              <li>Linux with systemd (Debian 11+, Ubuntu 20.04+, AlmaLinux / Rocky 8+, Fedora, Arch) or Alpine Linux (OpenRC) - 64-bit, amd64 or arm64.</li>
+              <li>
+                On Alpine the proxies (Xray, Hysteria2) work as they are. WireGuard, kernel port forwards, country rules and IP blocks also need <span class="mono">apk add nftables iproute2</span> - the server's page says when they are missing.
+              </li>
               <li>You can log in as root (or use sudo) over SSH.</li>
               <li>
                 The server can reach this panel: <span class="mono">{panelURL}</span>. Nothing needs to reach the server from the panel.
@@ -77,7 +80,8 @@ export function ServerSetup(props: { server: Server; install: string; onDone: ()
                     <span class="mono">{panelURL}</span>: check its firewall and DNS.
                   </li>
                   <li>
-                    Is the agent running? <Code text="systemctl status meridian-agent --no-pager" /> and its log: <Code text="journalctl -u meridian-agent -n 50 --no-pager" />
+                    Is the agent running? <Code text="systemctl status meridian-agent --no-pager" /> and its log: <Code text="journalctl -u meridian-agent -n 50 --no-pager" /> - on Alpine:{' '}
+                    <Code text="rc-service meridian-agent status" /> and <Code text="grep meridian-agent /var/log/messages | tail -50" />
                   </li>
                   <li>
                     “clock skew” in the log: set the time, e.g. <Code text="timedatectl set-ntp true" />

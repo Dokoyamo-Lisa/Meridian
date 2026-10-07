@@ -1265,6 +1265,11 @@ func clientEndpoint(n *Node, srv *Server, c creds, peer *wgPeer, name string) (s
 	}
 	e := subgen.Endpoint{NodeID: n.ID, Name: name, Kind: n.Kind, Server: srv.Name, Country: srv.Country, Host: host,
 		Port: n.Port, UUID: c.ID, Password: c.Password, Username: c.Username}
+	// where the provider decides the ports, devices connect to the number it forwards
+	rt, ru := reachNets(n.Kind)
+	if pub, ok := srv.ports.public(n.Port, rt, ru); ok {
+		e.Port = pub
+	}
 	switch n.Kind {
 	case subgen.KindHysteria2:
 		var s hy2Settings
@@ -1443,14 +1448,19 @@ func checkProtocol(kind string, in *protoInput) supportView {
 	if err == nil {
 		v.Apps = subgen.Support(e)
 	}
-	v.Notes = protocolNotes(kind, raw)
+	v.Notes = protocolNotes(kind, raw, 0)
 	v.Applied, _ = json.Marshal(publicSettings(kind, raw))
 	return v
 }
 
-// protocolNotes tells the admin what a combination needs from them.
-func protocolNotes(kind string, raw json.RawMessage) []string {
+// protocolNotes tells the admin what a combination needs from them. acmePort is where the
+// server's provider forwards TCP port 80 to (0 = port 80 itself).
+func protocolNotes(kind string, raw json.RawMessage, acmePort int) []string {
 	var notes []string
+	port80 := "keep TCP port 80 free"
+	if acmePort > 0 {
+		port80 = fmt.Sprintf("keep TCP port %d free (where the provider forwards port 80)", acmePort)
+	}
 	switch kind {
 	case subgen.KindSOCKS, subgen.KindHTTP:
 		notes = append(notes, "Adding or removing a user re-opens this proxy for a moment: its open connections reconnect. Other protocols are not touched.")
@@ -1459,7 +1469,7 @@ func protocolNotes(kind string, raw json.RawMessage) []string {
 		_ = json.Unmarshal(raw, &s)
 		notes = append(notes, "Uses UDP: open the port for UDP in the server provider's firewall.")
 		if s.CertMode == certACME {
-			notes = append(notes, fmt.Sprintf("Point %s at this server and keep TCP port 80 free: the agent gets and renews the certificate there.", s.SNI))
+			notes = append(notes, fmt.Sprintf("Point %s at this server and %s: the agent gets and renews the certificate there.", s.SNI, port80))
 		}
 		return notes
 	case subgen.KindWireGuard:
@@ -1482,7 +1492,7 @@ func protocolNotes(kind string, raw json.RawMessage) []string {
 			fmt.Sprintf("In your CDN, proxy %s to this server (Cloudflare: orange cloud on, SSL mode Flexible, WebSockets on).", s.CDNHost),
 			"Use one of the origin ports your CDN forwards over plain HTTP (Cloudflare: 80, 8080, 8880, 2052, 2082, 2086, 2095).")
 	case s.Security == secTLS && s.CertMode == certACME:
-		notes = append(notes, fmt.Sprintf("Point %s at this server and keep TCP port 80 free: the agent gets and renews the Let's Encrypt certificate there.", s.SNI))
+		notes = append(notes, fmt.Sprintf("Point %s at this server and %s: the agent gets and renews the Let's Encrypt certificate there.", s.SNI, port80))
 	case s.Security == secTLS && s.CertMode == certSelf:
 		notes = append(notes, "Self-signed certificate: apps that can pin it check it exactly; apps that cannot are left out of their subscription.")
 	}

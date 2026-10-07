@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks'
 import { Server, bits, bytes, flag, get, pct, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
-import { Empty, ErrorBox, Field, Loading, Meter, Modal, PageHead, Search, errText, useAsync, usePoll } from '../ui'
+import { Check, Empty, ErrorBox, Field, Loading, Meter, Modal, PageHead, Search, errText, useAsync, usePoll } from '../ui'
 
 export function statusDot(status: string) {
   return status === 'online' ? 'good' : status === 'offline' ? 'crit' : ''
@@ -143,9 +143,15 @@ export function Servers() {
   )
 }
 
+/** How to write the ports a server's provider forwards. */
+export const portsHint =
+  "As the provider lists them, e.g. 20000-20019. Where the provider's number differs from the server's, write public:server - e.g. 40001-40010:10001-10010 or 10022:22. Add /tcp or /udp if only one is forwarded. Protocols and forwards then use only these ports, and links carry the provider's numbers."
+
 function AddServer(props: { onClose: () => void }) {
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
+  const [nat, setNat] = useState(false)
+  const [ports, setPorts] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -154,7 +160,7 @@ function AddServer(props: { onClose: () => void }) {
     setBusy(true)
     setErr('')
     try {
-      const r = await post<{ server: Server; install: string }>('/api/servers', { name: name.trim(), address: address.trim() })
+      const r = await post<{ server: Server; install: string }>('/api/servers', { name: name.trim(), address: address.trim(), public_ports: nat ? ports.trim() : '' })
       navigate(`/servers/${r.server.id}?setup=1`)
     } catch (e) {
       setErr(errText(e))
@@ -185,9 +191,15 @@ function AddServer(props: { onClose: () => void }) {
         <Field label="Name" hint="Shown to your users, e.g. “Tokyo 1”.">
           <input class="input" value={name} maxLength={64} onInput={(e) => setName(e.currentTarget.value)} required autoFocus />
         </Field>
-        <Field label="Address users connect to" hint="The server's domain or IP. Leave empty to use the IP the server reports.">
+        <Field label="Address users connect to" hint="The server's domain or IP. Leave empty to use the IP the server reports. An IP here also places the server on the map (DB-IP).">
           <input class="input mono" value={address} placeholder="optional" onInput={(e) => setAddress(e.currentTarget.value)} autoComplete="off" spellcheck={false} />
         </Field>
+        <Check checked={nat} onChange={setNat} label="Its provider decides the ports" hint="NAT servers, LXC and Incus containers: only the ports the provider forwards reach the server." />
+        {nat && (
+          <Field label="Ports from the provider" hint={portsHint}>
+            <input class="input mono" value={ports} placeholder="20000-20019" onInput={(e) => setPorts(e.currentTarget.value)} autoComplete="off" spellcheck={false} required />
+          </Field>
+        )}
       </form>
     </Modal>
   )

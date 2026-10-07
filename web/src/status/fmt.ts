@@ -161,8 +161,11 @@ export function regionName(cc: string | null | undefined) {
 }
 export const flagOf = (cc: string | null | undefined) =>
   /^[A-Z]{2}$/.test(cc || '') ? String.fromCodePoint(...[...(cc as string)].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)) : ''
+// cityName is a city as people say it: DB-IP adds the district in brackets ("Los Angeles
+// (Central-Alameda)").
+export const cityName = (city: string | null | undefined) => (city || '').replace(/\s*\([^()]*\)\s*$/, '').trim() || city || ''
 export const placeOf = (city: string, cc: string) =>
-  [city, regionName(cc)].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(' · ')
+  [cityName(city), regionName(cc)].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(' · ')
 
 const tzFmt = new Map<string, Intl.DateTimeFormat | null>()
 // localTime is the time now in a time zone, "14:05".

@@ -1,0 +1,9 @@
+# limactl create --name meridian-alpine test/e2e/lima-alpine.yaml && limactl start meridian-alpine
+base: template:alpine
+vmType: vz
+cpus: 2
+memory: "1GiB"
+disk: "8GiB"
+networks:
+  - vzNAT: true
+mounts: []

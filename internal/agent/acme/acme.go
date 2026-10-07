@@ -1,7 +1,8 @@
 // Package acme gets and renews Let's Encrypt certificates for the domains the server's protocols
 // use (TLS inbounds and Hysteria2 with cert_mode "acme"). It answers the HTTP-01 challenge on TCP
-// port 80, which it opens only while a certificate is being issued, and writes the certificate and
-// key as files that Xray reloads by itself - a renewal never restarts anything.
+// port 80 (or the port the server's provider forwards public port 80 to), which it opens only while
+// a certificate is being issued, and writes the certificate and key as files that Xray reloads by
+// itself - a renewal never restarts anything.
 package acme
 
 import (
@@ -21,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -54,8 +56,31 @@ type Manager struct {
 	mu    sync.Mutex
 	want  map[string]bool
 	state map[string]*status
+	port  int // where the challenge arrives when HTTPAddr is empty; 0 = 80
 	wake  chan struct{}
 	once  sync.Once
+}
+
+// SetPort sets the port the challenge arrives on: the one the server's provider forwards public
+// TCP port 80 to (0 = 80 itself).
+func (m *Manager) SetPort(port int) {
+	m.init()
+	if port < 0 || port > 65535 {
+		port = 0
+	}
+	m.mu.Lock()
+	changed := port != m.port
+	m.port = port
+	if changed { // a check that failed on the old port may work now
+		m.state = map[string]*status{}
+	}
+	m.mu.Unlock()
+	if changed {
+		select {
+		case m.wake <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (m *Manager) init() {
@@ -234,13 +259,19 @@ func (m *Manager) obtain(ctx context.Context, domain string) error {
 	// the challenge listener: only while issuing, only the challenge path
 	tokens := map[string]string{}
 	var tmu sync.Mutex
+	m.mu.Lock()
+	port := m.port
+	m.mu.Unlock()
+	if port == 0 {
+		port = 80
+	}
 	addr := m.HTTPAddr
 	if addr == "" {
-		addr = ":80"
+		addr = ":" + strconv.Itoa(port)
 	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("TCP port 80 is in use on this server - free it so Let's Encrypt can check %s (%v)", domain, err)
+		return fmt.Errorf("TCP port %d is in use on this server - free it so Let's Encrypt can check %s (%v)", port, domain, err)
 	}
 	srv := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tmu.Lock()
@@ -284,7 +315,7 @@ func (m *Manager) obtain(ctx context.Context, domain string) error {
 			return err
 		}
 		if _, err := c.WaitAuthorization(ctx, z.URI); err != nil {
-			return fmt.Errorf("%s could not be verified - check that it points at this server and that TCP port 80 is open (%v)", domain, err)
+			return fmt.Errorf("%s could not be verified - check that it points at this server and that TCP port 80 reaches it (%v)", domain, err)
 		}
 	}
 	order, err = c.WaitOrder(ctx, order.URI)

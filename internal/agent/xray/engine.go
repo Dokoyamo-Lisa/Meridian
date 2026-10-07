@@ -22,11 +22,11 @@ import (
 	"time"
 
 	"meridian/internal/agent/cores"
-	"meridian/internal/agent/systemd"
+	"meridian/internal/agent/service"
 	"meridian/internal/proto"
 )
 
-const Unit = "meridian-xray.service"
+const Unit = "meridian-xray"
 
 type Engine struct {
 	Base    string // data dir, e.g. /var/lib/meridian-agent
@@ -308,7 +308,7 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 		return res, err
 	}
 
-	running := systemd.IsActive(Unit)
+	running := service.IsActive(Unit)
 	if !running {
 		if err := e.writeConfig(body); err != nil {
 			return res, err
@@ -316,7 +316,7 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 		if err := e.writeUnit(); err != nil {
 			return res, err
 		}
-		if err := systemd.EnableNow(Unit); err != nil {
+		if err := service.EnableNow(Unit); err != nil {
 			return res, err
 		}
 		e.waitAPI(ctx)
@@ -347,7 +347,7 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 			if err := e.writeConfig(body); err != nil {
 				return res, err
 			}
-			if err := systemd.Restart(Unit); err != nil {
+			if err := service.Restart(Unit); err != nil {
 				return res, err
 			}
 			e.waitAPI(ctx)
@@ -727,30 +727,16 @@ func (e *Engine) writeConfig(body []byte) error {
 }
 
 func (e *Engine) writeUnit() error {
-	unit := fmt.Sprintf(`[Unit]
-Description=Meridian Xray
-After=network-online.target
-Wants=network-online.target
-StartLimitIntervalSec=0
-
-[Service]
-Type=simple
-Environment=XRAY_LOCATION_ASSET=%[1]s
-ExecStart=%[1]s/xray run -config %[2]s
-Restart=always
-RestartSec=2
-LimitNOFILE=1048576
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-NoNewPrivileges=true
-ProtectSystem=full
-ProtectHome=true
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-`, e.currentDir(), e.configPath())
-	_, err := systemd.WriteUnit(Unit, unit)
+	_, err := service.Define(service.Spec{
+		Name:        Unit,
+		Description: "Meridian Xray",
+		Exec:        e.currentDir() + "/xray",
+		Args:        []string{"run", "-config", e.configPath()},
+		Env:         map[string]string{"XRAY_LOCATION_ASSET": e.currentDir()},
+		Caps:        []string{"CAP_NET_ADMIN", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW"},
+		NoFile:      1048576,
+		Sandbox:     true,
+	})
 	return err
 }
 
@@ -802,7 +788,7 @@ func (e *Engine) Restart(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.init()
-	if err := systemd.Restart(Unit); err != nil {
+	if err := service.Restart(Unit); err != nil {
 		return err
 	}
 	e.waitAPI(ctx)
@@ -833,13 +819,13 @@ func (e *Engine) Upgrade(ctx context.Context, version, mirror string) (string, e
 	if err := e.switchTo(dir); err != nil {
 		return "", err
 	}
-	if err := systemd.Restart(Unit); err != nil {
+	if err := service.Restart(Unit); err != nil {
 		return "", err
 	}
 	time.Sleep(1500 * time.Millisecond)
-	if !systemd.IsActive(Unit) && old != "" {
+	if !service.IsActive(Unit) && old != "" {
 		_ = e.switchTo(old)
-		_ = systemd.Restart(Unit)
+		_ = service.Restart(Unit)
 		return "", fmt.Errorf("upgraded Xray %s did not stay up; rolled back", version)
 	}
 	e.waitAPI(ctx)
@@ -851,7 +837,8 @@ func (e *Engine) Upgrade(ctx context.Context, version, mirror string) (string, e
 func (e *Engine) Remove() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	systemd.RemoveUnit(Unit)
+	service.Remove(Unit)
+	service.Undefine(Unit)
 	os.RemoveAll(e.ConfDir)
 }
 
@@ -875,8 +862,8 @@ func (e *Engine) Collect(ctx context.Context, connLog, destLog bool) Collected {
 	if !e.Installed() {
 		return out
 	}
-	active := systemd.IsActive(Unit)
-	pid, since := systemd.Status(Unit)
+	active := service.IsActive(Unit)
+	pid, since := service.Status(Unit)
 	out.Status = proto.CoreStatus{Running: active, PID: pid, Since: since, Version: e.Version()}
 	if e.lastPID != 0 && pid != 0 && pid != e.lastPID {
 		e.event("core_restarted", "warn", fmt.Sprintf("Xray process restarted (pid %d -> %d)", e.lastPID, pid))

@@ -191,7 +191,15 @@ export function ProtocolCard(props: { node: NodeView; server: Server; onEdit: ()
     }
   }
 
-  const facts: [string, preact.ComponentChildren][] = [['Port', <span class="mono">{n.port} <span class="faint">{n.net === 'both' ? 'tcp+udp' : n.net}</span></span>]]
+  const facts: [string, preact.ComponentChildren][] = [
+    [
+      'Port',
+      <span class="mono">
+        {n.port} <span class="faint">{n.net === 'both' ? 'tcp+udp' : n.net}</span>
+        {n.public_port ? <span class="faint"> · devices use {n.public_port}</span> : null}
+      </span>,
+    ],
+  ]
   facts.push(['Address', <span class="mono ellipsis">{st.cdn ? `${st.cdn_host}:${st.cdn_port} (CDN)` : host || '—'}</span>])
   if (st.security === 'reality') facts.push(['Camouflage', <span class="ellipsis">{st.own_site ? `your site ${st.sni} (${st.target})` : st.sni}</span>])
   if (st.security === 'tls' || n.kind === 'hysteria2')
@@ -623,7 +631,16 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
           <details class="adv">
             <summary>Port, label and more</summary>
             <div class="inline-fields">
-              <Field label="Port" hint={check?.ports?.length ? `Empty = a free one of ${check.ports.slice(0, 4).join(', ')}.` : 'Empty = pick a free one.'}>
+              <Field
+                label="Port"
+                hint={
+                  server?.public_ports
+                    ? `On this server: one of the ports from the provider (${server.public_ports}). Empty = pick a free one.`
+                    : check?.ports?.length
+                      ? `Empty = a free one of ${check.ports.slice(0, 4).join(', ')}.`
+                      : 'Empty = pick a free one.'
+                }
+              >
                 <input class="input mono" inputMode="numeric" value={port} placeholder="auto" onInput={(e) => setPort(e.currentTarget.value.replace(/[^0-9]/g, ''))} />
               </Field>
               <Field label="Label" hint="Optional, shown in apps next to the server name.">

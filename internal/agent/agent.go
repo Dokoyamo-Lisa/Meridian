@@ -32,8 +32,8 @@ import (
 	"meridian/internal/agent/nft"
 	"meridian/internal/agent/realm"
 	"meridian/internal/agent/scan"
+	"meridian/internal/agent/service"
 	"meridian/internal/agent/sys"
-	"meridian/internal/agent/systemd"
 	"meridian/internal/agent/wg"
 	"meridian/internal/agent/xray"
 	"meridian/internal/proto"
@@ -46,7 +46,7 @@ const (
 	ConfPath = "/etc/meridian-agent/agent.json"
 	DataDir  = "/var/lib/meridian-agent"
 	RunDir   = "/run/meridian-agent"
-	Unit     = "meridian-agent.service"
+	Unit     = "meridian-agent"
 	BinPath  = "/usr/local/bin/meridian-agent"
 )
 
@@ -108,6 +108,7 @@ type Agent struct {
 	done      map[int64]bool
 	events    []proto.AgentEvent
 	lastHello time.Time
+	lastCaps  proto.Caps // what the last hello said the host supports
 	cores     map[string]proto.CoreStatus
 	kick      chan struct{}
 	applyMu   sync.Mutex
@@ -173,6 +174,7 @@ func (a *Agent) withCerts(st *proto.State) (*proto.Xray, []proto.HyNode, []strin
 			domains = append(domains, n.ACME)
 		}
 	}
+	a.certs.SetPort(st.Agent.ACMEPort)
 	a.certs.Want(domains)
 	wait := func(d string) {
 		msg := "waiting for the Let's Encrypt certificate for " + d
@@ -360,9 +362,13 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 		note("hysteria", a.hy.Apply(ctx, hys, st.Cores.Hysteria, st.Cores.Mirror))
 		note("wireguard", a.wg.Apply(st.WireGuard))
 		note("realm", a.realm.Apply(ctx, st.Forwards, st.Cores.Realm, st.Cores.Mirror))
-		spec := a.nftSpec(st)
-		spec.Geo = geo
-		note("nftables", a.nft.Apply(spec))
+		// nftables is optional (a bare Alpine has none): without it, country rules, IP blocks and kernel
+		// forwards do not apply here - the panel says so on the server page - and the rest runs
+		if nft.Available() {
+			spec := a.nftSpec(st)
+			spec.Geo = geo
+			note("nftables", a.nft.Apply(spec))
+		}
 	}
 
 	a.runActions(st, st.Actions)
@@ -610,7 +616,7 @@ func (a *Agent) runAction(ctx context.Context, st *proto.State, act proto.Action
 		if !ok {
 			return "", fmt.Errorf("%s was not found by the last scan - scan the server again first", unit)
 		}
-		if err := systemd.DisableNow(unit); err != nil {
+		if err := service.DisableNow(unit); err != nil {
 			return "", err
 		}
 		a.event("service_stopped", "warn", unit+" stopped and disabled for the takeover")
@@ -619,7 +625,9 @@ func (a *Agent) runAction(ctx context.Context, st *proto.State, act proto.Action
 	return "", fmt.Errorf("unknown action %q", act.Kind)
 }
 
-var unitRE = regexp.MustCompile(`^[A-Za-z0-9@_.:-]{1,120}\.service$`)
+// unitRE: a service another program runs, as the scan names it - a systemd unit ("x-ui.service") or
+// an OpenRC service ("x-ui")
+var unitRE = regexp.MustCompile(`^[A-Za-z0-9@_:-][A-Za-z0-9@_.:-]{0,119}$`)
 
 // upgradeSelf replaces the agent binary with the panel's and restarts the agent unit. Cores keep
 // running; only the agent process restarts. want is the binary's SHA-256 as sent by the panel in
@@ -664,7 +672,12 @@ func (a *Agent) upgradeSelf(ctx context.Context, want string) (string, error) {
 	}
 	go func() {
 		time.Sleep(3 * time.Second) // let the result reach the panel first
-		_ = exec.Command("systemctl", "restart", Unit).Run()
+		if service.Init() == "openrc" {
+			// supervise-daemon starts the new binary when this process ends (an rc-service restart
+			// from inside the service would stop its own caller half way)
+			os.Exit(0)
+		}
+		_ = service.Restart(Unit)
 	}()
 	return "agent upgraded; restarting the agent (traffic is not affected)", nil
 }
@@ -742,7 +755,10 @@ func (a *Agent) report(ctx context.Context) {
 	a.events = nil
 	results := append([]proto.ActionResult(nil), a.results...)
 	applied := a.applied
-	sendHello := time.Since(a.lastHello) > 10*time.Minute
+	// the host facts every 10 minutes - or at once when what it supports changes (nftables installed)
+	caps := sys.Caps()
+	caps.APIPort = a.cfg.APIPort
+	sendHello := time.Since(a.lastHello) > 10*time.Minute || caps != a.lastCaps
 	a.mu.Unlock()
 
 	a.out.add(traffic, fwds, ips, dests, proto.NICDelta{RX: rx, TX: tx}, events, a.nft.TakeGeoDrops())
@@ -750,8 +766,7 @@ func (a *Agent) report(ctx context.Context) {
 		ActionResults: results}
 	if sendHello {
 		h := sys.Hello(Version, a.started)
-		h.Caps = sys.Caps()
-		h.Caps.APIPort = a.cfg.APIPort
+		h.Caps = caps
 		rep.Hello = h
 	}
 	rctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -767,6 +782,7 @@ func (a *Agent) report(ctx context.Context) {
 	a.mu.Lock()
 	if sendHello {
 		a.lastHello = time.Now()
+		a.lastCaps = caps
 	}
 	// results that reached the panel are done
 	keep := a.results[:0]

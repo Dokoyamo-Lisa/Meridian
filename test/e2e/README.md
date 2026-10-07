@@ -67,6 +67,47 @@ Things worth checking after a change:
 - **Upgrade**: build agents with a new version, **Upgrade agent** on the server page; traffic keeps
   flowing.
 
+## Alpine Linux (OpenRC)
+
+A second VM checks the agent on Alpine, where services are OpenRC's and nftables is optional:
+
+```bash
+limactl create --name meridian-alpine test/e2e/lima-alpine.yaml
+limactl start meridian-alpine
+limactl shell meridian-alpine -- sudo apk add curl python3      # the probe's needs, not the agent's
+```
+
+Add a server for it (Xray protocols, Hysteria2) and run the install command in the VM with `sh` -
+it works with busybox's `wget` too. Then fetch sing-box's musl build (from its GitHub releases) to
+`/tmp/sing-box` and run `test/e2e/alpine-probe.py LINK 'SERVER NAME'` there: every proxy of the
+server must answer `204`. Check also:
+
+- `rc-status` lists `meridian-agent`, `meridian-xray`, `meridian-hy2.N` and `meridian-realm.N`;
+  `ps -o user,args` shows realm as `nobody`.
+- Without nftables the server's page lists what does not apply, WireGuard and kernel forwards are
+  refused, and new forwards use realm. `apk add nftables iproute2`: the page notices within seconds;
+  then WireGuard and kernel forwards work (test a forward from a network namespace - a connection
+  from the host itself never passes through PREROUTING).
+- **Upgrade agent** from the panel: the agent exits and `supervise-daemon` starts the new one;
+  Xray's and Hysteria2's PIDs stay the same.
+- `meridian-agent uninstall` leaves no `meridian-*` service, file or nftables table behind.
+
+**A server whose provider decides the ports** (NAT, LXC, Incus) can be simulated on the same VM: set
+the server's ports from the provider to `40001-40010:10001-10010` (protocols then get 10001 and up),
+make the VM forward the public numbers to them for its own connections, and probe - the probe
+connects to the numbers in the links:
+
+```bash
+limactl shell meridian-alpine -- sudo sh -c '
+nft add table ip natsim
+nft add chain ip natsim out "{ type nat hook output priority -100; }"
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  for p in tcp udp; do nft add rule ip natsim out ip daddr 127.0.0.1 $p dport $((40000+i)) redirect to :$((10000+i)); done
+done'
+limactl shell meridian-alpine -- sudo python3 /tmp/alpine-probe.py LINK 'SERVER NAME'   # every proxy: 204
+limactl shell meridian-alpine -- sudo nft delete table ip natsim                        # afterwards
+```
+
 ## Notes
 
 - `setup-client.sh` creates the `client` namespace (10.99.0.2) with NAT through the VM, and

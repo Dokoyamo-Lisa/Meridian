@@ -92,7 +92,13 @@ and a generated password (shown once) - pass them on with the sign-in address fr
 - **Servers**: `add_server {name, address?, protocols?}` returns the install command; tell the user
   to run it on the server as root, and that it contains the server's secret. Default protocols:
   `vless` (REALITY) + `hysteria2`; add `wireguard` for laptops/offices, `shadowsocks` for Surge or
-  Quantumult X users.
+  Quantumult X users. An IP as `address` also places the server on the map (DB-IP).
+- **NAT servers, LXC and Incus containers** (the provider lists the ports that reach the server):
+  pass `public_ports` to `add_server`, or `set_server_ports {server_id, public_ports}` later, exactly
+  as the provider lists them - `20000-20019`, `40001-40010:10001-10010` (public:server) when the
+  numbers differ, `/tcp` or `/udp` when only one is forwarded. Then leave `port` out of
+  `add_protocol` and `add_forward`: they pick a forwarded port, and links carry the public number.
+  `get_server` lists under `limits` what cannot be reached as configured.
 - **Protocols**: draft with `check_protocol` first - it says whether the combination works, what to
   change if not, and which apps can use it. Then `add_protocol {server_id, kind, ...}` (applied
   live). Behind Cloudflare: `transport: "ws"`, `security: "none"`, `cdn: true`, `cdn_host`. TLS with a

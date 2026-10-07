@@ -17,27 +17,21 @@ import (
 	"meridian/internal/agent/hy"
 	"meridian/internal/agent/nft"
 	"meridian/internal/agent/realm"
-	"meridian/internal/agent/systemd"
+	"meridian/internal/agent/service"
 	"meridian/internal/agent/wg"
 	"meridian/internal/agent/xray"
 	"meridian/internal/seal"
 )
 
-const agentUnit = `[Unit]
-Description=Meridian agent
-After=network-online.target
-Wants=network-online.target
-StartLimitIntervalSec=0
-
-[Service]
-ExecStart=/usr/local/bin/meridian-agent run
-Restart=always
-RestartSec=3
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
-`
+// agentService is the agent's own service: it restarts after a crash and holds no secrets itself.
+var agentService = service.Spec{
+	Name:        Unit,
+	Description: "Meridian agent",
+	Exec:        BinPath,
+	Args:        []string{"run"},
+	NoFile:      65536,
+	RestartSec:  3,
+}
 
 // freePort finds two free loopback ports in a row from start: the Xray API's and, one up, the
 // Hysteria auth hook's.
@@ -71,8 +65,8 @@ func Install(panel, token string, apiPort int) error {
 	if os.Geteuid() != 0 {
 		return errors.New("run as root")
 	}
-	if !systemd.Available() {
-		return errors.New("systemd is required")
+	if !service.Available() {
+		return errors.New("this server runs neither systemd nor OpenRC - the agent needs one of them to run its services")
 	}
 	panel = strings.TrimRight(strings.TrimSpace(panel), "/")
 	if !strings.HasPrefix(panel, "http://") && !strings.HasPrefix(panel, "https://") {
@@ -105,7 +99,11 @@ func Install(panel, token string, apiPort int) error {
 		var se *statusError
 		switch {
 		case errors.As(err, &se) && se.code == http.StatusUnauthorized && strings.Contains(se.msg, "clock skew"):
-			return fmt.Errorf("this server's clock is off - enable time sync (timedatectl set-ntp true) and retry: %s", se.msg)
+			sync := "timedatectl set-ntp true"
+			if service.Init() == "openrc" {
+				sync = "apk add chrony && rc-update add chronyd && rc-service chronyd start"
+			}
+			return fmt.Errorf("this server's clock is off - enable time sync (%s) and retry: %s", sync, se.msg)
 		case errors.As(err, &se) && se.code == http.StatusUnauthorized:
 			return fmt.Errorf("the panel did not accept the token - copy a fresh command from the panel: %s", se.msg)
 		default:
@@ -115,19 +113,19 @@ func Install(panel, token string, apiPort int) error {
 	if err := cfg.Save(); err != nil {
 		return err
 	}
-	if _, err := systemd.WriteUnit(Unit, agentUnit); err != nil {
+	if _, err := service.Define(agentService); err != nil {
 		return err
 	}
-	if systemd.IsActive(Unit) {
-		if err := systemd.Restart(Unit); err != nil {
+	if service.IsActive(Unit) {
+		if err := service.Restart(Unit); err != nil {
 			return err
 		}
-	} else if err := systemd.EnableNow(Unit); err != nil {
+	} else if err := service.EnableNow(Unit); err != nil {
 		return err
 	}
 	fmt.Println("\nMeridian agent installed and running.")
 	fmt.Println("The server shows up as online in the panel within a few seconds.")
-	fmt.Println("Logs: journalctl -u meridian-agent -f")
+	fmt.Println("Logs: " + service.Logs(Unit))
 	return nil
 }
 
@@ -153,10 +151,16 @@ func Uninstall(verbose bool) {
 	os.RemoveAll(RunDir)
 	os.RemoveAll(ConfDir)
 	say("Removing the agent")
-	os.Remove(filepath.Join(systemd.UnitDir, Unit))
-	_ = exec.Command("systemctl", "daemon-reload").Run()
 	os.Remove(BinPath)
 	say("Meridian was removed from this server.")
 	// last: this stops the agent itself when it runs as the service
-	_ = exec.Command("systemctl", "disable", "--now", Unit).Run()
+	if service.Init() == "openrc" {
+		// rc-service stops and starts services itself, from the calling process: hand the stop to a
+		// detached shell, so it finishes after this process (the service) is gone
+		_, _ = exec.Command("rc-update", "del", Unit, "default").CombinedOutput()
+		_ = exec.Command("setsid", "sh", "-c", "sleep 1; rc-service "+Unit+" stop; rm -f /etc/init.d/"+Unit).Start()
+		return
+	}
+	service.Undefine(Unit)
+	_ = exec.Command("systemctl", "disable", "--now", Unit+".service").Run()
 }

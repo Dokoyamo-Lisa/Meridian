@@ -3,6 +3,7 @@ package panel
 import (
 	"database/sql"
 	"encoding/json"
+	"net/netip"
 	"slices"
 	"strings"
 	"time"
@@ -203,13 +204,16 @@ type Server struct {
 	PublicName      string   `json:"public_name" doc:"Name on the status page; empty = the server's name"`
 	StatusHidden    bool     `json:"status_hidden" doc:"Left off the status page"`
 	LocManual       bool     `json:"loc_manual" doc:"The location was set by hand (not from the IP database)"`
+	PublicPorts     string   `json:"public_ports" doc:"Ports the server's provider forwards to it (NAT servers, LXC and Incus containers), e.g. '20000-20019, 40001-40010:10001-10010'; empty = every port"`
+
+	ports portMap // PublicPorts, parsed
 }
 
 const serverCols = `id, account_id, name, secret, address, note, sort, created_at, deleted_at, instance_id, last_seq,
 agent_version, hostname, os, kernel, arch, cpu_model, cpu_cores, mem_total, disk_total, ipv4, ipv6, country, city,
 lat, lon, caps, boot_time, agent_started_at, first_seen_at, last_seen_at, online, status_changed_at, applied_rev,
 apply_errors, pending_restart, xray_version, bw_limit, bw_mode, bw_reset_day, bw_offset, cycle_rx, cycle_tx,
-cycle_start, price, currency, billing_cycle, expires_on, country_mode, country_list, public_name, status_hidden, loc_manual`
+cycle_start, price, currency, billing_cycle, expires_on, country_mode, country_list, public_name, status_hidden, loc_manual, public_ports`
 
 func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 	s := &Server{}
@@ -220,10 +224,11 @@ func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 		&s.AgentStartedAt, &s.FirstSeenAt, &s.LastSeenAt, &s.Online, &s.StatusChangedAt, &s.AppliedRev,
 		&s.ApplyErrors, &s.PendingRestart, &s.XrayVersion, &s.BwLimit, &s.BwMode, &s.BwResetDay, &s.BwOffset,
 		&s.CycleRX, &s.CycleTX, &s.CycleStart, &s.Price, &s.Currency, &s.BillingCycle, &s.ExpiresOn, &s.CountryMode,
-		&s.CountryList, &s.PublicName, &s.StatusHidden, &s.LocManual)
+		&s.CountryList, &s.PublicName, &s.StatusHidden, &s.LocManual, &s.PublicPorts)
 	if err != nil {
 		return nil, err
 	}
+	s.ports, _ = parsePortMap(s.PublicPorts) // stored as parsePortMap wrote it
 	_ = json.Unmarshal([]byte(s.CountryList), &s.Countries)
 	if s.Countries == nil {
 		s.Countries = []string{}
@@ -232,6 +237,15 @@ func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 		s.Lat, s.Lon = &lat.Float64, &lon.Float64
 	}
 	return s, nil
+}
+
+// addrIP is the server's address when it was set by hand to a public IP address, or "". (A private
+// one - a test VM, a LAN - is in no IP database: the agent's public IP places such a server.)
+func (s *Server) addrIP() string {
+	if a, err := netip.ParseAddr(s.Address); err == nil && publicAddr(a.Unmap()) {
+		return a.Unmap().String()
+	}
+	return ""
 }
 
 // Host is the address clients connect to.
@@ -308,6 +322,7 @@ type Forward struct {
 	DownTotal     int64  `json:"down_total"`
 	CreatedAt     int64  `json:"created_at"`
 	UpdatedAt     int64  `json:"updated_at"`
+	PublicPort    int    `json:"public_port,omitempty" doc:"The port devices connect to, when the server's provider forwards the listen port under another number"`
 }
 
 const forwardCols = `id, server_id, name, listen_port, network, target, engine, proxy_protocol, enabled, up_total,

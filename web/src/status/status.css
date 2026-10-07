@@ -350,6 +350,29 @@ main { position: relative; padding: 0 var(--pad) 22px; }
 .p-events, .p-flow { flex: 1 1 0; }
 .p-flow:only-child, .col-r > .p-flow:first-child { flex: 1 1 0; }
 .globe-area { flex: 1 1 0; }
+/* long lists fold: they show the rows that fit (the first few on smaller screens), the rest wait
+   behind "Show all" - see refold() */
+.fold-box { position: relative; }
+.folded { display: none !important; }
+.fold { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 4px 0; border: 0;
+  background: none; font: inherit; font-size: 11px; color: var(--ink-3); cursor: pointer; transition: color .25s; }
+.fold:hover, .fold:focus-visible { color: var(--ink); }
+.fold[hidden] { display: none; }
+.fold .ic { transform: rotate(90deg); transition: transform .3s var(--ease-out); }
+.fold[aria-expanded="true"] .ic { transform: rotate(-90deg); }
+
+/* one screen: the globe keeps most of the middle column; a long list shows what fits its panel and
+   scrolls inside it only once opened (otherwise a dozen servers squeeze the globe to a sliver) */
+@media (min-width: 1280px) {
+  .col-c .globe-area { min-height: 58%; }
+  .col-c .p-table, .col-l .p-res, .col-r .p-quota { flex: 0 1 auto; }
+  .col-r .p-quota { max-height: 36%; }
+  .dash .col-r .p-flow { flex: none; }
+  .dash .col-r .flow-chart { flex: none; height: clamp(150px, 24vh, 260px); }
+  .col-r .p-events { flex: 1 1 0; }
+  .dash .fold-box { flex: 0 1 auto; min-height: 0; overflow: hidden; }
+  .dash .fold-box.open { overflow: auto; scrollbar-width: thin; }
+}
 
 /* panel: an open region under a hairline, numbered in reading order */
 .panel { position: relative; min-height: 0; min-width: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); padding-top: 14px; }

@@ -143,6 +143,8 @@ export interface NodeView {
   notes?: string[]
   online: number
   pass_name?: string
+  /** The port devices connect to, when the server's provider forwards it under another number. */
+  public_port?: number
 }
 
 export interface Forward {
@@ -157,6 +159,8 @@ export interface Forward {
   enabled: boolean
   up_total: number
   down_total: number
+  /** The port devices connect to, when the server's provider forwards it under another number. */
+  public_port?: number
 }
 
 export interface Server {
@@ -205,6 +209,10 @@ export interface Server {
   public_name: string
   status_hidden: boolean
   loc_manual: boolean
+  /** The ports the server's provider forwards (NAT servers, containers); empty = every port. */
+  public_ports: string
+  /** The address whose DB-IP entry gives the location. */
+  loc_from?: string
   created_at: number
   sys?: Sys
   cores?: Record<string, CoreStatus>
@@ -214,6 +222,8 @@ export interface Server {
   online_subs: number
   online_ips: number
   caps: { systemd: boolean; wireguard: boolean; conntrack: boolean; nftables: boolean; iptables: boolean; api_port?: number }
+  desired_rev?: string
+  limits?: string[]
   ports?: number[]
 }
 

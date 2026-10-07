@@ -200,7 +200,7 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 	set := p.settings()
 	st := &proto.State{Contract: proto.Version, ServerID: id,
 		Agent: proto.AgentSettings{ReportInterval: set.ReportInterval, ConnLog: set.ConnLog, DestLog: set.DestLog,
-			LatestVersion: Version},
+			LatestVersion: Version, ACMEPort: srv.ports.acmePort()},
 		Cores: proto.Cores{Xray: set.XrayVersion, Hysteria: set.HysteriaVersion, Realm: set.RealmVersion,
 			Digests: p.digests.forVersions(map[string]string{"xray": set.XrayVersion, "hysteria": set.HysteriaVersion,
 				"realm": set.RealmVersion})}}

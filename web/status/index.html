@@ -126,11 +126,7 @@
         </section>
         <section class="panel p-res rv" id="pRes" aria-labelledby="hRes">
           <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hRes">Resources</h2><span class="pm" id="resMeta"></span></header>
-          <div class="pb"><div class="res" id="res" role="table" aria-label="CPU, memory and disk per server"></div><p class="res-note" id="resNote"></p></div>
-        </section>
-        <section class="panel p-events rv" id="pEvents" aria-labelledby="hEvents">
-          <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hEvents">Events</h2><a class="pm link" href="#/events">All<svg class="ic sm"><use href="#i-chev"/></svg></a></header>
-          <div class="pb"><div class="ev-mini" id="evMini"></div></div>
+          <div class="pb"><div class="res fold-box" id="res" role="table" aria-label="CPU, memory and disk per server"></div><button type="button" class="fold" id="resFold" aria-controls="res" hidden></button><p class="res-note" id="resNote"></p></div>
         </section>
       </div>
 
@@ -160,7 +156,7 @@
         </section>
         <section class="panel p-table rv" id="pTable" aria-labelledby="hTable">
           <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hTable">Servers</h2><span class="pm" id="tableMeta"></span></header>
-          <div class="pb"><div class="tbl-wrap" id="tableHost"></div></div>
+          <div class="pb"><div class="tbl-wrap fold-box" id="tableHost"></div><button type="button" class="fold" id="tableFold" aria-controls="tableHost" hidden></button></div>
         </section>
       </div>
 
@@ -171,7 +167,7 @@
         </section>
         <section class="panel p-quota rv hidden" id="pQuota" aria-labelledby="hQuota">
           <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hQuota">Bandwidth</h2><span class="pm" id="quotaMeta"></span></header>
-          <div class="pb"><div class="quota" id="quota"></div></div>
+          <div class="pb"><div class="quota fold-box" id="quota"></div><button type="button" class="fold" id="quotaFold" aria-controls="quota" hidden></button></div>
         </section>
         <section class="panel p-flow rv" id="pFlow" aria-labelledby="hFlow">
           <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hFlow">Throughput</h2>
@@ -185,6 +181,10 @@
             <div class="flow-stats" id="flowStats"></div>
             <div class="flow-chart" id="flowChart"><canvas id="flowCanvas" role="img" aria-label="Total throughput of all servers over time"></canvas><div class="bars hidden" id="flowBars"></div><div class="chart-note hidden" id="flowNote">Collecting data…</div></div>
           </div>
+        </section>
+        <section class="panel p-events rv" id="pEvents" aria-labelledby="hEvents">
+          <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hEvents">Events</h2><a class="pm link" href="#/events">All<svg class="ic sm"><use href="#i-chev"/></svg></a></header>
+          <div class="pb"><div class="ev-mini fold-box" id="evMini"></div></div>
         </section>
       </div>
     </div>

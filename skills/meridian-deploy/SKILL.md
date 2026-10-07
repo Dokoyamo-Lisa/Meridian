@@ -44,7 +44,8 @@ They stop with a clear message when something is wrong. They need `bash`, `curl`
 
 - Never edit Meridian's installed files: the binaries, `/etc/systemd/system/meridian.service`,
   anything in `/var/lib/meridian` (that includes the database), or on servers anything under
-  `/etc/meridian-agent`, `/var/lib/meridian-agent` or the `meridian-*` systemd units. The panel and
+  `/etc/meridian-agent`, `/var/lib/meridian-agent` or the `meridian-*` systemd units (on Alpine the
+  `/etc/init.d/meridian-*` scripts). The panel and
   the agent rewrite them; your edits would be lost or break things.
 - Never edit Xray, Hysteria or WireGuard configuration files on a server - the agent writes them
   from the panel. Change protocols through the API.
@@ -64,7 +65,8 @@ Ask for everything missing **in one message** before you start:
 | The panel's host | `203.0.113.10`, SSH as root or a sudo user | Debian 12 / Ubuntu 22.04+ (any systemd Linux works), amd64 or arm64, 1 GB RAM |
 | The panel's domain | `panel.example.com` | Recommended: automatic HTTPS. Its DNS A record must point at the panel's host, **not** proxied by a CDN. Without a domain the panel can only be offered behind the human's own TLS proxy. |
 | An e-mail for certificate notices | `ops@example.com` | Optional |
-| The proxy servers | name, IP, SSH access for each | The panel's host can also be a proxy server |
+| The proxy servers | name, IP, SSH access for each | Any systemd Linux or Alpine Linux (OpenRC), amd64 or arm64. The panel's host can also be a proxy server |
+| Ports, for NAT servers only | "ports 20000-20019", or "public 40001-40010 go to 10001-10010" | Only when the provider decides the ports: NAT VPS, LXC or Incus containers (SSH is then usually on an odd port, e.g. `ssh -p 10022`). Copy it exactly from the provider's page |
 | What to run on them | "VLESS REALITY + Hysteria2" | That is the default - fine for most people |
 | Users to create | names, monthly quota, expiry | Optional |
 | Name and logo | "Acme Net", an SVG/PNG file | Optional (default: Meridian and the umbrella) |
@@ -202,6 +204,23 @@ python3 -c 'import json; d=json.load(open("server.json")); print("server id:", d
 Remember the server id. The install command is in `server.json` (field `install`) - it contains the
 server's secret: do not print it, and delete `server.json` when the server is connected.
 
+**NAT servers, LXC and Incus containers** (the provider gives a list of ports): add `public_ports`
+to the same request, written exactly like this - the panel then puts protocols only on those ports
+and links carry the provider's numbers:
+
+```bash
+# the provider forwards 20000-20019 to the same numbers:
+scripts/api.sh POST /api/servers '{"name":"NAT 1","address":"198.51.100.21","protocols":["vless","hysteria2"],"public_ports":"20000-20019"}' > server.json
+# the provider forwards public 40001-40010 to 10001-10010 on the server (public:server):
+#   "public_ports":"40001-40010:10001-10010"
+# only TCP, or only UDP, is forwarded: add /tcp or /udp, e.g. "20000-20009/tcp, 20010-20019/udp"
+```
+
+`address` is then the provider's public IP (the one you SSH to), never the server's own `10.x`,
+`172.16-31.x` or `192.168.x` address. Forgot `public_ports`, or the provider changed them? Set them
+later - nothing restarts: `scripts/api.sh PATCH /api/servers/ID '{"public_ports":"20000-20019"}'`.
+A `400` answer quotes the part it could not read; fix exactly that part.
+
 **5b. Run the install command on that server as root.** Pass it without printing it, e.g.:
 
 ```bash
@@ -224,7 +243,15 @@ python3 -c 'import json; print(json.load(open("server.json"))["install"])' | ssh
 scripts/wait-server.sh ID          # READY: Tokyo 1 (198.51.100.20, ...): vless on 443, hysteria2 on 443
 ```
 
-Do not continue on `NOT READY` - follow what it prints.
+Do not continue on `NOT READY` - follow what it prints. Lines starting with `NOTE:` are things that
+do not work on that server as configured (for example a protocol on a port the provider does not
+forward) - each says what to change.
+
+**Alpine servers:** the proxies (VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP, Hysteria2) work as
+the system comes. WireGuard, kernel port forwards, country rules and IP blocks need nftables - if the
+human wants any of them, run `apk add nftables iproute2` on that server first. Without it the panel
+refuses those with a message saying exactly that, and `scripts/api.sh GET /api/servers/ID` lists it
+under `limits`. Do not try to work around it.
 
 **5d. Open the server's firewall for its protocols** - only if a firewall is active on it
 (`ufw status` = active, or `firewall-cmd --state` = running):
@@ -236,6 +263,8 @@ for p in $(scripts/ports.sh ID); do ssh root@198.51.100.20 "ufw allow $p"; done
 
 Run `ports.sh` again after adding protocols or forwards later. Cloud firewalls/security groups:
 **ask the human** to allow exactly the ports `ports.sh` prints (both TCP and UDP where listed).
+On NAT servers `ports.sh` prints the ports on the server itself (what its own firewall must let in);
+the provider's forwarding already decides what reaches it from outside.
 
 ## 6. More protocols (optional)
 
@@ -253,7 +282,9 @@ body:
 scripts/api.sh POST /api/servers/ID/nodes '{"kind":"vless","settings":{"security":"reality"}}'
 ```
 
-It is applied live (nobody is disconnected). Then repeat 5d for the new port. Kinds: `vless`,
+It is applied live (nobody is disconnected). Then repeat 5d for the new port. On a server with
+`public_ports`, leave `port` out (the panel picks a forwarded one) - a port outside the list is
+refused with `400`. Kinds: `vless`,
 `vmess`, `trojan`, `shadowsocks`, `socks`, `http`, `hysteria2`, `wireguard`. The full list of
 settings is in the API reference (`GET /api/openapi.json`, or `docs/openapi.json`).
 
@@ -341,7 +372,8 @@ after a change - servers keep running): `MERIDIAN_DOMAIN`, `MERIDIAN_EMAIL`, `ME
 | `api.sh` answers `400` with a message | invalid value | do what the message says |
 | `wait-server.sh`: agent has not connected | the server cannot reach the panel, or the install failed | run the install command again and read its output; `curl https://panel.example.com/healthz` on the server |
 | `wait-server.sh`: could not apply its configuration | a protocol setting does not work on that server (e.g. a port in use) | read the message; change the protocol through the API |
-| `clock skew` in `journalctl -u meridian-agent` | the server's clock is wrong | `timedatectl set-ntp true` on the server |
+| `clock skew` in `journalctl -u meridian-agent` (Alpine: `grep meridian-agent /var/log/messages`) | the server's clock is wrong | `timedatectl set-ntp true` (Alpine: `apk add chrony && rc-update add chronyd && rc-service chronyd start`) on the server |
+| a request answered `400` with "needs nftables" | the server (often Alpine) has no nftables | `apk add nftables iproute2` on it, or leave that feature out - never edit firewall files yourself |
 | clients cannot connect, server READY | the server's firewall or cloud security group blocks the ports | step 5d with `ports.sh` |
 | `run this as the panel's user` | you ran a `meridian` command as root | prefix it with `sudo -u meridian` |
 

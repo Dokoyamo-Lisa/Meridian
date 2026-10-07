@@ -464,6 +464,28 @@ func TestMCP(t *testing.T) {
 	if out, isErr = text(call(full, `{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"set_branding","arguments":{"reset_logo":true}}}`)); isErr || !strings.Contains(out, `"custom":false`) {
 		t.Fatalf("reset_logo: %s", out)
 	}
+	// a NAT server: its provider's ports, then a protocol on one of them under the public number
+	out, isErr = text(call(full, `{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"add_server","arguments":{"name":"NAT","address":"198.51.100.70","protocols":[],"public_ports":"20000-20004"}}}`))
+	if isErr || !strings.Contains(out, "install_command") {
+		t.Fatalf("add_server with ports: %s", out)
+	}
+	var added map[string]any
+	_ = json.Unmarshal([]byte(out), &added)
+	nat := strconv.FormatInt(id(added["server_id"]), 10)
+	out, isErr = text(call(full, `{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"set_server_ports","arguments":{"server_id":`+nat+`,"public_ports":"443:20010/tcp, 20000-20004"}}}`))
+	if isErr || !strings.Contains(out, `"public_ports":"443:20010/tcp, 20000-20004"`) {
+		t.Fatalf("set_server_ports: %s", out)
+	}
+	out, isErr = text(call(full, `{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"add_protocol","arguments":{"server_id":`+nat+`,"kind":"vless"}}}`))
+	if isErr || !strings.Contains(out, `"port":20010`) {
+		t.Fatalf("add_protocol on a NAT server: %s", out)
+	}
+	if out, isErr = text(call(full, `{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"set_server_ports","arguments":{"server_id":`+nat+`,"public_ports":"20000-20019:"}}}`)); !isErr || !strings.Contains(out, "not a port or range") {
+		t.Fatalf("a bad port list: %v %s", isErr, out)
+	}
+	if out, isErr = text(call(full, `{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"list_servers","arguments":{}}}`)); isErr || !strings.Contains(out, `"public_port":443`) {
+		t.Fatalf("list_servers: %s", out)
+	}
 	// the dashboard's data is the supervisor's alone
 	if code, _, _ := b.do("GET", "/api/status", nil); code != 200 {
 		t.Fatalf("supervisor's dashboard data: %d", code)

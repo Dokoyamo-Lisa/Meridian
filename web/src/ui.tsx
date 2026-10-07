@@ -494,8 +494,13 @@ export function Loading(props: { label?: string }) {
 }
 
 export function ErrorBox(props: { error: string; retry?: () => void }) {
+  // a form's error shows at its top: bring it into view when it appears below a long form
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+  }, [props.error])
   return (
-    <div class="callout crit">
+    <div class="callout crit" role="alert" ref={ref}>
       <Icon name="alert" size="sm" />
       <div class="grow">{props.error}</div>
       {props.retry && (

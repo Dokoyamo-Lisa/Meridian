@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.5.0 - 2026-10-07
+
+The agent contract is unchanged: 0.4 agents keep working with this panel. Upgrade an agent when
+convenient (server page › More actions › Upgrade agent - nobody is disconnected); Alpine servers
+and servers whose provider decides the ports install the new one anyway.
+
+- **The status page's globe keeps its room**: with a dozen servers the list under it squeezed the
+  globe to a sliver on wide screens. Long lists now fold - the servers, resources, bandwidth and
+  events show what fits the screen (the first few on phones and tablets) and "Show all" opens the
+  rest - so the dashboard is one screen again. The throughput chart has a sensible height and the
+  events moved under it, instead of one tall, mostly empty chart on the right. Servers close
+  together share one pin on the globe, and DB-IP's district names are left out of places ("Los
+  Angeles", not "Los Angeles (Central-Alameda)").
+- **Alpine Linux**: the agent runs on Alpine (OpenRC) as well as on every systemd distribution. The
+  install command works with busybox's `wget` and plain `sh`; the agent, Xray, Hysteria2 and each
+  realm forward run as OpenRC services (`rc-status` lists them), realm as `nobody`. Upgrading the
+  agent still disconnects nobody. On Alpine the proxies work as the system comes; WireGuard, kernel
+  port forwards, country rules and IP blocks also need `apk add nftables iproute2` - until then the
+  server's page says what does not apply, those are refused with that command, and forwards use
+  realm. Installing nftables later is noticed within seconds.
+- **Servers whose provider decides the ports** (NAT servers, LXC and Incus containers): **Ports
+  from the provider** on the server (when adding it, or in its Edit dialog; `public_ports` in the
+  API and MCP) takes the ports exactly as the provider lists them - `20000-20019`, or
+  `40001-40010:10001-10010` when the provider's numbers differ from the server's, with `/tcp` or
+  `/udp` where only one is forwarded. New protocols and forwards get one of those ports (a usual
+  public number first), other ports are refused with the list, and links and proxy passes carry the
+  number devices connect to. Let's Encrypt certificates work where the provider forwards port 80,
+  to any port. Changing the list restarts nothing; protocols left outside it are listed on the
+  server's page.
+- **An IP set by hand is where the server is**: typing an IP as a server's address looks it up in
+  DB-IP right away (and on later reports), so the map and the status page show where devices
+  actually connect; the server's page says which address its place comes from. A location set by
+  hand still wins; a domain leaves the place to the IP the agent reports.
+- Proxy passes follow their exit server when its address, IP or ports change.
+- Activity shows a camouflage-site check you started in words instead of its raw data (automatic
+  checks already had their own line), and a form's error scrolls into view when it appears above
+  the button you pressed.
+
 ## 0.4.3 - 2026-10-07
 
 - The agent's firewall rules load on every nftables version: nft before 1.1 (Ubuntu 24.04, Debian 12)

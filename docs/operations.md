@@ -150,10 +150,11 @@ Then set **Settings › Public URL** to `https://panel.example.com`.
 | What | Where |
 | --- | --- |
 | Panel | `journalctl -u meridian -f` |
-| Agent | `journalctl -u meridian-agent -f` (on the server) |
-| Xray | `journalctl -u meridian-xray` |
-| Hysteria2 | `journalctl -u 'meridian-hy2@*'` |
-| realm forwards | `journalctl -u 'meridian-realm@*'` |
+| Agent | `journalctl -u meridian-agent -f` (on the server); on Alpine `grep meridian-agent /var/log/messages` |
+| Xray | `journalctl -u meridian-xray`; on Alpine `grep meridian-xray /var/log/messages` |
+| Hysteria2 | `journalctl -u 'meridian-hy2@*'`; its request log is `/run/meridian-agent/hy2-N.log` |
+| realm forwards | `journalctl -u 'meridian-realm@*'`; on Alpine `grep meridian-realm /var/log/messages` |
+| Services on Alpine | `rc-status` lists them (`meridian-agent`, `meridian-xray`, `meridian-hy2.N`, `meridian-realm.N`) |
 | What happened, in plain words | **Monitor › Events** |
 
 ## Settings reference (`/etc/meridian/meridian.env`)
@@ -186,7 +187,9 @@ Everything else lives in **Settings** in the panel.
 | Server stays "Waiting for agent" | Run the install command again and read its output. The server must reach the panel's public URL. The server page's guide lists the checks. |
 | Install says `meridian-install.sh: FAILED` | The panel was updated since you copied the command. Copy a fresh one from the server page. |
 | `clock skew` in the agent log | The server's time is off by more than 5 minutes: `timedatectl set-ntp true`. |
-| Server offline | The agent reports every few seconds. Check `systemctl status meridian-agent` and that the server can reach the panel. Protocols keep working while the agent is down. |
+| Server offline | The agent reports every few seconds. Check `systemctl status meridian-agent` (Alpine: `rc-service meridian-agent status`) and that the server can reach the panel. Protocols keep working while the agent is down. |
+| A protocol on a NAT server or container does not connect | Its port must be one the provider forwards: set **Ports from the provider** in the server's **Edit** dialog exactly as the provider lists them (`20000-20019`, or `40001-40010:10001-10010` when the numbers differ). The server's page then lists protocols outside them; links carry the provider's numbers. |
+| "nftables is not installed" on a server's page | That server (often Alpine) has no nftables: WireGuard, kernel port forwards, country rules and IP blocks don't work there; the proxies do. `apk add nftables iproute2` (Alpine) or `apt install nftables` - the panel notices within seconds. |
 | "needs an Xray restart" alert | A change (for example to the Xray core version) needs one restart. Nothing restarts until you click **Restart now**. |
 | A protocol cannot be saved | The form says why and what to do instead - for example Trojan needs TLS, and a Let's Encrypt certificate needs a domain pointing at the server. |
 | REALITY connects slowly or not at all | **Test from server** on the protocol. Pick a site that answers quickly from the server, or front your own site. |

@@ -89,3 +89,23 @@ func TestSoftwareOf(t *testing.T) {
 		}
 	}
 }
+
+func TestUnitFromCgroup(t *testing.T) {
+	for cg, want := range map[string]string{
+		"0::/system.slice/x-ui.service\n": "x-ui.service",
+		"0::/system.slice/system-hysteria\\x2dserver.slice/hysteria-server@config.service\n": "hysteria-server@config.service",
+		"0::/openrc.xray\n":                                "xray",
+		"0::/openrc.meridian-hy2.22\n":                     "meridian-hy2.22",
+		"12:pids:/openrc.sing-box\n0::/openrc.sing-box\n":  "sing-box",
+		"0::/user.slice/user-1000.slice/session-3.scope\n": "",
+		"0::/\n": "",
+	} {
+		got := ""
+		if m := unitRE.FindStringSubmatch(cg); m != nil {
+			got = m[1] + m[2]
+		}
+		if got != want {
+			t.Errorf("%q: got %q, want %q", cg, got, want)
+		}
+	}
+}

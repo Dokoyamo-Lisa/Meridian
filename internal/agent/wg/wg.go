@@ -7,10 +7,12 @@ package wg
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -46,6 +48,16 @@ func ip(args ...string) (string, error) {
 		return string(out), fmt.Errorf("ip %s: %s", strings.Join(args, " "), strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
+}
+
+// busyboxIP reports whether "ip" is busybox's (Alpine without iproute2), which has no "type wireguard".
+func busyboxIP() bool {
+	path, err := exec.LookPath("ip")
+	if err != nil {
+		return false
+	}
+	real, err := filepath.EvalSymlinks(path)
+	return err == nil && filepath.Base(real) == "busybox"
 }
 
 func linkExists(name string) bool {
@@ -112,6 +124,9 @@ func (e *Engine) applyOne(client *wgctrl.Client, w proto.WGInterface) error {
 		if _, err := ip("link", "add", w.Name, "type", "wireguard"); err != nil {
 			_ = exec.Command("modprobe", "wireguard").Run()
 			if _, err := ip("link", "add", w.Name, "type", "wireguard"); err != nil {
+				if busyboxIP() {
+					return errors.New("WireGuard needs the iproute2 package on this server (apk add iproute2): busybox's ip cannot create WireGuard interfaces")
+				}
 				return err
 			}
 		}

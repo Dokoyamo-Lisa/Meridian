@@ -34,6 +34,7 @@ import {
   panelDate,
   pctText,
   placeOf,
+  cityName,
   rate,
   regionName,
   setClockOffset,
@@ -355,6 +356,7 @@ function updateRes() {
   const missing = S.pub.servers.length - list.length
   setText($('#resNote'), missing ? `${missing} offline, so not reporting` : '')
   setText($('#resMeta'), `${list.length}/${S.pub.servers.length} servers`)
+  scheduleFold()
 }
 
 // ================================================================ events (overview)
@@ -363,7 +365,7 @@ let evMiniFirst = true
 function updateEventsMini() {
   if (!show().events) return
   const host = clear($('#evMini'))
-  const evs = feedItems().slice(0, 7)
+  const evs = feedItems().slice(0, 20)
   host.classList.toggle('stagger', evMiniFirst)
   if (!evs.length) {
     host.append(h('div.empty', 'No outages in the last 30 days'))
@@ -383,6 +385,106 @@ function updateEventsMini() {
     ),
   )
   evMiniFirst = false
+  scheduleFold()
+}
+
+// ================================================================ folding
+
+// Long lists fold. On the one-screen dashboard each shows the rows that fit its panel - the globe
+// keeps its room and nothing needs scrolling; on smaller screens the first few. "Show all" opens the
+// rest (on the dashboard the list then scrolls inside its panel), "Show fewer" folds it again.
+// Events have no button: their panel links to the full list.
+const oneScreen = matchMedia('(min-width: 1280px)')
+const FOLD_ROWS = 6
+const opened = new Set<string>()
+
+interface FoldList {
+  box: () => HTMLElement
+  rows: () => HTMLElement[][] // each row's elements, in order (a grid row is several cells)
+  btn: string | null
+  noun: string
+}
+const FOLDS: Record<string, FoldList> = {
+  table: { box: () => $('#tableHost'), rows: () => $$('#tableHost tbody > tr[data-sid]').map((tr) => [tr]), btn: 'tableFold', noun: 'servers' },
+  res: { box: () => $('#res'), rows: () => chunks($$('#res > *').slice(4), 4), btn: 'resFold', noun: 'servers' },
+  quota: { box: () => $('#quota'), rows: () => $$('#quota > .q-row').map((el) => [el]), btn: 'quotaFold', noun: 'servers' },
+  events: { box: () => $('#evMini'), rows: () => $$('#evMini > .ev-row').map((el) => [el]), btn: null, noun: 'events' },
+}
+
+function chunks<T>(a: T[], n: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < a.length; i += n) out.push(a.slice(i, i + n))
+  return out
+}
+
+// bottomIn is where an element ends inside a box, in layout pixels: an entry animation's transform
+// does not count
+function bottomIn(el: HTMLElement, box: HTMLElement): number {
+  let y = el.offsetHeight
+  let n: HTMLElement | null = el
+  while (n && n !== box) {
+    y += n.offsetTop
+    n = n.offsetParent as HTMLElement | null
+  }
+  return n === box ? y : el.getBoundingClientRect().bottom - box.getBoundingClientRect().top
+}
+
+function foldOne(name: string, f: FoldList) {
+  const box = f.box()
+  const btn = f.btn ? (document.getElementById(f.btn) as HTMLButtonElement | null) : null
+  if (!box) return
+  const rows = f.rows()
+  const open = opened.has(name)
+  for (const r of rows) for (const el of r) el.classList.remove('folded')
+  box.classList.toggle('open', open)
+  if (!open) box.scrollTop = 0
+  let shown = rows.length
+  if (!open && rows.length && box.offsetParent) {
+    if (oneScreen.matches) {
+      // as many rows as the panel has room for - the button, when it shows, needs room too
+      const fit = () => {
+        const room = box.clientHeight + 1
+        let k = 0
+        while (k < rows.length && bottomIn(rows[k][0], box) <= room) k++
+        return k
+      }
+      if (btn) btn.hidden = true
+      shown = fit()
+      if (shown < rows.length && btn) {
+        btn.hidden = false
+        shown = fit()
+      }
+    } else shown = Math.min(rows.length, FOLD_ROWS)
+  }
+  rows.slice(shown).forEach((r) => r.forEach((el) => el.classList.add('folded')))
+  if (btn) {
+    btn.hidden = !open && shown >= rows.length
+    btn.setAttribute('aria-expanded', String(open))
+    clear(btn).append(open ? 'Show fewer' : `Show all ${rows.length} ${f.noun}`, icon('chev', 'sm'))
+  }
+}
+
+let foldRaf = 0
+function scheduleFold() {
+  if (foldRaf) return
+  foldRaf = requestAnimationFrame(() => {
+    foldRaf = 0
+    for (const [name, f] of Object.entries(FOLDS)) foldOne(name, f)
+  })
+}
+
+function initFolds() {
+  for (const [name, f] of Object.entries(FOLDS)) {
+    if (!f.btn) continue
+    $('#' + f.btn).addEventListener('click', () => {
+      if (opened.has(name)) opened.delete(name)
+      else opened.add(name)
+      foldOne(name, f)
+    })
+  }
+  new ResizeObserver(() => scheduleFold()).observe($('.dash'))
+  oneScreen.addEventListener('change', () => scheduleFold())
+  void document.fonts?.ready.then(() => scheduleFold())
 }
 
 // ================================================================ figures under the globe
@@ -515,6 +617,7 @@ function updateTable() {
     }
   }
   if (p.servers.length) body.querySelector('.empty-row')?.parentElement?.remove()
+  scheduleFold()
 }
 
 function updateTableRates() {
@@ -592,6 +695,7 @@ function updateQuota() {
       QRows.delete(sid)
     }
   }
+  scheduleFold()
 }
 
 // ================================================================ the user's figures on the overview
@@ -739,27 +843,28 @@ const wrap180 = (d: number) => ((((d + 180) % 360) + 360) % 360) - 180
 // at their mean position (across the date line too) and is approximate only when every one of them
 // is (an IP database location rather than one set by hand).
 function placesFromServers(): GlobePlace[] {
-  type Group = { cc: string; city: string; lat0: number; lon0: number; dlat: number; dlon: number; ids: number[]; label: string; rate: number; online: number; issues: number; tz?: string; exact: boolean }
+  type Group = { cc: string; cities: Map<string, number>; lat0: number; lon0: number; dlat: number; dlon: number; ids: number[]; name: string; rate: number; online: number; issues: number; tz?: string; exact: boolean }
   const groups: Group[] = []
   const d = nowDate()
   for (const sv of S.pub?.servers || []) {
     if (!sv.loc) continue
     const [lat, lon] = sv.loc
     const cc = sv.cc || ''
-    const city = sv.city || ''
+    const city = cityName(sv.city)
+    // one pin for servers of a country within about 60 km: an IP database names neighbouring
+    // districts and towns of one data-centre area differently
     let g = groups.find((x) => {
-      if (x.cc !== cc || x.city !== city) return false
+      if (x.cc !== cc) return false
       const n = x.ids.length
       const dLat = lat - (x.lat0 + x.dlat / n)
       const dLon = wrap180(lon - (x.lon0 + x.dlon / n)) * Math.cos((lat * Math.PI) / 180)
       return Math.hypot(dLat, dLon) < 0.55
     })
     if (!g) {
-      // the city and its country code, so the place is never ambiguous ("Portland US")
-      const label = city ? `${city} ${cc}`.trim() : regionName(cc) || sv.name
-      g = { cc, city, lat0: lat, lon0: lon, dlat: 0, dlon: 0, ids: [], label, rate: 0, online: 0, issues: 0, tz: sv.tz, exact: false }
+      g = { cc, cities: new Map(), lat0: lat, lon0: lon, dlat: 0, dlon: 0, ids: [], name: sv.name, rate: 0, online: 0, issues: 0, tz: sv.tz, exact: false }
       groups.push(g)
     }
+    if (city) g.cities.set(city, (g.cities.get(city) || 0) + 1)
     g.dlat += lat - g.lat0
     g.dlon += wrap180(lon - g.lon0)
     g.ids.push(sv.id)
@@ -768,23 +873,27 @@ function placesFromServers(): GlobePlace[] {
     if (!sv.approx) g.exact = true
     if (serverIssues(sv).length) g.issues++
   }
-  return groups.map((g) => ({
-    key: `${g.cc}|${g.city}|${g.lat0.toFixed(2)},${g.lon0.toFixed(2)}`,
-    lat: g.lat0 + g.dlat / g.ids.length,
-    lon: wrap180(g.lon0 + g.dlon / g.ids.length),
-    ids: g.ids,
-    label: g.label,
-    rate: g.rate,
-    online: g.online,
-    approx: !g.exact,
-    state: g.online < g.ids.length ? 'crit' : g.issues ? 'warn' : 'good',
-    sub:
-      g.online < g.ids.length
-        ? g.online
-          ? `${g.ids.length - g.online} of ${g.ids.length} offline`
-          : 'offline'
-        : [g.ids.length > 1 ? `${g.ids.length} servers` : '', localTime(g.tz, d) || ''].filter(Boolean).join(' · '),
-  }))
+  return groups.map((g) => {
+    // the place's most common city and its country code, so it is never ambiguous ("Portland US")
+    const city = [...g.cities].sort((a, b) => b[1] - a[1])[0]?.[0] || ''
+    return {
+      key: `${g.cc}|${g.lat0.toFixed(2)},${g.lon0.toFixed(2)}`,
+      lat: g.lat0 + g.dlat / g.ids.length,
+      lon: wrap180(g.lon0 + g.dlon / g.ids.length),
+      ids: g.ids,
+      label: city ? `${city} ${g.cc}`.trim() : regionName(g.cc) || g.name,
+      rate: g.rate,
+      online: g.online,
+      approx: !g.exact,
+      state: g.online < g.ids.length ? 'crit' : g.issues ? 'warn' : 'good',
+      sub:
+        g.online < g.ids.length
+          ? g.online
+            ? `${g.ids.length - g.online} of ${g.ids.length} offline`
+            : 'offline'
+          : [g.ids.length > 1 ? `${g.ids.length} servers` : '', localTime(g.tz, d) || ''].filter(Boolean).join(' · '),
+    }
+  })
 }
 
 function hubPlace() {
@@ -1825,6 +1934,7 @@ function showView(v: View) {
 }
 
 function renderView(v: View) {
+  if (v === 'overview') scheduleFold()
   if (v === 'signin') renderGate()
   if (v === 'servers') updateCards()
   if (v === 'events') updateEventsPage()
@@ -2024,6 +2134,7 @@ async function init() {
   initReveal()
   initGlobe()
   initFlow()
+  initFolds()
   initDrawer()
   initAuth()
   // a display, not a document: copying is off outside form fields and the user's own page

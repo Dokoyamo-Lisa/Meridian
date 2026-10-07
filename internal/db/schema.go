@@ -385,4 +385,8 @@ CREATE TABLE server_scans (
 );
 ALTER TABLE nodes ADD COLUMN imported TEXT NOT NULL DEFAULT '';
 `,
+	// 8: servers whose provider decides their ports (NAT servers, LXC and Incus containers)
+	`
+ALTER TABLE servers ADD COLUMN public_ports TEXT NOT NULL DEFAULT '';
+`,
 }

@@ -27,7 +27,7 @@ import {
 } from '../ui'
 import { EventList } from './Monitor'
 import { ProtocolCard, waitAction } from './Protocols'
-import { StatusWord } from './Servers'
+import { StatusWord, portsHint } from './Servers'
 import { ScanButton, ServerSetup } from './Setup'
 import { CountryPicker, countryName } from './Access'
 
@@ -229,6 +229,12 @@ export function ServerPage(props: { id: number }) {
           </div>
         </div>
       )}
+      {srv.limits?.map((l) => (
+        <div class="callout warn">
+          <Icon name="info" size="sm" />
+          <div class="grow">{l}</div>
+        </div>
+      ))}
 
       {sys && (
         <div class="kpis">
@@ -368,6 +374,14 @@ export function ServerPage(props: { id: number }) {
             <dd>
               {srv.agent_version || '—'} {srv.agent_started_at > 0 && <span class="faint">· started <Ago ts={srv.agent_started_at} /></span>}
             </dd>
+            {srv.public_ports ? (
+              <>
+                <dt>From the provider</dt>
+                <dd>
+                  <span class="mono">{srv.public_ports}</span> <span class="faint">· the only ports that reach this server</span>
+                </dd>
+              </>
+            ) : null}
             {srv.caps?.api_port ? (
               <>
                 <dt>Local ports</dt>
@@ -508,6 +522,7 @@ function ForwardTable(props: { server: Server; onEdit: (f: Forward) => void; onC
             <tr>
               <td>
                 <span class="mono">:{f.listen_port}</span> <span class="faint">{f.network}</span>
+                {f.public_port ? <div class="cell-sub">devices use port {f.public_port}</div> : null}
                 {f.name && <div class="cell-sub">{f.name}</div>}
               </td>
               <td class="mono">{f.target}</td>
@@ -584,7 +599,7 @@ function ForwardModal(props: { server: Server; fwd?: Forward; onClose: () => voi
       <form id="fwd-form" onSubmit={save}>
         {err && <ErrorBox error={err} />}
         <div class="inline-fields">
-          <Field label="Listen port" hint="On this server. Empty = pick a free one.">
+          <Field label="Listen port" hint={props.server.public_ports ? `On this server, one of the ports from the provider (${props.server.public_ports}). Empty = pick a free one.` : 'On this server. Empty = pick a free one.'}>
             <input class="input mono" inputMode="numeric" value={port} placeholder="auto" onInput={(e) => setPort(e.currentTarget.value.replace(/[^0-9]/g, ''))} />
           </Field>
           <Field label="Name" hint="Optional.">
@@ -636,6 +651,7 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
   const v = props.server
   const [name, setName] = useState(v.name)
   const [address, setAddress] = useState(v.address)
+  const [ports, setPorts] = useState(v.public_ports || '')
   const [note, setNote] = useState(v.note)
   const [limit, setLimit] = useState(v.bw_limit ? String(Math.round(v.bw_limit / 1024 ** 3)) : '')
   const [mode, setMode] = useState(v.bw_mode || 'both')
@@ -649,12 +665,21 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
 
   const save = async (e: Event) => {
     e.preventDefault()
+    if (ports.trim() !== (v.public_ports || '') && (v.nodes.length > 0 || v.forwards.length > 0)) {
+      const ok = await ask({
+        title: 'Change the ports from the provider?',
+        body: <p style="margin-top:0">Links carry the ports the provider forwards: where a number changes, devices must refresh their subscription (most apps do that by themselves within hours). Nothing on the server restarts. Protocols on ports the list leaves out are shown on this page.</p>,
+        confirm: 'Save',
+      })
+      if (!ok) return
+    }
     setBusy(true)
     setErr('')
     try {
       const body: Record<string, unknown> = {
         name: name.trim(),
         address: address.trim(),
+        public_ports: ports.trim(),
         note,
         bw_limit: Math.round((Number(limit) || 0) * 1024 ** 3),
         bw_mode: mode,
@@ -696,10 +721,13 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
           <Field label="Name">
             <input class="input" value={name} maxLength={64} onInput={(e) => setName(e.currentTarget.value)} required />
           </Field>
-          <Field label="Address clients connect to" hint={`Empty = ${v.ipv4 || v.ipv6 || 'the IP the agent reports'}.`}>
+          <Field label="Address clients connect to" hint={`Empty = ${v.ipv4 || v.ipv6 || 'the IP the agent reports'}. An IP here also places the server on the map (DB-IP), unless you set its location by hand.`}>
             <input class="input mono" value={address} onInput={(e) => setAddress(e.currentTarget.value)} autoComplete="off" spellcheck={false} />
           </Field>
         </div>
+        <Field label="Ports from the provider" hint={<>Only for servers whose provider decides their ports (NAT servers, LXC and Incus containers) - empty = every port. {portsHint}</>}>
+          <input class="input mono" value={ports} placeholder="every port" onInput={(e) => setPorts(e.currentTarget.value)} autoComplete="off" spellcheck={false} />
+        </Field>
         <div class="label" style="margin:6px 0 8px">
           Bandwidth plan
         </div>
@@ -777,7 +805,7 @@ function StatusPagePanel(props: { server: Server; onChanged: () => void }) {
         <dt>Location</dt>
         <dd>
           {srv.city || srv.country ? `${flag(srv.country)} ${[srv.city, srv.country].filter(Boolean).join(', ')}` : 'unknown'}
-          <span class="faint"> · {srv.loc_manual ? 'set by hand' : 'from the IP database'}</span>
+          <span class="faint"> · {srv.loc_manual ? 'set by hand' : srv.loc_from ? `from DB-IP for ${srv.loc_from}` : 'from the IP database'}</span>
         </dd>
       </dl>
       {!srv.loc_manual && (

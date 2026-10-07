@@ -13,11 +13,11 @@ import (
 	"sync"
 
 	"meridian/internal/agent/cores"
-	"meridian/internal/agent/systemd"
+	"meridian/internal/agent/service"
 	"meridian/internal/proto"
 )
 
-const template = "meridian-realm@.service"
+const template = "meridian-realm@"
 
 type Engine struct {
 	Base    string
@@ -26,7 +26,7 @@ type Engine struct {
 	mu sync.Mutex
 }
 
-func unitName(id int64) string { return fmt.Sprintf("meridian-realm@%d.service", id) }
+func unitName(id int64) string { return service.Instance(template, id) }
 
 func (e *Engine) confPath(id int64) string {
 	return filepath.Join(e.ConfDir, strconv.FormatInt(id, 10)+".json")
@@ -63,26 +63,16 @@ func (e *Engine) Apply(ctx context.Context, forwards []proto.Forward, version, m
 		if err != nil {
 			return fmt.Errorf("install realm %s: %w", version, err)
 		}
-		unit := fmt.Sprintf(`[Unit]
-Description=Meridian forward %%i (realm)
-After=network-online.target
-Wants=network-online.target
-StartLimitIntervalSec=0
-
-[Service]
-ExecStart=%s -c %s/%%i.json
-Restart=always
-RestartSec=2
-LimitNOFILE=1048576
-DynamicUser=yes
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-NoNewPrivileges=true
-
-[Install]
-WantedBy=multi-user.target
-`, bin, e.ConfDir)
-		if _, err := systemd.WriteUnit(template, unit); err != nil {
+		unit := service.Spec{
+			Name:         template,
+			Description:  "Meridian forward %i (realm)",
+			Exec:         bin,
+			Args:         []string{"-c", e.ConfDir + "/%i.json"},
+			Unprivileged: true,
+			Caps:         []string{"CAP_NET_BIND_SERVICE"},
+			NoFile:       1048576,
+		}
+		if _, err := service.Define(unit); err != nil {
 			return err
 		}
 		// realm runs as an unprivileged dynamic user: its config (no secrets in it) must be readable
@@ -104,12 +94,12 @@ WantedBy=multi-user.target
 			}
 		}
 		switch {
-		case !systemd.IsActive(unitName(id)):
-			if err := systemd.EnableNow(unitName(id)); err != nil {
+		case !service.IsActive(unitName(id)):
+			if err := service.EnableNow(unitName(id)); err != nil {
 				errs = append(errs, err.Error())
 			}
 		case changed: // the admin edited this forward
-			if err := systemd.Restart(unitName(id)); err != nil {
+			if err := service.Restart(unitName(id)); err != nil {
 				errs = append(errs, err.Error())
 			}
 		}
@@ -121,7 +111,7 @@ WantedBy=multi-user.target
 			continue
 		}
 		if _, ok := want[id]; !ok {
-			systemd.RemoveUnit(unitName(id))
+			service.Remove(unitName(id))
 			os.Remove(e.confPath(id))
 		}
 	}
@@ -134,7 +124,7 @@ WantedBy=multi-user.target
 // Remove stops every realm forward (decommission).
 func (e *Engine) Remove() {
 	_ = e.Apply(context.Background(), nil, "", "")
-	os.Remove(filepath.Join(systemd.UnitDir, template))
+	service.Undefine(template)
 }
 
 // Running reports which forwards have a running process.
@@ -142,7 +132,7 @@ func (e *Engine) Running(forwards []proto.Forward) map[int64]bool {
 	out := map[int64]bool{}
 	for _, f := range forwards {
 		if f.Engine == "realm" {
-			out[f.ID] = systemd.IsActive(unitName(f.ID))
+			out[f.ID] = service.IsActive(unitName(f.ID))
 		}
 	}
 	return out

@@ -31,7 +31,7 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 	}
 	var ack int64
 	var events []func(tx *sql.Tx)
-	recompile := false
+	recompile, ipMoved := false, false
 
 	err := p.db.Write(ctx, func(tx *sql.Tx) error {
 		// a new installation of the agent starts its own sequence
@@ -62,7 +62,7 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 						fmt.Sprintf("%s connected for the first time (%s, %s)", srv.Name, h.OS, h.IPv4))
 				})
 			} else if h.IPv4 != srv.IPv4 && srv.IPv4 != "" {
-				recompile = true
+				recompile, ipMoved = true, srv.Address == "" // links and passes use the reported IP
 				events = append(events, func(tx *sql.Tx) {
 					eventTx(tx, srv.AccountID, "warn", "ip_changed", srv.ID, 0,
 						fmt.Sprintf("Public IPv4 of %s changed from %s to %s", srv.Name, srv.IPv4, h.IPv4))
@@ -153,13 +153,19 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 					finishTakeover(tx, srv, ar)
 				}
 				ar := ar
-				events = append(events, func(tx *sql.Tx) {
-					lvl := "info"
-					if !ar.OK {
-						lvl = "warn"
-					}
-					eventTx(tx, srv.AccountID, lvl, "action_"+status, srv.ID, 0, fmt.Sprintf("%s: %s", srv.Name, firstLine(ar.Output)))
-				})
+				msg, ok := firstLine(ar.Output), true
+				if kind == proto.ActionCheckTarget && ar.OK {
+					msg, ok = targetSummary(ar.Output) // automatic checks have their own event
+				}
+				if ok {
+					events = append(events, func(tx *sql.Tx) {
+						lvl := "info"
+						if !ar.OK {
+							lvl = "warn"
+						}
+						eventTx(tx, srv.AccountID, lvl, "action_"+status, srv.ID, 0, fmt.Sprintf("%s: %s", srv.Name, msg))
+					})
+				}
 			}
 		}
 
@@ -199,39 +205,48 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 	if recompile {
 		p.touchServers(srv.ID)
 	}
+	if ipMoved { // proxy passes on other servers connect to this one's IP
+		p.touchServers(p.passEntriesOf(ctx, srv.ID)...)
+	}
 	return ack, nil
 }
 
-// locateServer says where a server is, from its public address (IPv4, or IPv6 on an IPv6-only
-// host), unless its place was set by hand. It asks the IP database again when the address changed
-// or the place is still incomplete (the city database arrives after the first contact on a new
-// panel); a new address never keeps the old address's coordinates.
+// locateServer says where a server is, unless its place was set by hand. An IP set by hand as the
+// server's address is where devices connect, so DB-IP is asked there (a local lookup, on every
+// hello: a place found elsewhere before is corrected). Otherwise the agent's public address counts
+// (IPv4, or IPv6 on an IPv6-only host): the IP database is asked again when it changed or the
+// place is still incomplete (the city database arrives after the first contact on a new panel); a
+// new address never keeps the old address's coordinates.
 func (p *Panel) locateServer(srv *Server, h *proto.Hello) (country, city string, lat, lon *float64) {
 	country, city, lat, lon = srv.Country, srv.City, srv.Lat, srv.Lon
+	if srv.LocManual {
+		return
+	}
+	if a := srv.addrIP(); a != "" {
+		if c, ci, la, lo := p.lookupPlace(a); c != "" || la != nil {
+			return c, ci, la, lo
+		}
+		return
+	}
 	ip, old := h.IPv4, srv.IPv4
 	if ip == "" {
 		ip, old = h.IPv6, srv.IPv6
 	}
-	if srv.LocManual || ip == "" {
+	if ip == "" {
 		return
 	}
 	moved := ip != old
 	if !moved && country != "" && lat != nil {
 		return
 	}
-	g := p.geo.Lookup(ip)
-	if g == nil {
+	c, ci, la, lo := p.lookupPlace(ip)
+	if c == "" && la == nil {
 		if moved { // unknown for now: better no place than the old one; the next hello asks again
 			return "", "", nil, nil
 		}
 		return
 	}
-	country, city, lat, lon = g.Country, g.City, nil, nil
-	if g.Lat != 0 || g.Lon != 0 {
-		la, lo := g.Lat, g.Lon
-		lat, lon = &la, &lo
-	}
-	return
+	return c, ci, la, lo
 }
 
 // sanitizeLive keeps what an agent says is connected in one spelling: addresses parsed, unmapped
@@ -500,6 +515,30 @@ func logErr(what string, err error) {
 	if err != nil {
 		slog.Error(what, "err", err)
 	}
+}
+
+// targetSummary words a camouflage check someone asked for ("Test from server"); automatic checks
+// are reported by applyTargetResult instead (ok = false).
+func targetSummary(output string) (msg string, ok bool) {
+	var out struct {
+		Auto    bool                 `json:"auto"`
+		Results []proto.TargetResult `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(output), &out); err != nil || len(out.Results) == 0 {
+		return firstLine(output), true
+	}
+	if out.Auto {
+		return "", false
+	}
+	r := out.Results[0]
+	if r.OK {
+		return fmt.Sprintf("REALITY camouflage %s works from this server (%d ms)", r.Target, r.MS), true
+	}
+	msg = fmt.Sprintf("REALITY camouflage %s does not work from this server", r.Target)
+	if r.Error != "" {
+		msg += ": " + firstLine(r.Error)
+	}
+	return msg, true
 }
 
 // applyTargetResult acts on an automatic camouflage check: when a new REALITY node's site does not

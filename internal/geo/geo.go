@@ -44,6 +44,15 @@ type DB struct {
 	cache map[string]*Info
 }
 
+// Static answers lookups from a fixed table only - for tests.
+func Static(known map[string]*Info) *DB {
+	d := &DB{cache: map[string]*Info{}}
+	for ip, info := range known {
+		d.cache[ip] = info
+	}
+	return d
+}
+
 func Open(dataDir string) *DB {
 	d := &DB{dir: filepath.Join(dataDir, "geo"), cache: map[string]*Info{}}
 	d.load()
@@ -175,7 +184,7 @@ func (d *DB) Lookup(ip string) *Info {
 
 // Maintain downloads this month's databases when missing and reloads them.
 func (d *DB) Maintain(ctx context.Context) {
-	if os.Getenv("MERIDIAN_NO_GEO_DOWNLOAD") != "" {
+	if os.Getenv("MERIDIAN_NO_GEO_DOWNLOAD") != "" || d.dir == "" { // d.dir is empty for a Static table
 		return
 	}
 	for {

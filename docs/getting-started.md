@@ -4,7 +4,7 @@ From nothing to the first person connected, in about ten minutes.
 
 ## 1. Install the panel
 
-You need a small Linux server (any distribution with systemd; 1 CPU and 512 MB are plenty) and,
+You need a small Linux server for the panel (any distribution with systemd; 1 CPU and 512 MB are plenty) and,
 ideally, a domain name pointing to it.
 
 Download the release for the server's CPU from the project's Releases page (`linux-amd64` for most
@@ -38,23 +38,55 @@ its settings `/etc/meridian/meridian.env`.
 ## 2. Add a server
 
 **Servers › Add server**. Give it a name ("Tokyo 1") and, optionally, the domain or IP clients
-should use (empty = the IP the server reports). The server page then shows a guide:
+should use (empty = the IP the server reports). An IP typed here also places the server on the map:
+the panel looks it up in DB-IP right away (unless you set the location by hand). The server page
+then shows a guide:
 
 1. **Check the server** - Linux with systemd (Debian 11+, Ubuntu 20.04+, AlmaLinux / Rocky 8+,
-   Fedora, Arch), amd64 or arm64, root access, and the server can reach the panel.
+   Fedora, Arch) or Alpine Linux (OpenRC), amd64 or arm64, root access, and the server can reach
+   the panel. On Alpine the proxies (Xray, Hysteria2) work as the system comes; WireGuard, kernel
+   port forwards, country rules and IP blocks also need `apk add nftables iproute2` - without them
+   the server's page says what does not apply, and forwards use realm.
 2. **Paste the command** it shows on the server as root:
 
    ```bash
-   curl -fsSLo meridian-install.sh https://panel.example.com/agent/install.sh && echo '<checksum>  meridian-install.sh' | sha256sum -c - && bash meridian-install.sh --token '<token>'
+   { curl -fsSLo meridian-install.sh https://panel.example.com/agent/install.sh || wget -qO meridian-install.sh https://panel.example.com/agent/install.sh; } && echo '<checksum>  meridian-install.sh' | sha256sum -c - && sh meridian-install.sh --token '<token>' --api-port 50000
    ```
 
-   The command checks the installer's checksum, the installer checks the agent's, and the agent
-   checks every core it downloads. The token in it is the server's secret - treat it like a
+   It works the same on every distribution (curl or busybox's wget, plain `sh`). The command checks
+   the installer's checksum, the installer checks the agent's, and the agent checks every core it
+   downloads. The token in it is the server's secret - treat it like a
    password; if it leaks, use **More actions › Rotate agent token** on the server page.
 
 The guide turns green when the agent connects (usually within seconds). If it does not, the guide
-lists what to check: the command's output, `systemctl status meridian-agent`, the server's clock and
-whether it can reach the panel's address.
+lists what to check: the command's output, `systemctl status meridian-agent` (on Alpine
+`rc-service meridian-agent status`), the server's clock and whether it can reach the panel's address.
+
+### Servers whose provider decides the ports (NAT, LXC, Incus)
+
+A NAT VPS or a container shares its provider's IP and is reachable only on the ports the provider
+forwards to it - "ports 20000-20019", or "public 40001-40010 go to 10001-10010". Tick **Its
+provider decides the ports** when adding the server (or set **Ports from the provider** in the
+server's **Edit** dialog later) and enter them as the provider lists them:
+
+| Provider's page says | Enter |
+| --- | --- |
+| Ports 20000-20019 | `20000-20019` |
+| Public 40001-40010 → 10001-10010 on the server | `40001-40010:10001-10010` |
+| Public 10443 → 443, SSH on 10022 → 22 | `10443:443, 10022:22` |
+| TCP only on 20000-20009, UDP only on 20010-20019 | `20000-20009/tcp, 20010-20019/udp` |
+
+Protocols and forwards then get one of those ports (a usual public number first, e.g. the port the
+provider forwards 443 to for REALITY), other ports are refused with the list, and links carry the
+number devices connect to. Hysteria2 and WireGuard need a port forwarded for UDP. Let's Encrypt
+certificates need public port 80 forwarded (to any port: the agent answers there); without it, use
+a self-signed or pasted certificate. Changing the list restarts nothing; protocols left outside it
+are listed on the server's page.
+
+The address clients use is the provider's public IP (the agent reports it), not the server's own
+`10.x` or `192.168.x` address. If the provider forwards through a proxy rather than NAT, the server
+sees the provider's address instead of the devices': device counts, country rules and IP blocks
+cannot tell devices apart there.
 
 ## 3. Add protocols
 
@@ -85,7 +117,8 @@ do instead. Below the form you see which apps can use the protocol as configured
   Encrypt** certificate the agent obtains and renews (needs a domain pointing at the server and
   port 80 free), or a certificate you paste.
 - Ports are chosen for you (443 first for TLS, REALITY and Hysteria2 where it is free; 8388 for
-  Shadowsocks, 51820 for WireGuard) and can be changed.
+  Shadowsocks, 51820 for WireGuard) and can be changed. On a server whose provider decides the
+  ports, only those ports are used (see above).
 
 **Already running Xray, V2Ray, x-ui, 3x-ui, sing-box or Hysteria2 on the server?** Use **Import
 existing setup** on the server page. The agent reads their configuration (it changes nothing), you

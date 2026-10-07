@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meridian API",
-    "version": "0.4.3",
+    "version": "0.5.0",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -4094,6 +4094,10 @@
             "description": "The location was set by hand (not from the IP database)",
             "type": "boolean"
           },
+          "public_ports": {
+            "description": "Ports the server's provider forwards to it (NAT servers, LXC and Incus containers), e.g. '20000-20019, 40001-40010:10001-10010'; empty = every port",
+            "type": "string"
+          },
           "status": {
             "type": "string"
           },
@@ -4142,6 +4146,21 @@
               "type": "integer"
             },
             "type": "array"
+          },
+          "desired_rev": {
+            "description": "The configuration the panel wants on the server: it is in place when applied_rev equals it",
+            "type": "string"
+          },
+          "limits": {
+            "description": "What does not work on this server, and how to change that",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "loc_from": {
+            "description": "The address whose DB-IP entry gives the location: the address when it was set by hand to an IP, otherwise the IP the agent reports (empty when the location was set by hand)",
+            "type": "string"
           }
         }
       },
@@ -4299,6 +4318,10 @@
           "pass_name": {
             "description": "The proxy pass exit, as 'server · protocol'",
             "type": "string"
+          },
+          "public_port": {
+            "description": "The port devices connect to, when the server's provider forwards it under another number than port",
+            "type": "integer"
           }
         }
       },
@@ -4365,6 +4388,10 @@
           },
           "updated_at": {
             "format": "int64",
+            "type": "integer"
+          },
+          "public_port": {
+            "description": "The port devices connect to, when the server's provider forwards the listen port under another number",
             "type": "integer"
           }
         }
@@ -4479,6 +4506,10 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "public_ports": {
+            "description": "Only for servers whose provider decides their ports (NAT servers, LXC and Incus containers): the ports it forwards, e.g. '20000-20019'; PUBLIC:LOCAL where the number on the server differs ('40001-40010:10001-10010'); /tcp or /udp where only one is forwarded. Protocols and forwards then use only these ports and links carry the public numbers. Empty = every port",
+            "type": "string"
           }
         }
       },
@@ -5251,7 +5282,7 @@
         "type": "object",
         "properties": {
           "engine": {
-            "description": "nft (kernel, default) or realm",
+            "description": "nft (kernel; the default where nftables is installed) or realm (the default without it)",
             "type": "string"
           },
           "name": {

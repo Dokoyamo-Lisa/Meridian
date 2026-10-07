@@ -381,8 +381,12 @@ func findTool(name string) *mcpTool {
 
 // argument helpers ---------------------------------------------------------------
 
-func pInt(desc string) map[string]any  { return map[string]any{"type": "integer", "description": desc} }
-func pStr(desc string) map[string]any  { return map[string]any{"type": "string", "description": desc} }
+func pInt(desc string) map[string]any { return map[string]any{"type": "integer", "description": desc} }
+func pStr(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
+
+// publicPortsHelp explains the ports a NAT server's provider forwards, for the tools that take them.
+const publicPortsHelp = "Only for servers whose provider decides their ports (NAT servers, LXC and Incus containers): the ports it forwards, as on the provider's page - e.g. '20000-20019'. Where the number on the server differs from the public one write PUBLIC:LOCAL, e.g. '40001-40010:10001-10010' or '10022:22'. Add /tcp or /udp when only one is forwarded. Omit for an ordinary server (every port)."
+
 func pBool(desc string) map[string]any { return map[string]any{"type": "boolean", "description": desc} }
 func pNum(desc string) map[string]any  { return map[string]any{"type": "number", "description": desc} }
 func btoi(b bool) int {
@@ -562,9 +566,10 @@ var mcpTools = []mcpTool{
 			for _, x := range list {
 				m, _ := x.(map[string]any)
 				s := pick(m, "id", "name", "status", "address", "ipv4", "country", "city", "online_ips", "online_subs",
-					"bw_used", "bw_limit", "pending_restart", "apply_errors", "agent_version", "last_seen_at").(map[string]any)
-				s["protocols"] = pick(m["nodes"], "id", "kind", "label", "name", "port", "net", "enabled", "online", "pass_name")
-				s["forwards"] = pick(m["forwards"], "id", "listen_port", "target", "network", "engine", "enabled")
+					"bw_used", "bw_limit", "pending_restart", "apply_errors", "agent_version", "last_seen_at", "public_ports",
+					"limits").(map[string]any)
+				s["protocols"] = pick(m["nodes"], "id", "kind", "label", "name", "port", "public_port", "net", "enabled", "online", "pass_name")
+				s["forwards"] = pick(m["forwards"], "id", "listen_port", "public_port", "target", "network", "engine", "enabled")
 				if sys, ok := m["sys"].(map[string]any); ok {
 					s["load"] = pick(sys, "cpu", "mem_used", "mem_total", "rx_rate", "tx_rate")
 				}
@@ -859,9 +864,10 @@ var mcpTools = []mcpTool{
 	{Name: "add_server", Title: "Add server", Write: true,
 		Description: "Register a new server and get the one-line install command to run on it as root. The listed protocols are set up as soon as the agent connects.",
 		Props: map[string]any{
-			"name":      pStr("Display name, e.g. Tokyo 1"),
-			"address":   pStr("Domain or IP clients connect to; omit to use the IP the agent reports"),
-			"protocols": map[string]any{"type": "array", "items": map[string]any{"type": "string", "enum": kindNames()}, "description": "Protocols to set up with their default settings (default: vless with REALITY, and hysteria2). Use add_protocol for other settings."},
+			"name":         pStr("Display name, e.g. Tokyo 1"),
+			"address":      pStr("Domain or IP clients connect to; omit to use the IP the agent reports. An IP here also sets the server's location (from DB-IP)"),
+			"protocols":    map[string]any{"type": "array", "items": map[string]any{"type": "string", "enum": kindNames()}, "description": "Protocols to set up with their default settings (default: vless with REALITY, and hysteria2). Use add_protocol for other settings."},
+			"public_ports": pStr(publicPortsHelp),
 		},
 		Required: []string{"name"},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
@@ -869,6 +875,9 @@ var mcpTools = []mcpTool{
 			b["name"], _ = argStr(a, "name")
 			if v, ok := argStr(a, "address"); ok {
 				b["address"] = v
+			}
+			if v, ok := argStr(a, "public_ports"); ok {
+				b["public_ports"] = v
 			}
 			if raw, ok := a["protocols"].([]any); ok {
 				b["protocols"] = raw
@@ -883,6 +892,29 @@ var mcpTools = []mcpTool{
 			srv, _ := m["server"].(map[string]any)
 			return map[string]any{"server_id": srv["id"], "name": srv["name"], "install_command": m["install"],
 				"next": "Run install_command on the server as root. The command contains the server's secret token - share it only with the person installing."}, nil
+		}},
+	{Name: "set_server_ports", Title: "Ports from the provider", Write: true,
+		Description: "For a server whose provider decides its ports (NAT servers, LXC and Incus containers): the ports the provider forwards to it. New protocols and forwards then get one of these ports, others are refused, and links carry the provider's numbers. Nothing on the server restarts; if a protocol's port is not in the list, get_server shows it under limits.",
+		Props: map[string]any{
+			"server_id":    pInt("Server id"),
+			"public_ports": pStr(publicPortsHelp + " Send an empty string for an ordinary server."),
+		},
+		Required: []string{"server_id", "public_ports"},
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			id, err := needInt(a, "server_id")
+			if err != nil {
+				return nil, err
+			}
+			ports, _ := argStr(a, "public_ports")
+			v, err := c.api("PATCH", fmt.Sprintf("/api/servers/%d", id), map[string]any{"public_ports": ports})
+			if err != nil {
+				return nil, err
+			}
+			m, _ := v.(map[string]any)
+			srv, _ := m["server"].(map[string]any)
+			out := pick(srv, "id", "name", "public_ports", "limits").(map[string]any)
+			out["protocols"] = pick(srv["nodes"], "id", "label", "port", "public_port")
+			return out, nil
 		}},
 	{Name: "get_install_command", Title: "Install command", Write: true,
 		Description: "The one-line agent install command of a server (contains its secret token).",

@@ -26,13 +26,13 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"meridian/internal/agent/cores"
-	"meridian/internal/agent/systemd"
+	"meridian/internal/agent/service"
 	"meridian/internal/proto"
 )
 
-const template = "meridian-hy2@.service"
+const template = "meridian-hy2@"
 
-func unitName(id int64) string { return fmt.Sprintf("meridian-hy2@%d.service", id) }
+func unitName(id int64) string { return service.Instance(template, id) }
 
 type Engine struct {
 	Base     string
@@ -222,31 +222,18 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 		if err != nil {
 			return fmt.Errorf("install Hysteria %s: %w", version, err)
 		}
-		unit := fmt.Sprintf(`[Unit]
-Description=Meridian Hysteria2 node %%i
-After=network-online.target
-Wants=network-online.target
-StartLimitIntervalSec=0
-
-[Service]
-ExecStart=%s server -c %s/%%i.yaml
-Restart=always
-RestartSec=2
-LimitNOFILE=1048576
-Environment=HYSTERIA_LOG_LEVEL=debug
-Environment=HYSTERIA_LOG_FORMAT=json
-StandardOutput=append:%s/hy2-%%i.log
-StandardError=append:%s/hy2-%%i.log
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-NoNewPrivileges=true
-ProtectSystem=full
-ProtectHome=true
-
-[Install]
-WantedBy=multi-user.target
-`, bin, e.ConfDir, e.RunDir, e.RunDir)
-		if _, err := systemd.WriteUnit(template, unit); err != nil {
+		unit := service.Spec{
+			Name:        template,
+			Description: "Meridian Hysteria2 node %i",
+			Exec:        bin,
+			Args:        []string{"server", "-c", e.ConfDir + "/%i.yaml"},
+			Env:         map[string]string{"HYSTERIA_LOG_LEVEL": "debug", "HYSTERIA_LOG_FORMAT": "json"},
+			Log:         e.RunDir + "/hy2-%i.log",
+			Caps:        []string{"CAP_NET_ADMIN", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW"},
+			NoFile:      1048576,
+			Sandbox:     true,
+		}
+		if _, err := service.Define(unit); err != nil {
 			return err
 		}
 		e.mu.Lock()
@@ -308,12 +295,12 @@ WantedBy=multi-user.target
 			}
 		}
 		switch {
-		case !systemd.IsActive(unitName(id)):
-			if err := systemd.EnableNow(unitName(id)); err != nil {
+		case !service.IsActive(unitName(id)):
+			if err := service.EnableNow(unitName(id)); err != nil {
 				errs = append(errs, err.Error())
 			}
 		case changed: // the admin changed this node's own settings
-			if err := systemd.Restart(unitName(id)); err != nil {
+			if err := service.Restart(unitName(id)); err != nil {
 				errs = append(errs, err.Error())
 			}
 		}
@@ -343,7 +330,7 @@ WantedBy=multi-user.target
 		}
 	}
 	for _, id := range gone {
-		systemd.RemoveUnit(unitName(id))
+		service.Remove(unitName(id))
 		for _, ext := range []string{".yaml", ".crt", ".key"} {
 			os.Remove(filepath.Join(e.ConfDir, fmt.Sprintf("%d%s", id, ext)))
 		}
@@ -447,7 +434,7 @@ func (e *Engine) call(pi portInfo, method, path string, body []byte) ([]byte, er
 // Remove stops every node (decommission).
 func (e *Engine) Remove() {
 	_ = e.Apply(context.Background(), nil, "", "")
-	os.Remove(filepath.Join(systemd.UnitDir, template))
+	service.Undefine(template)
 	if e.srv != nil {
 		e.srv.Close()
 	}
@@ -540,8 +527,8 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 	}
 	for id := range nodes {
 		pi := ports[id]
-		active := systemd.IsActive(unitName(id))
-		pid, since := systemd.Status(unitName(id))
+		active := service.IsActive(unitName(id))
+		pid, since := service.Status(unitName(id))
 		st := proto.CoreStatus{Running: active, PID: pid, Since: since}
 		e.mu.Lock()
 		if last := e.lastPID[id]; last != 0 && pid != 0 && pid != last && e.Events != nil {

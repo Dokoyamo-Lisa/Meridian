@@ -360,5 +360,6 @@ func hasWireGuard() bool {
 	rel := strings.TrimSpace(readFile("/proc/sys/kernel/osrelease"))
 	return rel != "" && (fileExists("/lib/modules/"+rel+"/kernel/drivers/net/wireguard/wireguard.ko") ||
 		fileExists("/lib/modules/"+rel+"/kernel/drivers/net/wireguard/wireguard.ko.zst") ||
-		fileExists("/lib/modules/"+rel+"/kernel/drivers/net/wireguard/wireguard.ko.xz"))
+		fileExists("/lib/modules/"+rel+"/kernel/drivers/net/wireguard/wireguard.ko.xz") ||
+		fileExists("/lib/modules/"+rel+"/kernel/drivers/net/wireguard/wireguard.ko.gz"))
 }

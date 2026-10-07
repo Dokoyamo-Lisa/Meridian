@@ -124,7 +124,9 @@ type proc struct {
 	software, config, unit string
 }
 
-var unitRE = regexp.MustCompile(`([A-Za-z0-9@_.:-]+\.service)`)
+// unitRE finds the service a process runs in from its cgroup: a systemd unit ("…/x-ui.service") or an
+// OpenRC service ("/openrc.x-ui")
+var unitRE = regexp.MustCompile(`([A-Za-z0-9@_.:-]+\.service)|/openrc\.([A-Za-z0-9@_.:-]+)`)
 
 // processes lists running proxy programs with their config and systemd unit.
 func processes() []proc {
@@ -152,7 +154,7 @@ func processes() []proc {
 		unit := ""
 		if cg, err := os.ReadFile(filepath.Join(d, "cgroup")); err == nil {
 			if m := unitRE.FindStringSubmatch(string(cg)); m != nil {
-				unit = m[1]
+				unit = m[1] + m[2]
 			}
 		}
 		out = append(out, proc{software: sw, config: filepath.Clean(cfg), unit: unit})

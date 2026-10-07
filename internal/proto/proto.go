@@ -59,6 +59,9 @@ type AgentSettings struct {
 	ConnLog        bool   `json:"conn_log"`        // record which IPs connected (Xray access log)
 	DestLog        bool   `json:"dest_log"`        // record where traffic went
 	LatestVersion  string `json:"latest_version,omitempty"`
+	// ACMEPort is where Let's Encrypt's check arrives on a server whose provider forwards TCP port 80
+	// to another port (NAT servers, containers); 0 = port 80 itself.
+	ACMEPort int `json:"acme_port,omitempty"`
 }
 
 // Cores pins the versions the agent runs. Upgrades happen only through an explicit action.

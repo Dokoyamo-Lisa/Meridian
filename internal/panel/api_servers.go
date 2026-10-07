@@ -58,6 +58,8 @@ type nodeView struct {
 	Notes    []string            `json:"notes,omitempty" doc:"What the admin needs to know or do"`
 	Online   int                 `json:"online"`
 	PassName string              `json:"pass_name,omitempty" doc:"The proxy pass exit, as 'server · protocol'"`
+	// on servers whose provider forwards other numbers than the ones the server listens on
+	PublicPort int `json:"public_port,omitempty" doc:"The port devices connect to, when the server's provider forwards it under another number than port"`
 }
 
 type serverView struct {
@@ -73,11 +75,34 @@ type serverView struct {
 	BwUsed     int64                       `json:"bw_used"`
 	Caps       proto.Caps                  `json:"caps"`
 	Ports      []int                       `json:"ports,omitempty"`
+	DesiredRev string                      `json:"desired_rev,omitempty" doc:"The configuration the panel wants on the server: it is in place when applied_rev equals it"`
+	Limits     []string                    `json:"limits,omitempty" doc:"What does not work on this server, and how to change that"`
+	LocFrom    string                      `json:"loc_from,omitempty" doc:"The address whose DB-IP entry gives the location: the address when it was set by hand to an IP, otherwise the IP the agent reports (empty when the location was set by hand)"`
 }
+
+// noNftables says whether a server has told the panel it has no nftables.
+func noNftables(s *Server) bool {
+	if s.FirstSeenAt == 0 || s.Caps == "" {
+		return false
+	}
+	var c proto.Caps
+	return json.Unmarshal([]byte(s.Caps), &c) == nil && !c.Nftables
+}
+
+const nftMissing = "nftables is not installed on this server (apk add nftables on Alpine, apt install nftables on Debian or Ubuntu)"
 
 func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*serverView, error) {
 	v := &serverView{Server: s, BwUsed: s.BwUsed(), Nodes: []nodeView{}, Forwards: []*Forward{}}
 	_ = json.Unmarshal([]byte(s.Caps), &v.Caps)
+	if c := p.hub.get(s.ID); c != nil {
+		v.DesiredRev = c.state.Rev
+	}
+	if noNftables(s) {
+		v.Limits = append(v.Limits, "Country rules, IP blocks, WireGuard and kernel port forwards don't work here: "+nftMissing+".")
+	}
+	if !s.LocManual {
+		v.LocFrom = nz(s.addrIP(), nz(s.IPv4, s.IPv6))
+	}
 	switch {
 	case s.FirstSeenAt == 0:
 		v.Status = "pending"
@@ -108,7 +133,7 @@ func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*server
 		return nil, err
 	}
 	for _, n := range nodes {
-		nv := viewOfNode(n)
+		nv := viewOfNode(n, s)
 		nv.Online = online[n.ID]
 		if n.PassNode > 0 {
 			nv.PassName = p.passName(ctx, n.PassNode)
@@ -119,7 +144,11 @@ func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*server
 	if err != nil {
 		return nil, err
 	}
+	for _, f := range fw {
+		f.PublicPort = publicPortOf(s, f)
+	}
 	v.Forwards = append(v.Forwards, fw...)
+	v.Limits = append(v.Limits, portIssues(s, nodes, fw)...)
 	return v, nil
 }
 
@@ -162,10 +191,14 @@ func (p *Panel) apiServer(w http.ResponseWriter, r *http.Request, a *Account) er
 }
 
 // viewOfNode is a node as the API shows it.
-func viewOfNode(n *Node) nodeView {
+func viewOfNode(n *Node, srv *Server) nodeView {
 	tcp, udp := nodeNets(n.Kind, n.Settings)
 	v := nodeView{Node: n, Settings: publicSettings(n.Kind, n.Settings), Label: protocolLabel(n.Kind, n.Settings),
-		Net: netLabel(tcp, udp), Notes: protocolNotes(n.Kind, n.Settings), Apps: []subgen.AppSupport{}}
+		Net: netLabel(tcp, udp), Notes: protocolNotes(n.Kind, n.Settings, srv.ports.acmePort()), Apps: []subgen.AppSupport{}}
+	rt, ru := reachNets(n.Kind)
+	if pub, ok := srv.ports.public(n.Port, rt, ru); ok && pub != n.Port {
+		v.PublicPort = pub
+	}
 	sample := &Server{Name: "x", Address: "203.0.113.10"}
 	sub := &Sub{ID: 1, UUID: "00000000-0000-4000-8000-000000000000", Secret: "x"}
 	var peer *wgPeer
@@ -200,7 +233,8 @@ func (p *Panel) installCommand(r *http.Request, s *Server) string {
 		return "# " + err.Error()
 	}
 	sum := sha256.Sum256([]byte(script))
-	return fmt.Sprintf("curl -fsSLo meridian-install.sh %s/agent/install.sh && echo '%s  meridian-install.sh' | sha256sum -c - && bash meridian-install.sh --token '%s' --api-port %d",
+	// curl or wget (busybox's on Alpine), then sh: the same line works on Debian, Ubuntu, RHEL and Alpine
+	return fmt.Sprintf("{ curl -fsSLo meridian-install.sh %[1]s/agent/install.sh || wget -qO meridian-install.sh %[1]s/agent/install.sh; } && echo '%[2]s  meridian-install.sh' | sha256sum -c - && sh meridian-install.sh --token '%[3]s' --api-port %[4]d",
 		base, hex.EncodeToString(sum[:]), seal.Token(s.ID, s.Secret), p.settings().AgentPort)
 }
 
@@ -224,6 +258,7 @@ type serverInput struct {
 	AutoLocation bool            `json:"auto_location" doc:"Go back to the location from the IP database"`
 	Countries    []string        `json:"countries" doc:"With country_mode block or allow: two-letter country codes"`
 	Protocols    []string        `json:"protocols" doc:"On create, optional: protocols to set up with their default settings (vless, vmess, trojan, shadowsocks, hysteria2, wireguard, socks, http)"`
+	PublicPorts  *string         `json:"public_ports" doc:"Only for servers whose provider decides their ports (NAT servers, LXC and Incus containers): the ports it forwards, e.g. '20000-20019'; PUBLIC:LOCAL where the number on the server differs ('40001-40010:10001-10010'); /tcp or /udp where only one is forwarded. Protocols and forwards then use only these ports and links carry the public numbers. Empty = every port"`
 }
 
 func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Account) error {
@@ -246,11 +281,19 @@ func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Accou
 			return err
 		}
 	}
+	pm, err := parsePortMap(deref(in.PublicPorts, ""))
+	if err != nil {
+		return errStatus(http.StatusBadRequest, err.Error())
+	}
+	srv := &Server{Address: addr, PublicPorts: pm.String(), ports: pm}
+	// an IP set by hand is where the server is: DB-IP places it right away
+	country, city, lat, lon := p.lookupPlace(srv.addrIP())
 	t := now()
 	var id int64
-	err := p.db.Write(r.Context(), func(tx *sql.Tx) error {
-		res, err := tx.Exec(`INSERT INTO servers (account_id, name, secret, address, created_at) VALUES (?, ?, ?, ?, ?)`,
-			owner, name, seal.NewSecret(), addr, t)
+	err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
+		res, err := tx.Exec(`INSERT INTO servers (account_id, name, secret, address, public_ports, country, city, lat, lon,
+			created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, owner, name, seal.NewSecret(), addr, srv.PublicPorts, country,
+			city, lat, lon, t)
 		if err != nil {
 			return err
 		}
@@ -264,7 +307,10 @@ func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Accou
 			if err != nil {
 				return errStatus(http.StatusBadRequest, err.Error())
 			}
-			port := p.pickPort(kind, settings, made, nil, nil)
+			port := p.pickPort(srv, kind, settings, made, nil, nil)
+			if port == 0 {
+				return errStatus(http.StatusConflict, noFreePort(srv))
+			}
 			res, err := tx.Exec(`INSERT INTO nodes (server_id, kind, port, settings, sort, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?)`, id, kind, port, string(settings), len(made), t, t)
 			if err != nil {
@@ -302,13 +348,16 @@ func (p *Panel) apiUpdateServer(w http.ResponseWriter, r *http.Request, a *Accou
 	if err != nil {
 		return err
 	}
-	if _, err := p.ownServer(r.Context(), a, id); err != nil {
+	s, err := p.ownServer(r.Context(), a, id)
+	if err != nil {
 		return err
 	}
 	var in serverInput
 	if err := readJSON(r, &in); err != nil {
 		return err
 	}
+	place := *s                      // the server as it will be, for its place
+	relocate, linked := false, false // the place follows the address; links elsewhere carry it
 	sets, args := []string{}, []any{}
 	set := func(col string, v any) { sets = append(sets, col+" = ?"); args = append(args, v) }
 	if in.Name != nil {
@@ -324,6 +373,17 @@ func (p *Panel) apiUpdateServer(w http.ResponseWriter, r *http.Request, a *Accou
 			return err
 		}
 		set("address", h)
+		if h != s.Address {
+			place.Address, relocate, linked = h, !s.LocManual, true
+		}
+	}
+	if in.PublicPorts != nil {
+		pm, err := parsePortMap(*in.PublicPorts)
+		if err != nil {
+			return errStatus(http.StatusBadRequest, err.Error())
+		}
+		set("public_ports", pm.String())
+		linked = linked || pm.String() != s.PublicPorts
 	}
 	if in.Note != nil {
 		set("note", cleanNote(*in.Note, 2000))
@@ -379,9 +439,9 @@ func (p *Panel) apiUpdateServer(w http.ResponseWriter, r *http.Request, a *Accou
 	}
 	if in.AutoLocation {
 		set("loc_manual", false)
-		set("country", "") // the next agent report fills it from the IP database
-		set("city", "")
+		relocate = true
 	} else if in.Location != nil {
+		relocate = false
 		l := *in.Location
 		if err := l.clean(); err != nil {
 			return err
@@ -403,15 +463,69 @@ func (p *Panel) apiUpdateServer(w http.ResponseWriter, r *http.Request, a *Accou
 		set("country_mode", mode)
 		set("country_list", list)
 	}
+	if relocate {
+		// DB-IP, at the address when it is an IP set by hand, else at the agent's IP; unknown for now
+		// (no database yet) leaves no place, and the next agent report asks again
+		country, city, lat, lon := p.placeOf(&place)
+		set("country", country)
+		set("city", city)
+		set("lat", lat)
+		set("lon", lon)
+	}
 	if len(sets) > 0 {
 		args = append(args, id)
 		if _, err := p.db.Exec1(`UPDATE servers SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...); err != nil {
 			return err
 		}
 		p.touchServers(id)
+		if linked { // proxy passes elsewhere connect to this server's address and ports
+			p.touchServers(p.passEntriesOf(r.Context(), id)...)
+		}
 		p.status.forget() // its name, location or visibility on the status page may have changed
 	}
 	return p.apiServer(w, r, a)
+}
+
+// passEntriesOf lists the servers with protocols that pass through one of this server's.
+func (p *Panel) passEntriesOf(ctx context.Context, serverID int64) []int64 {
+	var out []int64
+	rows, err := p.db.QueryContext(ctx, `SELECT DISTINCT e.server_id FROM nodes e JOIN nodes x ON e.pass_node = x.id
+		WHERE x.server_id = ? AND e.server_id != ?`, serverID, serverID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if rows.Scan(&id) == nil {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// placeOf asks the IP database (DB-IP) where a server is: at its address when that was set by hand
+// to an IP, otherwise at the IP its agent reports.
+func (p *Panel) placeOf(s *Server) (country, city string, lat, lon *float64) {
+	return p.lookupPlace(nz(s.addrIP(), nz(s.IPv4, s.IPv6)))
+}
+
+// lookupPlace is what DB-IP knows about an address: nothing when the address is empty or unknown,
+// or the databases are not downloaded yet.
+func (p *Panel) lookupPlace(ip string) (country, city string, lat, lon *float64) {
+	if ip == "" {
+		return
+	}
+	g := p.geo.Lookup(ip)
+	if g == nil {
+		return
+	}
+	country, city = g.Country, g.City
+	if g.Lat != 0 || g.Lon != 0 {
+		la, lo := g.Lat, g.Lon
+		lat, lon = &la, &lo
+	}
+	return
 }
 
 func (p *Panel) apiDeleteServer(w http.ResponseWriter, r *http.Request, a *Account) error {
@@ -624,23 +738,6 @@ func portConflict(port int, tcp, udp bool, nodes []*Node, fwds []*Forward, skipN
 	return ""
 }
 
-// pickPort chooses a free port for a new protocol, preferring the usual ones.
-func (p *Panel) pickPort(kind string, settings json.RawMessage, nodes []*Node, fwds []*Forward, hostPorts []int) int {
-	tcp, udp := nodeNets(kind, settings)
-	for _, port := range preferredPorts(kind, settings) {
-		if portConflict(port, tcp, udp, nodes, fwds, 0, 0, hostPorts) == "" {
-			return port
-		}
-	}
-	for i := 0; i < 1000; i++ {
-		port := 20000 + int(randUint32()%40000)
-		if portConflict(port, tcp, udp, nodes, fwds, 0, 0, hostPorts) == "" {
-			return port
-		}
-	}
-	return 0
-}
-
 func (p *Panel) hostPorts(id int64) []int {
 	if ls := p.live.get(id); ls != nil {
 		return ls.Live.Ports
@@ -720,6 +817,9 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	if k.Engine == "wireguard" && s.FirstSeenAt > 0 && !caps.WireGuard {
 		return errStatus(http.StatusBadRequest, "this server's kernel has no WireGuard support")
 	}
+	if k.Engine == "wireguard" && noNftables(s) {
+		return errStatus(http.StatusBadRequest, "WireGuard needs nftables on this server (the devices' traffic is routed through it): "+nftMissing)
+	}
 	settings, err := newSettings(in.Kind, in.Settings, nodes)
 	if err != nil {
 		return errStatus(http.StatusBadRequest, err.Error())
@@ -732,8 +832,11 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 		if msg := portConflict(port, tcp, udp, nodes, fwds, 0, 0, hostPorts); msg != "" {
 			return errStatus(http.StatusConflict, msg)
 		}
-	} else if port = p.pickPort(in.Kind, settings, nodes, fwds, hostPorts); port == 0 {
-		return errStatus(http.StatusConflict, "no free port found - enter one")
+	} else if port = p.pickPort(s, in.Kind, settings, nodes, fwds, hostPorts); port == 0 {
+		return errStatus(http.StatusConflict, noFreePort(s))
+	}
+	if err := checkNodePort(s, in.Kind, settings, port); err != nil {
+		return err
 	}
 	name, host := "", ""
 	if in.Name != nil {
@@ -772,7 +875,7 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	if err != nil {
 		return err
 	}
-	writeJSON(w, http.StatusCreated, viewOfNode(n))
+	writeJSON(w, http.StatusCreated, viewOfNode(n, s))
 	return nil
 }
 
@@ -811,7 +914,8 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	t0, u0 := nodeNets(n.Kind, oldSettings)
 	t1, u1 := nodeNets(n.Kind, n.Settings)
-	if (in.Port != nil && *in.Port != n.Port) || (t1 && !t0) || (u1 && !u0) {
+	moved := (in.Port != nil && *in.Port != n.Port) || (t1 && !t0) || (u1 && !u0)
+	if moved {
 		port := n.Port
 		if in.Port != nil {
 			port = *in.Port
@@ -822,6 +926,11 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 			return errStatus(http.StatusConflict, msg)
 		}
 		n.Port = port
+	}
+	if moved || usesACME(n.Kind, n.Settings) != usesACME(n.Kind, oldSettings) {
+		if err := checkNodePort(s, n.Kind, n.Settings, n.Port); err != nil {
+			return err
+		}
 	}
 	if in.Name != nil {
 		n.Name = cleanName(*in.Name, 40)
@@ -877,7 +986,7 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 	p.event(s.AccountID, "info", "protocol_changed", s.ID, 0, a.ID, fmt.Sprintf("%s on %s changed",
 		protocolLabel(n.Kind, n.Settings), s.Name), nil)
 	p.touchServers(touch...)
-	writeJSON(w, http.StatusOK, viewOfNode(n))
+	writeJSON(w, http.StatusOK, viewOfNode(n, s))
 	return nil
 }
 
@@ -902,7 +1011,7 @@ func (p *Panel) apiRegenNodeKeys(w http.ResponseWriter, r *http.Request, a *Acco
 	p.touchServers(s.ID)
 	p.touchPassEntries(r.Context(), n.ID)
 	n.Settings = merged
-	writeJSON(w, http.StatusOK, viewOfNode(n))
+	writeJSON(w, http.StatusOK, viewOfNode(n, s))
 	return nil
 }
 
@@ -935,7 +1044,7 @@ func (p *Panel) apiDeleteNode(w http.ResponseWriter, r *http.Request, a *Account
 // ---------------------------------------------------------------- forwards
 
 type forwardInput struct {
-	Engine        *string `json:"engine" doc:"nft (kernel, default) or realm"`
+	Engine        *string `json:"engine" doc:"nft (kernel; the default where nftables is installed) or realm (the default without it)"`
 	Name          *string `json:"name"`
 	ListenPort    *int    `json:"listen_port" doc:"Port on the server; 0 or omitted = pick a free one"`
 	Network       *string `json:"network" doc:"tcp | udp | tcp+udp (default)"`
@@ -975,14 +1084,13 @@ func (p *Panel) apiCreateForward(w http.ResponseWriter, r *http.Request, a *Acco
 	}
 	tcp, udp := fwdNets(network)
 	if port == 0 {
-		for i := 0; i < 1000 && port == 0; i++ {
-			c := 30000 + int(randUint32()%30000)
-			if portConflict(c, tcp, udp, nodes, fwds, 0, 0, p.hostPorts(id)) == "" {
-				port = c
-			}
+		if port = pickForwardPort(s, tcp, udp, nodes, fwds, p.hostPorts(id)); port == 0 {
+			return errStatus(http.StatusConflict, noFreePort(s))
 		}
 	} else if msg := portConflict(port, tcp, udp, nodes, fwds, 0, 0, p.hostPorts(id)); msg != "" {
 		return errStatus(http.StatusConflict, msg)
+	} else if msg := s.ports.unreachable(port, tcp, udp); msg != "" {
+		return errStatus(http.StatusBadRequest, msg)
 	}
 	name := ""
 	if in.Name != nil {
@@ -990,8 +1098,14 @@ func (p *Panel) apiCreateForward(w http.ResponseWriter, r *http.Request, a *Acco
 	}
 	pp := in.ProxyProtocol != nil && *in.ProxyProtocol
 	engine := deref(in.Engine, "nft")
+	if in.Engine == nil && noNftables(s) {
+		engine = "realm" // the kernel engine needs nftables, which this server does not have
+	}
 	if err := checkEngine(engine, pp); err != nil {
 		return err
+	}
+	if engine == "nft" && noNftables(s) {
+		return errStatus(http.StatusBadRequest, "the kernel engine needs nftables: "+nftMissing+" - or use the realm engine")
 	}
 	target, err := forwardTarget(*in.Target, engine)
 	if err != nil {
@@ -1010,6 +1124,7 @@ func (p *Panel) apiCreateForward(w http.ResponseWriter, r *http.Request, a *Acco
 	if err != nil {
 		return err
 	}
+	f.PublicPort = publicPortOf(s, f)
 	writeJSON(w, http.StatusCreated, f)
 	return nil
 }
@@ -1053,6 +1168,9 @@ func (p *Panel) apiUpdateForward(w http.ResponseWriter, r *http.Request, a *Acco
 		if msg := portConflict(f.ListenPort, tcp, udp, nodes, fwds, 0, f.ID, p.hostPorts(f.ServerID)); msg != "" {
 			return errStatus(http.StatusConflict, msg)
 		}
+		if msg := s.ports.unreachable(f.ListenPort, tcp, udp); msg != "" {
+			return errStatus(http.StatusBadRequest, msg)
+		}
 	}
 	if in.ProxyProtocol != nil {
 		f.ProxyProtocol = *in.ProxyProtocol
@@ -1062,6 +1180,11 @@ func (p *Panel) apiUpdateForward(w http.ResponseWriter, r *http.Request, a *Acco
 	}
 	if err := checkEngine(f.Engine, f.ProxyProtocol); err != nil {
 		return err
+	}
+	if in.Engine != nil && f.Engine == "nft" {
+		if srv, err := p.serverByID(r.Context(), f.ServerID); err == nil && noNftables(srv) {
+			return errStatus(http.StatusBadRequest, "the kernel engine needs nftables: "+nftMissing+" - or keep the realm engine")
+		}
 	}
 	if f.Target, err = forwardTarget(f.Target, f.Engine); err != nil {
 		return err
@@ -1077,6 +1200,7 @@ func (p *Panel) apiUpdateForward(w http.ResponseWriter, r *http.Request, a *Acco
 	}
 	p.event(s.AccountID, "info", "forward_changed", s.ID, 0, a.ID, fmt.Sprintf("Forward :%d on %s changed", f.ListenPort, s.Name), nil)
 	p.touchServers(s.ID)
+	f.PublicPort = publicPortOf(s, f)
 	writeJSON(w, http.StatusOK, f)
 	return nil
 }

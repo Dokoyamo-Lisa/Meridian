@@ -100,14 +100,19 @@ Report vulnerabilities privately - through the repository's private security adv
   - Xray, Hysteria and realm downloads are checked against SHA-256 digests the panel took from
     GitHub over HTTPS and delivered in the signed state (or that the agent fetched from GitHub itself).
     A checksum is never taken from the download mirror, and the mirror verifies files before caching them.
-- The agent validates what the panel sends before it reaches nftables, file paths or systemd
-  (port ranges, addresses, interface names, domain names, version numbers).
+- The agent validates what the panel sends before it reaches nftables, file paths or the init
+  system (port ranges, addresses, interface names, domain names, version numbers).
 
 ### Servers
 
-- The agent runs as root because it manages nftables, WireGuard and systemd. Cores run in their own
-  units with a capability bounding set, `NoNewPrivileges`, `ProtectSystem`, `ProtectHome`; realm runs
-  as an unprivileged dynamic user.
+- The agent runs as root because it manages nftables, WireGuard and the services. Under systemd,
+  cores run in their own units with a capability bounding set, `NoNewPrivileges`, `ProtectSystem`,
+  `ProtectHome`; realm runs as an unprivileged dynamic user.
+- Under OpenRC (Alpine Linux) there is no equivalent sandbox: Xray and Hysteria2 run as root with
+  `no_new_privs`, as most panels run them everywhere; realm runs as `nobody` holding only
+  `CAP_NET_BIND_SERVICE`. Without nftables (optional on Alpine) the loopback guard below is absent:
+  the Xray API and the Hysteria2 hooks still listen on 127.0.0.1 only, so only users logged in on
+  the server itself could reach them - install nftables on servers other people can log in to.
 - The Xray API and the Hysteria auth and stats endpoints listen on loopback only, and an nftables
   owner match lets only root connect to them.
 - The WireGuard DNS resolver answers only WireGuard clients.

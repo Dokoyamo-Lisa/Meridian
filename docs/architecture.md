@@ -3,7 +3,7 @@
 ```
  browser / API / MCP                         servers (one agent each)
  status page, users' pages                   ┌──────────────────────────────────────┐
-        │  HTTPS                             │ meridian-agent (root, systemd)        │
+        │  HTTPS                             │ meridian-agent (root; systemd/OpenRC) │
         ▼                                    │   ├─ Xray        (meridian-xray)      │
  ┌───────────────┐   long-poll state  ◄──────┤   ├─ Hysteria2   (meridian-hy2@N)     │
  │ meridian      │   signed + sealed         │   ├─ WireGuard   (kernel, wgctrl)     │
@@ -65,14 +65,28 @@ core's live interface:
 | Hysteria2 | users authenticate against the agent over HTTP, so user changes only update an in-memory table; online users that lose access are kicked through the traffic-stats API. A node's server restarts only when its own port, certificate or obfuscation changes. |
 | WireGuard | peers are added and removed on the running interface (wgctrl). |
 | nftables | the whole `inet meridian` table is replaced in one atomic transaction; conntrack keeps existing NAT mappings. |
-| realm | one systemd instance per forward: editing a forward restarts only that forward. |
+| realm | one service instance per forward: editing a forward restarts only that forward. |
 
 Changes that genuinely need a restart (a different Xray core version, for example) are **not**
 applied on their own: the server reports them as "pending restart", the panel shows a warning, and
 the supervisor clicks **Restart now**. Nothing pauses on its own either: quotas, expiry dates and
 IP limits raise alerts and wait for a person.
 
-Cores run in their own systemd units, so restarting or upgrading the agent never interrupts traffic.
+Cores run as their own services - systemd units, or OpenRC services on Alpine Linux - so restarting
+or upgrading the agent never interrupts traffic. `internal/agent/service` describes each service once
+and writes it for whichever init system the server runs.
+
+Servers whose provider decides their ports (NAT servers, LXC and Incus containers) carry the
+provider's forwarding as `public_ports` (`internal/panel/ports.go`): new protocols and forwards get
+one of those ports, others are refused, links and proxy passes use the public number, and Let's
+Encrypt's check is answered where the provider forwards port 80. The agent only ever sees the ports
+on the server itself.
+
+On a server without nftables (a bare Alpine, for example) the agent runs everything else and skips
+the firewall: WireGuard, kernel port forwards, country rules, IP blocks and the loopback guard need
+it. The agent reports what the host supports; the panel refuses what cannot work there (with the
+command that fixes it), makes realm the default forward engine, and the server page lists what does
+not apply. Installing nftables later is noticed within seconds.
 
 ## Country rules
 
