@@ -405,6 +405,10 @@ export interface ProtocolCheck {
   notes?: string[]
   settings?: Record<string, any>
   kind?: Kind
+  /** Editing: what changes in the links - devices must refresh their subscription. */
+  refresh?: string[]
+  /** Editing: saving restarts the protocol's server process (Hysteria2); its devices reconnect by themselves. */
+  restarts?: boolean
 }
 
 export interface CountryRule {

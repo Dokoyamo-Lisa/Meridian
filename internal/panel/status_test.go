@@ -260,3 +260,36 @@ func TestStaticFilesCompressedAndCached(t *testing.T) {
 		}
 	}
 }
+
+// TestPortalWireGuard: a user's own page offers their WireGuard tunnels (file and QR text), named as
+// their apps name them - the server's public name included.
+func TestPortalWireGuard(t *testing.T) {
+	h := newHarness(t)
+	owner := h.browser()
+	owner.login("owner", "owner-password-1")
+	sid := id(owner.must("POST", "/api/servers", map[string]any{"name": "tyo-vultr-03", "address": "203.0.113.44"}, 201)["server"].(map[string]any)["id"])
+	if _, err := h.p.db.Exec1(`UPDATE servers SET caps = '{"nftables":true,"wireguard":true,"certs":true}', first_seen_at = ?,
+		public_name = 'Tokyo' WHERE id = ?`, now(), sid); err != nil {
+		t.Fatal(err)
+	}
+	wg := owner.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "wireguard"}, 201)
+	owner.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "vless", "name": "IPLC 01"}, 201)
+	owner.must("POST", "/api/users", map[string]any{"name": "Dana", "username": "dana", "password": "dana-password-1"}, 201)
+	dana := h.browser()
+	dana.login("dana", "dana-password-1")
+	me := dana.must("GET", "/api/portal/me", nil, 200)
+	list, _ := me["wireguard"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("wireguard: %v", me["wireguard"])
+	}
+	w := list[0].(map[string]any)
+	if !strings.HasSuffix(fmt.Sprint(w["url"]), fmt.Sprintf("/wg/%d.conf", id(wg["id"]))) || !strings.Contains(fmt.Sprint(w["conf"]), "[Interface]") ||
+		!strings.HasPrefix(fmt.Sprint(w["name"]), "Tokyo · ") {
+		t.Errorf("entry: %v", w)
+	}
+	// the server's protocols carry the names the apps show
+	srv := me["servers"].([]any)[0].(map[string]any)
+	if srv["name"] != "Tokyo" || !strings.Contains(fmt.Sprint(srv["protocols"]), "IPLC 01") {
+		t.Errorf("server: %v", srv)
+	}
+}

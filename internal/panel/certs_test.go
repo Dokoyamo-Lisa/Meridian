@@ -2,13 +2,49 @@ package panel
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"strings"
 	"testing"
+	"time"
 
 	"meridian/internal/proto"
 )
+
+// privateCACert makes a certificate for name issued by a throwaway authority of its own: the chain
+// (certificate, then the authority) and the key, as an operator would paste them.
+func privateCACert(t *testing.T, name string) (chainPEM, keyPEM string) {
+	t.Helper()
+	caKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	ca := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Test Authority"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().AddDate(1, 0, 0), IsCA: true,
+		KeyUsage: x509.KeyUsageCertSign, BasicConstraintsValid: true}
+	caDER, err := x509.CreateCertificate(rand.Reader, ca, ca, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caCert, _ := x509.ParseCertificate(caDER)
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	serial, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 100))
+	leaf := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: name}, DNSNames: []string{name},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().AddDate(0, 3, 0),
+		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+	der, err := x509.CreateCertificate(rand.Reader, leaf, caCert, &key.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kb, _ := x509.MarshalECPrivateKey(key)
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})) +
+			string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})),
+		string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: kb}))
+}
 
 // TestSharedCerts: a certificate kept once, used by protocols on two servers, replaced once for
 // both - and what each server reports holding and serving.
@@ -16,9 +52,12 @@ func TestSharedCerts(t *testing.T) {
 	h := newHarness(t)
 	b := h.browser()
 	b.login("owner", "owner-password-1")
-	certPEM, keyPEM, _, err := selfSignedCert("*.example.com")
-	if err != nil {
-		t.Fatal(err)
+	certPEM, keyPEM := privateCACert(t, "*.example.com")
+	// a self-signed one works in no app: refused
+	selfPEM, selfKey, _, _ := selfSignedCert("*.example.com")
+	if code, m, _ := b.do("POST", "/api/certs", map[string]any{"name": "Self", "cert_pem": selfPEM, "key_pem": selfKey}); code != 400 ||
+		!strings.Contains(fmt.Sprint(m["error"]), "self-signed") {
+		t.Errorf("a self-signed shared certificate: %d %v", code, m)
 	}
 	c := b.must("POST", "/api/certs", map[string]any{"name": "Wildcard", "cert_pem": certPEM, "key_pem": keyPEM}, 201)
 	cid := id(c["id"])
@@ -49,6 +88,12 @@ func TestSharedCerts(t *testing.T) {
 		t.Errorf("a name the certificate does not cover: %d %v", code, m)
 	}
 
+	// a protocol using it says apps refuse it (its authority is no public one)
+	card := b.must("GET", fmt.Sprintf("/api/servers/%d", srvs[0]), nil, 200)["server"].(map[string]any)["nodes"].([]any)[0].(map[string]any)
+	if notes := fmt.Sprint(card["notes"]); !strings.Contains(notes, "Apps will refuse its shared certificate (Wildcard)") {
+		t.Errorf("protocol card: %s", notes)
+	}
+
 	// what the servers get: a file reference (Xray reloads it), the content for Hysteria2
 	st, err := h.p.compileServer(context.Background(), srvs[0])
 	if err != nil {
@@ -64,7 +109,7 @@ func TestSharedCerts(t *testing.T) {
 	}
 
 	// replace it once: both servers get the new one; a certificate that drops a name in use is refused
-	cert2, key2, _, _ := selfSignedCert("*.example.com")
+	cert2, key2 := privateCACert(t, "*.example.com")
 	v := b.must("PATCH", fmt.Sprintf("/api/certs/%d", cid), map[string]any{"cert_pem": cert2, "key_pem": key2}, 200)
 	if v["sha256"] == c["sha256"] || len(v["uses"].([]any)) != 2 {
 		t.Fatalf("updated: %v", v)
@@ -73,7 +118,7 @@ func TestSharedCerts(t *testing.T) {
 	if st2.Hysteria[0].CertPEM != strings.TrimSpace(cert2) {
 		t.Error("Hysteria2 did not get the new certificate")
 	}
-	other, otherKey, _, _ := selfSignedCert("proxy.example.com")
+	other, otherKey := privateCACert(t, "proxy.example.com")
 	if code, m, _ := b.do("PATCH", fmt.Sprintf("/api/certs/%d", cid), map[string]any{"cert_pem": other, "key_pem": otherKey}); code != 400 ||
 		!strings.Contains(fmt.Sprint(m["error"]), "not valid for hy.example.com") {
 		t.Errorf("dropping a name in use: %d %v", code, m)
@@ -126,5 +171,39 @@ func TestSharedCerts(t *testing.T) {
 	_ = json.Unmarshal(raw, &list)
 	if len(list) != 1 || list[0]["name"] != "Wildcard" {
 		t.Errorf("list: %v", list)
+	}
+}
+
+// TestOwnCertExpiring: a certificate pasted into a protocol that expires within 14 days is reported
+// once (nothing renews it).
+func TestOwnCertExpiring(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Own", "address": "203.0.113.90"}, 201)["server"].(map[string]any)["id"])
+	certPEM, keyPEM := privateCACert(t, "proxy.example.com")
+	n := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "trojan",
+		"settings": map[string]any{"security": "tls", "cert_mode": "custom", "sni": "proxy.example.com", "cert_pem": certPEM, "key_pem": keyPEM}}, 201)
+	count := func() int {
+		var c int
+		_ = h.p.db.QueryRow(`SELECT COUNT(*) FROM events WHERE kind = 'cert_expiring' AND json_extract(data, '$.node') = ?`, id(n["id"])).Scan(&c)
+		return c
+	}
+	h.p.limitEvents(context.Background())
+	if c := count(); c != 0 {
+		t.Fatalf("three months left: %d events", c)
+	}
+	if _, err := h.p.db.Exec1(`UPDATE nodes SET settings = json_set(settings, '$.cert_expires', ?) WHERE id = ?`, now()+5*86400, id(n["id"])); err != nil {
+		t.Fatal(err)
+	}
+	h.p.limitEvents(context.Background())
+	h.p.limitEvents(context.Background())
+	if c := count(); c != 1 {
+		t.Fatalf("five days left: %d events", c)
+	}
+	var msg string
+	_ = h.p.db.QueryRow(`SELECT message FROM events WHERE kind = 'cert_expiring'`).Scan(&msg)
+	if !strings.Contains(msg, "Own · Trojan") || !strings.Contains(msg, "nothing renews") {
+		t.Errorf("message: %q", msg)
 	}
 }

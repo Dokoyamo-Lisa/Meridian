@@ -278,21 +278,29 @@ export class FlowChart implements Drawable {
     })
     this.io.observe(canvas)
     if (this.o.hover) {
+      let tipTimer = 0
       const move = (e: PointerEvent) => {
+        window.clearTimeout(tipTimer)
         const r = canvas.getBoundingClientRect()
         this.px = e.clientX - r.left
         this.pointer = [e.clientX, e.clientY]
         this.dirty = true
         kick()
       }
-      canvas.addEventListener('pointermove', move)
-      canvas.addEventListener('pointerdown', move)
-      canvas.addEventListener('pointerleave', () => {
+      const leave = () => {
         this.px = null
         this.lastTipKey = null
         hideTip()
         this.dirty = true
         kick()
+      }
+      canvas.addEventListener('pointermove', move)
+      canvas.addEventListener('pointerdown', move)
+      // on a touch screen the tip stays a moment after the finger lifts
+      canvas.addEventListener('pointerleave', (e) => {
+        window.clearTimeout(tipTimer)
+        if (e.pointerType === 'touch') tipTimer = window.setTimeout(leave, 2500)
+        else leave()
       })
     }
     Loop.charts.add(this)
@@ -506,6 +514,9 @@ export interface BarOpts {
   ticks?: number
 }
 
+let barTipTimer = 0
+let barLit: Element | null = null // the bar whose tip shows
+
 // dailyBars draws one bar per day into host (an absolutely sized box).
 export function dailyBars(host: HTMLElement, o: BarOpts) {
   const vals = o.values
@@ -545,14 +556,26 @@ export function dailyBars(host: HTMLElement, o: BarOpts) {
       )
     }
     const hit = s('rect', { class: 'hit', x: pl + i * band, y: pt, width: band, height: H - pt - pb })
-    hit.addEventListener('pointermove', (e) => {
-      g.classList.add('hl')
+    const show = (e: Event) => {
       const ev = e as PointerEvent
+      window.clearTimeout(barTipTimer)
+      if (barLit && barLit !== g) barLit.classList.remove('hl')
+      barLit = g
+      g.classList.add('hl')
       showTip(ev.clientX, ev.clientY, bytesShort(v, 1), `${isoMD(days[i])}${i === vals.length - 1 ? ' (today, so far)' : ''}`, o.breakdown ? o.breakdown(i) : null)
-    })
-    hit.addEventListener('pointerleave', () => {
+    }
+    const hide = () => {
       g.classList.remove('hl')
+      if (barLit === g) barLit = null
       hideTip()
+    }
+    // a tap shows the day too (touch has no hover): its tip stays a moment after the finger lifts
+    hit.addEventListener('pointermove', show)
+    hit.addEventListener('pointerdown', show)
+    hit.addEventListener('pointerleave', (e) => {
+      window.clearTimeout(barTipTimer)
+      if ((e as PointerEvent).pointerType === 'touch') barTipTimer = window.setTimeout(hide, 2500)
+      else hide()
     })
     g.append(hit)
     root.append(g)

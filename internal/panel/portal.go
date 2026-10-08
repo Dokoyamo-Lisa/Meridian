@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"meridian/internal/subgen"
@@ -203,6 +204,13 @@ type portalMe struct {
 	Days       []portalDay      `json:"days" doc:"The last 30 days"`
 	Total      usage            `json:"total" doc:"Since the user was created"`
 	Protocols  []portalProtocol `json:"protocols" doc:"Usage per protocol, this cycle and all time (the most used first)"`
+	WireGuard  []portalWG       `json:"wireguard" doc:"The WireGuard protocols the user may use: the WireGuard app takes a file or a QR code, not the link"`
+}
+
+type portalWG struct {
+	Name string `json:"name" doc:"As the user's apps name it"`
+	URL  string `json:"url" doc:"The configuration file (the link's page has it too)"`
+	Conf string `json:"conf" doc:"The configuration, for a QR code the WireGuard app scans"`
 }
 
 func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) error {
@@ -211,9 +219,15 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 	me := portalMe{SiteTitle: set.SiteTitle, Timezone: p.loc().String(), ID: s.ID, Name: s.Name, Username: s.Login, Status: "active",
 		Link: p.subBase(r) + "/s/" + s.Token, Quota: s.Quota, Used: usage{s.CycleUp, s.CycleDown},
 		CycleStart: s.CycleStart, ExpiresAt: s.ExpiresAt, IPLimit: s.IPLimit, Total: usage{s.TotalUp, s.TotalDown},
-		Devices: []portalDevice{}, Servers: []portalServer{}, Days: []portalDay{}}
+		Devices: []portalDevice{}, Servers: []portalServer{}, Days: []portalDay{}, WireGuard: []portalWG{}}
 	if s.Paused {
 		me.Status = "paused"
+	} else if eps, err := p.endpointsFor(ctx, s); err == nil {
+		for _, e := range eps {
+			if e.WG != nil {
+				me.WireGuard = append(me.WireGuard, portalWG{Name: e.Name, URL: fmt.Sprintf("%s/wg/%d.conf", me.Link, e.NodeID), Conf: subgen.WGConf(e)})
+			}
+		}
 	}
 	me.Clients = clientLinks(me.Link, s.Name)
 	if s.ResetDay > 0 {
@@ -241,7 +255,7 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 		names[srv.ID] = srv.ShownName()
 		nodes, _ := p.nodesOf(ctx, srv.ID)
 		for _, n := range nodes {
-			labels[n.ID] = protocolLabel(n.Kind, n.Settings)
+			labels[n.ID] = nz(n.Name, protocolLabel(n.Kind, n.Settings)) // as the user's apps name it
 		}
 		if !s.Scope.HasServer(srv.ID, nodes) || srv.DeletedAt > 0 {
 			continue
@@ -443,6 +457,11 @@ type protocolDraft struct {
 	Settings *protoInput `json:"settings"`
 	NodeID   int64       `json:"node_id,omitempty" doc:"Editing: the protocol being changed. The draft is checked as a change to it - omitted fields and keys keep their stored values, as saving does"`
 	ServerID int64       `json:"server_id,omitempty" doc:"Adding: the server it is for, so what depends on the server (its IP version, shared certificates) is checked too"`
+	// editing: the rest of what would be saved, so the answer says what changes for devices
+	Port   *int    `json:"port,omitempty" doc:"Editing: the port it would have (omitted: unchanged)"`
+	BindIP *string `json:"bind_ip,omitempty" doc:"Editing: its own address it would have (omitted: unchanged)"`
+	Host   *string `json:"host,omitempty" doc:"Editing: its address override (omitted: unchanged)"`
+	Code   *string `json:"code,omitempty" doc:"Editing: its own settings as code (omitted: unchanged)"`
 }
 
 // apiProtocolCheck says whether a protocol draft can be saved, what it becomes, and which apps can
@@ -458,14 +477,15 @@ func (p *Panel) apiProtocolCheck(w http.ResponseWriter, r *http.Request, a *Acco
 		return nil
 	}
 	var srv *Server
-	var raw json.RawMessage
+	var raw, old json.RawMessage
 	var err error
+	var n *Node
 	kind := in.Kind
 	if in.NodeID > 0 {
-		var n *Node
 		if n, srv, err = p.ownNode(r.Context(), a, in.NodeID); err != nil {
 			return err
 		}
+		old = n.Settings
 		if kind != "" && kind != n.Kind {
 			return errStatus(http.StatusBadRequest, "a protocol's kind cannot change - add a new protocol instead")
 		}
@@ -486,9 +506,27 @@ func (p *Panel) apiProtocolCheck(w http.ResponseWriter, r *http.Request, a *Acco
 		raw, err = newSettings(kind, in.Settings, nodes)
 	}
 	if err == nil {
-		err = p.checkOnServer(r.Context(), srv, kind, raw)
+		err = p.checkOnServer(r.Context(), srv, kind, raw, old)
 	}
-	writeJSON(w, http.StatusOK, supportOf(kind, raw, err))
+	v := supportOf(kind, raw, err)
+	if n != nil && err == nil {
+		next := *n
+		next.Settings = raw
+		if in.Port != nil && *in.Port > 0 {
+			next.Port = *in.Port
+		}
+		if in.BindIP != nil {
+			next.BindIP = strings.Trim(strings.TrimSpace(*in.BindIP), "[]")
+		}
+		if in.Host != nil {
+			next.Host, _ = normHost(*in.Host)
+		}
+		if in.Code != nil {
+			next.Code, _ = nodeCode(n.Kind, in.Code)
+		}
+		v.Refresh, v.Restarts = changeImpact(srv, n, &next)
+	}
+	writeJSON(w, http.StatusOK, v)
 	return nil
 }
 

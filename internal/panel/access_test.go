@@ -2,6 +2,7 @@ package panel
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -121,3 +122,29 @@ func contains(list []string, s string) bool {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// TestStatusDataWithoutSignIn: the dashboard's data is asked by every page load (the users' page
+// too); without any sign-in it is answered 401 by its handler, never refused by region first.
+func TestStatusDataWithoutSignIn(t *testing.T) {
+	r := httptest.NewRequest("GET", "/api/status", nil)
+	if carriesSignIn(r) {
+		t.Error("an anonymous request carries a sign-in")
+	}
+	r.AddCookie(&http.Cookie{Name: userCookie, Value: "x"}) // a user's session is not the supervisor's
+	if carriesSignIn(r) {
+		t.Error("a user's session counts as the supervisor's")
+	}
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: "x"})
+	if !carriesSignIn(r) {
+		t.Error("the supervisor's session is not seen")
+	}
+	r = httptest.NewRequest("GET", "/api/status", nil)
+	r.Header.Set("Authorization", "Bearer mrd_x")
+	if !carriesSignIn(r) {
+		t.Error("a token is not seen")
+	}
+	h := newHarness(t)
+	if code, _, _ := h.browser().do("GET", "/api/status", nil); code != http.StatusUnauthorized {
+		t.Errorf("anonymous: %d", code)
+	}
+}

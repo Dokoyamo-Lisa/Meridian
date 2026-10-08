@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"meridian/internal/proto"
 )
@@ -124,5 +126,74 @@ func TestLiveRules(t *testing.T) {
 	}
 	if keepRunning(full, nil, true, true)["outbounds"] == nil {
 		t.Error("without a file there is nothing to keep")
+	}
+}
+
+// TestOperatorInboundStays: an inbound from the operator's own code keeps its users on disk as in the
+// rendered state, so it compares equal (and stays open) when users of the panel's protocols change;
+// a protocol's inbound is still compared without its users.
+func TestOperatorInboundStays(t *testing.T) {
+	e := &Engine{RunDir: t.TempDir(), APIPort: 50000}
+	own := proto.XrayInbound{Tag: "my-vless", Config: json.RawMessage(`{"tag":"my-vless","port":8443,"protocol":"vless",
+		"settings":{"clients":[{"id":"6f1c2d3e-0000-4000-8000-000000000001","email":"me"}],"decryption":"none"}}`)}
+	socks := proto.XrayInbound{Tag: "my-socks", Config: json.RawMessage(`{"tag":"my-socks","port":1080,"protocol":"socks",
+		"settings":{"auth":"password","accounts":[{"user":"u","pass":"p"}]}}`)}
+	panelIn := func(emails ...string) proto.XrayInbound {
+		in := proto.XrayInbound{Tag: "n1", Config: json.RawMessage(`{"tag":"n1","port":443,"protocol":"vless","settings":{"decryption":"none"}}`)}
+		for i, m := range emails {
+			in.Clients = append(in.Clients, proto.XrayClient{Email: m,
+				JSON: json.RawMessage(fmt.Sprintf(`{"id":"6f1c2d3e-0000-4000-8000-00000000001%d","email":%q}`, i, m))})
+		}
+		return in
+	}
+	before, err := e.render(&proto.Xray{Inbounds: []proto.XrayInbound{panelIn("a"), own, socks}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := e.render(&proto.Xray{Inbounds: []proto.XrayInbound{panelIn("a", "b"), own, socks}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var onDisk map[string]any
+	if err := json.Unmarshal(marshal(before.full), &onDisk); err != nil {
+		t.Fatal(err)
+	}
+	prev := parseFull(onDisk)
+	for _, tag := range []string{"my-vless", "my-socks", "n1"} {
+		if !same(prev.inbounds[tag], after.inbounds[tag]) {
+			t.Errorf("%s: on disk %v, rendered %v", tag, prev.inbounds[tag], after.inbounds[tag])
+		}
+	}
+	if len(prev.clients["n1"]) != 1 || len(after.clients["n1"]) != 2 {
+		t.Errorf("n1 users: %v -> %v", prev.clients["n1"], after.clients["n1"])
+	}
+	// a change to the operator's own users is a change to that inbound
+	own2 := own
+	own2.Config = json.RawMessage(strings.Replace(string(own.Config), `"me"`, `"me2"`, 1))
+	changed, err := e.render(&proto.Xray{Inbounds: []proto.XrayInbound{panelIn("a"), own2, socks}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if same(prev.inbounds["my-vless"], changed.inbounds["my-vless"]) {
+		t.Error("a changed operator inbound compares equal")
+	}
+}
+
+// TestLockWithin: a report waits a short while for the engine, then goes without it.
+func TestLockWithin(t *testing.T) {
+	var mu sync.Mutex
+	if !lockWithin(&mu, time.Millisecond) {
+		t.Fatal("a free lock was not taken")
+	}
+	go func() { time.Sleep(100 * time.Millisecond); mu.Unlock() }()
+	if !lockWithin(&mu, 2*time.Second) {
+		t.Fatal("a lock freed in time was not taken")
+	}
+	start := time.Now()
+	if lockWithin(&mu, 200*time.Millisecond) {
+		t.Fatal("a held lock was taken")
+	}
+	if d := time.Since(start); d < 200*time.Millisecond || d > 2*time.Second {
+		t.Errorf("waited %v", d)
 	}
 }

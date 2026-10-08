@@ -454,6 +454,13 @@ INSERT INTO sub_node_usage (sub_id, node_id, server_id, total_up, total_down)
 INSERT INTO settings (key, value) VALUES ('node_usage_cycle', 'pending')
   ON CONFLICT(key) DO UPDATE SET value = 'pending';
 `,
+	// 12: the key a server's proxy-pass credentials come from. It is the agent token's secret, but a
+	// rotated token takes it over only when the reinstalled agent first connects: until then the old
+	// agent's passes keep working on their exits (which would otherwise switch at once).
+	`
+ALTER TABLE servers ADD COLUMN pass_secret TEXT NOT NULL DEFAULT '';
+UPDATE servers SET pass_secret = secret;
+`,
 }
 
 // NextID is an SQL expression for the id of a new row of nodes or subs: above every id the table

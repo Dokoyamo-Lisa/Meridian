@@ -109,7 +109,7 @@ type paramDoc struct {
 
 type opDoc struct {
 	Method, Path, Tag, Summary, Desc string
-	Scope                            string // public | session | user | "" (session or token)
+	Scope                            string // public | session | user | token (API tokens only) | "" (session or token)
 	Query                            []paramDoc
 	Body                             any
 	BodyType                         string // a raw (non-JSON) request body, e.g. "image/*"
@@ -311,7 +311,7 @@ var apiOps = []opDoc{
 		Query: []paramDoc{{Name: "client", Type: "string", Desc: "Force a format", Enum: append(append([]string{}, subgen.Formats...), "html")}},
 		Text:  "text/plain"},
 	{Method: "GET", Path: "/s/{token}/wg/{node}", Tag: "Subscription links", Scope: "public", Summary: "One WireGuard configuration file", Text: "text/plain"},
-	{Method: "POST", Path: "/mcp", Tag: "MCP", Summary: "Model Context Protocol endpoint",
+	{Method: "POST", Path: "/mcp", Tag: "MCP", Scope: "token", Summary: "Model Context Protocol endpoint",
 		Desc: "Streamable HTTP transport (JSON-RPC 2.0, JSON responses, stateless). Needs an API token; read-only tokens only see read tools. Tools that disconnect people require confirm=true."},
 }
 
@@ -564,6 +564,13 @@ func buildOpenAPI() *ordered {
 		case "user":
 			o.set("security", []any{map[string]any{"user": []string{}}})
 			o.set("x-scope", "user")
+		case "token":
+			o.set("security", []any{map[string]any{"token": []string{}}})
+			o.set("x-scope", "token")
+		default:
+			if op.Method == "POST" && readOnlyPost[op.Path] { // stores nothing
+				o.set("x-scope", "read")
+			}
 		}
 		item, _ := paths.vals[op.Path].(*ordered)
 		if item == nil {

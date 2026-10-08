@@ -86,7 +86,25 @@ func (p *Panel) agentAuth(r *http.Request, body []byte) (*Server, *seal.Keys, er
 	if !p.nonces.add(id, nonce, ts) {
 		return nil, nil, errors.New("replayed request")
 	}
+	if srv.PassSecret != srv.Secret {
+		p.adoptPassSecret(r.Context(), srv)
+	}
 	return srv, keys, nil
+}
+
+// adoptPassSecret: the agent of a server whose token was rotated is back with the new one, so its
+// proxy passes take credentials from the new secret now - on this server and on their exits at once.
+// (Until now the old agent kept passing with the old credentials, which the exits still accepted.)
+func (p *Panel) adoptPassSecret(ctx context.Context, srv *Server) {
+	res, err := p.db.Exec1(`UPDATE servers SET pass_secret = secret WHERE id = ? AND pass_secret != secret`, srv.ID)
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return
+	}
+	srv.PassSecret = srv.Secret
+	p.touchServers(append(p.passExitsOf(ctx, srv.ID), srv.ID)...)
 }
 
 func agentDeny(w http.ResponseWriter, err error) {

@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"time"
 
 	"meridian/internal/agent/scan"
 	"meridian/internal/db"
@@ -200,6 +201,9 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 			if names, _, _ := certNames(in.CertPEM); len(names) > 0 && in.SNI == "" {
 				s.SNI = names[0]
 			}
+			if s.certSettings.keepSelfSigned(s.SNI) {
+				why = selfSignedKept
+			}
 		default:
 			s.CertMode = certSelf
 			why = "its certificate could not be read: Meridian makes a new self-signed one, so devices must refresh their subscription"
@@ -218,6 +222,9 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 			} else {
 				return "", nil, "", err
 			}
+		}
+		if s.CertMode == certCustom && s.CertExpires > 0 {
+			why = joinWhy(why, frozenCert(s.CertExpires))
 		}
 		raw, err = json.Marshal(s)
 		return subgen.KindHysteria2, raw, why, err
@@ -275,6 +282,9 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 					s.SNI = names[0]
 				}
 			}
+			if s.certSettings.keepSelfSigned(s.SNI) {
+				why = selfSignedKept
+			}
 		default:
 			s.CertMode = certSelf
 			s.SNI = nz(s.SNI, defaultSelfSignedName)
@@ -284,7 +294,8 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 			}
 		}
 	}
-	// VLESS: the flow is per protocol in Meridian; take the one most users have
+	// VLESS: the flow is per protocol in Meridian; take the one most users have (the others connect
+	// with their new link)
 	if kind == subgen.KindVLESS {
 		flows := map[string]int{}
 		for _, u := range in.Users {
@@ -292,14 +303,28 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 		}
 		best, n := "", -1
 		for f, c := range flows {
-			if c > n {
+			if c > n || (c == n && f > best) {
 				best, n = f, c
 			}
 		}
 		s.Flow = best
+		var others []string
+		for _, u := range in.Users {
+			if u.Flow != best {
+				others = append(others, u.Name)
+			}
+		}
+		if len(others) > 0 {
+			why = joinWhy(why, fmt.Sprintf("its users do not all use the same flow: Meridian has one per protocol (%s), so %s must refresh their subscription",
+				nz(best, "no flow"), strings.Join(others, ", ")))
+		}
 	}
 	if kind == subgen.KindShadowsocks {
 		s.Method, s.ServerKey = in.Method, in.ServerKey
+		if strings.HasPrefix(s.Method, "2022-") && len(in.Users) == 1 && in.Users[0].Password == in.ServerKey {
+			// one key for everyone: such devices send no user of their own, which a protocol of many users needs
+			why = joinWhy(why, "it served one key to all devices (single-user Shadowsocks 2022): Meridian gives each user a key of their own, so its devices must refresh their subscription")
+		}
 		if !strings.HasPrefix(s.Method, "2022-") {
 			// classic: users carry their own passwords; the server key only guards the placeholder user
 			s.ServerKey = randB64(16)
@@ -316,8 +341,25 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 	if err := s.check(kind); err != nil {
 		return "", nil, "", err
 	}
+	if s.Security == secTLS && s.CertMode == certCustom && s.CertExpires > 0 {
+		why = joinWhy(why, frozenCert(s.CertExpires))
+	}
 	raw, err = json.Marshal(s)
 	return kind, raw, why, err
+}
+
+// frozenCert is what an import says about a certificate it read from files: whatever renewed them on
+// the server (certbot, acme.sh) no longer reaches it.
+func frozenCert(expires int64) string {
+	return fmt.Sprintf("its certificate is copied as it is now and expires on %s - Meridian does not renew it: switch the protocol to Let's Encrypt or a shared certificate before then",
+		time.Unix(expires, 0).UTC().Format("2006-01-02"))
+}
+
+func joinWhy(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + "; " + b
 }
 
 // ---------------------------------------------------------------- import

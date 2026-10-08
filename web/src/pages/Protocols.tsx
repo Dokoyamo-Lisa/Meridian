@@ -184,7 +184,7 @@ export function ProtocolCard(props: { node: NodeView; server: Server; onEdit: ()
       body: (
         <>
           <p style="margin-top:0">Everyone connected through it is disconnected, and it disappears from every user's link the next time their apps refresh.</p>
-          {passedThrough('Their proxy pass is switched off: from then on their users leave directly from those servers.')}
+          {passedThrough('Their traffic is blocked until you choose another exit (or Off) for them - nobody leaves from their own servers instead.')}
         </>
       ),
       confirm: 'Remove protocol',
@@ -465,10 +465,18 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
   // ask the panel, as the draft changes, whether it works and where - with the checks saving runs
   // (as a change to this protocol when editing: what is left empty keeps its stored value)
   const body = useMemo(() => (kind ? settingsFor(kind, d, editing) : null), [kind, d, editing])
+  // editing: the port, addresses and own settings go along, so the answer says what saving does to
+  // the protocol's devices (refresh, restart)
   const runCheck = () =>
-    post<ProtocolCheck>('/api/protocols/check', { kind, settings: body, ...(editing && n ? { node_id: n.id } : serverId ? { server_id: serverId } : {}) }).catch(
-      (e): ProtocolCheck => ({ valid: false, error: errText(e) }),
-    )
+    post<ProtocolCheck>('/api/protocols/check', {
+      kind,
+      settings: body,
+      ...(editing && n
+        ? { node_id: n.id, ...(Number(port) > 0 ? { port: Number(port) } : {}), bind_ip: bindIP, host: host.trim(), ...(kind !== 'wireguard' ? { code: adv ? code : '' } : {}) }
+        : serverId
+          ? { server_id: serverId }
+          : {}),
+    }).catch((e): ProtocolCheck => ({ valid: false, error: errText(e) }))
   const seq = useRef(0) // answers to older drafts are dropped
   useEffect(() => {
     if (!kind || !body) return
@@ -482,7 +490,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
       })
     }, 250)
     return () => window.clearTimeout(t)
-  }, [kind, JSON.stringify(body), serverId])
+  }, [kind, JSON.stringify(body), serverId, port, bindIP, host, adv, code])
   const blocked = !!kind && !!check && !check.valid
   const warning = useRef<HTMLDivElement>(null)
   const showWarning = () =>
@@ -534,21 +542,51 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
       showWarning()
       return
     }
-    if (editing && n) {
-      const old = n.settings || {}
-      // false, empty and "not set" are the same value: only a real change makes devices refresh
-      const norm = (v: unknown) => (v === undefined || v === null || v === false || v === '' ? '' : String(v))
-      const changes = ['transport', 'security', 'sni', 'cert_mode', 'path', 'service_name', 'cdn', 'cdn_host', 'method', 'flow'].filter(
-        (key) => (body as Record<string, unknown>)[key] !== undefined && norm((body as Record<string, unknown>)[key]) !== norm(old[key]),
-      )
-      if (changes.length) {
-        const ok = await ask({
-          title: 'Devices must refresh',
-          body: <p style="margin-top:0">This changes how apps connect ({changes.join(', ')}). Devices using this protocol stop working until they refresh their subscription - most apps do that by themselves within hours, or when the user taps refresh.</p>,
-          confirm: 'Save',
-        })
-        if (!ok) return
-      }
+    // what saving does to the protocol's devices comes with the check (the server compares it with
+    // what it runs)
+    const changes = (editing && c.refresh) || []
+    const restarts = !!(editing && c.restarts)
+    if (changes.length) {
+      const ok = await ask({
+        title: 'Devices must refresh',
+        body: (
+          <p style="margin-top:0">
+            This changes how apps connect ({changes.join(', ')}). Devices using this protocol stop working until they refresh their subscription - most apps do that by themselves within
+            hours, or when the user taps refresh.{restarts && ' Hysteria2 also restarts once to take it.'}
+          </p>
+        ),
+        confirm: 'Save',
+      })
+      if (!ok) return
+    } else if (restarts) {
+      const ok = await ask({
+        title: 'Restart this protocol?',
+        body: <p style="margin-top:0">Hysteria2 takes this change by restarting once: its devices drop for a moment and reconnect by themselves.</p>,
+        confirm: 'Save and restart',
+      })
+      if (!ok) return
+    }
+    // serving only proxy passes cuts a protocol's own users off: this one's, or the chosen exit's
+    const cutOff: string[] = []
+    if (kind !== 'wireguard' && editing && passOnly && !n?.pass_only) cutOff.push(`${server.name} · ${check?.label || k?.label || kind}`)
+    const exitNow = passNode ? exitOf(passNode) : undefined
+    if (exitNow && !exitDirect && !exitNow.pass_only) {
+      const xs = props.servers.find((x) => x.id === exitNow.server_id)
+      cutOff.push(`${xs?.name || 'the exit'} · ${exitNow.label}`)
+    }
+    if (cutOff.length) {
+      const ok = await ask({
+        title: 'Serve only proxy passes?',
+        body: (
+          <p style="margin-top:0">
+            Users can no longer connect to <b>{cutOff.join(' and ')}</b> directly, and it leaves their links: it serves only the protocols on other servers that pass through it.
+            Its users who connect now are disconnected.
+          </p>
+        ),
+        confirm: 'Make it pass-only',
+        danger: true,
+      })
+      if (!ok) return
     }
     setBusy(true)
     try {
@@ -561,7 +599,13 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
       else await post(`/api/servers/${server.id}/nodes`, { ...req, kind })
       const exit = passNode ? exitOf(passNode) : undefined
       if (exit && !!exit.pass_only === exitDirect) await patch(`/api/nodes/${exit.id}`, { pass_only: !exitDirect })
-      toast(editing ? 'Saved - applied without restarting anything' : 'Protocol added - the server sets it up in a few seconds')
+      toast(
+        !editing
+          ? 'Protocol added - the server sets it up in a few seconds'
+          : restarts
+            ? 'Saved - Hysteria2 restarts once, its devices reconnect by themselves'
+            : 'Saved - applied without restarting anything',
+      )
       props.onSaved()
     } catch (e) {
       setErr(errText(e))
@@ -570,9 +614,27 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
     }
   }
 
-  const exits = props.servers
-    .filter((x) => x.id !== serverId)
-    .flatMap((x) => x.nodes.filter((e) => e.kind !== 'wireguard' && !e.pass_node && e.id !== n?.id).map((e) => ({ srv: x, node: e })))
+  // a chain has two passes at most, each to another server: an exit may pass on once more (a relay)
+  // while nothing passes through this protocol, and a chain never leads back to a server it passed
+  const allNodes = props.servers.flatMap((x) => x.nodes)
+  const entriesInto = (id: number) => allNodes.filter((e) => e.pass_node === id)
+  const mine = editing && n ? entriesInto(n.id) : [] // protocols that pass through this one
+  const tooDeep = mine.some((e) => entriesInto(e.id).length > 0) // and protocols through those
+  const exits = tooDeep
+    ? []
+    : props.servers
+        .filter((x) => x.id !== serverId)
+        .flatMap((x) =>
+          x.nodes
+            .filter((e) => e.kind !== 'wireguard' && e.id !== n?.id && !mine.some((m) => m.server_id === x.id))
+            .flatMap((e) => {
+              if (!e.pass_node) return [{ srv: x, node: e, then: '' }]
+              const next = exitOf(e.pass_node)
+              const ns = next && props.servers.find((y) => y.id === next.server_id)
+              if (mine.length || !next || !ns || next.pass_node || !next.enabled || ns.id === serverId) return []
+              return [{ srv: x, node: e, then: `${ns.name} · ${next.label}` }]
+            }),
+        )
   const xray = k?.engine === 'xray'
   const transports = k?.transports || []
   const securities = k?.securities || []
@@ -835,9 +897,22 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                   </Field>
                 )}
                 {xray && (
-                  <Field label="Proxy pass" hint="Traffic arriving here leaves through a protocol on another server: users connect nearby and appear at the exit's location.">
+                  <Field
+                    label="Proxy pass"
+                    hint={
+                      tooDeep
+                        ? `Protocols pass through ${mine
+                            .filter((e) => entriesInto(e.id).length)
+                            .map((e) => `${props.servers.find((y) => y.id === e.server_id)?.name || ''} · ${e.name || e.label}`)
+                            .join(', ')}, which pass${mine.length === 1 ? 'es' : ''} through this one - a chain has two passes at most, so it cannot pass on.`
+                        : mine.length
+                          ? `${(n?.pass_entries || []).join(', ')} pass${mine.length === 1 ? 'es' : ''} through this protocol: its exit must leave the internet itself - a chain has two passes at most.`
+                          : "Traffic arriving here leaves through a protocol on another server: users connect nearby and appear at the exit's location. An exit that passes on once more (a relay) makes a chain of two passes, the most there can be."
+                    }
+                  >
                     <select
                       class="input"
+                      disabled={passNode === 0 && tooDeep}
                       value={passNode}
                       onChange={(e) => {
                         const id = Number(e.currentTarget.value)
@@ -846,9 +921,14 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                       }}
                     >
                       <option value={0}>Off - leave directly from {server?.name || 'this server'}</option>
+                      {passNode > 0 && !exitOf(passNode) && (
+                        // its exit was removed: the traffic is blocked until another exit (or Off) is chosen
+                        <option value={passNode}>{n?.pass_name || 'A removed protocol'} - cannot be used, traffic blocked</option>
+                      )}
                       {exits.map((x) => (
                         <option value={x.node.id}>
                           {x.srv.name} · {x.node.label} :{x.node.port}
+                          {x.then && ` → ${x.then}`}
                         </option>
                       ))}
                     </select>
@@ -867,7 +947,11 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                     checked={passOnly}
                     onChange={setPassOnly}
                     label="Only for proxy passes"
-                    hint="Users cannot connect to this protocol directly and it is left out of their links - it serves protocols on other servers that pass through it."
+                    hint={
+                      passNode > 0
+                        ? 'Users cannot connect to this protocol directly and it is left out of their links - a relay: it passes the protocols that pass through it on to its own exit.'
+                        : 'Users cannot connect to this protocol directly and it is left out of their links - it serves protocols on other servers that pass through it.'
+                    }
                   />
                 )}
               </details>
@@ -999,7 +1083,8 @@ function RealitySite(props: { d: Draft; set: (p: Partial<Draft>) => void; sites:
           value={pick}
           onChange={(v) => {
             props.setPick(v)
-            set(v === 'own' ? { own_site: true, sni: '', target: '127.0.0.1:8443' } : { own_site: false, sni: v === 'list' ? '' : d.sni, target: '' })
+            // to "Another site" the domain and the forward address stay (only an own website's loopback address goes)
+            set(v === 'own' ? { own_site: true, sni: '', target: '127.0.0.1:8443' } : { own_site: false, sni: v === 'list' ? '' : d.sni, target: v === 'other' && !d.own_site ? d.target : '' })
           }}
           options={[
             ['list', 'A well-known site'],
@@ -1075,6 +1160,12 @@ function RealitySite(props: { d: Draft; set: (p: Partial<Draft>) => void; sites:
 function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: string; editing: boolean; keepKey?: boolean }) {
   const { d, set } = props
   const certs = useAsync(() => get<Cert[]>('/api/certs'))
+  // certificates added in another tab (Manage certificates opens one) show up on coming back
+  useEffect(() => {
+    const back = () => void certs.reload()
+    window.addEventListener('focus', back)
+    return () => window.removeEventListener('focus', back)
+  }, [])
   const covers = (c: Cert, name: string) => c.domains.some((x) => x === name || (x.startsWith('*.') && name.endsWith(x.slice(1)) && !name.slice(0, -x.length + 1).includes('.')))
   return (
     <div class="subsection">
@@ -1091,7 +1182,7 @@ function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: s
         />
       </Field>
       {d.cert_mode === 'shared' && (
-        <Field label="Shared certificate" hint={<>Kept once in Settings › Certificates and replaced there once for every server that uses it. <a href="/settings?tab=certs">Manage certificates</a></>}>
+        <Field label="Shared certificate" hint={<>Kept once in Settings › Certificates and replaced there once for every server that uses it. <a href="/settings?tab=certs" target="_blank" rel="noopener noreferrer">Manage certificates</a> (opens in a new tab - this window keeps your draft)</>}>
           <select class="input" value={d.cert_id} onChange={(e) => set({ cert_id: Number(e.currentTarget.value) })}>
             <option value={0}>Choose…</option>
             {(certs.data || []).map((c) => (

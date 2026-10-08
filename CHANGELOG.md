@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.7.1 - 2026-10-08
+
+Upgrade the agents too (Settings › Updates › Upgrade all agents - nobody is disconnected): several
+fixes below are theirs. Apps now name servers by the name users see (Server › Status page › Name
+users see) where one is set, so such entries are renamed once in users' apps.
+
+- **What a change does to devices is said before saving**: the protocol window asks "Devices must
+  refresh" for every change apps connect with - now also the port, the address, the address override
+  and Hysteria2's obfuscation - and a Hysteria2 change that restarts it asks first and says so
+  (it used to say nothing restarted). Changing a server's IP version asks before Hysteria2 restarts.
+  Making a protocol, or the exit of a proxy pass, serve only proxy passes asks first: its users are
+  cut off.
+- **MCP: update_protocol and remove_protocol** change or remove a protocol in place (assistants used
+  to add a second protocol to change one). update_protocol asks for confirm=true when devices must
+  refresh or Hysteria2 restarts. find_sharing looks at the whole period asked for (a link shared last
+  week was missed when only one device connected today).
+- **WireGuard on the users' page**: each WireGuard tunnel with its file and a QR code for the
+  WireGuard app, which does not take the link. The users' page names protocols as their apps do.
+- **Certificates**: a self-signed certificate pasted as an own or shared certificate is refused (no
+  app can check it - the Self-signed option makes one apps pin); a protocol whose certificate comes
+  from a private authority, or lacks its intermediate, says on its card that apps refuse it. An
+  imported self-signed certificate is kept and pinned in links. A certificate pasted into a protocol
+  (or imported from certbot's files) raises an alert 14 days before it expires - nothing renews it.
+  Each shared certificate shows its ID, and the renewal command comes ready for it.
+- **Proxy pass through two servers**: an exit may pass on once more, so a chain can have two passes
+  (entry › relay › exit, each on another server) - for example a relay nearby in front of a far exit.
+  The list of exits shows where a relay leads; a protocol's card shows its whole chain; a relay can
+  serve only proxy passes. Longer chains, and chains back to a server they passed, are refused - they
+  used to be accepted half-way and then left traffic blocked or going out directly. Removing an exit
+  protocol blocks the protocols that passed through it until they get another exit (it used to send
+  their users out directly from their own servers), as removing its server does. Rotating a server's
+  agent token no longer breaks its proxy passes: they switch to new credentials when the reinstalled
+  agent connects.
+- **Import** says who must refresh: users of a VLESS protocol with a flow other than the one
+  Meridian keeps, devices of a single-user Shadowsocks 2022 server, and when a certificate read from
+  files expires (Meridian does not renew it).
+- Agent: inbounds from a server's own Xray configuration are no longer closed and reopened on every
+  user change; a Hysteria2 protocol that Hysteria refuses to run says why (on the server page, and as
+  an apply error naming the protocol) instead of restarting in a loop unnoticed; reports go on while
+  a new Xray is downloaded (a slow download marked the server offline); with a country rule or IP
+  blocks, the server's own outgoing connections that happened to get a kernel forward's port as
+  their source port were dropped at random. Hysteria no longer checks its developers' server for
+  updates (versions are the panel's to choose; this takes effect when a Hysteria2 protocol restarts).
+- A protocol's own address and Hysteria2's own settings are refused on servers whose agent is older
+  than 0.6 (it would leave them out without a word); the server page says what waits for the upgrade.
+  A WireGuard protocol with IPv6 on stays editable when its server no longer routes IPv6.
+- Status page and users' page: when the panel cannot be reached (it restarts), the page says so and
+  tries again by itself instead of showing the sign-in; "Signed out" only when signing out worked;
+  a wrong two-factor code keeps the code step; users allowed in from abroad are no longer told the
+  site is not available in their region; daily bars show their values on a tap; the dashboard fits
+  from 1280 px.
+- Panel: Escape closes only the confirmation, not the window under it; "Another site" keeps the
+  camouflage's forward address; Manage certificates opens in a new tab and the protocol window keeps
+  its draft; form fields are tied to their labels for screen readers; the Access page counts the
+  exceptions before warning about a lock-out; the API reference states who may call /mcp and the
+  protocol check; ports.sh opens SOCKS5 UDP and the port Let's Encrypt checks. Docs keep private
+  keys and tokens off command lines.
+
 ## 0.7.0 - 2026-10-08
 
 Upgrade the agents too (Settings › Updates › Upgrade all agents - nobody is disconnected): the

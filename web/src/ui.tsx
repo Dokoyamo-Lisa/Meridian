@@ -1,7 +1,7 @@
 // Shared building blocks: data hooks, dialogs, toasts, form controls, copy, QR codes and charts.
 
 import type { ComponentChildren, RefObject } from 'preact'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks'
 import qrcode from 'qrcode-generator'
 import { ago, bytes, dateTime } from './api'
 import { Icon, LogoMark } from './icons'
@@ -141,6 +141,9 @@ export async function run(fn: () => Promise<unknown>, ok?: string): Promise<bool
 
 // ---------------------------------------------------------------- modal & confirm
 
+// openModals are the dialogs open now, the newest last: only that one handles Escape and Tab.
+const openModals: symbol[] = []
+
 export function Modal(props: {
   title: ComponentChildren
   onClose: () => void
@@ -157,9 +160,13 @@ export function Modal(props: {
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null
     const el = box.current
+    const me = Symbol()
+    openModals.push(me)
     const first = el?.querySelector<HTMLElement>('input:not([type=hidden]):not([disabled]), select, textarea, [data-autofocus]')
     ;(first || el)?.focus()
     const key = (e: KeyboardEvent) => {
+      // a confirmation opened from a dialog takes the keys first: Escape closes it alone
+      if (openModals[openModals.length - 1] !== me) return
       if (e.key === 'Escape') {
         e.stopPropagation()
         onClose.current()
@@ -181,7 +188,9 @@ export function Modal(props: {
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', key, true)
-      document.body.style.overflow = ''
+      const i = openModals.indexOf(me)
+      if (i >= 0) openModals.splice(i, 1)
+      if (!openModals.length) document.body.style.overflow = ''
       prev?.focus?.()
     }
   }, [])
@@ -351,11 +360,31 @@ export function Tabs<T extends string>(props: { value: T; tabs: [T, string, numb
 }
 
 export function Field(props: { label: ComponentChildren; hint?: ComponentChildren; children: ComponentChildren; class?: string }) {
+  // the label names its control (and the hint describes it) for screen readers, and a click on the
+  // label goes to the field
+  const id = useId()
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const ctl = box.current?.querySelector<HTMLElement>('input, select, textarea, [role=group]')
+    const label = box.current?.querySelector<HTMLLabelElement>(':scope > label')
+    if (!ctl || !label) return
+    if (!ctl.hasAttribute('aria-label')) ctl.setAttribute('aria-labelledby', label.id)
+    if (props.hint) ctl.setAttribute('aria-describedby', id + '-h')
+    else ctl.removeAttribute('aria-describedby')
+    if (ctl.matches('input, select, textarea')) {
+      if (!ctl.id) ctl.id = id + '-c'
+      label.htmlFor = ctl.id
+    }
+  })
   return (
-    <div class={'field ' + (props.class || '')}>
-      <label>{props.label}</label>
+    <div class={'field ' + (props.class || '')} ref={box}>
+      <label id={id + '-l'}>{props.label}</label>
       {props.children}
-      {props.hint && <div class="hint">{props.hint}</div>}
+      {props.hint && (
+        <div class="hint" id={id + '-h'}>
+          {props.hint}
+        </div>
+      )}
     </div>
   )
 }

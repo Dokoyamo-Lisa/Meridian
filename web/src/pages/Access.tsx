@@ -86,6 +86,51 @@ function parseExceptions(text: string) {
     .filter(Boolean)
 }
 
+// ipBytes reads an IPv4 or IPv6 address (4 or 16 bytes), or gives null.
+function ipBytes(s: string): number[] | null {
+  s = s.trim().replace(/^\[|\]$/g, '').replace(/%.*$/, '')
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) {
+    const p = s.split('.').map(Number)
+    return p.every((x) => x <= 255) ? p : null
+  }
+  if (!s.includes(':')) return null
+  const v4 = /^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/.exec(s) // the last 32 bits written as IPv4
+  if (v4) {
+    const b = ipBytes(v4[2])
+    if (!b) return null
+    s = v4[1] + ((b[0] << 8) | b[1]).toString(16) + ':' + ((b[2] << 8) | b[3]).toString(16)
+  }
+  const halves = s.split('::')
+  if (halves.length > 2) return null
+  const part = (x: string) => (x ? x.split(':') : [])
+  const head = part(halves[0])
+  const tail = halves.length === 2 ? part(halves[1]) : []
+  const fill = 8 - head.length - tail.length
+  if (halves.length === 1 ? head.length !== 8 : fill < 1) return null
+  const out: number[] = []
+  for (const g of [...head, ...Array<string>(halves.length === 2 ? fill : 0).fill('0'), ...tail]) {
+    if (!/^[0-9a-f]{1,4}$/i.test(g)) return null
+    const v = parseInt(g, 16)
+    out.push(v >> 8, v & 255)
+  }
+  return out
+}
+
+// inNet says whether ip is an exception: that address, or inside that network (CIDR).
+export function inNet(ip: string, entry: string): boolean {
+  const [net, bits] = entry.trim().split('/')
+  const a = ipBytes(ip)
+  const b = ipBytes(net)
+  if (!a || !b || a.length !== b.length) return false
+  const n = bits === undefined ? a.length * 8 : Number(bits)
+  if (!Number.isInteger(n) || n < 0 || n > a.length * 8) return false
+  for (let i = 0; i < n; i++) {
+    const m = 0x80 >> (i & 7)
+    if ((a[i >> 3] & m) !== (b[i >> 3] & m)) return false
+  }
+  return true
+}
+
 export function Access() {
   const acc = useAsync(() => get<AccessView>('/api/access'))
   usePoll(() => void acc.reload(), 20000)
@@ -223,7 +268,8 @@ function SiteRule(props: { view: AccessView; onSaved: () => void }) {
   const [err, setErr] = useState('')
   const set = (p: Partial<SiteAccess>) => setR((x) => ({ ...x, ...p }))
   const yourCountryIn = r.countries.includes(v.your_country)
-  const wouldLockOut = r.mode !== 'off' && r.admin && v.your_country && (r.mode === 'block' ? yourCountryIn : !yourCountryIn)
+  const excepted = parseExceptions(ex).some((e) => inNet(v.your_ip, e))
+  const wouldLockOut = r.mode !== 'off' && r.admin && v.your_country && (r.mode === 'block' ? yourCountryIn : !yourCountryIn) && !excepted
   const save = async () => {
     setBusy(true)
     setErr('')
@@ -274,7 +320,7 @@ function SiteRule(props: { view: AccessView; onSaved: () => void }) {
       <p class="muted" style="margin:8px 0">
         You are connecting from <span class="mono">{v.your_ip}</span>
         {v.your_country ? ` (${flag(v.your_country)} ${countryName(v.your_country)})` : ''}.
-        {wouldLockOut && <span class="crit-ink"> This rule would lock you out - the panel will refuse to save it.</span>}
+        {wouldLockOut && <span class="crit-ink"> This rule would lock you out - add your address to the exceptions, or the panel refuses to save it.</span>}
       </p>
       <button class="btn primary" disabled={busy || (r.mode !== 'off' && r.countries.length === 0)} onClick={save}>
         {busy ? <span class="spin" /> : 'Save'}

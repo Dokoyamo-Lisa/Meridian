@@ -21,6 +21,10 @@ curl -H "Authorization: Bearer mrd_..." https://panel.example.com/api/servers
   except change the password, two-factor settings, sessions, tokens or the site's country rule -
   those need a signed-in browser.
 - A token is shown once. Revoke it in the same place; expired or revoked tokens answer `401`.
+- On a machine other people use, keep the token off the command line (any user can list running
+  commands): pass the header through a file descriptor, as `skills/meridian-deploy/scripts/api.sh`
+  does - `curl -K <(printf 'header = "Authorization: Bearer %s"\n' "$TOKEN") ...`. The examples
+  below use `-H` for brevity.
 
 **Browser sessions** (the web UI) use an HttpOnly cookie. Every non-`GET` request with a session must
 carry `X-Meridian: 1`, which protects against cross-site requests. Sign in with

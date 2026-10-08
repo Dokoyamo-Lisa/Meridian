@@ -121,6 +121,8 @@ export interface PortalMe {
   days: PortalDay[]
   total: Usage
   protocols: PortalProtocol[]
+  /** WireGuard protocols: the WireGuard app takes a file or a QR code, not the link. */
+  wireguard?: { name: string; url: string; conf: string }[]
 }
 
 export interface LoginResult {

@@ -420,6 +420,11 @@ type ApplyResult struct {
 // an installed Xray is only upgraded by an explicit action. Inbounds on an address the host does not
 // have are left out (and reported), so the others keep running.
 func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror string, accessLog, allowRestart bool) (ApplyResult, error) {
+	if d != nil && len(d.Inbounds) > 0 {
+		if err := e.Install(ctx, version, mirror); err != nil {
+			return ApplyResult{}, fmt.Errorf("install Xray %s: %w", version, err)
+		}
+	}
 	var missing []string
 	res, err := e.apply(ctx, d, version, mirror, accessLog, allowRestart, &missing)
 	if len(missing) > 0 {
@@ -637,6 +642,12 @@ func parseFull(full map[string]any) *rendered {
 				continue
 			}
 			tag, _ := m["tag"].(string)
+			if operatorOwn(tag) {
+				// kept whole, users included, as render keeps it: it is re-opened only when it changes
+				r.inbounds[tag] = m
+				r.clients[tag] = map[string]proto.XrayClient{}
+				continue
+			}
 			stripped := map[string]any{}
 			for k, v := range m {
 				stripped[k] = v
@@ -957,14 +968,22 @@ func (e *Engine) waitAPI(ctx context.Context) {
 	}
 }
 
-// Install downloads version (when no Xray is installed yet) and points "current" at it.
+// Install downloads version (when no Xray is installed yet) and points "current" at it. The download
+// runs before the engine is locked, so reports go on meanwhile.
 func (e *Engine) Install(ctx context.Context, version, mirror string) error {
+	if e.Installed() {
+		return nil
+	}
+	dir, err := cores.EnsureXray(ctx, e.Base, version, mirror)
+	if err != nil {
+		return err
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.Installed() {
 		return nil
 	}
-	return e.install(ctx, version, mirror)
+	return e.switchTo(dir)
 }
 
 // install downloads version and points "current" at it.
@@ -1123,14 +1142,15 @@ func withRunning(full map[string]any, running map[string]any) map[string]any {
 // Upgrade installs version, checks the current config with it, switches and restarts. If the new
 // version does not come up, it switches back.
 func (e *Engine) Upgrade(ctx context.Context, version, mirror string) (string, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.init()
-	old, _ := os.Readlink(e.currentDir())
+	// downloaded before the engine is locked: reports go on meanwhile
 	dir, err := cores.EnsureXray(ctx, e.Base, version, mirror)
 	if err != nil {
 		return "", err
 	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.init()
+	old, _ := os.Readlink(e.currentDir())
 	body, err := os.ReadFile(e.configPath())
 	if err != nil {
 		return "", err
@@ -1180,10 +1200,23 @@ type Collected struct {
 
 // Collect reads and resets the traffic counters, the online lists and the access log.
 func (e *Engine) Collect(ctx context.Context, connLog, destLog bool) Collected {
-	e.mu.Lock()
+	var out Collected
+	// an apply or upgrade that holds the engine longer (a restart waiting for Xray's API) must not hold
+	// the report back until the server counts as offline: it then goes with Xray's state only, and
+	// Xray keeps its counters for the next one
+	if !lockWithin(&e.mu, collectWait) {
+		if e.Installed() {
+			active := service.IsActive(Unit)
+			pid, since := service.Status(Unit)
+			out.Status = proto.CoreStatus{Running: active, PID: pid, Since: since, Version: e.Version()}
+			if !active {
+				out.Status.Error = "not running"
+			}
+		}
+		return out
+	}
 	defer e.mu.Unlock()
 	e.init()
-	var out Collected
 	if !e.Installed() {
 		return out
 	}
@@ -1287,6 +1320,21 @@ func (e *Engine) Collect(ctx context.Context, connLog, destLog bool) Collected {
 		e.agg = newAggregate()
 	}
 	return out
+}
+
+// collectWait is how long a report waits for the engine.
+var collectWait = 5 * time.Second
+
+// lockWithin takes mu if it is free within d.
+func lockWithin(mu *sync.Mutex, d time.Duration) bool {
+	deadline := time.Now().Add(d)
+	for !mu.TryLock() {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return true
 }
 
 // DesiredEqual reports whether d is what was last applied (used to skip redundant work).

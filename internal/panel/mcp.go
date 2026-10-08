@@ -395,7 +395,7 @@ func pInt(desc string) map[string]any { return map[string]any{"type": "integer",
 func pStr(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
 
 // protocolCodeHelp explains a protocol's own settings as code.
-const protocolCodeHelp = "A protocol's own settings: for an Xray protocol JSON (comments allowed) - fields merged into its inbound (sniffing, streamSettings.sockopt, fallbacks, ...), \"outbounds\" to add (own tags, not the panel's direct/block) and \"rules\" routing this protocol's traffic only (e.g. [{\"domain\": [\"geosite:openai\"], \"outboundTag\": \"warp\"}]); its tag, port and users stay the panel's. For Hysteria2 YAML (auth and trafficStats stay the panel's; saving restarts it). Only the syntax is checked."
+const protocolCodeHelp = "A protocol's own settings: for an Xray protocol JSON (comments allowed) - fields merged into its inbound (sniffing, streamSettings.sockopt, fallbacks, ...), \"outbounds\" to add (own tags, not the panel's direct/block) and \"rules\" routing this protocol's traffic only (e.g. [{\"domain\": [\"geosite:openai\"], \"outboundTag\": \"warp\"}]); its tag, port and users stay the panel's. For Hysteria2 YAML (auth and trafficStats stay the panel's; saving restarts it). Only the syntax is checked. Never change how apps connect here (streamSettings network or security, ports): links do not follow code, so every device would stop working - use update_protocol."
 
 // publicPortsHelp explains the ports a NAT server's provider forwards, for the tools that take them.
 const publicPortsHelp = "Only for servers whose provider decides their ports (NAT servers, LXC and Incus containers): the ports it forwards, as on the provider's page - e.g. '20000-20019'. Where the number on the server differs from the public one write PUBLIC:LOCAL, e.g. '40001-40010:10001-10010' or '10022:22'. Add /tcp or /udp when only one is forwarded. Omit for an ordinary server (every port)."
@@ -1213,6 +1213,71 @@ var mcpTools = []mcpTool{
 			v, err := c.api("PATCH", fmt.Sprintf("/api/nodes/%d", id), map[string]any{"enabled": on})
 			return pick(v, "id", "kind", "port", "enabled"), err
 		}},
+	{Name: "update_protocol", Title: "Change a protocol", Write: true,
+		Description: "Change an existing protocol: only the given fields change, and the result must still work (check_protocol with protocol_id first). Xray and WireGuard take it live. A change apps connect with (transport, security, domain, certificate, port, address, cipher, flow, obfuscation) means its devices stop working until they refresh their subscription, and Hysteria2 restarts once for any change: then the tool says so and needs confirm=true. Its own settings as code: set_protocol_code; on or off: set_protocol_enabled.",
+		Props: func() map[string]any {
+			m := protocolProps(true)
+			delete(m, "kind")
+			delete(m, "server_id")
+			delete(m, "code")
+			m["protocol_id"] = pInt("Protocol id (list_servers)")
+			m["port"] = pInt("New port")
+			m["exit_protocol_id"] = pInt("Proxy pass: send its traffic out through that protocol on another server (it may pass on once more: a chain has two passes at most, each to another server); 0 turns the pass off")
+			m["address_override"] = pStr("A different domain or IP in links for this protocol only; empty string = its own address or the server's")
+			return m
+		}(),
+		Required: []string{"protocol_id"},
+		Disrupts: func(c *mcpCall, a map[string]any) string {
+			id, _ := argInt(a, "protocol_id")
+			body := protocolChange(a)
+			check := map[string]any{"node_id": id, "settings": body["settings"]}
+			for _, k := range []string{"port", "bind_ip", "host"} {
+				if v, ok := body[k]; ok {
+					check[k] = v
+				}
+			}
+			v, err := c.api("POST", "/api/protocols/check", check)
+			m, _ := v.(map[string]any)
+			if err != nil || m == nil || m["valid"] != true {
+				return "" // saving refuses it with the reason
+			}
+			var what []string
+			if r, _ := m["refresh"].([]any); len(r) > 0 {
+				var names []string
+				for _, x := range r {
+					names = append(names, fmt.Sprint(x))
+				}
+				what = append(what, "This changes how apps connect ("+strings.Join(names, ", ")+"): devices using the protocol stop working until they refresh their subscription.")
+			}
+			if m["restarts"] == true {
+				what = append(what, "This Hysteria2 protocol restarts once to take it: its devices drop and reconnect.")
+			}
+			if po, ok := a["pass_only"].(bool); ok && po {
+				what = append(what, "Serving only proxy passes, it leaves users' links: nobody can connect to it directly any more.")
+			}
+			return strings.Join(what, " ")
+		},
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			id, err := needInt(a, "protocol_id")
+			if err != nil {
+				return nil, err
+			}
+			v, err := c.api("PATCH", fmt.Sprintf("/api/nodes/%d", id), protocolChange(a))
+			return pick(v, "id", "kind", "label", "net", "port", "public_port", "enabled", "settings", "apps", "notes", "pass_name", "pass_only", "bind_ip", "host"), err
+		}},
+	{Name: "remove_protocol", Title: "Remove a protocol", Write: true, Destructive: true,
+		Description: "Remove a protocol from its server: everyone using it is disconnected and it leaves every user's link. Protocols on other servers that pass through it are blocked until they get another exit. Users left with no access at all are named in the timeline.",
+		Props:       map[string]any{"protocol_id": pInt("Protocol id (list_servers)")}, Required: []string{"protocol_id"},
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			id, err := needInt(a, "protocol_id")
+			if err != nil {
+				return nil, err
+			}
+			if _, err := c.api("DELETE", fmt.Sprintf("/api/nodes/%d", id), nil); err != nil {
+				return nil, err
+			}
+			return "Removed.", nil
+		}},
 	{Name: "add_forward", Title: "Add port forward", Write: true,
 		Description: "Forward a port on a server to another host:port (TCP and/or UDP). The kernel engine (nftables) is fastest and needs an IP target; realm also takes domain names and can send the PROXY protocol.",
 		Props: map[string]any{
@@ -1552,7 +1617,7 @@ func protocolProps(withServer bool) map[string]any {
 		m["server_id"] = pInt("Server id")
 		m["port"] = pInt("Port; omit to pick a free common one")
 		m["label"] = pStr("Optional label shown in apps")
-		m["exit_protocol_id"] = pInt("Proxy pass: send this protocol's traffic out through that protocol on another server (an Xray entry; any exit but WireGuard)")
+		m["exit_protocol_id"] = pInt("Proxy pass: send this protocol's traffic out through that protocol on another server (an Xray entry; any exit but WireGuard). The exit may pass on once more (a relay): a chain has two passes at most, each to another server")
 		m["pass_only"] = map[string]any{"type": "boolean", "description": "Serve only proxy passes from other servers: users cannot connect to it directly and it is left out of their links. Use it for an exit that people should reach only through a relay"}
 		m["bind_ip"] = pStr("One of the server's addresses (addrs in get_server) for this protocol alone: it listens there, its traffic leaves from there, links use it. Protocols on different addresses may share a port. Omit for all addresses")
 		m["code"] = pStr(protocolCodeHelp)
@@ -1588,6 +1653,30 @@ func protocolSettingsArg(a map[string]any) map[string]any {
 	return out
 }
 
+// protocolChange maps update_protocol's arguments onto PATCH /api/nodes/{id}: only what is given.
+func protocolChange(a map[string]any) map[string]any {
+	b := map[string]any{"settings": protocolSettingsArg(a)}
+	if v, ok := argInt(a, "port"); ok {
+		b["port"] = v
+	}
+	if v, ok := argStr(a, "label"); ok {
+		b["name"] = v
+	}
+	if v, ok := argInt(a, "exit_protocol_id"); ok {
+		b["pass_node"] = v
+	}
+	if v, ok := a["pass_only"].(bool); ok {
+		b["pass_only"] = v
+	}
+	if v, ok := argStr(a, "bind_ip"); ok {
+		b["bind_ip"] = v
+	}
+	if v, ok := argStr(a, "address_override"); ok {
+		b["host"] = v
+	}
+	return b
+}
+
 // countKind counts a server's protocols of a kind.
 func (p *Panel) countKind(ctx context.Context, serverID int64, kind string) int {
 	var n int
@@ -1612,24 +1701,57 @@ func (c *mcpCall) findSharing(days int64) (any, error) {
 		Networks  int      `json:"networks"`
 		Reasons   []string `json:"reasons"`
 	}
-	var out []suspect
-	checked := 0
+	// suspects are picked by their distinct IPs over the whole period (a link shared last week may
+	// have had one device today), the ones over their limit now first; only the top ones are looked
+	// at in detail
+	seen := map[int64]int{}
+	if rows, err := c.p.db.QueryContext(c.r.Context(), `SELECT sub_id, COUNT(DISTINCT ip) FROM ip_log WHERE last_seen >= ?
+		GROUP BY sub_id`, now()-days*86400); err == nil {
+		for rows.Next() {
+			var id int64
+			var n int
+			if rows.Scan(&id, &n) == nil {
+				seen[id] = n
+			}
+		}
+		rows.Close()
+	}
+	type candidate struct {
+		m      map[string]any
+		ips    int
+		over   bool
+		online float64
+		limit  float64
+		id     int64
+	}
+	var cands []candidate
 	all, _ := v.([]any)
 	for _, x := range all {
 		m, _ := x.(map[string]any)
-		ips24, _ := m["ips_24h"].(float64)
 		online, _ := m["online_ips"].(float64)
 		limit, _ := m["ip_limit"].(float64)
-		over := limit > 0 && online > limit
-		if ips24 < 3 && !over {
-			continue
-		}
-		if checked >= 60 { // keep the scan bounded
-			break
-		}
-		checked++
 		id, _ := m["id"].(float64)
-		rows, err := c.api("GET", fmt.Sprintf("/api/users/%d/ips?days=%d", int64(id), days), nil)
+		cd := candidate{m: m, ips: seen[int64(id)], over: limit > 0 && online > limit, online: online, limit: limit, id: int64(id)}
+		if cd.ips >= 3 || cd.over {
+			cands = append(cands, cd)
+		}
+	}
+	slices.SortFunc(cands, func(a, b candidate) int {
+		if a.over != b.over {
+			if a.over {
+				return -1
+			}
+			return 1
+		}
+		return b.ips - a.ips
+	})
+	if len(cands) > 60 { // keep the detailed look bounded
+		cands = cands[:60]
+	}
+	var out []suspect
+	for _, cd := range cands {
+		m, online, limit, over, id := cd.m, cd.online, cd.limit, cd.over, cd.id
+		rows, err := c.api("GET", fmt.Sprintf("/api/users/%d/ips?days=%d", id, days), nil)
 		if err != nil {
 			continue
 		}

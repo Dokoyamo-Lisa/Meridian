@@ -135,7 +135,7 @@ func (p *Panel) handleSubWG(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, e := range eps {
 		if e.NodeID == n.ID && e.WG != nil {
-			name := fmt.Sprintf("%s-%s.conf", safeFile(srv.Name), safeFile(s.Name))
+			name := fmt.Sprintf("%s-%s.conf", safeFile(srv.ShownName()), safeFile(s.Name))
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.Header().Set("Content-Disposition", "attachment; filename=\""+name+"\"")
 			w.Header().Set("Cache-Control", "no-store")

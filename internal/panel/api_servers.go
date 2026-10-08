@@ -81,6 +81,7 @@ type serverView struct {
 	DesiredRev string                      `json:"desired_rev,omitempty" doc:"The configuration the panel wants on the server: it is in place when applied_rev equals it"`
 	Limits     []string                    `json:"limits,omitempty" doc:"What does not work on this server, and how to change that"`
 	LocFrom    string                      `json:"loc_from,omitempty" doc:"The address whose DB-IP entry gives the location: the address when it was set by hand to an IP, otherwise the IP the agent reports (empty when the location was set by hand)"`
+	ACMEPort   int                         `json:"acme_port,omitempty" doc:"The TCP port Let's Encrypt's check arrives on - 80, or where the provider forwards port 80 - when a protocol gets its certificate from Let's Encrypt (its firewall must let it in); 0 when none does"`
 }
 
 // noNftables says whether a server has told the panel it has no nftables.
@@ -147,6 +148,18 @@ func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*server
 			}
 		}
 		nv.PassEntries = p.passEntryNames(ctx, n.ID)
+		if n.Enabled && usesACME(n.Kind, n.Settings) != "" {
+			if v.ACMEPort = s.ports.acmePort(); v.ACMEPort == 0 {
+				v.ACMEPort = 80
+			}
+		}
+		if cid, _ := certName(n.Kind, n.Settings); cid > 0 {
+			if c, err := p.certByID(ctx, cid); err == nil {
+				if why := publicTrust(c.CertPEM); why != "" {
+					nv.Notes = append(nv.Notes, fmt.Sprintf("Apps will refuse its shared certificate (%s): %s. Links never turn certificate checks off.", c.Name, why))
+				}
+			}
+		}
 		if n.PassOnly {
 			if len(p.passEntries(ctx, n.ID)) == 0 {
 				nv.Notes = append(nv.Notes, "Serves only proxy passes, and no protocol passes through it yet: nobody can use it.")
@@ -189,8 +202,18 @@ func addressIssues(s *Server, nodes []*Node) []string {
 	} else if s.IPVersion == "ipv6" && s.FirstSeenAt > 0 && s.IPv6 == "" && s.Address == "" {
 		out = append(out, "This server is set to IPv6 only, but it has no public IPv6 address: links have no address to use.")
 	}
+	old := !s.agent06()
+	if old && s.IPVersion != "" && slices.ContainsFunc(nodes, func(n *Node) bool { return n.Kind == subgen.KindHysteria2 }) {
+		out = append(out, "Hysteria2 protocols ignore the IP version until this server's agent is upgraded to 0.6 or later (More actions › Upgrade agent).")
+	}
 	for _, n := range nodes {
 		label := protocolLabel(n.Kind, n.Settings)
+		if old && n.BindIP != "" {
+			out = append(out, fmt.Sprintf("%s: its own address (%s) waits for agent 0.6 or later on this server - upgrade the agent.", label, n.BindIP))
+		}
+		if old && n.Code != "" && n.Kind == subgen.KindHysteria2 {
+			out = append(out, label+": its own settings wait for agent 0.6 or later on this server - upgrade the agent.")
+		}
 		if n.BindIP != "" && len(s.Addrs) > 0 && !slices.Contains(s.Addrs, n.BindIP) {
 			out = append(out, fmt.Sprintf("%s is bound to %s, which is no longer an address of this server - choose another one.", label, n.BindIP))
 		}
@@ -293,10 +316,19 @@ func (p *Panel) passName(ctx context.Context, exitID int64) string {
 		return "a removed protocol"
 	}
 	srv, err := p.serverByID(ctx, exit.ServerID)
-	if err != nil {
+	if err != nil || srv.DeletedAt > 0 {
 		return "a removed server"
 	}
-	return srv.Name + " · " + protocolLabel(exit.Kind, exit.Settings)
+	name := srv.Name + " · " + protocolLabel(exit.Kind, exit.Settings)
+	if exit.PassNode != 0 { // a relay: and where the chain leaves the internet
+		if next, err := p.nodeByID(ctx, exit.PassNode); err == nil {
+			if ns, err := p.serverByID(ctx, next.ServerID); err == nil && ns.DeletedAt == 0 {
+				return name + " → " + ns.Name + " · " + protocolLabel(next.Kind, next.Settings)
+			}
+		}
+		return name + " → a removed protocol"
+	}
+	return name
 }
 
 // installCommand is the one line an admin pastes on a server (as root). It pins the installer by
@@ -374,8 +406,9 @@ func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Accou
 	t := now()
 	var id int64
 	err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
-		res, err := tx.Exec(`INSERT INTO servers (account_id, name, secret, address, public_ports, ip_version, country, city,
-			lat, lon, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, owner, name, seal.NewSecret(), addr, srv.PublicPorts,
+		secret := seal.NewSecret()
+		res, err := tx.Exec(`INSERT INTO servers (account_id, name, secret, pass_secret, address, public_ports, ip_version, country,
+			city, lat, lon, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, owner, name, secret, secret, addr, srv.PublicPorts,
 			ipv, country, city, lat, lon, t)
 		if err != nil {
 			return err
@@ -587,11 +620,14 @@ func (p *Panel) apiUpdateServer(w http.ResponseWriter, r *http.Request, a *Accou
 	return p.apiServer(w, r, a)
 }
 
-// passEntriesOf lists the servers with protocols that pass through one of this server's.
+// passEntriesOf lists the servers with protocols that pass through one of this server's - directly,
+// or through a relay.
 func (p *Panel) passEntriesOf(ctx context.Context, serverID int64) []int64 {
 	var out []int64
-	rows, err := p.db.QueryContext(ctx, `SELECT DISTINCT e.server_id FROM nodes e JOIN nodes x ON e.pass_node = x.id
-		WHERE x.server_id = ? AND e.server_id != ?`, serverID, serverID)
+	rows, err := p.db.QueryContext(ctx, `SELECT e.server_id FROM nodes e JOIN nodes x ON e.pass_node = x.id
+		WHERE x.server_id = ? AND e.server_id != ?
+		UNION SELECT e.server_id FROM nodes e JOIN nodes r ON e.pass_node = r.id JOIN nodes x ON r.pass_node = x.id
+		WHERE x.server_id = ? AND e.server_id != ?`, serverID, serverID, serverID, serverID)
 	if err != nil {
 		return nil
 	}
@@ -911,15 +947,16 @@ type nodeInput struct {
 	Enabled  *bool       `json:"enabled"`
 	Host     *string     `json:"host" doc:"Address override for this protocol only; empty = the server's address"`
 	Sort     *int        `json:"sort"`
-	PassNode *int64      `json:"pass_node" doc:"Proxy pass: id of the exit protocol on another server; 0 = leave directly"`
+	PassNode *int64      `json:"pass_node" doc:"Proxy pass: id of the exit protocol on another server; 0 = leave directly. The exit may pass on once more (a relay): a chain has two passes at most, each to another server"`
 	PassOnly *bool       `json:"pass_only" doc:"Serve only proxy passes from other servers: users cannot connect directly and it is left out of their links (not for WireGuard)"`
 	Code     *string     `json:"code" doc:"The protocol's own settings, merged on top of what the panel generates. Xray protocols: JSON (comments allowed) - fields merged into the inbound (sniffing, streamSettings.sockopt, fallbacks, ...), outbounds added (own tags), rules for this protocol's traffic only; tag, port and users stay the panel's. Hysteria2: YAML; auth and trafficStats stay the panel's (saving restarts it). Only the syntax is checked; empty removes it"`
 	BindIP   *string     `json:"bind_ip" doc:"One of the server's addresses (see addrs on the server) for this protocol alone: it listens there, its traffic leaves from there, and links use it when it is public. Protocols on different addresses may share a port. Empty = all addresses"`
 	Settings *protoInput `json:"settings" doc:"Transport, security and the protocol's own options; omitted fields keep their value (or the default on create). POST /api/protocols/check shows what a draft becomes"`
 }
 
-// checkPass validates a proxy pass: the exit is an Xray protocol on another server of the same
-// account and does not pass on again (one hop keeps it predictable).
+// checkPass validates a proxy pass: the exit is a protocol (not WireGuard) on another server of the
+// same account. A chain has two passes at most - the exit may pass on once more, or protocols may pass
+// through this one, not both - and never comes back to a server it passed (see passExit).
 func (p *Panel) checkPass(ctx context.Context, entry *Node, entrySrv *Server, exitID int64) (*Server, error) {
 	if exitID == 0 {
 		return nil, nil
@@ -941,10 +978,58 @@ func (p *Panel) checkPass(ctx context.Context, entry *Node, entrySrv *Server, ex
 	if !canExit(exit.Kind) {
 		return nil, errStatus(http.StatusBadRequest, "WireGuard cannot be a proxy pass exit - pick any other protocol")
 	}
+	// the exit is a relay: its own exit leaves the internet itself, from yet another server
 	if exit.PassNode != 0 {
-		return nil, errStatus(http.StatusBadRequest, "the exit protocol passes on itself - chains are one hop")
+		next, ns, prob := p.passHop(ctx, xs, exit.PassNode)
+		switch {
+		case prob != hopOK:
+			return nil, errStatus(http.StatusBadRequest, "the exit passes on to a protocol that cannot be used now (removed or turned off) - choose another exit")
+		case next.PassNode != 0:
+			return nil, errStatus(http.StatusBadRequest, "the exit passes on twice already - a chain has two passes at most: choose another exit")
+		case ns.ID == entrySrv.ID:
+			return nil, errStatus(http.StatusBadRequest, fmt.Sprintf("the exit passes on back to %s - every pass goes to another server: choose another exit", entrySrv.Name))
+		}
+	}
+	// protocols that pass through this one make the chain one pass longer
+	if entry.ID > 0 {
+		for _, e := range p.passEntryNodes(ctx, entry.ID) {
+			name := p.nodeTitle(ctx, e)
+			switch {
+			case exit.PassNode != 0:
+				return nil, errStatus(http.StatusBadRequest, fmt.Sprintf("%s passes through this protocol, and the exit passes on too - a chain has two passes at most: choose an exit that leaves the internet itself", name))
+			case len(p.passEntryNodes(ctx, e.ID)) > 0:
+				return nil, errStatus(http.StatusBadRequest, fmt.Sprintf("protocols pass through %s, which passes through this one - a chain has two passes at most", name))
+			case e.ServerID == xs.ID:
+				return nil, errStatus(http.StatusBadRequest, fmt.Sprintf("%s passes through this protocol from %s - every pass goes to another server: choose an exit elsewhere", name, xs.Name))
+			}
+		}
 	}
 	return xs, nil
+}
+
+// passEntryNodes lists the protocols that pass through protocol exitID (turned off or not).
+func (p *Panel) passEntryNodes(ctx context.Context, exitID int64) []*Node {
+	rows, err := p.db.QueryContext(ctx, `SELECT `+nodeCols+` FROM nodes WHERE pass_node = ? ORDER BY id`, exitID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []*Node
+	for rows.Next() {
+		if n, err := scanNode(rows); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// nodeTitle names a protocol as the panel lists it: "server · protocol".
+func (p *Panel) nodeTitle(ctx context.Context, n *Node) string {
+	name := nz(n.Name, protocolLabel(n.Kind, n.Settings))
+	if s, err := p.serverByID(ctx, n.ServerID); err == nil {
+		return s.Name + " · " + name
+	}
+	return name
 }
 
 func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account) error {
@@ -984,7 +1069,7 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	if err != nil {
 		return errStatus(http.StatusBadRequest, err.Error())
 	}
-	if err := p.checkOnServer(r.Context(), s, in.Kind, settings); err != nil {
+	if err := p.checkOnServer(r.Context(), s, in.Kind, settings, nil); err != nil {
 		return err
 	}
 	bind := ""
@@ -992,10 +1077,16 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 		if bind, err = bindAddr(s, *in.BindIP); err != nil {
 			return err
 		}
+		if bind != "" && !s.agent06() {
+			return needAgent06("a protocol's own address")
+		}
 	}
 	code, err := nodeCode(in.Kind, in.Code)
 	if err != nil {
 		return err
+	}
+	if code != "" && in.Kind == subgen.KindHysteria2 && !s.agent06() {
+		return needAgent06("Hysteria2's own settings")
 	}
 	hostPorts := p.hostPorts(id)
 	port := 0
@@ -1027,7 +1118,7 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	var passNode int64
 	var exitSrv *Server
 	if in.PassNode != nil && *in.PassNode > 0 {
-		if exitSrv, err = p.checkPass(r.Context(), &Node{Kind: in.Kind, Settings: settings}, s, *in.PassNode); err != nil {
+		if exitSrv, err = p.checkPass(r.Context(), &Node{Kind: in.Kind, Settings: settings, PassOnly: passOnly}, s, *in.PassNode); err != nil {
 			return err
 		}
 		passNode = *in.PassNode
@@ -1091,7 +1182,7 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 		n.Settings = updated
 	}
 	if in.Settings != nil {
-		if err := p.checkOnServer(r.Context(), s, n.Kind, n.Settings); err != nil {
+		if err := p.checkOnServer(r.Context(), s, n.Kind, n.Settings, oldSettings); err != nil {
 			return err
 		}
 	}
@@ -1102,6 +1193,9 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 		bind, err := bindAddr(s, *in.BindIP)
 		if err != nil {
 			return err
+		}
+		if bind != "" && bind != n.BindIP && !s.agent06() {
+			return needAgent06("a protocol's own address")
 		}
 		rebound, n.BindIP = bind != n.BindIP, bind
 	}
@@ -1143,8 +1237,12 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 		n.Sort = *in.Sort
 	}
 	if in.Code != nil {
+		was := n.Code
 		if n.Code, err = nodeCode(n.Kind, in.Code); err != nil {
 			return err
+		}
+		if n.Code != "" && n.Code != was && n.Kind == subgen.KindHysteria2 && !s.agent06() {
+			return needAgent06("Hysteria2's own settings")
 		}
 	}
 	if in.PassOnly != nil {
@@ -1246,12 +1344,12 @@ func (p *Panel) apiDeleteNode(w http.ResponseWriter, r *http.Request, a *Account
 			touch = append(touch, x.ServerID)
 		}
 	}
+	// protocols that passed through it keep their pass and block (its id is never handed out again),
+	// as when the exit's server is removed: their users chose to appear at the exit, and never leave
+	// from their own servers instead without anyone choosing that
 	var lost []string
 	if err := p.db.Write(r.Context(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`DELETE FROM nodes WHERE id = ?`, n.ID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`UPDATE nodes SET pass_node = 0 WHERE pass_node = ?`, n.ID); err != nil {
 			return err
 		}
 		var err error
@@ -1262,7 +1360,7 @@ func (p *Panel) apiDeleteNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	msg := fmt.Sprintf("%s removed from %s", protocolLabel(n.Kind, n.Settings), s.Name)
 	if len(entries) > 0 {
-		msg += fmt.Sprintf(" - %d protocol(s) that passed through it now leave directly", len(entries))
+		msg += fmt.Sprintf(" - protocols on %d other server(s) passed through it and are blocked until they get another exit", len(entries))
 	}
 	p.event(s.AccountID, "warn", "protocol_removed", s.ID, 0, a.ID, msg, nil)
 	p.noAccessLeft(s.AccountID, a.ID, lost)
@@ -1475,10 +1573,12 @@ func checkEngine(engine string, proxyProtocol bool) error {
 	return nil
 }
 
-// passEntries lists the servers whose protocols pass through node exitID.
+// passEntries lists the servers whose protocols pass through node exitID - directly, or through a
+// relay (a chain has two passes at most): what the exit is and does decides whether theirs work.
 func (p *Panel) passEntries(ctx context.Context, exitID int64) []int64 {
 	var out []int64
-	rows, err := p.db.QueryContext(ctx, `SELECT DISTINCT server_id FROM nodes WHERE pass_node = ?`, exitID)
+	rows, err := p.db.QueryContext(ctx, `SELECT server_id FROM nodes WHERE pass_node = ?
+		UNION SELECT e.server_id FROM nodes e JOIN nodes r ON e.pass_node = r.id WHERE r.pass_node = ?`, exitID, exitID)
 	if err != nil {
 		return nil
 	}

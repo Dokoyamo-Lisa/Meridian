@@ -478,11 +478,14 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 			Description: "Meridian Hysteria2 node %i",
 			Exec:        bin,
 			Args:        []string{"server", "-c", e.ConfDir + "/%i.yaml"},
-			Env:         map[string]string{"HYSTERIA_LOG_LEVEL": "debug", "HYSTERIA_LOG_FORMAT": "json"},
-			Log:         e.RunDir + "/hy2-%i.log",
-			Caps:        []string{"CAP_NET_ADMIN", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW"},
-			NoFile:      1048576,
-			Sandbox:     true,
+			// versions are the panel's to choose: Hysteria's own update check (its developers' server, on
+			// every start) stays off
+			Env: map[string]string{"HYSTERIA_LOG_LEVEL": "debug", "HYSTERIA_LOG_FORMAT": "json",
+				"HYSTERIA_DISABLE_UPDATE_CHECK": "1"},
+			Log:     e.RunDir + "/hy2-%i.log",
+			Caps:    []string{"CAP_NET_ADMIN", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW"},
+			NoFile:  1048576,
+			Sandbox: true,
 		}
 		if _, err := service.Define(unit); err != nil {
 			return err
@@ -518,6 +521,7 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 	}
 	e.mu.Unlock()
 
+	var started []int64
 	for id, n := range want {
 		if a, gone := sys.MissingAddr(n.Bind, e.HasAddr); gone {
 			// bound to an address this server does not have: it could not start, so it waits (stopped)
@@ -553,6 +557,8 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 			errs = append(errs, e.write(n, files, key)...)
 			if err := service.EnableNow(unitName(id)); err != nil {
 				errs = append(errs, err.Error())
+			} else {
+				started = append(started, id)
 			}
 		case !changed:
 			if string(stored) != key {
@@ -571,6 +577,8 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 			errs = append(errs, e.write(n, files, key)...)
 			if err := service.Restart(unitName(id)); err != nil {
 				errs = append(errs, err.Error())
+			} else {
+				started = append(started, id)
 			}
 		}
 		e.mu.Lock()
@@ -585,6 +593,7 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 	for id, ids := range kick {
 		e.kick(id, ids)
 	}
+	errs = append(errs, e.stayUp(started)...)
 
 	// nodes that are gone
 	e.mu.Lock()
@@ -622,6 +631,92 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// startCheck is how long a node that was just started must stay up: Hysteria refuses a configuration
+// (a value it cannot read, a port another program holds) within milliseconds, and the service manager
+// starts it again only after its restart pause (2 s), so a failing node is seen stopped by then.
+var startCheck = 1500 * time.Millisecond
+
+// stayUp waits a moment after nodes were started and says why those that stopped again did: without
+// it a node Hysteria refuses would restart in a loop while the change counted as applied.
+func (e *Engine) stayUp(ids []int64) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	time.Sleep(startCheck)
+	var errs []string
+	for _, id := range ids {
+		why := e.failure(id)
+		if service.IsActive(unitName(id)) && why == "" {
+			continue
+		}
+		if why == "" {
+			why = "it stopped right after starting"
+		}
+		errs = append(errs, fmt.Sprintf("protocol n%d does not start - %s", id, why))
+	}
+	return errs
+}
+
+// failure is the error a node's Hysteria stopped with: the last line of its log when that line is an
+// error ("" when it is not - the node runs, or was stopped on purpose).
+func (e *Engine) failure(id int64) string {
+	f, err := os.Open(filepath.Join(e.RunDir, fmt.Sprintf("hy2-%d.log", id)))
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	off := max(st.Size()-16<<10, 0)
+	buf := make([]byte, st.Size()-off)
+	n, err := f.ReadAt(buf, off)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return ""
+	}
+	return failureIn(buf[:n])
+}
+
+// failureIn reads the error a Hysteria log (JSON lines) ends with: a fatal or error line, or a Go
+// panic.
+func failureIn(log []byte) string {
+	lines := strings.Split(strings.TrimRight(string(log), "\r\n"), "\n")
+	// a panic counts only after the last log entry (its stack follows it): one further up was
+	// followed by a start that went well
+	for i := len(lines) - 1; i >= 0 && i >= len(lines)-200; i-- {
+		l := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(l, "{") {
+			break
+		}
+		if p, ok := strings.CutPrefix(l, "panic: "); ok {
+			return clip("it crashed: " + p)
+		}
+	}
+	var ent struct {
+		Level string `json:"level"`
+		Msg   string `json:"msg"`
+		Error string `json:"error"`
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(lines[len(lines)-1])), &ent) != nil || (ent.Level != "fatal" && ent.Level != "error") {
+		return ""
+	}
+	why := ent.Msg
+	if ent.Error != "" {
+		why += ": " + ent.Error
+	}
+	return clip(why)
+}
+
+// clip shortens a message from Hysteria to what fits on the server's page.
+func clip(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > 300 {
+		return string(r[:300]) + "…"
+	}
+	return s
 }
 
 // RestartAll restarts every Hysteria2 node (after an upgrade): their devices reconnect by themselves.
@@ -837,6 +932,9 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 		e.mu.Unlock()
 		if !active {
 			st.Error = "not running"
+			if why := e.failure(id); why != "" {
+				st.Error += ": " + why
+			}
 			out.Status[id] = st
 			continue
 		}

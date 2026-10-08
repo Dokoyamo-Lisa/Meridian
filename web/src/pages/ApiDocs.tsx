@@ -135,9 +135,11 @@ export function ApiReference() {
                             ? "A user's own sign-in (the mrd_u cookie), not the supervisor's."
                             : o.op['x-scope'] === 'public'
                               ? 'Public - no sign-in.'
-                              : o.method === 'get'
-                                ? 'Read-only tokens may call this.'
-                                : 'Needs a full-access token or a browser session.'}
+                              : o.op['x-scope'] === 'token'
+                                ? 'API token only - read-only tokens see the read tools.'
+                                : o.method === 'get' || o.op['x-scope'] === 'read'
+                                  ? 'Read-only tokens may call this (it changes nothing).'
+                                  : 'Needs a full-access token or a browser session.'}
                       </p>
                       {(o.op.parameters || []).length > 0 && (
                         <>

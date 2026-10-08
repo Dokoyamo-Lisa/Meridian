@@ -295,7 +295,8 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 		}
 	}
 
-	// proxy pass, exit side: entry nodes elsewhere that leave the internet through our nodes
+	// proxy pass, exit side: entry nodes elsewhere that pass through our nodes, while their whole chain
+	// can be used (a relay among ours passes their traffic on, as its own pass user, to its exit)
 	passByExit := map[int64][]passClient{}
 	if prow, err := p.db.QueryContext(ctx, `SELECT `+nodeCols+` FROM nodes WHERE enabled = 1 AND pass_node IN
 		(SELECT id FROM nodes WHERE server_id = ?)`, id); err == nil {
@@ -310,6 +311,9 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			es, err := p.serverByID(ctx, e.ServerID)
 			if err != nil || es.DeletedAt > 0 || es.AccountID != srv.AccountID {
 				continue
+			}
+			if _, _, why := p.passExit(ctx, es, e); why != "" {
+				continue // its chain cannot be used: it blocks on its own server
 			}
 			uuid, pw := passCredentials(es, e)
 			passByExit[e.PassNode] = append(passByExit[e.PassNode], passClient{Entry: e, UUID: uuid, Password: pw})
@@ -629,8 +633,8 @@ func (p *Panel) credOverrides(ctx context.Context, nodeID int64) map[int64]creds
 // starts with a flag already.
 func endpointName(srv *Server, n *Node) string {
 	name := n.Name
-	if name == "" {
-		name = srv.Name + " · " + protocolLabel(n.Kind, n.Settings)
+	if name == "" { // the server as users see it everywhere (its public name, when it has one)
+		name = srv.ShownName() + " · " + protocolLabel(n.Kind, n.Settings)
 	}
 	if f := flagEmoji(srv.Country); f != "" && !startsWithFlag(name) {
 		name = f + " " + name

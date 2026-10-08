@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks'
 import { Cert, CertUse, date, del, get, patch, post } from '../api'
 import { Icon } from '../icons'
+import { useSession } from '../session'
 import { Code, Empty, ErrorBox, Field, Loading, Modal, ask, errText, run, toast, useAsync, usePoll } from '../ui'
 
 // Shared certificates: one certificate (a wildcard, or one your own ACME client renews) kept here and
@@ -22,10 +23,12 @@ function daysLeft(ts: number) {
 
 export function Certificates() {
   const list = useAsync(() => get<Cert[]>('/api/certs'))
+  const base = useSession().meta?.public_url || location.origin
   const [editing, setEditing] = useState<Cert | 'new' | null>(null)
   usePoll(() => void list.reload(), 15000)
 
   if (!list.data) return list.error ? <ErrorBox error={list.error} retry={list.reload} /> : <Loading />
+  const certs = list.data
   return (
     <>
       <section class="panel">
@@ -56,12 +59,23 @@ export function Certificates() {
         <p class="muted" style="margin-top:0">
           Let your ACME client (acme.sh, certbot, Caddy…) replace the certificate after each renewal with one call - an API token with full access, from Settings › API & MCP:
         </p>
-        <Code
-          pre
-          text={`curl -fsS -X PATCH ${location.origin}/api/certs/ID \\
-  -H "Authorization: Bearer $MERIDIAN_TOKEN" -H "Content-Type: application/json" \\
-  --data "$(jq -n --rawfile c fullchain.pem --rawfile k privkey.pem '{cert_pem: $c, key_pem: $k}')"`}
-        />
+        {(certs.length ? certs : [undefined]).map((c) => (
+          <>
+            {certs.length > 1 && c && (
+              <div class="muted" style="margin:12px 0 4px">
+                <b>{c.name}</b> (ID {c.id})
+              </div>
+            )}
+            <Code
+              pre
+              text={`jq -n --rawfile c fullchain.pem --rawfile k privkey.pem '{cert_pem: $c, key_pem: $k}' |
+  curl -fsS -X PATCH ${base}/api/certs/${c ? c.id : 'ID'} \\
+    -K <(printf 'header = "Authorization: Bearer %s"\\n' "$MERIDIAN_TOKEN") \\
+    -H "Content-Type: application/json" --data-binary @-`}
+            />
+          </>
+        ))}
+        <p class="muted" style="margin:8px 0 0">The key and the token go through a pipe and a file descriptor, never on a command line other users of the machine can read.</p>
       </section>
       {editing && (
         <CertEditor
@@ -88,6 +102,7 @@ function CertCard(props: { cert: Cert; onEdit: () => void; onChanged: () => void
     <div class="cert-card">
       <div class="row wrap" style="gap:10px;align-items:baseline">
         <b>{c.name}</b>
+        <span class="faint" style="font-size:11.5px" title="Its ID in the API (the renewal command uses it)">ID {c.id}</span>
         <span class="mono faint">{c.domains.join(', ')}</span>
         <span class={'badge ' + (left < 7 ? 'crit' : left < 21 ? 'warn' : 'good')}>{left < 0 ? 'expired' : `${left} days left`}</span>
         <span class="faint" style="font-size:11.5px">

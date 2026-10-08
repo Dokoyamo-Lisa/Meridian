@@ -323,14 +323,17 @@ When several servers use one certificate (a wildcard such as `*.example.com`, or
 renews), add it once and point the protocols at it:
 
 ```bash
+umask 077                                             # cert.json holds the private key: only you may read it
 python3 -c 'import json,sys; print(json.dumps({"name": "wildcard", "cert_pem": open("fullchain.pem").read(), "key_pem": open("privkey.pem").read()}))' > cert.json
-scripts/api.sh POST /api/certs "$(cat cert.json)"     # note the "id" in the answer
-rm cert.json
+scripts/api.sh POST /api/certs @cert.json             # note the "id" in the answer
+rm -f cert.json
 scripts/api.sh POST /api/servers/ID/nodes '{"kind":"trojan","settings":{"security":"tls","cert_mode":"shared","cert_id":CERT_ID,"sni":"tokyo.example.com"}}'
 ```
 
-After each renewal, the **same** call with `PATCH /api/certs/CERT_ID` replaces it on every server -
-put it in the ACME client's deploy hook. `scripts/api.sh GET /api/certs` then shows each server's
+Always send the file with `@cert.json`, never `"$(cat cert.json)"`: a command line is readable by
+every user of the machine, and this one would carry the private key. After each renewal, the
+**same** three lines with `PATCH /api/certs/CERT_ID` (no `name` needed) replace it on every server -
+put them in the ACME client's deploy hook. `scripts/api.sh GET /api/certs` then shows each server's
 `state`: `live` = serving it; `installed` = Xray loads it within ten minutes; `pending` = not taken
 yet (server offline, or its agent is older than 0.6: upgrade it). Never copy the certificate onto
 servers yourself.

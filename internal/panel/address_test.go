@@ -50,7 +50,7 @@ func TestProtocolAddresses(t *testing.T) {
 	b.login("owner", "owner-password-1")
 	srv := b.must("POST", "/api/servers", map[string]any{"name": "Multi"}, 201)["server"].(map[string]any)
 	sid := id(srv["id"])
-	reported(t, h, sid, []string{"203.0.113.71", "203.0.113.72", "2001:db8::71"}, `{"nftables":true,"wireguard":true,"wg6":true}`)
+	reported(t, h, sid, []string{"203.0.113.71", "203.0.113.72", "2001:db8::71"}, `{"nftables":true,"wireguard":true,"wg6":true,"certs":true}`)
 	path := fmt.Sprintf("/api/servers/%d/nodes", sid)
 
 	a := b.must("POST", path, map[string]any{"kind": "vless", "port": 443, "bind_ip": "203.0.113.71", "name": "A"}, 201)
@@ -122,7 +122,7 @@ func TestWireGuardIPv6(t *testing.T) {
 	b.login("owner", "owner-password-1")
 	srv := b.must("POST", "/api/servers", map[string]any{"name": "WG6"}, 201)["server"].(map[string]any)
 	sid := id(srv["id"])
-	reported(t, h, sid, []string{"203.0.113.70", "2001:db8::70"}, `{"nftables":true,"wireguard":true,"wg6":true}`)
+	reported(t, h, sid, []string{"203.0.113.70", "2001:db8::70"}, `{"nftables":true,"wireguard":true,"wg6":true,"certs":true}`)
 	path := fmt.Sprintf("/api/servers/%d/nodes", sid)
 	plain := b.must("POST", path, map[string]any{"kind": "wireguard", "name": "four"}, 201)
 	dual := b.must("POST", path, map[string]any{"kind": "wireguard", "name": "six", "settings": map[string]any{"ipv6": true}}, 201)
@@ -165,5 +165,45 @@ func TestWireGuardIPv6(t *testing.T) {
 	}
 	if code, m, _ := b.do("POST", path, map[string]any{"kind": "wireguard", "settings": map[string]any{"ipv6": true}}); code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "IPv4 only") {
 		t.Errorf("IPv6 tunnel on an IPv4 server: %d %v", code, m)
+	}
+	// the protocol that has it on stays editable (and can turn it off); turning it on is refused
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", id(dual["id"])), map[string]any{"settings": map[string]any{"mtu": 1380}}, 200)
+	b.must("POST", "/api/protocols/check", map[string]any{"node_id": id(dual["id"]), "settings": map[string]any{"mtu": 1360}}, 200)
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", id(dual["id"])), map[string]any{"settings": map[string]any{"ipv6": false}}, 200)
+	if code, m, _ := b.do("PATCH", fmt.Sprintf("/api/nodes/%d", id(dual["id"])), map[string]any{"settings": map[string]any{"ipv6": true}}); code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "IPv4 only") {
+		t.Errorf("IPv6 turned on again on an IPv4 server: %d %v", code, m)
+	}
+}
+
+// TestOldAgentRefusals: what a 0.5 agent would leave out without a word - a protocol's own address,
+// Hysteria2's own settings - is refused on its server, and the server page says what waits.
+func TestOldAgentRefusals(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Old"}, 201)["server"].(map[string]any)["id"])
+	path := fmt.Sprintf("/api/servers/%d/nodes", sid)
+	// not connected yet: it installs the panel's agent, so everything goes
+	hy := b.must("POST", path, map[string]any{"kind": "hysteria2", "code": "quic:\n  maxIdleTimeout: 60s\n"}, 201)
+	reported(t, h, sid, []string{"203.0.113.70", "203.0.113.71"}, `{"nftables":true,"wireguard":true}`)
+	for _, c := range []struct {
+		method, path string
+		body         map[string]any
+	}{
+		{"POST", path, map[string]any{"kind": "vless", "bind_ip": "203.0.113.71"}},
+		{"POST", path, map[string]any{"kind": "hysteria2", "code": "quic:\n  maxIdleTimeout: 30s\n"}},
+		{"PATCH", fmt.Sprintf("/api/nodes/%d", id(hy["id"])), map[string]any{"bind_ip": "203.0.113.71"}},
+		{"PATCH", fmt.Sprintf("/api/nodes/%d", id(hy["id"])), map[string]any{"code": "quic:\n  maxIdleTimeout: 30s\n"}},
+	} {
+		if code, m, _ := b.do(c.method, c.path, c.body); code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "needs agent 0.6 or later") {
+			t.Errorf("%s %s %v: %d %v", c.method, c.path, c.body, code, m)
+		}
+	}
+	// what it has stays editable, and the page says it waits
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", id(hy["id"])), map[string]any{"name": "fast"}, 200)
+	v := b.must("PATCH", fmt.Sprintf("/api/servers/%d", sid), map[string]any{"ip_version": "ipv4"}, 200)["server"].(map[string]any)
+	limits := fmt.Sprint(v["limits"])
+	if !strings.Contains(limits, "Hysteria2 protocols ignore the IP version") || !strings.Contains(limits, "its own settings wait for agent 0.6") {
+		t.Errorf("limits: %s", limits)
 	}
 }

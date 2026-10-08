@@ -3,6 +3,7 @@ package panel
 import (
 	"database/sql"
 	"encoding/json"
+	"net/http"
 	"net/netip"
 	"slices"
 	"strings"
@@ -157,6 +158,7 @@ type Server struct {
 	AccountID       int64    `json:"account_id"`
 	Name            string   `json:"name"`
 	Secret          string   `json:"-"`
+	PassSecret      string   `json:"-"` // what proxy-pass credentials come from (see migration 12)
 	Address         string   `json:"address"`
 	Note            string   `json:"note"`
 	Sort            int      `json:"sort"`
@@ -204,7 +206,7 @@ type Server struct {
 	CountryMode     string   `json:"country_mode" doc:"'' = follows the global country rule, off = none, block or allow = its own"`
 	CountryList     string   `json:"-"`
 	Countries       []string `json:"countries" doc:"Its own country rule's countries"`
-	PublicName      string   `json:"public_name" doc:"Name on the status page; empty = the server's name"`
+	PublicName      string   `json:"public_name" doc:"The name users see - on the status page, their own page and in their apps; empty = the server's name"`
 	StatusHidden    bool     `json:"status_hidden" doc:"Left off the status page"`
 	LocManual       bool     `json:"loc_manual" doc:"The location was set by hand (not from the IP database)"`
 	PublicPorts     string   `json:"public_ports" doc:"Ports the server's provider forwards to it (NAT servers, LXC and Incus containers), e.g. '20000-20019, 40001-40010:10001-10010'; empty = every port"`
@@ -220,7 +222,8 @@ const serverCols = `id, account_id, name, secret, address, note, sort, created_a
 agent_version, hostname, os, kernel, arch, cpu_model, cpu_cores, mem_total, disk_total, ipv4, ipv6, country, city,
 lat, lon, caps, boot_time, agent_started_at, first_seen_at, last_seen_at, online, status_changed_at, applied_rev,
 apply_errors, pending_restart, xray_version, bw_limit, bw_mode, bw_reset_day, bw_offset, cycle_rx, cycle_tx,
-cycle_start, price, currency, billing_cycle, expires_on, country_mode, country_list, public_name, status_hidden, loc_manual, public_ports, ip_version, addrs, xray_code`
+cycle_start, price, currency, billing_cycle, expires_on, country_mode, country_list, public_name, status_hidden, loc_manual, public_ports, ip_version, addrs, xray_code,
+pass_secret`
 
 func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 	s := &Server{}
@@ -232,7 +235,7 @@ func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 		&s.ApplyErrors, &s.PendingRestart, &s.XrayVersion, &s.BwLimit, &s.BwMode, &s.BwResetDay, &s.BwOffset,
 		&s.CycleRX, &s.CycleTX, &s.CycleStart, &s.Price, &s.Currency, &s.BillingCycle, &s.ExpiresOn, &s.CountryMode,
 		&s.CountryList, &s.PublicName, &s.StatusHidden, &s.LocManual, &s.PublicPorts, &s.IPVersion, &s.addrList,
-		&s.XrayCode)
+		&s.XrayCode, &s.PassSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -284,6 +287,16 @@ func (s *Server) caps() proto.Caps {
 	var c proto.Caps
 	_ = json.Unmarshal([]byte(s.Caps), &c)
 	return c
+}
+
+// agent06 says whether the server's agent takes what came with 0.6 - a protocol's own address,
+// Hysteria2's own settings and IP version, shared certificates - or has not connected yet (it then
+// installs the panel's version). Older agents leave those out without a word.
+func (s *Server) agent06() bool { return s.FirstSeenAt == 0 || s.caps().Certs }
+
+// needAgent06 refuses something an older agent would leave out.
+func needAgent06(what string) error {
+	return errStatus(http.StatusBadRequest, what+" needs agent 0.6 or later on this server - upgrade its agent first (More actions › Upgrade agent)")
 }
 
 // v6 says whether the server uses IPv6 at all: not when set to IPv4 only, nor when its kernel has

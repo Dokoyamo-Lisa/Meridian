@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -732,5 +733,103 @@ func TestAgentChannel(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("upgrade action without checksums: %+v", st.Actions)
+	}
+}
+
+// callTool calls one MCP tool with a token and returns its text and whether it is an error.
+func callTool(t *testing.T, h *harness, tok, name string, args map[string]any) (string, bool) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+		"params": map[string]any{"name": name, "arguments": args}})
+	req, _ := http.NewRequest("POST", h.srv.URL+"/mcp", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var m struct {
+		Result struct {
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+			IsError bool `json:"isError"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil || len(m.Result.Content) == 0 {
+		t.Fatalf("%s: %v %+v", name, err, m)
+	}
+	return m.Result.Content[0].Text, m.Result.IsError
+}
+
+// TestFindSharingPeriod: a link used from many places earlier in the period is found, though only
+// one device connected in the last day.
+func TestFindSharingPeriod(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	read := b.must("POST", "/api/tokens", map[string]any{"name": "ro", "scope": "read"}, 201)["token"].(string)
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "S", "address": "203.0.113.30"}, 201)["server"].(map[string]any)["id"])
+	var users []map[string]any
+	_, _, raw := b.do("POST", "/api/users", map[string]any{"name": "bob"})
+	_ = json.Unmarshal(raw, &users)
+	bob := id(users[0]["id"])
+	week := now() - 5*86400
+	for i, cc := range []string{"US", "US", "DE", "DE", "FR", "FR", "FR", "JP", "JP"} {
+		if _, err := h.p.db.Exec1(`INSERT INTO ip_log (day, sub_id, ip, server_id, first_seen, last_seen, conns, country, asn)
+			VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`, "d", bob, "198.51.100."+strconv.Itoa(i+1), sid, week, week, cc, 64500+i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := h.p.db.Exec1(`INSERT INTO ip_log (day, sub_id, ip, server_id, first_seen, last_seen, conns, country, asn)
+		VALUES ('d2', ?, '192.0.2.1', ?, ?, ?, 1, 'US', 64500)`, bob, sid, now()-3600, now()-3600); err != nil {
+		t.Fatal(err)
+	}
+	if out, isErr := callTool(t, h, read, "find_sharing", map[string]any{"days": 7}); isErr || !strings.Contains(out, "bob") || !strings.Contains(out, "countries") {
+		t.Errorf("a week: %v %s", isErr, out)
+	}
+	if out, _ := callTool(t, h, read, "find_sharing", map[string]any{"days": 1}); strings.Contains(out, "bob") {
+		t.Errorf("a day: %s", out)
+	}
+}
+
+// TestMCPProtocolChanges: update_protocol changes a protocol in place - asking for confirm=true when
+// its devices must refresh or Hysteria2 restarts - and remove_protocol removes it (confirmed).
+func TestMCPProtocolChanges(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	full := b.must("POST", "/api/tokens", map[string]any{"name": "rw", "scope": "full"}, 201)["token"].(string)
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "M", "address": "203.0.113.31", "protocols": []string{}}, 201)["server"].(map[string]any)["id"])
+	vl := id(b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "vless", "port": 443}, 201)["id"])
+	hy := id(b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "hysteria2", "port": 8443}, 201)["id"])
+
+	if out, isErr := callTool(t, h, full, "update_protocol", map[string]any{"protocol_id": vl, "fingerprint": "firefox", "label": "main"}); isErr || !strings.Contains(out, "firefox") {
+		t.Errorf("a change apps do not carry: %v %s", isErr, out)
+	}
+	if out, isErr := callTool(t, h, full, "update_protocol", map[string]any{"protocol_id": vl, "port": 8444}); !isErr || !strings.Contains(out, "refresh their subscription") {
+		t.Errorf("a new port without confirm: %v %s", isErr, out)
+	}
+	if out, isErr := callTool(t, h, full, "update_protocol", map[string]any{"protocol_id": vl, "port": 8444, "confirm": true}); isErr || !strings.Contains(out, "8444") {
+		t.Errorf("a new port, confirmed: %v %s", isErr, out)
+	}
+	if out, isErr := callTool(t, h, full, "update_protocol", map[string]any{"protocol_id": hy, "up_mbps": 80}); !isErr || !strings.Contains(out, "restarts once") {
+		t.Errorf("Hysteria2 without confirm: %v %s", isErr, out)
+	}
+	if _, isErr := callTool(t, h, full, "update_protocol", map[string]any{"protocol_id": hy, "up_mbps": 80, "confirm": true}); isErr {
+		t.Error("Hysteria2 confirmed")
+	}
+	if out, isErr := callTool(t, h, full, "update_protocol", map[string]any{"protocol_id": vl, "transport": "grpc", "flow": "xtls-rprx-vision", "confirm": true}); !isErr || !strings.Contains(out, "Vision") {
+		t.Errorf("a change that does not work is refused with the reason: %v %s", isErr, out)
+	}
+	if _, isErr := callTool(t, h, full, "remove_protocol", map[string]any{"protocol_id": hy}); !isErr {
+		t.Error("remove without confirm")
+	}
+	if out, isErr := callTool(t, h, full, "remove_protocol", map[string]any{"protocol_id": hy, "confirm": true}); isErr || out != "Removed." {
+		t.Errorf("remove: %v %s", isErr, out)
+	}
+	if code, _, _ := b.do("GET", fmt.Sprintf("/api/servers/%d", sid), nil); code != 200 {
+		t.Fatal(code)
 	}
 }

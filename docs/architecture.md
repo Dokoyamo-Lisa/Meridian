@@ -168,8 +168,12 @@ and enables the imported protocols on the same ports once it has stopped.
 A protocol on an entry server can send its traffic out through a protocol on another server (the
 exit). The panel gives the entry server an extra Xray outbound to the exit - authenticated with a
 service credential derived from the entry server's secret - and a routing rule that sends the entry
-protocol's traffic to it; the exit server simply gets one more user. Both are applied live. Chains
-are one hop, which keeps behaviour predictable.
+protocol's traffic to it; the exit server simply gets one more user. Both are applied live. The exit
+may itself pass on once more (a relay): the relay's server routes everything arriving on that
+protocol - its entries' pass users included - to its own exit, where it arrives as the relay's pass
+user, so each server only knows its neighbours. A chain has two passes at most, every hop goes to
+another server and none comes back to a server it passed (`checkPass` refuses it; `passExit` blocks a
+chain stored otherwise, and the relay then drops the entry's pass user).
 
 ## Subscriptions
 

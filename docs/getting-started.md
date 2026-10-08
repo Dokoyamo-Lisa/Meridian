@@ -56,7 +56,9 @@ then shows a guide:
    It works the same on every distribution (curl or busybox's wget, plain `sh`). The command checks
    the installer's checksum, the installer checks the agent's, and the agent checks every core it
    downloads. The token in it is the server's secret - treat it like a
-   password; if it leaks, use **More actions › Rotate agent token** on the server page.
+   password; if it leaks, use **More actions › Rotate agent token** on the server page and run the
+   new command on the server. Traffic keeps flowing meanwhile (proxy passes from it too: they switch
+   to new credentials when the reinstalled agent connects).
 
 The guide turns green when the agent connects (usually within seconds). If it does not, the guide
 lists what to check: the command's output, `systemctl status meridian-agent` (on Alpine
@@ -133,7 +135,10 @@ do instead. Below the form you see which apps can use the protocol as configured
 - **Proxy pass** sends a protocol's traffic out through a protocol on another server. Whether users
   may also connect to that exit directly is up to you: untick **Users can also connect to the exit
   directly** (or tick **Only for proxy passes** on the exit) and the exit leaves users' links and
-  accepts only the pass.
+  accepts only the pass. The exit may pass on once more - a relay - so a chain has two passes at
+  most (entry › relay › exit), each to another server; the list of exits shows a relay with where it
+  leads (`Tokyo · REALITY → Frankfurt · REALITY`). While something passes through a protocol, its
+  own exit must leave the internet itself.
 
 **Already running Xray, V2Ray, x-ui, 3x-ui, sing-box or Hysteria2 on the server?** Use **Import
 existing setup** on the server page. The agent reads their configuration (it changes nothing), you
@@ -156,12 +161,14 @@ ACME client renews - keep it once in **Settings › Certificates** and choose **
 in each protocol. Replacing it there updates every server that uses it: Xray loads the new one
 within ten minutes without disconnecting anyone, Hysteria2 restarts once. The list shows, per
 server and protocol, whether it is serving the new certificate yet (the agent checks what each
-TLS port actually presents). A renewal hook can do the same with one API call:
+TLS port actually presents). A renewal hook can do the same with one API call - the key and the
+token go through a pipe and a file descriptor, never on a command line other users can read:
 
 ```bash
-curl -fsS -X PATCH https://panel.example.com/api/certs/ID -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  --data "$(jq -n --rawfile c fullchain.pem --rawfile k privkey.pem '{cert_pem: $c, key_pem: $k}')"
+jq -n --rawfile c fullchain.pem --rawfile k privkey.pem '{cert_pem: $c, key_pem: $k}' |
+  curl -fsS -X PATCH https://panel.example.com/api/certs/ID \
+    -K <(printf 'header = "Authorization: Bearer %s"\n' "$TOKEN") \
+    -H "Content-Type: application/json" --data-binary @-
 ```
 
 A replacement that no longer covers a domain some protocol uses is refused.

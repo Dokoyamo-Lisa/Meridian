@@ -40,7 +40,7 @@ func TestRenderGuardsAndForwards(t *testing.T) {
 		"elements = { 198.51.100.7, 203.0.113.0/24 }",
 		"elements = { 2001:db8::/32 }",
 		`tcp dport 30002 counter comment "f4:up"`,
-		"ip daddr @block4 udp sport @svc_udp counter drop",
+		"ip daddr @block4 udp sport @own_udp counter drop",
 		"ip daddr @block4 ct mark and 0xffff0000 == 0x4d520000 counter drop",
 		`ip saddr 10.66.0.0/20 oifname != "uwg1" masquerade`,
 		// users never reach this host or a private network: through the proxies, or from WireGuard
@@ -83,7 +83,7 @@ func TestRenderCountryRule(t *testing.T) {
 		`meta nfproto ipv4 ip saddr @geo4 counter drop comment "geo:in"`,
 		"meta nfproto ipv4 ip daddr @geo4 counter drop",
 		"tcp dport @svc_tcp jump geo_in",
-		"udp sport @svc_udp jump geo_out",
+		"udp sport @own_udp jump geo_out",
 		"ct direction reply jump geo_out",
 	} {
 		if !strings.Contains(out, want) {
@@ -160,5 +160,37 @@ func TestRenderWireGuardNAT(t *testing.T) {
 	}
 	if !needsForwarding6(Spec{WG: []WGNat{{Subnet6: "fd12::/64"}}}) || needsForwarding6(Spec{WG: []WGNat{{Subnet4: "10.66.0.0/20"}}}) {
 		t.Error("IPv6 forwarding only for tunnels that carry IPv6")
+	}
+}
+
+// TestForwardPortsAsSourcePorts: a kernel forward's port has no socket, so it can be the source port
+// of this host's own connection; such a connection and its replies are never taken for visitors,
+// while a realm forward's port (realm listens on it) is checked both ways like a protocol's.
+func TestForwardPortsAsSourcePorts(t *testing.T) {
+	spec := Spec{TCPPorts: []int{443}, UDPPorts: []int{8443},
+		Forwards: []proto.Forward{
+			{ID: 1, ListenPort: 40000, Network: "tcp,udp", Target: "203.0.113.7:80", Engine: "nft"},
+			{ID: 2, ListenPort: 40001, Network: "tcp", Target: "203.0.113.8:80", Engine: "realm"},
+		},
+		Geo: &GeoSpec{Allow: true, V4: []string{"1.0.1.0/24"}}}
+	out := New().render(spec)
+	for _, want := range []string{
+		"set svc_tcp { type inet_service; elements = { 443, 40000, 40001 }; }",
+		"set svc_udp { type inet_service; elements = { 8443, 40000 }; }",
+		"set own_tcp { type inet_service; elements = { 443, 40001 }; }",
+		"set own_udp { type inet_service; elements = { 8443 }; }",
+		"tcp sport @own_tcp jump geo_out",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	// replies return before any check of what comes in
+	guard := out[strings.Index(out, "chain guard {"):]
+	if i, j := strings.Index(guard, "ct direction reply return"), strings.Index(guard, "jump geo_in"); i < 0 || i > j {
+		t.Errorf("replies are checked as visitors:\n%s", guard)
+	}
+	if strings.Contains(out, "sport @svc_") {
+		t.Errorf("a forward's port is matched on the way out:\n%s", out)
 	}
 }

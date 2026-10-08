@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"meridian/internal/proto"
+	"meridian/internal/seal"
 	"meridian/internal/subgen"
 )
 
@@ -279,6 +283,11 @@ func TestEndpointNames(t *testing.T) {
 			t.Errorf("%q: got %q, want %q", c.name, got, c.want)
 		}
 	}
+	// a public name is what users see everywhere, apps included
+	pub := &Server{Name: "tyo-vultr-03", PublicName: "Tokyo", Country: "JP"}
+	if got := endpointName(pub, &Node{Kind: "vless", Settings: json.RawMessage(`{}`)}); !strings.HasPrefix(got, "🇯🇵 Tokyo · VLESS") {
+		t.Errorf("public name: %q", got)
+	}
 	eps := []subgen.Endpoint{{Name: "IPLC"}, {Name: "IPLC"}, {Name: "IPLC 2"}, {Name: "IPLC"}, {Name: "Other"}}
 	uniqueNames(eps)
 	var got []string
@@ -413,5 +422,216 @@ func TestRemovedAccess(t *testing.T) {
 	b.must("PATCH", fmt.Sprintf("/api/users/%d", whole), map[string]any{"servers": []int64{}, "protocols": []int64{}}, 200)
 	if sc := scopeOf(whole); sc != "servers [] protocols [] none:false" {
 		t.Errorf("everything: %s", sc)
+	}
+}
+
+// TestPassChains: a chain has two passes at most - entry, relay, exit - each on another server; the
+// relay takes its entries' pass users and passes them on as its own; longer chains and chains back to
+// a server they passed are refused (or, stored before, blocked with the reason); a change at the far
+// end reaches the first entry's server too.
+func TestPassChains(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	mk := func(name, addr string) int64 {
+		return id(b.must("POST", "/api/servers", map[string]any{"name": name, "address": addr}, 201)["server"].(map[string]any)["id"])
+	}
+	a, bs, c, d := mk("A", "203.0.113.71"), mk("B", "198.51.100.71"), mk("C", "198.51.100.72"), mk("D", "198.51.100.73")
+	node := func(srv int64, body map[string]any) (int, map[string]any) {
+		code, m, _ := b.do("POST", fmt.Sprintf("/api/servers/%d/nodes", srv), body)
+		return code, m
+	}
+	must := func(srv int64, body map[string]any) int64 {
+		t.Helper()
+		code, m := node(srv, body)
+		if code != 201 {
+			t.Fatalf("POST node on %d %v: %d %v", srv, body, code, m)
+		}
+		return id(m["id"])
+	}
+	refused := func(what string, code int, m map[string]any, want string) {
+		t.Helper()
+		if code != 400 || !strings.Contains(fmt.Sprint(m["error"]), want) {
+			t.Errorf("%s: %d %v (want %q)", what, code, m, want)
+		}
+	}
+	x := must(c, map[string]any{"kind": "vless"})
+	m := must(bs, map[string]any{"kind": "vless", "pass_node": x})
+	e := must(a, map[string]any{"kind": "vless", "pass_node": m}) // two passes: A -> B -> C
+	b.must("POST", "/api/users", map[string]any{"name": "eve"}, 201)
+
+	compiled := func(srv int64) (base string, clients map[int64][]string) {
+		t.Helper()
+		st, err := h.p.compileServer(context.Background(), srv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clients = map[int64][]string{}
+		for _, in := range st.Xray.Inbounds {
+			nid, _ := proto.ParseInboundTag(in.Tag)
+			for _, cl := range in.Clients {
+				clients[nid] = append(clients[nid], cl.Email)
+			}
+		}
+		return string(st.Xray.Base), clients
+	}
+	baseA, _ := compiled(a)
+	baseB, clientsB := compiled(bs)
+	_, clientsC := compiled(c)
+	if !strings.Contains(baseA, "198.51.100.71") || strings.Contains(baseA, "198.51.100.72") {
+		t.Errorf("the entry's pass goes to the relay only: %s", baseA)
+	}
+	if !slices.Contains(clientsB[m], passEmail(e)) || !strings.Contains(baseB, "198.51.100.72") {
+		t.Errorf("the relay takes the entry's pass user and passes on to the exit: %v %s", clientsB[m], baseB)
+	}
+	if !slices.Contains(clientsC[x], passEmail(m)) || slices.Contains(clientsC[x], passEmail(e)) {
+		t.Errorf("the exit knows the relay only: %v", clientsC[x])
+	}
+	card := func(srv, nid int64) map[string]any {
+		for _, n := range b.must("GET", fmt.Sprintf("/api/servers/%d", srv), nil, 200)["server"].(map[string]any)["nodes"].([]any) {
+			if id(n.(map[string]any)["id"]) == nid {
+				return n.(map[string]any)
+			}
+		}
+		t.Fatalf("no protocol %d on %d", nid, srv)
+		return nil
+	}
+	if got := card(a, e)["pass_name"]; got != "B · REALITY → C · REALITY" {
+		t.Errorf("the entry shows its chain: %v", got)
+	}
+
+	// three passes are refused, whichever end grows
+	f := must(d, map[string]any{"kind": "vless"})
+	code, msg := node(d, map[string]any{"kind": "vless", "port": 8443, "pass_node": e})
+	refused("an entry through a chain of two", code, msg, "passes on twice already")
+	code, msg, _ = b.do("PATCH", fmt.Sprintf("/api/nodes/%d", x), map[string]any{"pass_node": f})
+	refused("the far exit passing on", code, msg, "which passes through this one")
+	z := must(d, map[string]any{"kind": "trojan", "pass_node": must(a, map[string]any{"kind": "vless", "port": 8443})})
+	code, msg, _ = b.do("PATCH", fmt.Sprintf("/api/nodes/%d", m), map[string]any{"pass_node": z})
+	refused("a relay passing to another relay", code, msg, "and the exit passes on too")
+	// a chain never comes back to a server it passed
+	code, msg = node(c, map[string]any{"kind": "vless", "port": 8443, "pass_node": m})
+	refused("back to the exit's server", code, msg, "passes on back to C")
+	q := must(c, map[string]any{"kind": "trojan"})
+	must(a, map[string]any{"kind": "vless", "port": 9443, "pass_node": q})
+	code, msg, _ = b.do("PATCH", fmt.Sprintf("/api/nodes/%d", q), map[string]any{"pass_node": must(a, map[string]any{"kind": "trojan", "port": 9444})})
+	refused("back to an entry's server", code, msg, "every pass goes to another server")
+	// a relay that serves only passes is fine, and moving the relay's pass elsewhere too
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", m), map[string]any{"pass_only": true}, 200)
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", m), map[string]any{"pass_node": f}, 200)
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", m), map[string]any{"pass_node": x}, 200)
+
+	// the far exit turned off: the first entry blocks, with the reason, and its server is refreshed
+	rev := func(srv int64) string {
+		st, _ := h.p.compileServer(context.Background(), srv)
+		return st.Rev
+	}
+	before := rev(a)
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", x), map[string]any{"enabled": false}, 200)
+	if why := fmt.Sprint(card(a, e)["pass_broken"]); !strings.Contains(why, "passes on to C · REALITY, which is turned off") {
+		t.Errorf("entry with its far exit off: %s", why)
+	}
+	if rev(a) == before {
+		t.Error("the first entry's server did not change with the far exit")
+	}
+	if baseA, _ = compiled(a); !strings.Contains(baseA, `"outboundTag":"block","ruleTag":"`+passTag(e)+`"`) {
+		t.Errorf("the first entry does not block: %s", baseA)
+	}
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", x), map[string]any{"enabled": true}, 200)
+
+	// stored before these checks: three passes - the first entry blocks, the relay drops its user
+	if _, err := h.p.db.Exec(`UPDATE nodes SET pass_node = ? WHERE id = ?`, f, x); err != nil {
+		t.Fatal(err)
+	}
+	if why := fmt.Sprint(card(a, e)["pass_broken"]); !strings.Contains(why, "passes on twice") {
+		t.Errorf("a chain of three: %s", why)
+	}
+	if _, clientsB = compiled(bs); slices.Contains(clientsB[m], passEmail(e)) {
+		t.Error("the relay still takes the pass user of a chain of three")
+	}
+}
+
+// TestRotateKeepsPasses: rotating an entry server's token does not change its proxy-pass credentials
+// (its old agent keeps passing until it is reinstalled); when the agent is back with the new token,
+// the entry and its exit switch to new credentials together.
+func TestRotateKeepsPasses(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	exit := b.must("POST", "/api/servers", map[string]any{"name": "Exit", "address": "198.51.100.81", "protocols": []string{"vless"}}, 201)["server"].(map[string]any)
+	xid := id(exit["id"])
+	exitNode := id(exit["nodes"].([]any)[0].(map[string]any)["id"])
+	entry := b.must("POST", "/api/servers", map[string]any{"name": "Entry", "address": "203.0.113.81"}, 201)
+	eid := id(entry["server"].(map[string]any)["id"])
+	entryNode := id(b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", eid), map[string]any{"kind": "vless", "pass_node": exitNode}, 201)["id"])
+	passID := func() string {
+		st, err := h.p.compileServer(context.Background(), xid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range st.Xray.Inbounds[0].Clients {
+			if c.Email == passEmail(entryNode) {
+				return string(c.JSON)
+			}
+		}
+		t.Fatal("the exit has no pass user")
+		return ""
+	}
+	entryOut := func() string {
+		st, err := h.p.compileServer(context.Background(), eid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(st.Xray.Base)
+	}
+	before, beforeOut := passID(), entryOut()
+	r := b.must("POST", fmt.Sprintf("/api/servers/%d/rotate-token", eid), nil, 200)
+	if passID() != before || entryOut() != beforeOut {
+		t.Fatal("rotating the token changed the pass credentials before the agent is back")
+	}
+	// the reinstalled agent connects with the new token
+	tok := regexp.MustCompile(`MERIDIAN_TOKEN='([^']+)'`).FindStringSubmatch(r["install"].(string))[1]
+	sid, secret, err := seal.ParseToken(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, _ := seal.Derive(secret)
+	resp := agentRequest(t, h, keys, sid, "GET", "/agent/v1/state?rev=&wait=0", time.Now().Unix(), seal.Nonce())
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("state: %d", resp.StatusCode)
+	}
+	after := passID()
+	if after == before {
+		t.Fatal("the pass credentials did not change with the new token")
+	}
+	var c struct{ ID string }
+	_ = json.Unmarshal([]byte(after), &c)
+	if !strings.Contains(entryOut(), c.ID) {
+		t.Errorf("the entry and its exit disagree: exit %s", after)
+	}
+}
+
+// TestExitProtocolRemoved: removing an exit protocol blocks the protocols that passed through it
+// (with the reason on their cards) - they never leave from their own servers instead.
+func TestExitProtocolRemoved(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	exit := b.must("POST", "/api/servers", map[string]any{"name": "Exit", "address": "198.51.100.91", "protocols": []string{"vless"}}, 201)["server"].(map[string]any)
+	exitNode := id(exit["nodes"].([]any)[0].(map[string]any)["id"])
+	eid := id(b.must("POST", "/api/servers", map[string]any{"name": "Entry", "address": "203.0.113.91"}, 201)["server"].(map[string]any)["id"])
+	entryNode := id(b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", eid), map[string]any{"kind": "vless", "pass_node": exitNode}, 201)["id"])
+	b.must("DELETE", fmt.Sprintf("/api/nodes/%d", exitNode), nil, 200)
+	st, err := h.p.compileServer(context.Background(), eid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(st.Xray.Base), `"outboundTag":"block","ruleTag":"`+passTag(entryNode)+`"`) {
+		t.Errorf("the entry does not block: %s", st.Xray.Base)
+	}
+	n := b.must("GET", fmt.Sprintf("/api/servers/%d", eid), nil, 200)["server"].(map[string]any)["nodes"].([]any)[0].(map[string]any)
+	if fmt.Sprint(n["pass_broken"]) != "its exit protocol was removed" || n["pass_name"] != "a removed protocol" {
+		t.Errorf("entry card: %v / %v", n["pass_broken"], n["pass_name"])
 	}
 }

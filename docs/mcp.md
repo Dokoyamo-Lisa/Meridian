@@ -88,12 +88,13 @@ Change (full-access token):
 | `add_server`, `get_install_command` | return the install command (it contains the server's secret) |
 | `update_server`, `set_server_ports` | name, address (an IP also sets the location from DB-IP), IP version, ports from the provider, Xray configuration code - Xray takes them live; an IP version change restarts Hysteria2 protocols once, so it needs `confirm=true` |
 | `add_protocol`, `add_forward`, `unblock_ip`, `scan_server` | applied live; a scan changes nothing; a protocol can have its own server address (`bind_ip`) or serve only proxy passes (`pass_only`) |
+| `update_protocol` | changes a protocol in place (only the given fields); needs `confirm=true` when its devices must refresh their subscription (transport, security, domain, certificate, port, address...) or a Hysteria2 protocol restarts |
 | `set_protocol_code` | a protocol's own settings as code: Xray JSON (its inbound, outbounds, rules for its traffic only) or Hysteria2 YAML (it restarts, so that needs `confirm=true`) |
 | `replace_certificate` | replaces a shared certificate once for every server that uses it (Hysteria2 protocols using it restart: then it needs `confirm=true`) |
 | `set_status_page`, `set_server_on_status_page` | where the status page is, and how each server appears on its globe |
 | `set_notifications`, `test_notifications` | send problems to Telegram and/or an HTTPS webhook; a test message per channel |
 | `set_branding` | the panel's name, its logo (SVG markup or a base64 image; checked like an upload) and how the logo moves |
-| `import_protocols`, `set_country_rule`, `set_protocol_enabled`, `remove_forward`, `block_ip`, `server_action` | can disconnect people or stop services - need `confirm=true` |
+| `import_protocols`, `set_country_rule`, `set_protocol_enabled`, `remove_protocol`, `remove_forward`, `block_ip`, `server_action` | can disconnect people or stop services - need `confirm=true` |
 | `update_panel`, `upgrade_all_agents` | install the newest release (the panel restarts; proxies keep running) and upgrade every older agent (nobody is disconnected) - need `confirm=true` |
 
 ## Safety model

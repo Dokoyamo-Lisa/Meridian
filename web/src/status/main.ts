@@ -54,6 +54,7 @@ const S = {
   pub: null as StatusPayload | null,
   pubState: 'loading' as 'loading' | 'ok' | 'none' | 'error', // the supervisor's dashboard data
   me: null as PortalMe | null,
+  meState: 'loading' as 'loading' | 'ok' | 'none' | 'error', // the signed-in user's page
   live: new Map<number, [number, number, number][]>(),
   liveT: 0,
   liveVer: 0,
@@ -1297,8 +1298,9 @@ function updateMe() {
 
 function renderLink(m: PortalMe) {
   const host = $('#meLink')
-  if (host.dataset.link === m.link && host.children.length) return
-  host.dataset.link = m.link
+  const key = [m.link, ...(m.wireguard || []).map((w) => w.url + ' ' + w.name)].join('|')
+  if (host.dataset.link === key && host.children.length) return
+  host.dataset.link = key
   const input = h('input.link-in', { value: m.link, readonly: true, 'aria-label': 'Your subscription link', spellcheck: 'false' }) as HTMLInputElement
   input.addEventListener('focus', () => input.select())
   const apps = h('div.apps')
@@ -1326,6 +1328,32 @@ function renderLink(m: PortalMe) {
     h('div.sub-h', 'Add to your app'),
     apps,
   )
+  const wg = wireguardBlock(m)
+  if (wg) host.append(wg)
+}
+
+// wireguardBlock: the WireGuard app takes a configuration file or its QR code, not the link.
+function wireguardBlock(m: PortalMe): Element | null {
+  const list = m.wireguard || []
+  if (!list.length) return null
+  const rows = list.map((w) => {
+    const qr = h('div.qr-inline.hidden', h('div.qr-box'), h('p', 'In the WireGuard app: add a tunnel, then scan from QR code.'))
+    const href = safeHref(w.url)
+    return h(
+      'div',
+      h(
+        'div.app',
+        h('div.app-n', h('b', w.name), h('small', 'WireGuard app')),
+        h(
+          'div.app-act',
+          href ? h('a.btn.sm', { href, rel: 'noopener', download: '' }, 'Download') : null,
+          h('button.btn.sm', { type: 'button', 'aria-expanded': 'false', onclick: (e: Event) => toggleQRIn(e.currentTarget as HTMLElement, qr, w.conf, `QR code of ${w.name}`) }, icon('qr', 'sm'), 'QR code'),
+        ),
+      ),
+      qr,
+    )
+  })
+  return h('div', h('div.sub-h', 'WireGuard'), h('p.hint-p', 'WireGuard does not use the link: add each tunnel to the WireGuard app with its file or QR code. Keep them private, like the link.'), h('div.apps', rows))
 }
 
 function renderMyServers(m: PortalMe) {
@@ -1443,12 +1471,16 @@ function renderDevices(m: PortalMe) {
 
 // toggleQR shows or hides the QR code of the link, under the link (no pop-up).
 function toggleQR(btn: HTMLElement, text: string) {
-  const wrap = $('#qrInline')
+  toggleQRIn(btn, $('#qrInline'), text, 'QR code of your link')
+}
+
+// toggleQRIn shows or hides a QR code of text in wrap (its .qr-box).
+function toggleQRIn(btn: HTMLElement, wrap: Element, text: string, label: string) {
   const open = wrap.classList.contains('hidden')
   wrap.classList.toggle('hidden', !open)
   btn.setAttribute('aria-expanded', String(open))
   if (!open) return
-  const box = clear($('#qrBox'))
+  const box = clear(wrap.querySelector('.qr-box') as HTMLElement)
   try {
     const q = qrcode(0, text.length > 600 ? 'L' : 'M')
     q.addData(text)
@@ -1459,7 +1491,7 @@ function toggleQR(btn: HTMLElement, text: string) {
     box.append(
       s(
         'svg',
-        { viewBox: `-2 -2 ${n + 4} ${n + 4}`, 'shape-rendering': 'crispEdges', role: 'img', 'aria-label': 'QR code of your link' },
+        { viewBox: `-2 -2 ${n + 4} ${n + 4}`, 'shape-rendering': 'crispEdges', role: 'img', 'aria-label': label },
         s('rect', { x: -2, y: -2, width: n + 4, height: n + 4, fill: '#fff' }),
         s('path', { d, fill: '#000' }),
       ),
@@ -1766,7 +1798,11 @@ function initAuth() {
       }
       toast(S.me ? `Signed in as ${S.me.name || S.me.username}` : 'Signed in')
     } catch (err) {
-      if (S.view === 'signin') renderGate() // the umbrella back in place
+      if (S.view === 'signin') renderGate(false) // the umbrella back in place; the step stays
+      // try again where it went wrong: a fresh code, or the password
+      const retry = (S.loginStep === 'code' ? $('input[name=code]') : $('input[name=password]')) as HTMLInputElement
+      if (S.loginStep === 'code') retry.value = ''
+      window.setTimeout(() => retry.focus({ preventScroll: true }), 60)
       setText($('#loginErr'), err instanceof Error ? err.message : 'Signing in failed')
       form.classList.remove('shake')
       void form.offsetWidth
@@ -1776,13 +1812,18 @@ function initAuth() {
     }
   })
 
+  // signed out only when the panel says so: the session (and its cookie) ends there
   $('#logoutBtn').addEventListener('click', async () => {
     try {
       await api('/api/portal/logout', {})
-    } catch {
-      /* the cookie is gone either way */
+    } catch (e) {
+      if (!(e instanceof HttpError && e.status === 401)) {
+        toast('Could not sign out - check your connection and try again', true)
+        return
+      }
     }
     S.me = null
+    S.meState = 'none'
     autoLogin = false
     meDaysFirst = true
     clear($('#meLink'))
@@ -1793,8 +1834,11 @@ function initAuth() {
   $('#adminBtn').addEventListener('click', async () => {
     try {
       await api('/api/logout', {})
-    } catch {
-      /* the cookie is gone either way */
+    } catch (e) {
+      if (!(e instanceof HttpError && e.status === 401)) {
+        toast('Could not sign out - check your connection and try again', true)
+        return
+      }
     }
     S.pub = null
     S.pubState = 'none'
@@ -1844,9 +1888,10 @@ function initAuth() {
 // ================================================================ toast, tones, live indicator
 
 let toastTimer = 0
-function toast(msg: string) {
+function toast(msg: string, warn = false) {
   const t = $('#toast')
-  clear(t).append(icon('check', 'sm'), msg)
+  clear(t).append(icon(warn ? 'alert' : 'check', 'sm'), msg)
+  t.classList.toggle('warn', warn)
   t.classList.add('on')
   clearTimeout(toastTimer)
   toastTimer = window.setTimeout(() => t.classList.remove('on'), 2600)
@@ -2060,6 +2105,25 @@ function statusFailed(e: unknown) {
   }
 }
 
+// unreachable: the panel did not answer who this is (it restarts, or the network is down) - the
+// page says so and tries again instead of offering the sign-in to someone already signed in
+const unreachable = () => !S.pub && !S.me && (S.pubState === 'error' || S.meState === 'error')
+let retryTimer = 0
+function retryLater(delay = 2000) {
+  if (retryTimer) return
+  retryTimer = window.setTimeout(async () => {
+    retryTimer = 0
+    await Promise.all([S.meState === 'error' ? loadMe() : null, S.pubState === 'error' ? loadStatus() : null])
+    if (unreachable()) {
+      retryLater(Math.min(delay * 2, 30000))
+      return
+    }
+    renderAuth()
+    route()
+    if (S.view === 'signin') renderGate(false)
+  }, delay)
+}
+
 async function loadLive(force = false) {
   if (!S.pub || !show().throughput || (document.hidden && !force)) return
   try {
@@ -2108,9 +2172,15 @@ async function loadLive(force = false) {
 async function loadMe() {
   try {
     S.me = await api<PortalMe>('/api/portal/me')
+    S.meState = 'ok'
     setPanelZone(S.me.timezone)
   } catch (e) {
-    if (e instanceof HttpError && (e.status === 401 || e.status === 403)) S.me = null
+    if (e instanceof HttpError && e.status < 500) {
+      S.me = null
+      S.meState = 'none'
+    } else if (!S.me) {
+      S.meState = 'error' // not answered: who this is stays unknown (see unreachable)
+    }
   }
   meShown()
 }
@@ -2158,15 +2228,24 @@ function markEl(mode: 'once' | 'loop' | 'still'): Element {
 }
 
 const site = { title: '', about: '' }
+const gateNote = document.getElementById('gateText')?.textContent || ''
 
 // renderGate is the visitor's page: the mark assembling, the name, and the way in.
-function renderGate() {
+function renderGate(focus = true) {
   clear($('#gateMark')).append(markEl('once'))
   if (site.title) setText($('#hSignin'), site.title)
   setText($('#gateAbout'), site.about)
   $('#gateAbout').classList.toggle('hidden', !site.about)
+  const away = unreachable()
+  $('#loginForm').classList.toggle('hidden', away)
+  if (away) {
+    setText($('#gateText'), 'The panel cannot be reached right now - this page tries again by itself.')
+    retryLater()
+    return
+  }
+  if ($('#gateText').textContent?.startsWith('The panel cannot be reached')) setText($('#gateText'), gateNote)
   // with a mouse and keyboard the cursor waits in the form; on phones the keyboard stays down
-  if (matchMedia('(pointer: fine)').matches) focusLogin()
+  if (focus && matchMedia('(pointer: fine)').matches) focusLogin()
 }
 
 async function loadMeta() {
@@ -2215,6 +2294,7 @@ async function init() {
   await Promise.all([loadMe(), loadStatus(), loadMeta()])
   renderAuth()
   route()
+  if (unreachable()) retryLater()
   await loadLive(true)
   ready()
   setInterval(() => void loadLive(false), 5000)

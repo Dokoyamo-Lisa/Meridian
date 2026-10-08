@@ -15,10 +15,7 @@ func TestProtocolCheckAsSaved(t *testing.T) {
 	b := h.browser()
 	b.login("owner", "owner-password-1")
 	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Check", "address": "203.0.113.70", "protocols": []string{}}, 201)["server"].(map[string]any)["id"])
-	certPEM, keyPEM, _, err := selfSignedCert("proxy.example.com")
-	if err != nil {
-		t.Fatal(err)
-	}
+	certPEM, keyPEM := privateCACert(t, "proxy.example.com")
 	own := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "trojan",
 		"settings": map[string]any{"security": "tls", "cert_mode": "custom", "sni": "proxy.example.com", "cert_pem": certPEM, "key_pem": keyPEM}}, 201)
 	self := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "trojan", "port": 8443,
@@ -38,14 +35,24 @@ func TestProtocolCheckAsSaved(t *testing.T) {
 	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", id(own["id"])), map[string]any{"settings": keep}, 200)
 
 	// switching a self-signed protocol to its own certificate never reuses the self-signed key
-	sw := map[string]any{"security": "tls", "cert_mode": "custom", "sni": "www.example.com",
-		"cert_pem": self["settings"].(map[string]any)["cert_pem"]}
+	wwwPEM, _ := privateCACert(t, "www.example.com")
+	sw := map[string]any{"security": "tls", "cert_mode": "custom", "sni": "www.example.com", "cert_pem": wwwPEM}
 	v := check(map[string]any{"kind": "trojan", "node_id": id(self["id"]), "settings": sw})
 	if v["valid"] != false || !strings.Contains(fmt.Sprint(v["error"]), "paste both") {
 		t.Errorf("self-signed to own certificate without a key: %v", v)
 	}
 	if code, m, _ := b.do("PATCH", fmt.Sprintf("/api/nodes/%d", id(self["id"])), map[string]any{"settings": sw}); code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "paste both") {
 		t.Errorf("saving it: %d %v", code, m)
+	}
+	// its own self-signed certificate pasted as an own certificate: no app could check it
+	sw["cert_pem"] = self["settings"].(map[string]any)["cert_pem"]
+	if v := check(map[string]any{"kind": "trojan", "node_id": id(self["id"]), "settings": sw}); v["valid"] != false || !strings.Contains(fmt.Sprint(v["error"]), "self-signed") {
+		t.Errorf("a self-signed certificate as an own one: %v", v)
+	}
+	// an own certificate from a private authority is kept, and its card says apps refuse it
+	cards := b.must("GET", fmt.Sprintf("/api/servers/%d", sid), nil, 200)["server"].(map[string]any)["nodes"].([]any)
+	if notes := fmt.Sprint(cards[0].(map[string]any)["notes"]); !strings.Contains(notes, "Apps will refuse its certificate") {
+		t.Errorf("own certificate from a private authority: %s", notes)
 	}
 
 	// a new protocol is checked for its server: a shared certificate that does not cover the name
@@ -145,5 +152,44 @@ func TestHysteriaBandwidthDirections(t *testing.T) {
 	}
 	if e.UpMbps != 100 || e.DownMbps != 1000 {
 		t.Errorf("device up %d, down %d", e.UpMbps, e.DownMbps)
+	}
+}
+
+// TestChangeImpact: the check of a change says what devices must refresh for (what is in their
+// links: transport, port, address, obfuscation...) and whether Hysteria2 restarts - nothing for what
+// apps do not carry.
+func TestChangeImpact(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Impact", "address": "203.0.113.75", "protocols": []string{}}, 201)["server"].(map[string]any)["id"])
+	vless := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "vless", "port": 443}, 201)
+	hy := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "hysteria2", "port": 8443}, 201)
+	impact := func(body map[string]any) (string, bool) {
+		t.Helper()
+		v := b.must("POST", "/api/protocols/check", body, 200)
+		if v["valid"] != true {
+			t.Fatalf("%v: %v", body, v["error"])
+		}
+		r, _ := v["restarts"].(bool)
+		return fmt.Sprint(v["refresh"]), r
+	}
+	for _, c := range []struct {
+		body     map[string]any
+		refresh  string
+		restarts bool
+	}{
+		{map[string]any{"node_id": id(vless["id"]), "settings": map[string]any{"fingerprint": "firefox"}}, "<nil>", false},
+		{map[string]any{"node_id": id(vless["id"]), "settings": map[string]any{}, "port": 8443}, "[port]", false},
+		{map[string]any{"node_id": id(vless["id"]), "settings": map[string]any{}, "host": "vpn.example.com"}, "[address]", false},
+		{map[string]any{"node_id": id(vless["id"]), "settings": map[string]any{"sni": "www.microsoft.com", "target": "www.microsoft.com:443"}}, "[domain]", false},
+		{map[string]any{"node_id": id(hy["id"]), "settings": map[string]any{"up_mbps": 50}}, "<nil>", true},
+		{map[string]any{"node_id": id(hy["id"]), "settings": map[string]any{"obfs": true}}, "[obfuscation]", true},
+		{map[string]any{"node_id": id(hy["id"]), "settings": map[string]any{}, "code": "quic:\n  maxIdleTimeout: 60s\n"}, "<nil>", true},
+		{map[string]any{"node_id": id(hy["id"]), "settings": map[string]any{}}, "<nil>", false},
+	} {
+		if r, rs := impact(c.body); r != c.refresh || rs != c.restarts {
+			t.Errorf("%v: refresh %s restarts %v, want %s %v", c.body, r, rs, c.refresh, c.restarts)
+		}
 	}
 }

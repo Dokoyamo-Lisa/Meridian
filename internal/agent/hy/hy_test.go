@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -129,5 +130,43 @@ func TestLogsAcrossRestarts(t *testing.T) {
 	next.RestoreLogs(pos)
 	if d := next.readLog(7, true); len(d) != 1 || d[0].Host != "later.example" {
 		t.Fatalf("after a restart: %v", d)
+	}
+}
+
+// TestFailure: the reason a node stopped is the error its log ends with; a log that goes on after an
+// error (the node started again and runs) gives none.
+func TestFailure(t *testing.T) {
+	up := `{"level":"info","time":1791435233987.745,"msg":"server mode"}
+{"level":"info","time":1791435233990.2134,"msg":"server up and running","listen":":443"}
+`
+	refused := `{"level":"info","time":1791435310234.6348,"msg":"server mode"}
+{"level":"fatal","time":1791435310234.7761,"msg":"failed to load server config","error":"invalid config: tls.cert: stat /nonexist.crt: no such file or directory"}
+`
+	for _, c := range []struct{ log, want string }{
+		{up, ""},
+		{"", ""},
+		{refused, "failed to load server config: invalid config: tls.cert: stat /nonexist.crt: no such file or directory"},
+		{refused + refused, "failed to load server config: invalid config: tls.cert: stat /nonexist.crt: no such file or directory"},
+		{refused + up, ""},
+		{up + "panic: runtime error: invalid memory address\n\ngoroutine 1 [running]:\nmain.main()\n", "it crashed: runtime error: invalid memory address"},
+		{"panic: runtime error: invalid memory address\n\ngoroutine 1 [running]:\nmain.main()\n" + up, ""}, // started again since
+		{`{"level":"fatal","msg":"failed to serve","error":"` + strings.Repeat("x", 400) + `"}`, "failed to serve: " + strings.Repeat("x", 300-len("failed to serve: ")) + "…"},
+	} {
+		if got := failureIn([]byte(c.log)); got != c.want {
+			t.Errorf("%q: got %q, want %q", c.log, got, c.want)
+		}
+	}
+
+	dir := t.TempDir()
+	e := &Engine{RunDir: dir}
+	if got := e.failure(7); got != "" {
+		t.Errorf("no log: %q", got)
+	}
+	big := strings.Repeat(`{"level":"debug","msg":"TCP request","id":"1-2","reqAddr":"example.com:443"}`+"\n", 1000) + refused
+	if err := os.WriteFile(filepath.Join(dir, "hy2-7.log"), []byte(big), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.failure(7); !strings.HasPrefix(got, "failed to load server config") {
+		t.Errorf("long log: %q", got)
 	}
 }

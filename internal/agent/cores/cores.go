@@ -34,6 +34,9 @@ import (
 var (
 	trustMu sync.RWMutex
 	trusted = map[string]string{}
+	// getMu lets one download (or clean-up) of the cores' directories run at a time; the engines do not
+	// hold their own locks while one runs, so reports go on during a slow download
+	getMu sync.Mutex
 )
 
 // SetDigests installs the checksums the panel vouched for, keyed "core/version/asset".
@@ -150,6 +153,8 @@ func fetch(ctx context.Context, urls []string, limit int64) ([]byte, error) {
 
 // EnsureXray makes sure version is unpacked and returns its directory.
 func EnsureXray(ctx context.Context, base, version, mirror string) (string, error) {
+	getMu.Lock()
+	defer getMu.Unlock()
 	if err := checkVersion("Xray", version); err != nil {
 		return "", err
 	}
@@ -226,6 +231,8 @@ func EnsureXray(ctx context.Context, base, version, mirror string) (string, erro
 
 // EnsureHysteria makes sure the official Hysteria server version is in place and returns its path.
 func EnsureHysteria(ctx context.Context, base, version, mirror string) (string, error) {
+	getMu.Lock()
+	defer getMu.Unlock()
 	if err := checkVersion("Hysteria", version); err != nil {
 		return "", err
 	}
@@ -279,6 +286,8 @@ func EnsureHysteria(ctx context.Context, base, version, mirror string) (string, 
 
 // EnsureRealm makes sure realm version is unpacked and returns the binary path.
 func EnsureRealm(ctx context.Context, base, version, mirror string) (string, error) {
+	getMu.Lock()
+	defer getMu.Unlock()
 	if err := checkVersion("realm", version); err != nil {
 		return "", err
 	}
@@ -480,6 +489,8 @@ func versionLess(a, b string) bool {
 
 // Prune removes versions of a core other than keep.
 func Prune(base, name string, keep ...string) {
+	getMu.Lock()
+	defer getMu.Unlock()
 	entries, _ := os.ReadDir(filepath.Join(base, "cores", name))
 	for _, e := range entries {
 		k := false

@@ -112,6 +112,9 @@ func parseCertPair(certPEM, keyPEM string) (*Cert, error) {
 	if time.Now().After(leaf.NotAfter) {
 		return nil, errStatus(http.StatusBadRequest, fmt.Sprintf("the certificate expired on %s", leaf.NotAfter.Format("2006-01-02")))
 	}
+	if selfIssued(leaf) {
+		return nil, errStatus(http.StatusBadRequest, "this certificate is self-signed - no app can check it (links never pin a shared certificate, nor turn checks off): use one from a public authority such as Let's Encrypt, with its full chain")
+	}
 	domains := append([]string{}, leaf.DNSNames...)
 	for _, ip := range leaf.IPAddresses {
 		domains = append(domains, ip.String())
@@ -192,24 +195,13 @@ type certView struct {
 // the public authorities their system trusts, never a pin. "" when it chains to one, or when this
 // system's authorities cannot be read.
 func publicTrust(certPEM string) string {
-	var chain []*x509.Certificate
-	rest := []byte(certPEM)
-	for {
-		var b *pem.Block
-		if b, rest = pem.Decode(rest); b == nil {
-			break
-		}
-		if c, err := x509.ParseCertificate(b.Bytes); b.Type == "CERTIFICATE" && err == nil {
-			chain = append(chain, c)
-		}
-	}
+	chain := certChain(certPEM)
 	const notPublic = "it is not signed by a publicly trusted authority (self-signed, or your own CA), or the chain lacks its intermediate certificate: apps refuse it unless their devices trust its issuer"
 	if len(chain) == 0 {
 		return ""
 	}
-	if leaf := chain[0]; len(chain) == 1 && bytes.Equal(leaf.RawIssuer, leaf.RawSubject) &&
-		leaf.CheckSignature(leaf.SignatureAlgorithm, leaf.RawTBSCertificate, leaf.Signature) == nil {
-		return notPublic // self-signed
+	if selfIssued(chain[0]) {
+		return notPublic
 	}
 	roots, err := x509.SystemCertPool()
 	if err != nil || roots == nil {
@@ -228,6 +220,28 @@ func publicTrust(certPEM string) string {
 		return notPublic
 	}
 	return "apps may refuse it: " + err.Error()
+}
+
+// certChain reads the certificates of a PEM chain, leaf first.
+func certChain(certPEM string) []*x509.Certificate {
+	var chain []*x509.Certificate
+	rest := []byte(certPEM)
+	for {
+		var b *pem.Block
+		if b, rest = pem.Decode(rest); b == nil {
+			break
+		}
+		if c, err := x509.ParseCertificate(b.Bytes); b.Type == "CERTIFICATE" && err == nil {
+			chain = append(chain, c)
+		}
+	}
+	return chain
+}
+
+// selfIssued says whether a certificate signs itself: no app can check it against an authority, only
+// pin it.
+func selfIssued(c *x509.Certificate) bool {
+	return bytes.Equal(c.RawIssuer, c.RawSubject) && c.CheckSignature(c.SignatureAlgorithm, c.RawTBSCertificate, c.Signature) == nil
 }
 
 // usesOf lists the protocols (of the certificate's account) that use a shared certificate.

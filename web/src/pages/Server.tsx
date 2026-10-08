@@ -446,14 +446,22 @@ export function ServerPage(props: { id: number }) {
             </dd>
             {Object.entries(srv.cores || {})
               .filter(([k]) => k !== 'xray')
-              .map(([k, c]) => (
-                <>
-                  <dt>{k.startsWith('hysteria') ? 'Hysteria2' : k}</dt>
-                  <dd>
-                    <span class={'dot ' + (c.running ? 'good' : 'crit')} /> {c.version || ''} {c.error && <span class="crit-ink">· {c.error}</span>}
-                  </dd>
-                </>
-              ))}
+              .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+              .map(([k, c]) => {
+                // "hysteria-12": the Hysteria2 server of protocol 12
+                const id = k.startsWith('hysteria-') ? Number(k.slice('hysteria-'.length)) : 0
+                const node = id ? srv.nodes.find((n) => n.id === id) : undefined
+                return (
+                  <>
+                    <dt>{id ? 'Hysteria2' : k}</dt>
+                    <dd>
+                      <span class={'dot ' + (c.running ? 'good' : 'crit')} /> {c.version || ''}{' '}
+                      {id > 0 && <span class="faint">· {node ? node.name || `port ${node.port}` : `protocol ${id}`} </span>}
+                      {c.error && <span class="crit-ink">· {c.error}</span>}
+                    </dd>
+                  </>
+                )
+              })}
           </dl>
         </section>
         <section class="panel">
@@ -713,8 +721,22 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
+  const hy2 = v.nodes.filter((n) => n.kind === 'hysteria2').length
   const save = async (e: Event) => {
     e.preventDefault()
+    if (ipv !== (v.ip_version || '') && hy2 > 0) {
+      const ok = await ask({
+        title: 'Restart Hysteria2?',
+        body: (
+          <p style="margin-top:0">
+            A new IP version reaches Xray live, but {hy2 === 1 ? 'the Hysteria2 protocol' : `the ${hy2} Hysteria2 protocols`} on {v.name} restart once to take it: their devices drop for a moment
+            and reconnect by themselves.
+          </p>
+        ),
+        confirm: 'Save and restart',
+      })
+      if (!ok) return
+    }
     if (ports.trim() !== (v.public_ports || '') && (v.nodes.length > 0 || v.forwards.length > 0)) {
       const ok = await ask({
         title: 'Change the ports from the provider?',
@@ -788,7 +810,7 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
                 ? 'Protocols reach sites over IPv6 only and links use the IPv6 address. Xray takes it live; Hysteria2 protocols restart once.'
                 : v.caps?.no_ipv6
                   ? 'IPv6 is turned off in this server’s kernel, so it is used as IPv4 only.'
-                  : 'Protocols reach sites over either; links use the IPv4 address when there is one.'
+                  : `Protocols reach sites over either; links use the IPv4 address when there is one.${ipv !== (v.ip_version || '') && hy2 > 0 ? ' Xray takes it live; Hysteria2 protocols restart once.' : ''}`
           }
         >
           <Seg
@@ -873,7 +895,7 @@ function StatusPagePanel(props: { server: Server; onChanged: () => void }) {
       <dl class="kv">
         <dt>Shown</dt>
         <dd>{srv.status_hidden ? 'No - left off the status page' : 'Yes'}</dd>
-        <dt>Name there</dt>
+        <dt>Name users see</dt>
         <dd>{srv.public_name || srv.name}</dd>
         <dt>Location</dt>
         <dd>
@@ -940,7 +962,7 @@ function StatusEdit(props: { server: Server; onClose: () => void; onSaved: () =>
       <form id="status-edit" onSubmit={save}>
         {err && <ErrorBox error={err} />}
         <Check checked={shown} onChange={setShown} label="Show this server on the status page" />
-        <Field label="Name on the status page" hint={`Empty = “${v.name}”.`}>
+        <Field label="Name users see" hint={`On the status page, on users' own pages and in their apps. Empty = “${v.name}”.`}>
           <input class="input" value={name} maxLength={64} onInput={(e) => setName(e.currentTarget.value)} />
         </Field>
         <Check checked={manual} onChange={setManual} label="Set the location by hand" hint="Used for the globe, the flag and local time." />

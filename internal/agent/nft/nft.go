@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -344,12 +345,23 @@ func (e *Engine) render(spec Spec) string {
 		}
 	}
 	spec.WG = wgs
+	// ownTCP/ownUDP are the ports a program here listens on. A kernel forward's port has no socket, so
+	// the kernel may give it to one of this host's own connections as its source port: it is a service
+	// port only for what comes in (its replies take the forward path, guard_fwd).
+	ownTCP, ownUDP := slices.Clone(tcp), slices.Clone(udp)
 	for _, f := range spec.Forwards {
+		realm := f.Engine == "realm"
 		if strings.Contains(f.Network, "tcp") {
 			tcp = uniqPorts(append(tcp, f.ListenPort))
+			if realm {
+				ownTCP = uniqPorts(append(ownTCP, f.ListenPort))
+			}
 		}
 		if strings.Contains(f.Network, "udp") {
 			udp = uniqPorts(append(udp, f.ListenPort))
+			if realm {
+				ownUDP = uniqPorts(append(ownUDP, f.ListenPort))
+			}
 		}
 	}
 
@@ -359,6 +371,8 @@ func (e *Engine) render(spec Spec) string {
 	w("  set block6 { type ipv6_addr; flags interval; auto-merge;%s }", elems(blk6))
 	w("  set svc_tcp { type inet_service;%s }", elemsInt(tcp))
 	w("  set svc_udp { type inet_service;%s }", elemsInt(udp))
+	w("  set own_tcp { type inet_service;%s }", elemsInt(ownTCP))
+	w("  set own_udp { type inet_service;%s }", elemsInt(ownUDP))
 	w("  set noreach4 { type ipv4_addr; flags interval;%s }", elems(append([]string{}, noReach4...)))
 	w("  set noreach6 { type ipv6_addr; flags interval;%s }", elems(append([]string{}, noReach6...)))
 	if spec.Geo != nil {
@@ -390,6 +404,11 @@ func (e *Engine) render(spec Spec) string {
 	// blocked IPs never reach any of our services or forwards
 	w("  chain guard {")
 	w("    type filter hook prerouting priority -150; policy accept;")
+	// replies to this host's own connections are not visitors, whatever port they come back to (a
+	// forward's, which the kernel may hand out as a source port, or one a forward's masquerade chose).
+	// A connection a service starts itself is checked on its way out, where it is refused before
+	// it exists.
+	w("    ct direction reply return")
 	w("    ip saddr @block4 tcp dport @svc_tcp counter drop")
 	w("    ip saddr @block4 udp dport @svc_udp counter drop")
 	w("    ip6 saddr @block6 tcp dport @svc_tcp counter drop")
@@ -403,13 +422,13 @@ func (e *Engine) render(spec Spec) string {
 	// windows would let a server keep sending until its idle timeout) stop at once
 	w("  chain guard_out {")
 	w("    type filter hook output priority -150; policy accept;")
-	w("    ip daddr @block4 tcp sport @svc_tcp counter drop")
-	w("    ip daddr @block4 udp sport @svc_udp counter drop")
-	w("    ip6 daddr @block6 tcp sport @svc_tcp counter drop")
-	w("    ip6 daddr @block6 udp sport @svc_udp counter drop")
+	w("    ip daddr @block4 tcp sport @own_tcp counter drop")
+	w("    ip daddr @block4 udp sport @own_udp counter drop")
+	w("    ip6 daddr @block6 tcp sport @own_tcp counter drop")
+	w("    ip6 daddr @block6 udp sport @own_udp counter drop")
 	if spec.Geo != nil {
-		w("    tcp sport @svc_tcp jump geo_out")
-		w("    udp sport @svc_udp jump geo_out")
+		w("    tcp sport @own_tcp jump geo_out")
+		w("    udp sport @own_udp jump geo_out")
 	}
 	w("  }")
 	w("  chain guard_fwd {")

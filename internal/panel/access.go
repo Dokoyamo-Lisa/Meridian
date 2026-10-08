@@ -372,6 +372,13 @@ func (p *Panel) siteGate(next http.Handler) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+		// the dashboard's data answers only the supervisor: a request without any sign-in gets its 401
+		// from the handler, never a refusal by region (the users' page asks it first, and users may be
+		// allowed where the status page is not)
+		if area == "status" && strings.HasPrefix(r.URL.Path, "/api/status") && !carriesSignIn(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if denied, cc := p.siteDenied(r, area); denied {
 			p.noteDenial(p.clientIP(r), cc, r.URL.Path)
 			if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/mcp" || strings.HasPrefix(r.URL.Path, "/s/") {
@@ -387,6 +394,14 @@ func (p *Panel) siteGate(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// carriesSignIn says whether a request comes with the supervisor's session or a token (valid or not).
+func carriesSignIn(r *http.Request) bool {
+	if _, err := r.Cookie(sessionCookie); err == nil {
+		return true
+	}
+	return r.Header.Get("Authorization") != ""
 }
 
 const deniedPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

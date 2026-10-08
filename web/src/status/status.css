@@ -341,7 +341,8 @@ main { position: relative; padding: 0 var(--pad) 22px; }
   height: calc(100vh - var(--top) - 22px);
   min-height: 700px;
   display: grid;
-  grid-template-columns: minmax(290px, 1fr) minmax(580px, 1.9fr) minmax(290px, 1fr);
+  /* the minimums fit the one-screen layout from 1280 px on, page padding and a scrollbar included */
+  grid-template-columns: minmax(260px, 1fr) minmax(540px, 1.9fr) minmax(260px, 1fr);
   gap: 0 40px;
   counter-reset: pn;
 }
@@ -762,6 +763,7 @@ dialog::backdrop { background: var(--scrim); }
 }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 .toast .ic { color: var(--good); }
+.toast.warn .ic { color: var(--warn); }
 
 .mnav { display: none; position: sticky; top: var(--top); z-index: 25; gap: 2px; padding: 0 var(--pad) 10px; background: var(--page); overflow-x: auto; scrollbar-width: none; }
 .mnav a { padding: 6px 12px; border-radius: 8px; color: var(--ink-3); font-size: 13px; white-space: nowrap; transition: background .25s, color .25s; }
@@ -921,6 +923,7 @@ a.btn { text-decoration: none; }
 .app-n { display: flex; flex-direction: column; min-width: 0; }
 .app-n b { font-weight: 500; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .app-n small { font-size: 11px; color: var(--ink-3); }
+.app-act { display: flex; gap: 6px; flex: none; }
 /* the users' tables only show: no row opens anything */
 tr[data-level="crit"] .dot { background: var(--crit); }
 .c-protos { white-space: normal; }

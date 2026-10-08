@@ -1,6 +1,44 @@
 # Meridian status
 
-Last updated 2026-10-07 (version 0.6.2).
+Last updated 2026-10-08 (version 0.7.1).
+
+## Tested end to end for 0.7.1 (local VMs: Ubuntu with systemd, Alpine with OpenRC)
+
+- **Agent upgrades** 0.7.0 -> 0.7.1 through **Upgrade all agents**, and again per server: Xray,
+  every Hysteria2 node and the realm forwards kept their PIDs on both servers.
+- **The operator's own inbounds** (server code, a VLESS one with its user and a SOCKS5 one with an
+  account): adding, pausing and resuming a user left their listening sockets as they were (same
+  socket inode, same Xray PID); changing the inbound itself re-opened it with the new user.
+- **A Hysteria2 protocol Hysteria refuses** (advanced settings with an unknown bandwidth unit): the
+  apply error names the protocol and gives Hysteria's reason, the server page's core row says
+  "not running: failed to load server config: ..."; fixing the settings cleared both and the node
+  started, without Hysteria's update check. Other cores untouched.
+- **Kernel forward ports with a country rule**: allow-only JP on the server; a connection from the
+  server to 1.1.1.1 / 1.0.0.1 with source port 30080 (a kernel forward's port) worked (301), no
+  packets dropped by the rule; a client on a Chinese address was still refused, and got in again
+  once the rule was removed. The ruleset loads on nftables (Ubuntu and Alpine).
+- **Rotating the token of a proxy-pass entry**: the pass kept working after the rotation and a full
+  recompile of the exit; after reinstalling the agent with the new command both ends switched to
+  new credentials and the pass worked (Xray PID unchanged).
+- **Protocol window**: a Hysteria2 bandwidth change asked "Restart this protocol?", a port change
+  "Devices must refresh (port) ... Hysteria2 also restarts once"; Escape closed only the
+  confirmation (the window kept the edit); saving restarted only that node. Making a protocol
+  pass-only asked first. Labels focus their fields.
+- **Proxy pass through two servers** (a third Alpine VM for the far exit): Ubuntu entry -> Alpine
+  relay -> far exit carried traffic (204); the relay's log showed the entry's pass user going on to
+  its own exit, the far exit's log the relay's pass user leaving directly. The entry's card showed
+  the chain; the protocol window listed the relay as "Alpine Test · REALITY :10001 → C Test ·
+  REALITY", offered the relay only exits that leave the internet themselves, and locked the far
+  exit's pass with the reason. Far exit turned off: entry and relay both blocked (no direct exit),
+  back on: 204 again, no Xray restart on either. A third pass was refused by the API.
+  (Test-setup note: on Alpine VMs without nftables, plain-UDP DNS from Xray was answered by the Mac's
+  network with fake addresses, which the private-address guard rightly blocked; DNS over HTTPS in
+  the server's Xray code avoided it.)
+- **Users' page**: WireGuard tunnels with file and QR code; protocol names as in the apps. With the
+  API failing (502) the page said the panel cannot be reached and recovered by itself when it was
+  back; signing out while unreachable said it failed and kept the session, and worked afterwards.
+- **Certificates**: each card shows its ID; the renewal command shown (pipe + `curl -K`) replaced the
+  certificate as is.
 
 ## Tested end to end this round (local VMs: Ubuntu with systemd, Alpine with OpenRC)
 

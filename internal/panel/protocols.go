@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -749,6 +750,7 @@ func (c *certSettings) settle(in *protoInput, sni, oldSNI, oldMode string) error
 		if oldMode != certCustom { // another mode's certificate (a self-signed one) is not the operator's own
 			c.CertPEM, c.KeyPEM = "", ""
 		}
+		pasted := in != nil && in.CertPEM != nil && strings.TrimSpace(*in.CertPEM) != c.CertPEM
 		if in != nil && in.CertPEM != nil {
 			c.CertPEM = strings.TrimSpace(*in.CertPEM)
 		}
@@ -756,6 +758,11 @@ func (c *certSettings) settle(in *protoInput, sni, oldSNI, oldMode string) error
 			c.KeyPEM = strings.TrimSpace(*in.KeyPEM)
 		}
 		c.CertSHA256 = ""
+		// links check an own certificate against the public authorities and never turn that off: a
+		// self-signed one would work in no app (one stored before stays editable, with a note)
+		if chain := certChain(c.CertPEM); (pasted || oldMode != certCustom) && len(chain) > 0 && selfIssued(chain[0]) {
+			return errors.New("this certificate is self-signed - no app can check it: choose Self-signed instead (Meridian makes one, and apps pin it), or use a certificate from a public authority such as Let's Encrypt")
+		}
 	case certShared:
 		// the certificate lives in the panel's store (checked by the API against the name)
 		c.CertPEM, c.KeyPEM, c.CertSHA256, c.CertExpires = "", "", "", 0
@@ -769,6 +776,25 @@ func (c *certSettings) settle(in *protoInput, sni, oldSNI, oldMode string) error
 		c.CertID = 0
 	}
 	return nil
+}
+
+// selfSignedKept is what an import says about a self-signed certificate it kept.
+const selfSignedKept = "its certificate is self-signed: links now pin it, so the apps that can pin a certificate check it (devices must refresh their subscription)"
+
+// keepSelfSigned makes an imported own certificate that signs itself Meridian's pinned self-signed
+// certificate, keeping it: as an own certificate no app could check it, pinned it works. It must be
+// valid for sni and not expired.
+func (c *certSettings) keepSelfSigned(sni string) bool {
+	chain := certChain(c.CertPEM)
+	if len(chain) != 1 || !selfIssued(chain[0]) || chain[0].VerifyHostname(sni) != nil || time.Now().After(chain[0].NotAfter) {
+		return false
+	}
+	if _, err := tls.X509KeyPair([]byte(c.CertPEM), []byte(c.KeyPEM)); err != nil {
+		return false
+	}
+	sum := sha256.Sum256(chain[0].Raw)
+	c.CertMode, c.CertSHA256, c.CertExpires = certSelf, hex.EncodeToString(sum[:]), chain[0].NotAfter.Unix()
+	return true
 }
 
 // check validates the certificate for a server name.
@@ -879,9 +905,10 @@ func wg6(srv *Server, s wgSettings) bool {
 	return s.IPv6 && s.Subnet6 != "" && srv.v6() && srv.caps().WG6
 }
 
-// checkOnServer runs the checks of a protocol's settings that need its server.
-func (p *Panel) checkOnServer(ctx context.Context, srv *Server, kind string, raw json.RawMessage) error {
-	if err := checkWG6(srv, kind, raw); err != nil {
+// checkOnServer runs the checks of a protocol's settings that need its server; old are the settings
+// it has now (nil for a new protocol).
+func (p *Panel) checkOnServer(ctx context.Context, srv *Server, kind string, raw, old json.RawMessage) error {
+	if err := checkWG6(srv, kind, raw, old); err != nil {
 		return err
 	}
 	if err := checkOwnSite(srv, kind, raw, p.settings().AgentPort); err != nil {
@@ -917,12 +944,17 @@ func checkOwnSite(srv *Server, kind string, raw json.RawMessage, agentPort int) 
 }
 
 // checkWG6 refuses IPv6 inside a WireGuard tunnel where the server cannot route it.
-func checkWG6(srv *Server, kind string, raw json.RawMessage) error {
+func checkWG6(srv *Server, kind string, raw, old json.RawMessage) error {
 	if kind != subgen.KindWireGuard {
 		return nil
 	}
-	var s wgSettings
+	var s, was wgSettings
 	if json.Unmarshal(raw, &s) != nil || !s.IPv6 {
+		return nil
+	}
+	// only turning it on is refused: one that is on already stays out of the tunnel by itself while
+	// the server cannot route it (wg6), and the protocol must stay editable
+	if json.Unmarshal(old, &was) == nil && was.IPv6 {
 		return nil
 	}
 	c := srv.caps()
@@ -1319,7 +1351,7 @@ func (pc passClient) credsAt(exit *Node, s *xraySettings) creds {
 
 // passCredentials derives the credential an entry node uses at its exit node.
 func passCredentials(entryServer *Server, entry *Node) (uuid, password string) {
-	m := hmac.New(sha256.New, []byte(entryServer.Secret))
+	m := hmac.New(sha256.New, []byte(nz(entryServer.PassSecret, entryServer.Secret)))
 	fmt.Fprintf(m, "proxy-pass:%d", entry.ID)
 	sum := m.Sum(nil)
 	b := append([]byte(nil), sum[:16]...)
@@ -1360,21 +1392,72 @@ func bindOutbound(srv *Server, n *Node) map[string]any {
 
 func passTag(entry int64) string { return fmt.Sprintf("pass-n%d", entry) }
 
-// passExit returns the exit of entry node n on server srv and the exit's server, or why the pass
-// cannot be used right now (the entry then blocks its traffic).
-func (p *Panel) passExit(ctx context.Context, srv *Server, n *Node) (*Node, *Server, string) {
-	exit, err := p.nodeByID(ctx, n.PassNode)
+// A chain of proxy passes has two passes at most: from the entry to its exit, and from there - a
+// relay - once more to the protocol whose server leaves the internet. Every hop goes to another
+// server, and a chain never comes back to one it passed.
+
+// hopProblem is why one pass of a chain cannot be used.
+type hopProblem int
+
+const (
+	hopOK         hopProblem = iota
+	hopRemoved               // the protocol it goes to was removed
+	hopServerGone            // that protocol's server was removed
+	hopUnusable              // it cannot be an exit (WireGuard, another account, the same server)
+	hopOff                   // it is turned off
+)
+
+// passHop checks one pass, from server from to protocol exitID.
+func (p *Panel) passHop(ctx context.Context, from *Server, exitID int64) (*Node, *Server, hopProblem) {
+	exit, err := p.nodeByID(ctx, exitID)
 	if err != nil {
-		return nil, nil, "its exit protocol was removed"
+		return nil, nil, hopRemoved
 	}
 	xs, err := p.serverByID(ctx, exit.ServerID)
 	switch {
 	case err != nil || xs.DeletedAt > 0:
-		return nil, nil, "the exit's server was removed"
-	case xs.AccountID != srv.AccountID || xs.ID == srv.ID || exit.PassNode != 0 || !canExit(exit.Kind):
-		return nil, nil, "its exit cannot be used as one any more"
+		return exit, nil, hopServerGone
+	case xs.AccountID != from.AccountID || xs.ID == from.ID || !canExit(exit.Kind):
+		return exit, xs, hopUnusable
 	case !exit.Enabled:
+		return exit, xs, hopOff
+	}
+	return exit, xs, hopOK
+}
+
+// passExit returns the exit of entry node n on server srv - where its traffic goes first - and that
+// exit's server, or why the chain cannot be used right now (the entry then blocks its traffic). The
+// exit may pass on once more, as a relay, to a protocol on yet another server.
+func (p *Panel) passExit(ctx context.Context, srv *Server, n *Node) (*Node, *Server, string) {
+	exit, xs, prob := p.passHop(ctx, srv, n.PassNode)
+	switch prob {
+	case hopRemoved:
+		return nil, nil, "its exit protocol was removed"
+	case hopServerGone:
+		return nil, nil, "the exit's server was removed"
+	case hopUnusable:
+		return nil, nil, "its exit cannot be used as one any more"
+	case hopOff:
 		return nil, nil, fmt.Sprintf("its exit (%s · %s) is turned off", xs.Name, protocolLabel(exit.Kind, exit.Settings))
+	}
+	if exit.PassNode == 0 {
+		return exit, xs, ""
+	}
+	relay := xs.Name + " · " + protocolLabel(exit.Kind, exit.Settings)
+	next, ns, prob := p.passHop(ctx, xs, exit.PassNode)
+	switch {
+	case prob == hopRemoved:
+		return nil, nil, fmt.Sprintf("its exit (%s) passes on to a protocol that was removed", relay)
+	case prob == hopServerGone:
+		return nil, nil, fmt.Sprintf("its exit (%s) passes on to a server that was removed", relay)
+	case prob == hopUnusable:
+		return nil, nil, fmt.Sprintf("its exit (%s) passes on to a protocol that cannot be an exit", relay)
+	case prob == hopOff:
+		return nil, nil, fmt.Sprintf("its exit (%s) passes on to %s · %s, which is turned off", relay, ns.Name, protocolLabel(next.Kind, next.Settings))
+	case ns.ID == srv.ID:
+		return nil, nil, fmt.Sprintf("its exit (%s) passes on back to %s - every pass goes to another server", relay, srv.Name)
+	case next.PassNode != 0:
+		return nil, nil, fmt.Sprintf("its exit (%s) passes on twice - a chain has two passes at most", relay)
 	}
 	return exit, xs, ""
 }
@@ -1439,19 +1522,85 @@ func xrayBase(srv *Server, extraOut []map[string]any, extraRules []map[string]an
 
 // ---------------------------------------------------------------- client view
 
+// linkHost is the address links give for a protocol: its address override, its own public address
+// (behind a provider's NAT, the server's), or the server's.
+func linkHost(n *Node, srv *Server) string {
+	if n.Host != "" {
+		return n.Host
+	}
+	if a, err := netip.ParseAddr(n.BindIP); err == nil && publicAddr(a) {
+		return n.BindIP
+	}
+	return srv.Host()
+}
+
+// linkFields are the settings apps connect with, and what to call them: when one changes, devices
+// must refresh their subscription.
+var linkFields = []struct{ key, what string }{
+	{"transport", "transport"}, {"security", "security"}, {"sni", "domain"}, {"cert_mode", "certificate"},
+	{"cert_sha256", "certificate"}, {"path", "path"}, {"host_header", "host header"}, {"service_name", "service name"},
+	{"xhttp_mode", "XHTTP mode"}, {"cdn", "CDN"}, {"cdn_host", "CDN domain"}, {"cdn_port", "CDN port"},
+	{"method", "cipher"}, {"server_key", "keys"}, {"flow", "flow"}, {"public_key", "keys"}, {"short_ids", "keys"},
+	{"obfs", "obfuscation"}, {"obfs_password", "obfuscation"},
+}
+
+// changeImpact says what saving next (its settings, port, own address, address override, own
+// settings as code) does to the devices of protocol n: what changes in their links - they must
+// refresh their subscription - and whether its server process restarts to take it (Hysteria2 does;
+// Xray and WireGuard apply live).
+func changeImpact(srv *Server, n, next *Node) (refresh []string, restarts bool) {
+	var a, b map[string]any
+	_ = json.Unmarshal(n.Settings, &a)
+	_ = json.Unmarshal(next.Settings, &b)
+	norm := func(v any) string { // false, empty and "not set" are the same value
+		switch v := v.(type) {
+		case nil, bool, string, []any:
+			if v == nil || v == false || v == "" {
+				return ""
+			}
+			if l, ok := v.([]any); ok && len(l) == 0 {
+				return ""
+			}
+		}
+		j, _ := json.Marshal(v)
+		return string(j)
+	}
+	add := func(what string) {
+		if !slices.Contains(refresh, what) {
+			refresh = append(refresh, what)
+		}
+	}
+	for _, f := range linkFields {
+		if norm(a[f.key]) != norm(b[f.key]) {
+			add(f.what)
+		}
+	}
+	if linkHost(n, srv) != linkHost(next, srv) {
+		add("address")
+	}
+	rt, ru := reachNets(n.Kind)
+	pub := func(port int) int {
+		if p, ok := srv.ports.public(port, rt, ru); ok {
+			return p
+		}
+		return port
+	}
+	if pub(n.Port) != pub(next.Port) {
+		add("port")
+	}
+	if n.Kind == subgen.KindHysteria2 { // users come and go live; the rest of its configuration by a restart
+		restarts = norm(a) != norm(b) || n.Port != next.Port || n.BindIP != next.BindIP || n.Code != next.Code
+	}
+	return refresh, restarts
+}
+
 // clientEndpoint is a node as a client connects to it, with the given credentials.
 func clientEndpoint(n *Node, srv *Server, c creds, peer *wgPeer, name string) (subgen.Endpoint, error) {
-	host := n.Host
-	if a, err := netip.ParseAddr(n.BindIP); host == "" && err == nil && publicAddr(a) {
-		host = n.BindIP // the protocol's own public address (behind a provider's NAT, the server's)
-	}
-	if host == "" {
-		host = srv.Host()
-	}
+	host := linkHost(n, srv)
 	if host == "" {
 		return subgen.Endpoint{}, fmt.Errorf("server %s has no address yet", srv.Name)
 	}
-	e := subgen.Endpoint{NodeID: n.ID, Name: name, Kind: n.Kind, Server: srv.Name, Country: srv.Country, Host: host,
+	e := subgen.Endpoint{NodeID: n.ID, Name: name, Kind: n.Kind, Server: srv.ShownName(), Country: srv.Country, Host: host,
 		Port: n.Port, UUID: c.ID, Password: c.Password, Username: c.Username}
 	// where the provider decides the ports, devices connect to the number it forwards
 	rt, ru := reachNets(n.Kind)
@@ -1616,6 +1765,9 @@ type supportView struct {
 	Applied json.RawMessage      `json:"settings,omitempty" doc:"The settings as they would be saved (keys left out)"`
 	Kind    *kindInfo            `json:"kind,omitempty"`
 	Fields  map[string]fieldHelp `json:"fields,omitempty"`
+	// editing an existing protocol: what saving the draft does to its devices
+	Refresh  []string `json:"refresh,omitempty" doc:"Editing: what changes in the links (transport, port, address, ...) - devices using the protocol stop working until they refresh their subscription"`
+	Restarts bool     `json:"restarts,omitempty" doc:"Editing: saving restarts the protocol's server process (Hysteria2) - its devices drop and reconnect by themselves"`
 }
 
 type fieldHelp struct {
@@ -1675,6 +1827,11 @@ func protocolNotes(kind string, raw json.RawMessage, acmePort int) []string {
 		if s.CertMode == certACME {
 			notes = append(notes, fmt.Sprintf("Point %s at this server and %s: the agent gets and renews the certificate there.", s.SNI, port80))
 		}
+		if s.CertMode == certCustom {
+			if why := publicTrust(s.CertPEM); why != "" {
+				notes = append(notes, "Apps will refuse its certificate: "+why+". Links never turn certificate checks off.")
+			}
+		}
 		return notes
 	case subgen.KindWireGuard:
 		return []string{"Uses UDP: open the port for UDP in the server provider's firewall."}
@@ -1699,6 +1856,10 @@ func protocolNotes(kind string, raw json.RawMessage, acmePort int) []string {
 		notes = append(notes, fmt.Sprintf("Point %s at this server and %s: the agent gets and renews the Let's Encrypt certificate there.", s.SNI, port80))
 	case s.Security == secTLS && s.CertMode == certSelf:
 		notes = append(notes, "Self-signed certificate: apps that can pin it check it exactly; apps that cannot are left out of their subscription.")
+	case s.Security == secTLS && s.CertMode == certCustom:
+		if why := publicTrust(s.CertPEM); why != "" {
+			notes = append(notes, "Apps will refuse its certificate: "+why+". Links never turn certificate checks off.")
+		}
 	}
 	if kind == subgen.KindShadowsocks && !strings.HasPrefix(s.Method, "2022-") {
 		notes = append(notes, "Classic Shadowsocks finds each user by trying their key: fine for tens of users, slower with hundreds. Prefer a 2022 method where all your apps support it.")

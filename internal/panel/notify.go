@@ -63,7 +63,7 @@ type notifyView struct {
 	TelegramToken string   `json:"telegram_token" doc:"The bot token, masked (its bot id and last characters); empty when none is set"`
 	TelegramChat  string   `json:"telegram_chat" doc:"The Telegram chat notifications go to"`
 	WebhookURL    string   `json:"webhook_url" doc:"The webhook, masked (scheme and host); empty when none is set"`
-	Groups        []string `json:"groups" doc:"What is sent: servers (offline, back online, rebooted, failed to apply, crashed cores), users (quota used up, access ended or ending, over the device limit), certificates (shared certificates expiring), security (sign-ins, failed sign-ins, password and two-factor changes, new API tokens)"`
+	Groups        []string `json:"groups" doc:"What is sent: servers (offline, back online, rebooted, failed to apply, crashed cores), users (quota used up, access ended or ending, over the device limit), certificates (shared certificates, and those pasted into a protocol, expiring), security (sign-ins, failed sign-ins, password and two-factor changes, new API tokens)"`
 	Active        bool     `json:"active" doc:"Whether a channel is set up"`
 	LastSentAt    int64    `json:"last_sent_at" doc:"When a notification was last delivered (Unix seconds)"`
 	LastError     string   `json:"last_error" doc:"Why the last attempt failed, if it did"`
@@ -644,6 +644,50 @@ func (p *Panel) limitEvents(ctx context.Context) {
 		}
 		p.event(c.account, "warn", "cert_expiring", 0, 0, 0, fmt.Sprintf("The shared certificate %s %s - replace it in Settings › Certificates", c.name, what),
 			map[string]int64{"cert": c.id})
+	}
+	p.ownCertEvents(ctx, t)
+}
+
+// ownCertEvents warns, once each, about certificates pasted into a protocol (or imported from
+// certbot's files) that expire within 14 days: nothing renews them.
+func (p *Panel) ownCertEvents(ctx context.Context, t int64) {
+	rows, err := p.db.QueryContext(ctx, `SELECT n.id, n.kind, n.settings, n.name, s.id, s.account_id, s.name,
+		CAST(json_extract(n.settings, '$.cert_expires') AS INTEGER) FROM nodes n JOIN servers s ON s.id = n.server_id
+		WHERE s.deleted_at = 0 AND n.enabled = 1 AND json_extract(n.settings, '$.cert_mode') = 'custom'
+		AND json_extract(n.settings, '$.cert_expires') > 0`)
+	if err != nil {
+		return
+	}
+	type own struct {
+		node, server, account, notAfter int64
+		label, srvName                  string
+	}
+	var list []own
+	for rows.Next() {
+		var o own
+		var kind, settings, name string
+		if rows.Scan(&o.node, &kind, &settings, &name, &o.server, &o.account, &o.srvName, &o.notAfter) == nil {
+			o.label = nz(name, protocolLabel(kind, json.RawMessage(settings)))
+			list = append(list, o)
+		}
+	}
+	rows.Close()
+	for _, o := range list {
+		if o.notAfter-t > 14*86400 {
+			continue
+		}
+		var n int
+		_ = p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE kind = 'cert_expiring' AND ts >= ? AND json_extract(data, '$.node') = ?`,
+			o.notAfter-14*86400, o.node).Scan(&n)
+		if n > 0 {
+			continue
+		}
+		what := "expires on " + p.dateText(o.notAfter)
+		if o.notAfter <= t {
+			what = "has expired"
+		}
+		p.event(o.account, "warn", "cert_expiring", o.server, 0, 0, fmt.Sprintf("The certificate of %s · %s %s - nothing renews a certificate pasted into a protocol: paste the new one, or switch it to Let's Encrypt or a shared certificate",
+			o.srvName, o.label, what), map[string]int64{"node": o.node})
 	}
 }
 

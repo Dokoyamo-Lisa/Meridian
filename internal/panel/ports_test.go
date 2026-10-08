@@ -359,7 +359,7 @@ func TestOwnListener(t *testing.T) {
 	srv := b.must("POST", "/api/servers", map[string]any{"name": "Own", "address": "203.0.113.97", "protocols": []string{}}, 201)["server"].(map[string]any)
 	sid := id(srv["id"])
 	if _, err := h.p.db.Exec1(`UPDATE servers SET first_seen_at = ?, caps = ?, addrs = ? WHERE id = ?`, now(),
-		`{"systemd":true,"nftables":true}`, `["203.0.113.97","203.0.113.98"]`, sid); err != nil {
+		`{"systemd":true,"nftables":true,"certs":true}`, `["203.0.113.97","203.0.113.98"]`, sid); err != nil {
 		t.Fatal(err)
 	}
 	fwd := b.must("POST", fmt.Sprintf("/api/servers/%d/forwards", sid), map[string]any{"engine": "realm", "listen_port": 8080,
@@ -377,5 +377,33 @@ func TestOwnListener(t *testing.T) {
 	if code, m, _ := b.do("PATCH", fmt.Sprintf("/api/forwards/%d", id(fwd["id"])), map[string]any{"listen_port": 22}); code != 409 ||
 		!strings.Contains(fmt.Sprint(m["error"]), "another program") {
 		t.Errorf("a port another program holds: %d %v", code, m)
+	}
+}
+
+// TestACMEPortShown: while a protocol gets its certificate from Let's Encrypt, the server says which
+// TCP port the check arrives on (80, or where the provider forwards it), so its firewall can let it in.
+func TestACMEPortShown(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "ACME", "address": "203.0.113.99"}, 201)["server"].(map[string]any)["id"])
+	get := func() any {
+		return b.must("GET", fmt.Sprintf("/api/servers/%d", sid), nil, 200)["server"].(map[string]any)["acme_port"]
+	}
+	if v := get(); v != nil {
+		t.Fatalf("no Let's Encrypt protocol: %v", v)
+	}
+	n := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "trojan",
+		"settings": map[string]any{"security": "tls", "cert_mode": "acme", "sni": "proxy.example.com"}}, 201)
+	if v := get(); v != float64(80) {
+		t.Errorf("acme: %v", v)
+	}
+	b.must("PATCH", fmt.Sprintf("/api/servers/%d", sid), map[string]any{"public_ports": "80:10080, 443, 20000-20010"}, 200)
+	if v := get(); v != float64(10080) {
+		t.Errorf("forwarded 80: %v", v)
+	}
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", id(n["id"])), map[string]any{"enabled": false}, 200)
+	if v := get(); v != nil {
+		t.Errorf("turned off: %v", v)
 	}
 }

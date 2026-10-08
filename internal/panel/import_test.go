@@ -153,3 +153,72 @@ func TestImportEdgeCases(t *testing.T) {
 		t.Errorf("short ids: %v", ids)
 	}
 }
+
+// TestImportSelfSignedCert: an imported self-signed certificate stays, pinned in links (as an own
+// certificate no app could check it); one from an authority stays an own certificate.
+func TestImportSelfSignedCert(t *testing.T) {
+	selfPEM, selfKey, sum, err := selfSignedCert("proxy.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caPEM, caKey := privateCACert(t, "proxy.example.com")
+	for _, c := range []struct {
+		in        scan.Inbound
+		mode      string
+		pinned    bool
+		whySaysIt bool
+	}{
+		{scan.Inbound{Tag: "t", Protocol: "trojan", Port: 443, Transport: "raw", Security: "tls", SNI: "proxy.example.com",
+			CertPEM: selfPEM, KeyPEM: selfKey, Users: []scan.User{{Name: "a", Password: "pw-123456"}}}, certSelf, true, true},
+		{scan.Inbound{Tag: "h", Protocol: "hysteria2", Port: 443, SNI: "proxy.example.com", CertPEM: selfPEM, KeyPEM: selfKey,
+			Users: []scan.User{{Name: "a", Password: "pw-123456"}}}, certSelf, true, true},
+		{scan.Inbound{Tag: "c", Protocol: "trojan", Port: 443, Transport: "raw", Security: "tls", SNI: "proxy.example.com",
+			CertPEM: caPEM, KeyPEM: caKey, Users: []scan.User{{Name: "a", Password: "pw-123456"}}}, certCustom, false, false},
+	} {
+		kind, raw, why, err := importSettings(c.in)
+		if err != nil {
+			t.Fatalf("%s: %v", c.in.Tag, err)
+		}
+		var cs certSettings
+		_ = json.Unmarshal(raw, &cs)
+		if cs.CertMode != c.mode || (cs.CertSHA256 == sum) != c.pinned || strings.Contains(why, "self-signed") != c.whySaysIt {
+			t.Errorf("%s (%s): mode %q, pin %q, why %q", c.in.Tag, kind, cs.CertMode, cs.CertSHA256, why)
+		}
+		if c.pinned && cs.CertPEM != selfPEM {
+			t.Errorf("%s: the imported certificate was not kept", c.in.Tag)
+		}
+	}
+}
+
+// TestImportSaysWhatChanges: users of another flow, devices of a single-user Shadowsocks 2022 server
+// and a certificate read from files (nothing renews it) - the import says who must refresh and why.
+func TestImportSaysWhatChanges(t *testing.T) {
+	_, _, why, err := importSettings(scan.Inbound{Tag: "v", Protocol: "vless", Port: 443, Transport: "raw", Security: "reality",
+		SNI: "www.microsoft.com", Target: "www.microsoft.com:443", PrivateKey: "aGVsbG8taGVsbG8taGVsbG8taGVsbG8taGVsbG8tMTI",
+		ShortIDs: []string{"6ba85179e30d4fc2"}, Users: []scan.User{{Name: "a", ID: "11111111-1111-4111-8111-111111111111", Flow: "xtls-rprx-vision"},
+			{Name: "b", ID: "22222222-2222-4222-8222-222222222222", Flow: "xtls-rprx-vision"}, {Name: "old", ID: "33333333-3333-4333-8333-333333333333"}}})
+	if err != nil || !strings.Contains(why, "same flow") || !strings.Contains(why, "old must refresh") || strings.Contains(why, "a, ") {
+		t.Errorf("mixed flows: %v %q", err, why)
+	}
+	_, _, why, err = importSettings(scan.Inbound{Tag: "ss", Protocol: "shadowsocks", Port: 8388, Method: "2022-blake3-aes-128-gcm",
+		ServerKey: "c2VydmVyLWtleS0xNmJ5dA==", Users: []scan.User{{Name: "ss", Password: "c2VydmVyLWtleS0xNmJ5dA=="}}})
+	if err != nil || !strings.Contains(why, "single-user Shadowsocks 2022") {
+		t.Errorf("single-user 2022: %v %q", err, why)
+	}
+	_, _, why, _ = importSettings(scan.Inbound{Tag: "ss", Protocol: "shadowsocks", Port: 8388, Method: "2022-blake3-aes-128-gcm",
+		ServerKey: "c2VydmVyLWtleS0xNmJ5dA==", Users: []scan.User{{Name: "u", Password: "dXNlci1rZXktMTZieXRlcw=="}}})
+	if why != "" {
+		t.Errorf("multi-user 2022: %q", why)
+	}
+	certPEM, keyPEM := privateCACert(t, "proxy.example.com")
+	for _, in := range []scan.Inbound{
+		{Tag: "t", Protocol: "trojan", Port: 443, Transport: "raw", Security: "tls", SNI: "proxy.example.com", CertPEM: certPEM, KeyPEM: keyPEM,
+			Users: []scan.User{{Name: "a", Password: "pw-123456"}}},
+		{Tag: "h", Protocol: "hysteria2", Port: 443, SNI: "proxy.example.com", CertPEM: certPEM, KeyPEM: keyPEM,
+			Users: []scan.User{{Name: "a", Password: "pw-123456"}}},
+	} {
+		if _, _, why, err := importSettings(in); err != nil || !strings.Contains(why, "Meridian does not renew it") {
+			t.Errorf("%s: certificate from files: %v %q", in.Tag, err, why)
+		}
+	}
+}

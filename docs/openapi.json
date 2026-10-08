@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meridian API",
-    "version": "0.7.0",
+    "version": "0.7.1",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -1343,7 +1343,8 @@
             },
             "description": "Error"
           }
-        }
+        },
+        "x-scope": "read"
       }
     },
     "/api/servers/{id}/nodes": {
@@ -3705,7 +3706,13 @@
             },
             "description": "Error"
           }
-        }
+        },
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "x-scope": "token"
       }
     }
   },
@@ -4606,7 +4613,7 @@
             "type": "array"
           },
           "public_name": {
-            "description": "Name on the status page; empty = the server's name",
+            "description": "The name users see - on the status page, their own page and in their apps; empty = the server's name",
             "type": "string"
           },
           "status_hidden": {
@@ -4699,6 +4706,10 @@
           "loc_from": {
             "description": "The address whose DB-IP entry gives the location: the address when it was set by hand to an IP, otherwise the IP the agent reports (empty when the location was set by hand)",
             "type": "string"
+          },
+          "acme_port": {
+            "description": "The TCP port Let's Encrypt's check arrives on - 80, or where the provider forwards port 80 - when a protocol gets its certificate from Let's Encrypt (its firewall must let it in); 0 when none does",
+            "type": "integer"
           }
         }
       },
@@ -5308,6 +5319,22 @@
             "description": "Adding: the server it is for, so what depends on the server (its IP version, shared certificates) is checked too",
             "format": "int64",
             "type": "integer"
+          },
+          "port": {
+            "description": "Editing: the port it would have (omitted: unchanged)",
+            "type": "integer"
+          },
+          "bind_ip": {
+            "description": "Editing: its own address it would have (omitted: unchanged)",
+            "type": "string"
+          },
+          "host": {
+            "description": "Editing: its address override (omitted: unchanged)",
+            "type": "string"
+          },
+          "code": {
+            "description": "Editing: its own settings as code (omitted: unchanged)",
+            "type": "string"
           }
         }
       },
@@ -5478,6 +5505,17 @@
               "$ref": "#/components/schemas/FieldHelp"
             },
             "type": "object"
+          },
+          "refresh": {
+            "description": "Editing: what changes in the links (transport, port, address, ...) - devices using the protocol stop working until they refresh their subscription",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "restarts": {
+            "description": "Editing: saving restarts the protocol's server process (Hysteria2) - its devices drop and reconnect by themselves",
+            "type": "boolean"
           }
         }
       },
@@ -5518,7 +5556,7 @@
             "type": "integer"
           },
           "pass_node": {
-            "description": "Proxy pass: id of the exit protocol on another server; 0 = leave directly",
+            "description": "Proxy pass: id of the exit protocol on another server; 0 = leave directly. The exit may pass on once more (a relay): a chain has two passes at most, each to another server",
             "format": "int64",
             "type": "integer"
           },
@@ -6425,6 +6463,13 @@
               "$ref": "#/components/schemas/PortalProtocol"
             },
             "type": "array"
+          },
+          "wireguard": {
+            "description": "The WireGuard protocols the user may use: the WireGuard app takes a file or a QR code, not the link",
+            "items": {
+              "$ref": "#/components/schemas/PortalWG"
+            },
+            "type": "array"
           }
         }
       },
@@ -6587,6 +6632,23 @@
               }
             ],
             "description": "Since the user was created"
+          }
+        }
+      },
+      "PortalWG": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "As the user's apps name it",
+            "type": "string"
+          },
+          "url": {
+            "description": "The configuration file (the link's page has it too)",
+            "type": "string"
+          },
+          "conf": {
+            "description": "The configuration, for a QR code the WireGuard app scans",
+            "type": "string"
           }
         }
       },
@@ -7231,7 +7293,7 @@
             "type": "string"
           },
           "groups": {
-            "description": "What is sent: servers (offline, back online, rebooted, failed to apply, crashed cores), users (quota used up, access ended or ending, over the device limit), certificates (shared certificates expiring), security (sign-ins, failed sign-ins, password and two-factor changes, new API tokens)",
+            "description": "What is sent: servers (offline, back online, rebooted, failed to apply, crashed cores), users (quota used up, access ended or ending, over the device limit), certificates (shared certificates, and those pasted into a protocol, expiring), security (sign-ins, failed sign-ins, password and two-factor changes, new API tokens)",
             "items": {
               "type": "string"
             },
