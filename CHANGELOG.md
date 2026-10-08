@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.3 - 2026-10-08
+
+The agents have no changes in this version: upgrading them is optional.
+
+- **Every IP address on the status page**: a server's list now also has the addresses its protocols
+  give users - an address of their own, or one set for their links. Behind NAT these differ from the
+  address the agent finds, which is the one the server reaches the internet from (servers behind
+  the same NAT showed only that shared address). For a server behind NAT without protocols, set
+  **Address clients connect to** on its page to show where it is reached.
+
 ## 0.7.2 - 2026-10-08
 
 **After upgrading, a status page that is turned on shows every server to everyone, IP addresses

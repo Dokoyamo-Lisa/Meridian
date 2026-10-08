@@ -1,6 +1,14 @@
 # Meridian status
 
-Last updated 2026-10-08 (version 0.7.2).
+Last updated 2026-10-08 (version 0.7.3).
+
+## Tested for 0.7.3
+
+- **Addresses behind NAT**: a server's status page entry lists its address set by hand, then the
+  public IPs its protocols give users (their own address or the one set for links; host names and
+  private addresses left out), then the one its agent found - checked by a test, which also checks
+  that none of them reaches visitors with "Show IP addresses" off. Found on a live panel: three
+  servers behind the same NAT all showed only the shared outbound address.
 
 ## Tested for 0.7.2 (local panel, Ubuntu and Alpine VMs)
 

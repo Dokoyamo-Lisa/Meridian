@@ -138,7 +138,7 @@ type statusServer struct {
 	Speed        *statusSpeed  `json:"speed,omitempty"`
 	Bandwidth    *statusBW     `json:"bandwidth,omitempty"`
 	Sys          *statusSys    `json:"sys,omitempty"`
-	Addrs        []string      `json:"addrs,omitempty" doc:"Its public IP addresses (to visitors only where the status page shows them)"`
+	Addrs        []string      `json:"addrs,omitempty" doc:"Its public IP addresses - set by hand, its protocols' own, found by its agent - to visitors only where the status page shows them"`
 	Host         *statusHost   `json:"host,omitempty"`
 	Cycle        *statusCycle  `json:"cycle,omitempty" doc:"Its own traffic since the monthly reset"`
 	Expires      string        `json:"expires,omitempty" doc:"The day its paid period ends (YYYY-MM-DD), when set"`
@@ -269,6 +269,26 @@ func (p *Panel) statusData(ctx context.Context) (*statusPayload, error) {
 		ids = append(ids, s.ID)
 	}
 	avail := p.availabilityOf(ctx, ids, out.Days)
+	// the addresses protocols give users: an address of their own, or one set for their links - behind
+	// NAT these can differ from the one the agent found
+	nodeAddrs := map[int64][]string{}
+	rows, err := p.db.QueryContext(ctx, `SELECT server_id, host, bind_ip FROM nodes WHERE host != '' OR bind_ip != '' ORDER BY sort, id`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var sid int64
+		var host, bind string
+		if err := rows.Scan(&sid, &host, &bind); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		nodeAddrs[sid] = append(nodeAddrs[sid], host, bind)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	keep := map[int64]bool{}
 	for _, s := range servers {
 		if !contains64(ids, s.ID) {
@@ -278,7 +298,7 @@ func (p *Panel) statusData(ctx context.Context) (*statusPayload, error) {
 		// no users, protocols, ports or prices here: the page may be public (addresses are left out for
 		// visitors where it does not show them - see apiStatus)
 		v := statusServer{ID: s.ID, Name: s.ShownName(), Country: s.Country, City: s.City, TZ: tzOf(s.City, s.Country),
-			Online: s.Online, Since: s.StatusChangedAt, Availability: avail[s.ID], Addrs: publicAddrsOf(s),
+			Online: s.Online, Since: s.StatusChangedAt, Availability: avail[s.ID], Addrs: publicAddrsOf(s, nodeAddrs[s.ID]),
 			Cycle: &statusCycle{Up: s.CycleTX, Down: s.CycleRX, Start: s.CycleStart}, Expires: s.ExpiresOn}
 		if s.OS != "" || s.CPUCores > 0 {
 			v.Host = &statusHost{OS: s.OS, Arch: s.Arch, CPU: s.CPUModel, Cores: s.CPUCores, Mem: s.MemTotal, Disk: s.DiskTotal}
@@ -397,10 +417,10 @@ func sign(v float64) float64 {
 	return 1
 }
 
-// apiStatus serves the dashboard's data to the supervisor (session or API token).
 // publicAddrsOf lists a server's public IP addresses: an address set by hand that is an IP, those its
-// agent found on the internet side, and those on its interfaces.
-func publicAddrsOf(s *Server) []string {
+// protocols give users (extra), the one its agent found on the internet side, and those on its
+// interfaces.
+func publicAddrsOf(s *Server, extra []string) []string {
 	var out []string
 	add := func(raw string) {
 		a, err := netip.ParseAddr(strings.Trim(strings.TrimSpace(raw), "[]"))
@@ -412,6 +432,9 @@ func publicAddrsOf(s *Server) []string {
 		}
 	}
 	add(s.Address)
+	for _, x := range extra {
+		add(x)
+	}
 	add(s.IPv4)
 	add(s.IPv6)
 	for _, x := range s.Addrs {

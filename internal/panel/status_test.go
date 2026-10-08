@@ -53,6 +53,14 @@ func TestStatusPage(t *testing.T) {
 	owner.must("PATCH", fmt.Sprintf("/api/servers/%d", ids[0]), map[string]any{"public_name": "Tokyo",
 		"location": map[string]any{"city": "Tokyo", "cc": "JP", "lat": 35.68, "lon": 139.69}}, 200)
 	owner.must("PATCH", fmt.Sprintf("/api/servers/%d", ids[1]), map[string]any{"status_hidden": true}, 200)
+	// behind NAT the addresses users connect to are their protocols' own: those that are public IPs
+	// are the server's too (not host names, not private addresses)
+	for _, n := range [][2]string{{"198.51.100.9", ""}, {"", "203.0.113.8"}, {"cdn.example.com", ""}, {"10.1.2.3", "192.168.1.5"}, {"203.0.113.7", ""}} {
+		if _, err := h.p.db.Exec1(`INSERT INTO nodes (server_id, kind, port, host, bind_ip, created_at, updated_at) VALUES (?, 'vless', 443, ?, ?, ?, ?)`,
+			ids[0], n[0], n[1], now(), now()); err != nil {
+			t.Fatal(err)
+		}
+	}
 	owner.must("POST", "/api/users", map[string]any{"name": "Carol", "username": "carol", "password": "carol-password-1",
 		"servers": []int64{ids[0]}}, 201)
 
@@ -95,7 +103,7 @@ func TestStatusPage(t *testing.T) {
 	if code != 200 || pub["supervisor"] != nil {
 		t.Fatalf("a visitor on the public status page: %d %s", code, praw)
 	}
-	if ps := pub["servers"].([]any); len(ps) != 1 || fmt.Sprint(ps[0].(map[string]any)["addrs"]) != "[203.0.113.7]" {
+	if ps := pub["servers"].([]any); len(ps) != 1 || fmt.Sprint(ps[0].(map[string]any)["addrs"]) != "[203.0.113.7 198.51.100.9 203.0.113.8]" {
 		t.Errorf("visitor's servers: %s", praw)
 	}
 	for _, secret := range []string{"Carol", "carol", "vless", "reality", "\"port\"", "token", "price", "currency"} {
@@ -109,7 +117,7 @@ func TestStatusPage(t *testing.T) {
 	// addresses hidden from visitors (the supervisor still sees them), then the servers too
 	set["status_ips"] = false
 	owner.must("PUT", "/api/settings", set, 200)
-	if code, _, praw = anon.do("GET", "/api/status", nil); code != 200 || strings.Contains(string(praw), "203.0.113.7") || strings.Contains(string(praw), "addrs") {
+	if code, _, praw = anon.do("GET", "/api/status", nil); code != 200 || strings.Contains(string(praw), "203.0.113.") || strings.Contains(string(praw), "198.51.100.9") || strings.Contains(string(praw), "addrs") {
 		t.Errorf("addresses shown to visitors with show IPs off: %d %s", code, praw)
 	}
 	set["status_public"] = false

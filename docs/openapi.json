@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meridian API",
-    "version": "0.7.2",
+    "version": "0.7.3",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -6787,7 +6787,7 @@
             "$ref": "#/components/schemas/StatusSys"
           },
           "addrs": {
-            "description": "Its public IP addresses (to visitors only where the status page shows them)",
+            "description": "Its public IP addresses - set by hand, its protocols' own, found by its agent - to visitors only where the status page shows them",
             "items": {
               "type": "string"
             },
