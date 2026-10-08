@@ -75,7 +75,8 @@ export function numUnit(el: (Element & { _nu?: string }) | null, num: string, un
 }
 
 // safeHref allows web links and the import schemes of the apps the panel offers, nothing else.
-const SCHEMES = /^(https?|clash|shadowrocket|sing-box|stash|quantumult-x|surge|hiddify):/i
+// every app's import scheme (subgen.Clients; a test checks they match)
+const SCHEMES = /^(https?|clash|shadowrocket|sing-box|stash|quantumult-x|surge|hiddify|loon):/i
 export function safeHref(u: string | null | undefined): string | null {
   return u && SCHEMES.test(u) ? u : null
 }

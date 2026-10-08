@@ -42,6 +42,9 @@ type DB struct {
 
 	cmu   sync.Mutex
 	cache map[string]*Info
+
+	// OnLoad is called after a download put new databases in place (country rules can be built then)
+	OnLoad func()
 }
 
 // Static answers lookups from a fixed table only - for tests.
@@ -211,6 +214,9 @@ func (d *DB) Maintain(ctx context.Context) {
 		}
 		if changed {
 			d.load()
+			if d.OnLoad != nil {
+				d.OnLoad()
+			}
 		}
 		select {
 		case <-ctx.Done():

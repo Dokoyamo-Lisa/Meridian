@@ -298,6 +298,11 @@ func checkHyCode(src string) (string, json.RawMessage, error) {
 			return "", nil, errStatus(http.StatusBadRequest, fmt.Sprintf("%q is Meridian's own (users and traffic counting depend on it) - leave it out", k))
 		}
 	}
+	if acl, ok := m["acl"].(map[string]any); ok {
+		if _, ok := acl["file"]; ok {
+			return "", nil, errStatus(http.StatusBadRequest, `"acl.file" cannot be used - write the rules under acl.inline (the blocks of private addresses always come first)`)
+		}
+	}
 	raw, err := json.Marshal(m)
 	if err != nil {
 		return "", nil, errStatus(http.StatusBadRequest, "the YAML has values JSON cannot hold: "+err.Error())

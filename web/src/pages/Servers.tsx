@@ -2,7 +2,8 @@ import { useState } from 'preact/hooks'
 import { Server, bits, bytes, flag, get, pct, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
-import { Check, Empty, ErrorBox, Field, Loading, Meter, Modal, PageHead, Search, errText, useAsync, usePoll } from '../ui'
+import { useSession } from '../session'
+import { Check, Empty, ErrorBox, Field, Loading, Meter, Modal, PageHead, Search, ask, errText, toast, toastError, useAsync, usePoll } from '../ui'
 
 export function statusDot(status: string) {
   return status === 'online' ? 'good' : status === 'offline' ? 'crit' : ''
@@ -30,6 +31,27 @@ export function Servers() {
     return [s.name, s.address, s.ipv4, s.hostname, s.country, s.city].some((x) => (x || '').toLowerCase().includes(t))
   })
   const online = (list.data || []).filter((s) => s.status === 'online').length
+  const version = useSession().meta?.version
+  // servers whose agent is not the panel's: all of them upgrade with one click (nobody is disconnected)
+  const older = (list.data || []).filter((s) => s.agent_version && version && s.agent_version !== version)
+  const upgradeAll = async () => {
+    const ok = await ask({
+      title: `Upgrade the agent on ${older.length} server${older.length === 1 ? '' : 's'}?`,
+      body: (
+        <p style="margin-top:0">
+          Each agent downloads Meridian {version}'s agent from this panel and restarts itself. The proxies keep running and nobody is disconnected. Offline servers upgrade as soon as they connect.
+        </p>
+      ),
+      confirm: 'Upgrade agents',
+    })
+    if (!ok) return
+    try {
+      const r = await post<{ servers: string[] }>('/api/agents/upgrade')
+      toast(r.servers.length ? `Upgrading ${r.servers.length} agent${r.servers.length === 1 ? '' : 's'}` : 'Every agent is being upgraded already')
+    } catch (e) {
+      toastError(e)
+    }
+  }
 
   return (
     <>
@@ -39,6 +61,12 @@ export function Servers() {
         actions={
           <>
             {list.data && list.data.length > 5 && <Search value={q} onInput={setQ} placeholder="Find a server" />}
+            {older.length > 0 && (
+              <button type="button" class="btn" onClick={() => void upgradeAll()} title={`${older.length} server(s) run an older agent than the panel (${version})`}>
+                <Icon name="download" size="sm" />
+                Upgrade all agents ({older.length})
+              </button>
+            )}
             <button class="btn primary" onClick={() => setQuery('add', '1')}>
               <Icon name="plus" size="sm" />
               Add server

@@ -117,8 +117,22 @@ export function panelDate(ts: number) {
   return f.format(new Date(ts * 1000))
 }
 
-// daysUntil counts whole days from now to ts (negative when past).
-export const daysUntil = (ts: number) => Math.floor((ts - now()) / 86400)
+// dayNumber is the calendar day of ts in the panel's time zone, counted in days.
+const dayFmt = new Map<string, Intl.DateTimeFormat>()
+function dayNumber(ts: number) {
+  let f = dayFmt.get(zone)
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: 'numeric', day: 'numeric' })
+    dayFmt.set(zone, f)
+  }
+  const part = (parts: Intl.DateTimeFormatPart[], t: string) => Number(parts.find((p) => p.type === t)?.value)
+  const parts = f.formatToParts(new Date(ts * 1000))
+  return Date.UTC(part(parts, 'year'), part(parts, 'month') - 1, part(parts, 'day')) / 86400000
+}
+
+// daysUntil counts calendar days in the panel's time zone from today to ts: 0 is today, 1 tomorrow,
+// negative when past. (A reset at midnight tomorrow is "tomorrow", not "today".)
+export const daysUntil = (ts: number) => dayNumber(ts) - dayNumber(now())
 
 export function inDays(d: number | null | undefined) {
   if (d == null) return ''

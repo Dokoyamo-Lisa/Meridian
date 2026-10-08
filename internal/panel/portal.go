@@ -148,6 +148,16 @@ type portalServer struct {
 	Cycle     usage    `json:"cycle" doc:"Since the start of the current cycle (whole days)"`
 	Days30    usage    `json:"days30"`
 	Devices   int      `json:"devices" doc:"The user's devices connected to this server now"`
+	Former    bool     `json:"former" doc:"No longer in the user's access (or removed): shown for its traffic only"`
+}
+
+// portalProtocol is the user's usage on one protocol.
+type portalProtocol struct {
+	Server  string `json:"server"`
+	Name    string `json:"name"`
+	Removed bool   `json:"removed" doc:"No longer there"`
+	Cycle   usage  `json:"cycle" doc:"This cycle"`
+	Total   usage  `json:"total" doc:"Since the user was created"`
 }
 
 type portalDevice struct {
@@ -173,25 +183,26 @@ type portalDay struct {
 }
 
 type portalMe struct {
-	SiteTitle  string          `json:"site_title"`
-	Timezone   string          `json:"timezone" doc:"The panel's time zone: days and resets follow it"`
-	ID         int64           `json:"id"`
-	Name       string          `json:"name"`
-	Username   string          `json:"username"`
-	Status     string          `json:"status" doc:"active | paused"`
-	Flags      []string        `json:"flags"`
-	Link       string          `json:"link" doc:"The user's subscription link"`
-	Clients    []subgen.Client `json:"clients" doc:"One-tap import links"`
-	Quota      int64           `json:"quota" doc:"Bytes per cycle; 0 = unlimited"`
-	Used       usage           `json:"used" doc:"This cycle"`
-	CycleStart int64           `json:"cycle_start"`
-	NextReset  int64           `json:"next_reset" doc:"Unix seconds; 0 = never"`
-	ExpiresAt  int64           `json:"expires_at"`
-	IPLimit    int             `json:"ip_limit"`
-	Devices    []portalDevice  `json:"devices" doc:"Connected right now: one per address, however many servers and protocols it uses"`
-	Servers    []portalServer  `json:"servers"`
-	Days       []portalDay     `json:"days" doc:"The last 30 days"`
-	Total      usage           `json:"total" doc:"Since the user was created"`
+	SiteTitle  string           `json:"site_title"`
+	Timezone   string           `json:"timezone" doc:"The panel's time zone: days and resets follow it"`
+	ID         int64            `json:"id"`
+	Name       string           `json:"name"`
+	Username   string           `json:"username"`
+	Status     string           `json:"status" doc:"active | paused"`
+	Flags      []string         `json:"flags"`
+	Link       string           `json:"link" doc:"The user's subscription link"`
+	Clients    []subgen.Client  `json:"clients" doc:"One-tap import links"`
+	Quota      int64            `json:"quota" doc:"Bytes per cycle; 0 = unlimited"`
+	Used       usage            `json:"used" doc:"This cycle"`
+	CycleStart int64            `json:"cycle_start"`
+	NextReset  int64            `json:"next_reset" doc:"Unix seconds; 0 = never"`
+	ExpiresAt  int64            `json:"expires_at"`
+	IPLimit    int              `json:"ip_limit"`
+	Devices    []portalDevice   `json:"devices" doc:"Connected right now: one per address, however many servers and protocols it uses"`
+	Servers    []portalServer   `json:"servers"`
+	Days       []portalDay      `json:"days" doc:"The last 30 days"`
+	Total      usage            `json:"total" doc:"Since the user was created"`
+	Protocols  []portalProtocol `json:"protocols" doc:"Usage per protocol, this cycle and all time (the most used first)"`
 }
 
 func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) error {
@@ -207,7 +218,7 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 	me.Clients = clientLinks(me.Link, s.Name)
 	if s.ResetDay > 0 {
 		loc := p.loc()
-		me.NextReset = cycleStart(s.ResetDay, time.Now().In(loc)).AddDate(0, 1, 0).Unix()
+		me.NextReset = nextReset(s.ResetDay, time.Now().In(loc)).Unix()
 	}
 
 	// devices online now - one per address, as the IP limit counts them - and the servers they are on
@@ -300,7 +311,7 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 			if srv, err := p.serverByID(ctx, sid); err == nil && srv.DeletedAt == 0 {
 				name = srv.ShownName()
 			}
-			me.Servers = append(me.Servers, portalServer{ID: sid, Name: name, Protocols: []string{}})
+			me.Servers = append(me.Servers, portalServer{ID: sid, Name: name, Protocols: []string{}, Former: true})
 			for i := range me.Servers {
 				byID[me.Servers[i].ID] = &me.Servers[i]
 			}
@@ -346,6 +357,15 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 		a, b := me.Servers[i], me.Servers[j]
 		return a.Days30.Up+a.Days30.Down > b.Days30.Up+b.Days30.Down
 	})
+	me.Protocols = []portalProtocol{}
+	for _, u := range p.nodeUsageOf(ctx, s.ID) {
+		name, ok := names[u.ServerID] // the name users see
+		if !ok {
+			name = "Removed server"
+		}
+		me.Protocols = append(me.Protocols, portalProtocol{Server: name, Name: u.Protocol, Removed: u.Removed,
+			Cycle: usage{u.CycleUp, u.CycleDown}, Total: usage{u.TotalUp, u.TotalDown}})
+	}
 	writeJSON(w, http.StatusOK, me)
 	return nil
 }
@@ -466,10 +486,7 @@ func (p *Panel) apiProtocolCheck(w http.ResponseWriter, r *http.Request, a *Acco
 		raw, err = newSettings(kind, in.Settings, nodes)
 	}
 	if err == nil {
-		err = checkWG6(srv, kind, raw)
-	}
-	if err == nil {
-		err = p.checkSharedCert(r.Context(), srv, kind, raw)
+		err = p.checkOnServer(r.Context(), srv, kind, raw)
 	}
 	writeJSON(w, http.StatusOK, supportOf(kind, raw, err))
 	return nil

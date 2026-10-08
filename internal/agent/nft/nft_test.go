@@ -43,6 +43,13 @@ func TestRenderGuardsAndForwards(t *testing.T) {
 		"ip daddr @block4 udp sport @svc_udp counter drop",
 		"ip daddr @block4 ct mark and 0xffff0000 == 0x4d520000 counter drop",
 		`ip saddr 10.66.0.0/20 oifname != "uwg1" masquerade`,
+		// users never reach this host or a private network: through the proxies, or from WireGuard
+		`meta mark 0x4d580000 oifname "lo" counter reject`,
+		"meta mark 0x4d580000 ip daddr @noreach4 counter reject",
+		"meta mark 0x4d580000 ip6 daddr @noreach6 counter reject",
+		"169.254.0.0/16",
+		`iifname "uwg1" ip daddr @noreach4 counter reject`,
+		`iifname "uwg1" meta l4proto { tcp, udp } th dport != 53 counter reject`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)

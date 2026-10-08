@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -373,6 +374,108 @@ func writeFile(path string, r io.Reader, mode os.FileMode) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// currentLink is a core's "current" link: the version this host runs. Units point at it, so they
+// never change when the version does.
+func currentLink(base, name string) string { return filepath.Join(base, "cores", name, "current") }
+
+// Current is the version of a core this host runs ("" before its first install).
+func Current(base, name string) string {
+	target, err := os.Readlink(currentLink(base, name))
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(target)
+}
+
+// InUse is the binary of the version of Hysteria or realm this host runs, through the "current" link.
+// Without one, the newest version an older agent installed is adopted, or want is installed (a first
+// install). A new version in the panel's settings never changes what runs - Upgrade does, when asked.
+func InUse(ctx context.Context, base, name, want, mirror string) (string, error) {
+	bin := filepath.Join(currentLink(base, name), name)
+	if _, err := os.Stat(bin); err == nil {
+		return bin, nil
+	}
+	v := newestInstalled(base, name)
+	if v == "" {
+		if _, err := ensure(ctx, base, name, want, mirror); err != nil {
+			return "", err
+		}
+		v = want
+	}
+	if err := switchCore(base, name, v); err != nil {
+		return "", err
+	}
+	return bin, nil
+}
+
+// Upgrade installs version of Hysteria or realm and makes it the one in use; running processes keep
+// the old one until they restart. It returns the version in use before.
+func Upgrade(ctx context.Context, base, name, version, mirror string) (string, error) {
+	prev := Current(base, name)
+	if _, err := ensure(ctx, base, name, version, mirror); err != nil {
+		return prev, err
+	}
+	return prev, switchCore(base, name, version)
+}
+
+func ensure(ctx context.Context, base, name, version, mirror string) (string, error) {
+	switch name {
+	case "hysteria":
+		return EnsureHysteria(ctx, base, version, mirror)
+	case "realm":
+		return EnsureRealm(ctx, base, version, mirror)
+	}
+	return "", fmt.Errorf("unknown core %q", name)
+}
+
+// switchCore points a core's "current" link at version, atomically.
+func switchCore(base, name, version string) error {
+	link := currentLink(base, name)
+	tmp := link + ".new"
+	os.Remove(tmp)
+	if err := os.Symlink(Dir(base, name, version), tmp); err != nil {
+		return err
+	}
+	return os.Rename(tmp, link)
+}
+
+// newestInstalled is the newest version of a core with its binary in place ("" when none is).
+func newestInstalled(base, name string) string {
+	entries, _ := os.ReadDir(filepath.Join(base, "cores", name))
+	best := ""
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == "current" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(base, "cores", name, e.Name(), name)); err != nil {
+			continue
+		}
+		if best == "" || versionLess(best, e.Name()) {
+			best = e.Name()
+		}
+	}
+	return best
+}
+
+// versionLess compares dotted versions number by number ("2.9.10" comes after "2.9.6").
+func versionLess(a, b string) bool {
+	pa, pb := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(pa) && i < len(pb); i++ {
+		x, errA := strconv.Atoi(pa[i])
+		y, errB := strconv.Atoi(pb[i])
+		if errA != nil || errB != nil {
+			if pa[i] != pb[i] {
+				return pa[i] < pb[i]
+			}
+			continue
+		}
+		if x != y {
+			return x < y
+		}
+	}
+	return len(pa) < len(pb)
 }
 
 // Prune removes versions of a core other than keep.

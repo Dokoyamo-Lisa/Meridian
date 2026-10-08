@@ -417,4 +417,51 @@ CREATE TABLE certs (
 );
 CREATE INDEX certs_account ON certs(account_id);
 `,
+	// 10: protocol and user ids are never handed out again: a user's access, a proxy pass or a
+	// device's traffic that named a removed protocol (or user) must not come to mean a new one.
+	// SQLite reuses the highest id once its row is gone, so the highest removed id is kept here and
+	// new rows take their id above it (see NextID).
+	`
+CREATE TABLE id_floor (name TEXT PRIMARY KEY, last INTEGER NOT NULL);
+CREATE TRIGGER nodes_id_floor AFTER DELETE ON nodes BEGIN
+  INSERT INTO id_floor (name, last) VALUES ('nodes', old.id)
+    ON CONFLICT(name) DO UPDATE SET last = MAX(last, excluded.last);
+END;
+CREATE TRIGGER subs_id_floor AFTER DELETE ON subs BEGIN
+  INSERT INTO id_floor (name, last) VALUES ('subs', old.id)
+    ON CONFLICT(name) DO UPDATE SET last = MAX(last, excluded.last);
+END;
+`,
+	// 11: each user's usage per protocol, exact: this cycle (reset with the user's cycle) and all time.
+	// A removed protocol keeps its row (its id is never reused); traffic of a protocol removed while
+	// the server reported it is kept under -server id. The totals so far come from the daily rows;
+	// the panel fills in this cycle's once (it knows the time zone).
+	`
+CREATE TABLE sub_node_usage (
+  sub_id     INTEGER NOT NULL REFERENCES subs(id) ON DELETE CASCADE,
+  node_id    INTEGER NOT NULL,
+  server_id  INTEGER NOT NULL DEFAULT 0,
+  cycle_up   INTEGER NOT NULL DEFAULT 0,
+  cycle_down INTEGER NOT NULL DEFAULT 0,
+  total_up   INTEGER NOT NULL DEFAULT 0,
+  total_down INTEGER NOT NULL DEFAULT 0,
+  last_at    INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (sub_id, node_id)
+);
+INSERT INTO sub_node_usage (sub_id, node_id, server_id, total_up, total_down)
+  SELECT t.sub_id, t.node_id, MAX(t.server_id), SUM(t.up), SUM(t.down) FROM traffic_daily t
+  JOIN subs s ON s.id = t.sub_id GROUP BY t.sub_id, t.node_id;
+INSERT INTO settings (key, value) VALUES ('node_usage_cycle', 'pending')
+  ON CONFLICT(key) DO UPDATE SET value = 'pending';
+`,
+}
+
+// NextID is an SQL expression for the id of a new row of nodes or subs: above every id the table
+// has, or ever had (migration 10). Use it as the id value in the INSERT.
+func NextID(table string) string {
+	if table != "nodes" && table != "subs" {
+		panic("NextID: " + table)
+	}
+	return "(SELECT MAX(COALESCE((SELECT MAX(id) FROM " + table + "), 0), COALESCE((SELECT last FROM id_floor WHERE name = '" +
+		table + "'), 0)) + 1)"
 }

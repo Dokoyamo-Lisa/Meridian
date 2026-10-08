@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -8,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -181,8 +183,51 @@ type certUse struct {
 
 type certView struct {
 	*Cert
-	Uses []certUse `json:"uses"`
-	Live int       `json:"live" doc:"How many of the protocols using it serve it now"`
+	Uses      []certUse `json:"uses"`
+	Live      int       `json:"live" doc:"How many of the protocols using it serve it now"`
+	Untrusted string    `json:"untrusted,omitempty" doc:"Why apps will refuse it - it does not chain to a publicly trusted authority (links never pin a shared certificate). Empty when it does"`
+}
+
+// publicTrust says why apps would refuse a certificate chain: they check a shared certificate against
+// the public authorities their system trusts, never a pin. "" when it chains to one, or when this
+// system's authorities cannot be read.
+func publicTrust(certPEM string) string {
+	var chain []*x509.Certificate
+	rest := []byte(certPEM)
+	for {
+		var b *pem.Block
+		if b, rest = pem.Decode(rest); b == nil {
+			break
+		}
+		if c, err := x509.ParseCertificate(b.Bytes); b.Type == "CERTIFICATE" && err == nil {
+			chain = append(chain, c)
+		}
+	}
+	const notPublic = "it is not signed by a publicly trusted authority (self-signed, or your own CA), or the chain lacks its intermediate certificate: apps refuse it unless their devices trust its issuer"
+	if len(chain) == 0 {
+		return ""
+	}
+	if leaf := chain[0]; len(chain) == 1 && bytes.Equal(leaf.RawIssuer, leaf.RawSubject) &&
+		leaf.CheckSignature(leaf.SignatureAlgorithm, leaf.RawTBSCertificate, leaf.Signature) == nil {
+		return notPublic // self-signed
+	}
+	roots, err := x509.SystemCertPool()
+	if err != nil || roots == nil {
+		return ""
+	}
+	inter := x509.NewCertPool()
+	for _, c := range chain[1:] {
+		inter.AddCert(c)
+	}
+	_, err = chain[0].Verify(x509.VerifyOptions{Roots: roots, Intermediates: inter})
+	var unknown x509.UnknownAuthorityError
+	switch {
+	case err == nil:
+		return ""
+	case errors.As(err, &unknown):
+		return notPublic
+	}
+	return "apps may refuse it: " + err.Error()
 }
 
 // usesOf lists the protocols (of the certificate's account) that use a shared certificate.
@@ -221,7 +266,7 @@ func (p *Panel) viewOfCert(ctx context.Context, c *Cert) (*certView, error) {
 	if err != nil {
 		return nil, err
 	}
-	v := &certView{Cert: c, Uses: []certUse{}}
+	v := &certView{Cert: c, Uses: []certUse{}, Untrusted: publicTrust(c.CertPEM)}
 	servers := map[int64]*Server{}
 	for _, n := range nodes {
 		srv := servers[n.ServerID]
@@ -393,7 +438,8 @@ func (p *Panel) apiUpdateCert(w http.ResponseWriter, r *http.Request, a *Account
 					sni, protocolLabel(n.Kind, n.Settings), strings.Join(next.Domains, ", ")))
 			}
 		}
-		replaced = next.SHA256 != c.SHA256
+		// the whole chain counts: the same certificate with its intermediate added must reach the servers
+		replaced = next.SHA256 != c.SHA256 || next.CertPEM != c.CertPEM || next.KeyPEM != c.KeyPEM
 		c.CertPEM, c.KeyPEM, c.Domains, c.NotBefore, c.NotAfter, c.SHA256 = next.CertPEM, next.KeyPEM, next.Domains,
 			next.NotBefore, next.NotAfter, next.SHA256
 	}

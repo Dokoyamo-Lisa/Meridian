@@ -266,7 +266,7 @@ func (p *Panel) statusData(ctx context.Context) (*statusPayload, error) {
 		if s.BwLimit > 0 {
 			bw := &statusBW{Used: s.BwUsed(), Limit: s.BwLimit, ResetDay: s.BwResetDay}
 			if s.BwResetDay > 0 {
-				bw.NextReset = cycleStart(s.BwResetDay, time.Now().In(p.loc())).AddDate(0, 1, 0).Unix()
+				bw.NextReset = nextReset(s.BwResetDay, time.Now().In(p.loc())).Unix()
 			}
 			v.Bandwidth = bw
 		}
@@ -546,12 +546,14 @@ func (p *Panel) statusPageFor(r *http.Request, path string) bool {
 	return false
 }
 
+// hostOnly is the name in a Host header, without its port and without the trailing dot browsers keep
+// for "status.example.com." (which would otherwise not count as the status page's domain).
 func hostOnly(h string) string {
 	if a, err := netip.ParseAddrPort(h); err == nil {
 		return a.Addr().String()
 	}
 	if i := strings.LastIndex(h, ":"); i > 0 && !strings.Contains(h[i:], "]") {
-		return h[:i]
+		h = h[:i]
 	}
-	return h
+	return strings.TrimSuffix(strings.ToLower(h), ".")
 }

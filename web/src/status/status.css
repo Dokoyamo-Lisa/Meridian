@@ -921,8 +921,7 @@ a.btn { text-decoration: none; }
 .app-n { display: flex; flex-direction: column; min-width: 0; }
 .app-n b { font-weight: 500; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .app-n small { font-size: 11px; color: var(--ink-3); }
-.t-me tbody tr { cursor: pointer; transition: background .25s; }
-.t-me tbody tr:hover { background: var(--hover); }
+/* the users' tables only show: no row opens anything */
 tr[data-level="crit"] .dot { background: var(--crit); }
 .c-protos { white-space: normal; }
 .c-rate small { font-size: 10px; color: var(--ink-4); }
@@ -943,7 +942,7 @@ tr[data-level="crit"] .dot { background: var(--crit); }
 }
 @media (max-width: 860px) {
   .kpis[data-n="3"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .t-me th:nth-child(2), .t-me td:nth-child(2), .t-me th:nth-child(5), .t-me td:nth-child(5) { display: none; }
+  .t-me:not(.t-proto) th:nth-child(2), .t-me:not(.t-proto) td:nth-child(2), .t-me:not(.t-proto) th:nth-child(5), .t-me:not(.t-proto) td:nth-child(5) { display: none; }
 }
 
 /* the mark next to the name */

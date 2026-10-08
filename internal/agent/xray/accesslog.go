@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"meridian/internal/agent/sys"
 	"meridian/internal/proto"
 )
 
@@ -98,6 +99,25 @@ type accessTail struct {
 	f      *os.File
 	r      *bufio.Reader
 	offset int64
+	// where the first open after an agent restart goes on: where the last agent stopped (start), or,
+	// with no record of that, the end (what is there was read already)
+	start *sys.LogPos
+	atEnd bool
+}
+
+// pos is where reading stopped (or will start, before the first read).
+func (t *accessTail) pos() sys.LogPos {
+	if t.f == nil {
+		if t.start != nil {
+			return *t.start
+		}
+		return sys.LogPos{}
+	}
+	st, err := t.f.Stat()
+	if err != nil {
+		return sys.LogPos{}
+	}
+	return sys.LogPos{ID: sys.FileID(st), Off: t.offset}
 }
 
 const rotateAt = 4 << 20
@@ -111,6 +131,21 @@ func (t *accessTail) open() error {
 		return err
 	}
 	t.f, t.r, t.offset = f, bufio.NewReaderSize(f, 64<<10), 0
+	if st, err := f.Stat(); err == nil {
+		switch {
+		case t.atEnd:
+			t.offset = st.Size()
+		case t.start != nil && t.start.ID == sys.FileID(st) && t.start.Off <= st.Size():
+			t.offset = t.start.Off
+		}
+		if t.offset > 0 {
+			if _, err := f.Seek(t.offset, io.SeekStart); err != nil {
+				t.offset = 0
+			}
+			t.r.Reset(f)
+		}
+	}
+	t.start, t.atEnd = nil, false
 	return nil
 }
 

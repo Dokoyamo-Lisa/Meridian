@@ -11,10 +11,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,7 +25,9 @@ import (
 	"time"
 
 	"meridian/internal/agent/cores"
+	"meridian/internal/agent/nft"
 	"meridian/internal/agent/service"
+	"meridian/internal/agent/sys"
 	"meridian/internal/proto"
 )
 
@@ -34,6 +39,17 @@ type Engine struct {
 	RunDir  string // e.g. /run/meridian-agent
 	APIPort int
 	Events  func(kind, level, msg string)
+	// HasAddr says whether the host has an address (nil: its interfaces). An inbound that listens on
+	// an address the host does not have would stop Xray from starting at all, taking every protocol
+	// down with it: such an inbound is left out until the address is back.
+	HasAddr func(netip.Addr) bool
+	// Reserved are the agent's loopback control ports (the Xray API, Hysteria's hooks): no inbound may
+	// send strangers there (nil: APIPort and the one after it).
+	Reserved func() []int
+	// KernelGuard says whether the kernel refuses what users must not reach (nftables, see
+	// nft.DirectMark); without it, routing resolves names before the private-address rule (nil:
+	// whether nft is installed).
+	KernelGuard func() bool
 
 	mu      sync.Mutex
 	api     *API
@@ -43,6 +59,7 @@ type Engine struct {
 	lastPID int
 	desired *proto.Xray
 	logOn   bool
+	waiting bool              // settings wait for a restart (see ApplyResult.Pending)
 	aliases map[string]string // SOCKS5 / HTTP user name -> identity ("s1.n2"); those users have no email
 }
 
@@ -126,6 +143,15 @@ type rendered struct {
 	rules     any
 	rest      map[string]any // everything else; changes here need a restart
 	aliases   map[string]string
+	missing   []string // inbounds left out: they listen on an address the host does not have
+}
+
+// missingListen returns the address an inbound listens on when the host does not have it. Any
+// address, loopback, a domain or a socket path is never missing.
+func (e *Engine) missingListen(obj map[string]any) (string, bool) {
+	listen, _ := obj["listen"].(string)
+	a, gone := sys.MissingAddr(listen, e.HasAddr)
+	return a.String(), gone
 }
 
 func (e *Engine) render(d *proto.Xray, accessLog bool) (*rendered, error) {
@@ -151,10 +177,19 @@ func (e *Engine) render(d *proto.Xray, accessLog bool) (*rendered, error) {
 		"system": map[string]any{"statsInboundUplink": true, "statsInboundDownlink": true}}
 
 	var inbounds []any
+	reserved := e.reserved()
 	for _, in := range d.Inbounds {
 		var obj map[string]any
 		if err := json.Unmarshal(in.Config, &obj); err != nil {
 			return nil, fmt.Errorf("inbound %s: %w", in.Tag, err)
+		}
+		if addr, gone := e.missingListen(obj); gone {
+			r.missing = append(r.missing, fmt.Sprintf("protocol %s is left out: this server has no address %s (it comes back by itself when the address does)", in.Tag, addr))
+			continue
+		}
+		if where := strangersTo(obj, reserved); where != "" {
+			r.missing = append(r.missing, fmt.Sprintf("protocol %s is left out: it would send strangers to %s, one of the agent's own control ports - choose another port for your site", in.Tag, where))
+			continue
 		}
 		r.inbounds[in.Tag] = obj
 		cm := map[string]proto.XrayClient{}
@@ -194,6 +229,7 @@ func (e *Engine) render(d *proto.Xray, accessLog bool) (*rendered, error) {
 			}
 		}
 	}
+	e.guard(base)
 	if rt, ok := base["routing"].(map[string]any); ok {
 		r.rules = rt["rules"]
 	}
@@ -218,6 +254,107 @@ func (e *Engine) render(d *proto.Xray, accessLog bool) (*rendered, error) {
 	}
 	r.full = base
 	return r, nil
+}
+
+// reserved are the loopback ports no inbound may send strangers to.
+func (e *Engine) reserved() []int {
+	if e.Reserved != nil {
+		return e.Reserved()
+	}
+	return []int{e.APIPort, e.APIPort + 1}
+}
+
+// guard keeps users away from this host and from private networks. Every "freedom" outbound (what
+// users reach sites through) marks its connections, so the kernel refuses those that lead here or to
+// a private, link-local or metadata address - also when the user asked for a name that resolves
+// there, which the routing rule against private addresses cannot see. An outbound that sets its own
+// mark is the operator's choice and stays as written. Without nftables, routing resolves names before
+// its rules instead (one more lookup per connection), so that rule sees them.
+func (e *Engine) guard(base map[string]any) {
+	obs, _ := base["outbounds"].([]any)
+	for _, o := range obs {
+		m, ok := o.(map[string]any)
+		if !ok || m["protocol"] != "freedom" {
+			continue
+		}
+		ss, _ := m["streamSettings"].(map[string]any)
+		if ss == nil {
+			ss = map[string]any{}
+			m["streamSettings"] = ss
+		}
+		so, _ := ss["sockopt"].(map[string]any)
+		if so == nil {
+			so = map[string]any{}
+			ss["sockopt"] = so
+		}
+		if _, own := so["mark"]; !own {
+			so["mark"] = nft.DirectMark
+		}
+	}
+	kernel := nft.Available
+	if e.KernelGuard != nil {
+		kernel = e.KernelGuard
+	}
+	if rt, ok := base["routing"].(map[string]any); ok && !kernel() {
+		if ds, _ := rt["domainStrategy"].(string); ds == "" || strings.EqualFold(ds, "AsIs") {
+			rt["domainStrategy"] = "IPOnDemand"
+		}
+	}
+}
+
+// strangersTo says where an inbound sends connections that are not its users' - its REALITY site
+// and its fallbacks - when that is one of the reserved loopback ports (anything but a public
+// address on such a port counts: a name can resolve to loopback).
+func strangersTo(obj map[string]any, reserved []int) string {
+	var dests []any
+	if ss, ok := obj["streamSettings"].(map[string]any); ok {
+		if rs, ok := ss["realitySettings"].(map[string]any); ok {
+			dests = append(dests, rs["target"], rs["dest"])
+		}
+	}
+	if st, ok := obj["settings"].(map[string]any); ok {
+		if p, _ := obj["protocol"].(string); p == "dokodemo-door" || p == "tunnel" { // forwards everyone
+			if port, ok := st["port"]; ok {
+				addr, _ := st["address"].(string)
+				if addr == "" {
+					addr = "127.0.0.1"
+				}
+				dests = append(dests, net.JoinHostPort(addr, fmt.Sprint(port)))
+			}
+		}
+		if fbs, ok := st["fallbacks"].([]any); ok {
+			for _, fb := range fbs {
+				if m, ok := fb.(map[string]any); ok {
+					dests = append(dests, m["dest"])
+				}
+			}
+		}
+	}
+	for _, d := range dests {
+		host, port := "127.0.0.1", 0
+		switch v := d.(type) {
+		case float64: // a port on this host
+			port = int(v)
+		case json.Number:
+			n, _ := v.Int64()
+			port = int(n)
+		case string:
+			if n, err := strconv.Atoi(v); err == nil {
+				port = n
+			} else if h, ps, err := net.SplitHostPort(v); err == nil {
+				host = h
+				port, _ = strconv.Atoi(ps)
+			}
+		}
+		if port == 0 || !slices.Contains(reserved, port) {
+			continue
+		}
+		if a, err := netip.ParseAddr(host); err == nil && a.IsGlobalUnicast() && !a.IsPrivate() {
+			continue
+		}
+		return net.JoinHostPort(host, strconv.Itoa(port))
+	}
+	return ""
 }
 
 // userless says whether an inbound's users cannot change while it runs (SOCKS5 and HTTP keep them in
@@ -280,8 +417,18 @@ type ApplyResult struct {
 }
 
 // Apply makes the running Xray match d. version is the core version to install on first start;
-// an installed Xray is only upgraded by an explicit action.
+// an installed Xray is only upgraded by an explicit action. Inbounds on an address the host does not
+// have are left out (and reported), so the others keep running.
 func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror string, accessLog, allowRestart bool) (ApplyResult, error) {
+	var missing []string
+	res, err := e.apply(ctx, d, version, mirror, accessLog, allowRestart, &missing)
+	if len(missing) > 0 {
+		err = errors.Join(err, errors.New(strings.Join(missing, "; ")))
+	}
+	return res, err
+}
+
+func (e *Engine) apply(ctx context.Context, d *proto.Xray, version, mirror string, accessLog, allowRestart bool, missing *[]string) (ApplyResult, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.init()
@@ -303,6 +450,7 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 	if err != nil {
 		return res, err
 	}
+	*missing = next.missing
 	e.aliases = next.aliases
 	body := marshal(next.full)
 	if err := e.validate(body); err != nil {
@@ -331,12 +479,12 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 
 	// baseline: what the config file on disk says is running
 	var prev *rendered
+	var oldFull map[string]any
 	if old, err := os.ReadFile(e.configPath()); err == nil {
 		if bytes.Equal(old, body) {
 			// nothing changed on paper; still verify the live users and inbounds
 			return res, e.reconcile(ctx, next)
 		}
-		var oldFull map[string]any
 		if json.Unmarshal(old, &oldFull) == nil {
 			prev = parseFull(oldFull)
 		}
@@ -347,6 +495,7 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 	}
 
 	restPending := !same(prev.rest, next.rest)
+	e.waiting = restPending && !allowRestart
 	if restPending {
 		if allowRestart {
 			if err := e.writeConfig(body); err != nil {
@@ -361,10 +510,13 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 			return res, nil
 		}
 		res.Pending = append(res.Pending, "global Xray settings changed")
-		// on disk, the sections that wait for the restart stay as Xray runs them: a crash restart runs
-		// what ran, and the next check still sees the restart pending
-		body = marshal(withRunning(next.full, prev.rest))
 	}
+	// the routing settings Xray runs with until a restart: rules applied live go with its balancers
+	runs := next.rest
+	if restPending {
+		runs = prev.rest
+	}
+	balancers := balancersIn(runs)
 
 	var errs []string
 	note := func(err error) {
@@ -375,20 +527,39 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 
 	// outbounds before inbounds and rules, so new rules never point at a missing outbound
 	// in configuration order: re-adding "direct" (the first) before any new outbound keeps it the
-	// default one
+	// default one. Each is removed first even when the file does not list it: after a pass that
+	// failed half-way it may run already.
+	outsOK, rulesOK := true, true
 	for _, tag := range next.outOrder {
 		ob := next.outbounds[tag]
 		if old, ok := prev.outbounds[tag]; ok && same(old, ob) {
 			continue
 		}
-		if _, ok := prev.outbounds[tag]; ok {
-			note(ignoreNotFound(e.api.RemoveOutbound(ctx, tag)))
+		note(ignoreNotFound(e.api.RemoveOutbound(ctx, tag)))
+		if err := e.cli(ctx, "ado", map[string]any{"outbounds": []any{ob}}); err != nil {
+			note(err)
+			outsOK = false
 		}
-		note(e.cli(ctx, "ado", map[string]any{"outbounds": []any{ob}}))
 		res.Changed = true
 	}
 	if !same(prev.rules, next.rules) {
-		note(e.cli(ctx, "adrules", map[string]any{"routing": map[string]any{"rules": next.rules}}))
+		// Xray replaces its rules and balancers together and stops at the first rule it cannot
+		// build, so the running balancers always go along; a rule for a balancer that runs only after
+		// the restart waits for it (the old rules keep running)
+		if tag := missingBalancer(next.rules, balancers); tag != "" {
+			res.Pending = append(res.Pending, fmt.Sprintf("routing rules that use the new balancer %q", tag))
+			e.waiting = true
+			rulesOK = false
+		} else {
+			rt := map[string]any{"rules": next.rules}
+			if len(balancers) > 0 {
+				rt["balancers"] = balancers
+			}
+			if err := e.cli(ctx, "adrules", map[string]any{"routing": rt}); err != nil {
+				note(err)
+				rulesOK = false
+			}
+		}
 		res.Changed = true
 	}
 
@@ -400,6 +571,9 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 	}
 	for _, in := range d.Inbounds {
 		tag := in.Tag
+		if _, ok := next.inbounds[tag]; !ok {
+			continue // left out (its address is missing); removed above if it ran
+		}
 		old, existed := prev.inbounds[tag]
 		if !existed || !same(old, next.inbounds[tag]) {
 			if existed {
@@ -425,12 +599,25 @@ func (e *Engine) Apply(ctx context.Context, d *proto.Xray, version, mirror strin
 
 	for tag := range prev.outbounds {
 		if _, ok := next.outbounds[tag]; !ok {
-			note(ignoreNotFound(e.api.RemoveOutbound(ctx, tag)))
+			if err := ignoreNotFound(e.api.RemoveOutbound(ctx, tag)); err != nil {
+				note(err)
+				outsOK = false
+			}
 			res.Changed = true
 		}
 	}
 
-	if err := e.writeConfig(body); err != nil {
+	// on disk, what waits for the restart stays as Xray runs it (a crash restart runs what ran, and the
+	// next check still sees the restart pending), and what could not be applied live stays as it was,
+	// so the next pass tries again and keeps saying why instead of taking it as done
+	onDisk := next.full
+	if restPending {
+		onDisk = withRunning(next.full, prev.rest)
+	}
+	if !outsOK || !rulesOK {
+		onDisk = keepRunning(onDisk, oldFull, !outsOK, !rulesOK)
+	}
+	if err := e.writeConfig(marshal(onDisk)); err != nil {
 		return res, err
 	}
 	note(e.reconcile(ctx, next))
@@ -801,11 +988,40 @@ func (e *Engine) switchTo(dir string) error {
 
 // ---------------------------------------------------------------- actions
 
+// LogPos is where reading the access log stopped.
+func (e *Engine) LogPos() sys.LogPos {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.init()
+	return e.tail.pos()
+}
+
+// RestoreLog makes the first read of the access log go on from p - or, with nil (no record of where
+// the last agent stopped), from its end.
+func (e *Engine) RestoreLog(p *sys.LogPos) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.init()
+	if p == nil {
+		e.tail.atEnd = true
+		return
+	}
+	e.tail.start = p
+}
+
+// Waiting says whether settings wait for a restart.
+func (e *Engine) Waiting() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.waiting
+}
+
 // Restart restarts Xray (explicitly requested).
 func (e *Engine) Restart(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.init()
+	e.waiting = false
 	// the restart is what applies the settings that wait for one: write the desired configuration
 	if e.desired != nil {
 		next, err := e.render(e.desired, e.logOn)
@@ -825,6 +1041,61 @@ func (e *Engine) Restart(ctx context.Context) error {
 	}
 	e.waitAPI(ctx)
 	return nil
+}
+
+// balancersIn are the routing balancers of a configuration's restart-only sections (rendered.rest).
+func balancersIn(rest map[string]any) []any {
+	rt, _ := rest["routing"].(map[string]any)
+	list, _ := rt["balancers"].([]any)
+	return list
+}
+
+// missingBalancer is a balancer a rule uses that is not among balancers ("" when none is missing).
+func missingBalancer(rules any, balancers []any) string {
+	have := map[string]bool{}
+	for _, b := range balancers {
+		if m, ok := b.(map[string]any); ok {
+			tag, _ := m["tag"].(string)
+			have[tag] = true
+		}
+	}
+	list, _ := rules.([]any)
+	for _, r := range list {
+		m, _ := r.(map[string]any)
+		if tag, _ := m["balancerTag"].(string); tag != "" && !have[tag] {
+			return tag
+		}
+	}
+	return ""
+}
+
+// keepRunning puts the outbounds and/or the routing rules back as the file had them (old), so a
+// later pass applies them again.
+func keepRunning(full, old map[string]any, outbounds, rules bool) map[string]any {
+	if old == nil {
+		return full
+	}
+	out := make(map[string]any, len(full))
+	for k, v := range full {
+		out[k] = v
+	}
+	if outbounds {
+		out["outbounds"] = old["outbounds"]
+	}
+	if rules {
+		rt := map[string]any{}
+		if r, ok := full["routing"].(map[string]any); ok {
+			for k, v := range r {
+				rt[k] = v
+			}
+		}
+		delete(rt, "rules")
+		if r, ok := old["routing"].(map[string]any); ok && r["rules"] != nil {
+			rt["rules"] = r["rules"]
+		}
+		out["routing"] = rt
+	}
+	return out
 }
 
 // withRunning is the desired configuration with the sections that need a restart (everything but

@@ -92,7 +92,7 @@ type installResult struct {
 }
 
 type actionInput struct {
-	Kind string          `json:"kind" doc:"restart_xray | upgrade_xray | upgrade_agent"`
+	Kind string          `json:"kind" doc:"restart_pending | restart_xray | upgrade_xray | upgrade_hysteria | upgrade_realm | upgrade_agent"`
 	Args json.RawMessage `json:"args,omitempty"`
 }
 
@@ -174,7 +174,7 @@ var apiOps = []opDoc{
 	{Method: "POST", Path: "/api/servers/{id}/rotate-token", Tag: "Servers", Summary: "Issue a new agent token",
 		Desc: "The agent cannot reach the panel until it is reinstalled with the new command. Traffic is not affected.", Resp: installResult{}},
 	{Method: "POST", Path: "/api/servers/{id}/actions", Tag: "Servers", Summary: "Restart or upgrade",
-		Desc: "Queues an explicit maintenance action. restart_xray and upgrade_xray disconnect Xray users for a moment; upgrade_agent disconnects nobody.",
+		Desc: "Queues an explicit maintenance action. restart_pending restarts exactly what waits for a restart (the server's pending_restart) and disconnects those users for a moment; restart_xray and upgrade_xray disconnect Xray users for a moment; upgrade_hysteria and upgrade_realm switch the server to the version in Settings and restart those cores (their users reconnect); upgrade_agent disconnects nobody.",
 		Body: actionInput{}, Resp: actionRef{}, Status: 202},
 	{Method: "GET", Path: "/api/actions/{id}", Tag: "Servers", Summary: "Result of an action", Resp: actionStatus{}},
 	{Method: "GET", Path: "/api/servers/{id}/metrics", Tag: "Servers", Summary: "Load history",
@@ -283,6 +283,24 @@ var apiOps = []opDoc{
 		Desc:     "The raw image as the body: SVG, PNG, JPEG or WebP, up to 128 KB and 2048 x 2048 pixels. It replaces the built-in umbrella everywhere - top bar, sign-in, loading screens, status page, subscription pages and the browser tab. SVGs may only draw (no scripts, links or outside resources): the answer says what to remove otherwise.",
 		BodyType: "image/*", Resp: logoInfo{}},
 	{Method: "DELETE", Path: "/api/settings/logo", Tag: "Settings", Summary: "Use the built-in umbrella logo again", Resp: logoInfo{}},
+	{Method: "GET", Path: "/api/settings/notify", Tag: "Settings", Summary: "Notifications: where they go and what is sent",
+		Desc: "The bot token and the webhook come back masked - they are never shown again in full.", Resp: notifyView{}},
+	{Method: "PUT", Path: "/api/settings/notify", Tag: "Settings", Summary: "Set up notifications (Telegram, a webhook)",
+		Desc: "New events of the chosen groups are sent as they happen, in order; turning notifications on never sends the past. Omitted fields keep their value; an empty token or webhook removes it. Webhooks must be HTTPS. Nothing is ever paused by them - they only tell.",
+		Body: notifyInput{}, Resp: notifyView{}},
+	{Method: "POST", Path: "/api/settings/notify/test", Tag: "Settings", Summary: "Send a test message through every channel that is set up", Resp: notifyTestResult{}},
+	{Method: "POST", Path: "/api/settings/notify/telegram-chats", Tag: "Settings", Summary: "Chats that wrote to the bot lately",
+		Desc: "Send the bot a message (or add it to a group) first; then pick the chat from this list instead of looking up its id. The body may carry a token that is not saved yet.",
+		Resp: []telegramChat{}},
+	{Method: "GET", Path: "/api/update", Tag: "Settings", Summary: "Updates: this panel's version, the newest release, and servers with an older agent",
+		Resp: updateView{}},
+	{Method: "POST", Path: "/api/update/check", Tag: "Settings", Summary: "Look for a new release now", Resp: updateView{}},
+	{Method: "POST", Path: "/api/update/install", Tag: "Settings", Summary: "Install the newest release",
+		Desc: "The panel downloads the release, checks its signature (Meridian's release key) and checksum, backs up the database and hands it to the updater service, which checks it again and installs it. Proxies keep running; the panel restarts once. With agents (the default), every server's agent is upgraded afterwards - nobody is disconnected. Needs a panel installed with install-panel.sh.",
+		Body: updateInstallInput{}, Resp: updateView{}},
+	{Method: "POST", Path: "/api/agents/upgrade", Tag: "Servers", Summary: "Upgrade every server's agent to this panel's version",
+		Desc: "Only servers whose agent differs from the panel's are upgraded; offline ones as soon as they connect. Agents restart themselves; the proxies keep running and nobody is disconnected.",
+		Resp: agentsUpgraded{}},
 	{Method: "GET", Path: "/brand/logo", Tag: "Settings", Scope: "public", Summary: "The uploaded logo (404 while the built-in one is used)", Text: "image/*"},
 	{Method: "GET", Path: "/brand/icon", Tag: "Settings", Scope: "public", Summary: "The browser tab icon: the uploaded logo, or the built-in one", Text: "image/*"},
 	{Method: "GET", Path: "/api/openapi.json", Tag: "Settings", Summary: "This document"},
@@ -362,7 +380,10 @@ var schemaNames = map[string]string{
 	"metricPoint": "MetricPoint", "ratePoint": "RatePoint", "epView": "SubscriptionEndpoint", "subDetail": "SubscriptionDetail",
 	"nodeTotal": "ProtocolTotal", "subTraffic": "SubscriptionTraffic", "subPreview": "SubscriptionPreview", "overview": "Overview",
 	"mapPoint": "ServerPoint", "serverCounts": "ServerCounts", "sessionRow": "Session", "actionRef": "ActionRef",
-	"actionStatus": "ActionStatus", "serverDetail": "ServerDetail",
+	"actionStatus": "ActionStatus", "serverDetail": "ServerDetail", "notifyView": "Notifications", "notifyInput": "NotificationsInput",
+	"notifyTestResult": "NotificationTest", "telegramChat": "TelegramChat", "updateView": "Updates",
+	"updateInstallInput": "UpdateInput", "outdatedAgent": "OutdatedAgent", "agentsUpgraded": "AgentsUpgraded",
+	"nodeUsage": "ProtocolUsage",
 }
 
 type schemaGen struct {
@@ -491,7 +512,7 @@ func buildOpenAPI() *ordered {
 			p := map[string]any{"name": m[1], "in": "path", "required": true, "schema": map[string]any{"type": "integer"}}
 			switch m[1] {
 			case "action":
-				p["schema"] = map[string]any{"type": "string", "enum": []string{"pause", "resume", "rotate-link", "reset-keys", "reset-usage"}}
+				p["schema"] = map[string]any{"type": "string", "enum": subActions}
 			case "token":
 				p["schema"] = map[string]any{"type": "string"}
 				p["description"] = "The subscription's secret token"

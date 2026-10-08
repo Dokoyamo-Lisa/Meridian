@@ -172,6 +172,9 @@ func SingBox(eps []Endpoint, info Info) ([]byte, []string) {
 		omap{}.set("protocol", "dns").set("action", "hijack-dns"),
 		omap{}.set("ip_is_private", true).set("outbound", "direct"),
 	}
+	if len(names) == 0 { // nothing this app can use: refuse traffic rather than send it out unprotected
+		rules = append(rules, omap{}.set("network", []string{"tcp", "udp"}).set("action", "reject"))
+	}
 	route := omap{}.set("rules", rules).set("final", groupProxy).set("auto_detect_interface", true).
 		set("default_domain_resolver", "dns-direct")
 

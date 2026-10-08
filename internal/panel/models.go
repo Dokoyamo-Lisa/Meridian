@@ -28,6 +28,7 @@ type Settings struct {
 	HysteriaVersion string `json:"hysteria_version" doc:"Hysteria version new servers install"`
 	RealmVersion    string `json:"realm_version" doc:"realm version new servers install"`
 	Mirror          bool   `json:"mirror" doc:"Agents may download cores through the panel"`
+	AutoUpdate      bool   `json:"auto_update" doc:"Install new Meridian releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts"`
 
 	StatusPage   string          `json:"status_page" doc:"off | home (the site's front page is the status page: a sign-in for users, the live dashboard for you; the panel stays at /overview) | page (at /status)"`
 	StatusDomain string          `json:"status_domain" doc:"Optional domain that shows only the status page and the users' sign-in, e.g. status.example.com (point it at the panel)"`
@@ -411,14 +412,16 @@ type Sub struct {
 
 // Scope says what a subscription can connect to: whole servers (with the protocols added to them
 // later) and single protocols. Both empty means everything on all of the account's servers,
-// including ones added later.
+// including ones added later - unless None says nothing at all: what is left when every server and
+// protocol a user had was removed.
 type Scope struct {
 	Servers []int64 `json:"servers,omitempty"`
 	Nodes   []int64 `json:"protocols,omitempty"`
+	None    bool    `json:"none,omitempty"`
 }
 
 // All says whether the scope is everything.
-func (sc Scope) All() bool { return len(sc.Servers) == 0 && len(sc.Nodes) == 0 }
+func (sc Scope) All() bool { return !sc.None && len(sc.Servers) == 0 && len(sc.Nodes) == 0 }
 
 // HasNode says whether the subscription can use one protocol.
 func (sc Scope) HasNode(serverID, nodeID int64) bool {

@@ -170,4 +170,9 @@ func Clients(subURL, name string) []Client {
 	}
 }
 
-func unixDate(t int64) string { return time.Unix(t, 0).UTC().Format("2006-01-02") }
+func unixDate(t int64, zone *time.Location) string {
+	if zone == nil {
+		zone = time.UTC
+	}
+	return time.Unix(t, 0).In(zone).Format("2006-01-02")
+}

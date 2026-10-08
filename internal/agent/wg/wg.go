@@ -36,6 +36,32 @@ type Engine struct {
 	seen    map[string]int64    // iface/pubkey -> first time online this session
 	dns     map[string]*resolver
 	flows   *flowMonitor
+	adopt   bool // no saved baselines: counters met at the first collect were counted already
+}
+
+// Baseline is where each peer's counters stood at the last collect.
+func (e *Engine) Baseline() map[string][2]int64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make(map[string][2]int64, len(e.last))
+	for k, v := range e.last {
+		out[k] = v
+	}
+	return out
+}
+
+// Restore goes on from saved baselines. Without any (nil: an agent that saved none ran before), the
+// peers' counters at the first collect count as already reported - they run across agent restarts.
+func (e *Engine) Restore(last map[string][2]int64) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if last == nil {
+		e.adopt = true
+		return
+	}
+	for k, v := range last {
+		e.last[k] = v
+	}
 }
 
 func New() *Engine {
@@ -309,6 +335,8 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	var out Collected
+	adopt := e.adopt
+	e.adopt = false
 	if len(e.applied) == 0 {
 		return out
 	}
@@ -340,8 +368,11 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 				continue
 			}
 			lk := name + "/" + key
-			prev := e.last[lk]
+			prev, known := e.last[lk]
 			rx, tx := p.ReceiveBytes, p.TransmitBytes
+			if !known && adopt {
+				prev = [2]int64{rx, tx}
+			}
 			if rx < prev[0] || tx < prev[1] {
 				prev = [2]int64{} // interface was recreated
 			}

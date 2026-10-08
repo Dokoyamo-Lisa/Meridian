@@ -78,6 +78,8 @@ release: web agents
 			-o dist/release/meridian-cli-$(VERSION)-$$os-$$arch$$ext ./cmd/meridian || exit 1; \
 	done
 	cd dist/release && (command -v sha256sum >/dev/null && sha256sum *.tar.gz meridian-cli-* || shasum -a 256 *.tar.gz meridian-cli-*) > SHA256SUMS
+	# panels install a release only with this signature (internal/update); the key stays off the repo
+	$(GO) run ./cmd/meridian-sign -key "$${MERIDIAN_SIGNING_KEY:-$$HOME/.config/meridian/release-signing.key}" dist/release/SHA256SUMS
 	@echo "release files in dist/release"
 
 dev: agents

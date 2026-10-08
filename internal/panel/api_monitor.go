@@ -41,7 +41,7 @@ func (p *Panel) alerts(ctx context.Context, accountID int64, servers []*Server, 
 		}
 		if s.PendingRestart != "" {
 			out = append(out, alert{Level: "warn", Kind: "restart_pending", ServerID: s.ID,
-				Message: fmt.Sprintf("%s needs an Xray restart to apply: %s", s.Name, s.PendingRestart)})
+				Message: fmt.Sprintf("%s waits for a restart to apply: %s", s.Name, s.PendingRestart)})
 		}
 		if s.BwLimit > 0 && s.BwUsed() >= s.BwLimit*9/10 {
 			out = append(out, alert{Level: "warn", Kind: "bandwidth", ServerID: s.ID,
@@ -156,15 +156,27 @@ func (p *Panel) apiOverview(w http.ResponseWriter, r *http.Request, a *Account) 
 				res.TX += ls.Live.Sys.TXRate
 				mp.RX, mp.TX = ls.Live.Sys.RXRate, ls.Live.Sys.TXRate
 				mp.Online = liveIPs(ls.Live.Online)
+				// 30 s buckets across servers: each server counts once per bucket - the average of its
+				// samples there (several samples of one server in a bucket were added up before)
+				type acc struct{ rx, tx, n int64 }
+				mine := map[int64]*acc{}
 				for _, rp := range ls.Rates {
-					b := rp.T / 30 * 30 // align to 30 s buckets across servers
+					b := rp.T / 30 * 30
+					a := mine[b]
+					if a == nil {
+						a = &acc{}
+						mine[b] = a
+					}
+					a.rx, a.tx, a.n = a.rx+rp.RX, a.tx+rp.TX, a.n+1
+				}
+				for b, a := range mine {
 					x := rates[b]
 					if x == nil {
 						x = &ratePoint{T: b}
 						rates[b] = x
 					}
-					x.RX += rp.RX
-					x.TX += rp.TX
+					x.RX += a.rx / a.n
+					x.TX += a.tx / a.n
 				}
 			}
 		}

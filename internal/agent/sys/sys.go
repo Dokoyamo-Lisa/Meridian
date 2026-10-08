@@ -35,6 +35,34 @@ func Hello(version string, started time.Time) *proto.Hello {
 	return h
 }
 
+// HasAddr reports whether one of the host's interfaces carries a. A core bound to an address the host
+// does not have cannot start, so the agent leaves such a protocol out until the address is back.
+func HasAddr(a netip.Addr) bool {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return true // cannot tell: leave nothing out
+	}
+	for _, x := range addrs {
+		if p, err := netip.ParsePrefix(x.String()); err == nil && p.Addr().Unmap() == a.Unmap() {
+			return true
+		}
+	}
+	return false
+}
+
+// MissingAddr reports whether a protocol bound to bind cannot start here: bind is a specific address
+// (not "any", not loopback) that the host does not have. has nil means HasAddr.
+func MissingAddr(bind string, has func(netip.Addr) bool) (netip.Addr, bool) {
+	a, err := netip.ParseAddr(strings.TrimSpace(bind))
+	if err != nil || a.IsUnspecified() || a.IsLoopback() {
+		return netip.Addr{}, false
+	}
+	if has == nil {
+		has = HasAddr
+	}
+	return a, !has(a)
+}
+
 // LocalAddrs lists the addresses on the host's own interfaces that a protocol can be bound to:
 // global ones (public, or private behind a provider's NAT), not loopback, link-local, multicast or
 // the addresses of Meridian's own WireGuard interfaces.
@@ -45,7 +73,8 @@ func LocalAddrs() []string {
 	}
 	var out []string
 	for _, ifc := range ifs {
-		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 || strings.HasPrefix(ifc.Name, "uwg") {
+		// containers' bridges, VPNs and tunnels are no address the internet reaches this server at
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 || skipIface(ifc.Name) {
 			continue
 		}
 		addrs, err := ifc.Addrs()
@@ -78,6 +107,15 @@ func IPv6Off() bool {
 		return true
 	}
 	return strings.TrimSpace(readFile("/proc/sys/net/ipv6/conf/all/disable_ipv6")) == "1"
+}
+
+// BootID tells boots apart: the kernel's counters start over with each one ("" off Linux).
+func BootID() string { return strings.TrimSpace(readFile("/proc/sys/kernel/random/boot_id")) }
+
+// LogPos is where reading a log stopped: the file (its inode) and how far into it.
+type LogPos struct {
+	ID  uint64 `json:"id"`
+	Off int64  `json:"off"`
 }
 
 func readFile(p string) string {
@@ -229,9 +267,11 @@ func readCPU() cpuTimes {
 	return cpuTimes{}
 }
 
-// skipIface leaves out loopback and virtual interfaces so host traffic is counted once.
+// skipIface leaves out loopback and virtual interfaces: host traffic is counted once, and their
+// addresses (containers, VPNs, tunnels) are never offered as a protocol's own.
 func skipIface(name string) bool {
-	for _, p := range []string{"lo", "uwg", "wg", "docker", "veth", "br-", "virbr", "tun", "tap", "lxc", "cni", "flannel", "cali", "vnet", "incus"} {
+	for _, p := range []string{"lo", "uwg", "wg", "docker", "veth", "br-", "virbr", "tun", "tap", "lxc", "lxd", "cni", "flannel", "cali",
+		"vnet", "incus", "tailscale", "zt", "podman", "kube"} {
 		if strings.HasPrefix(name, p) {
 			return true
 		}

@@ -25,6 +25,10 @@ func TestSharedCerts(t *testing.T) {
 	if c["key_pem"] != nil || fmt.Sprint(c["domains"]) != "[*.example.com]" || len(fmt.Sprint(c["sha256"])) != 64 {
 		t.Fatalf("created: %v", c)
 	}
+	// links never pin a shared certificate: a self-signed one is refused by every app, and the panel says so
+	if !strings.Contains(fmt.Sprint(c["untrusted"]), "not signed by a publicly trusted authority") {
+		t.Errorf("a self-signed shared certificate should be flagged: %v", c["untrusted"])
+	}
 	if code, _, _ := b.do("POST", "/api/certs", map[string]any{"cert_pem": certPEM, "key_pem": "not a key"}); code != 400 {
 		t.Errorf("a bad key: %d", code)
 	}

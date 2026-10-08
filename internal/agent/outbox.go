@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"meridian/internal/agent/sys"
 	"meridian/internal/proto"
 )
 
@@ -23,6 +24,20 @@ type outbox struct {
 	Seq      int64        `json:"seq"`
 	Pending  *proto.Batch `json:"pending,omitempty"`
 	Accum    *proto.Batch `json:"accum,omitempty"`
+	// Baselines are where the counters and logs stood when the data above was taken from them
+	Baselines *Baselines `json:"baselines,omitempty"`
+}
+
+// Baselines are where the kernel's counters and the cores' logs stood when the data in the outbox was
+// taken from them. They are saved together with that data, so a restarted agent goes on from there:
+// it neither counts again what the kernel still holds (WireGuard peers and nftables rules outlive the
+// agent) nor loses what came since its last report.
+type Baselines struct {
+	Boot string               `json:"boot"` // counters from another boot started over
+	WG   map[string][2]int64  `json:"wg,omitempty"`
+	NFT  map[string][2]uint64 `json:"nft,omitempty"`
+	Xray sys.LogPos           `json:"xray"`
+	Hy   map[int64]sys.LogPos `json:"hy,omitempty"`
 }
 
 func loadOutbox(path string) *outbox {
@@ -56,9 +71,10 @@ const (
 
 // add merges new data into the accumulating batch.
 func (o *outbox) add(traffic []proto.UserTraffic, fwds []proto.FwdTraffic, ips []proto.IPSeen, dests []proto.DestSeen,
-	nic proto.NICDelta, events []proto.AgentEvent, geoDrops int64) {
+	nic proto.NICDelta, events []proto.AgentEvent, geoDrops int64, base *Baselines) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	o.Baselines = base
 	a := o.Accum
 	if a == nil {
 		a = &proto.Batch{From: time.Now().Unix()}

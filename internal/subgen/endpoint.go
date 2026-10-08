@@ -2,6 +2,8 @@
 // sing-box, Stash, Surge, Quantumult X, Loon, Shadowrocket / v2rayN share links and WireGuard files.
 package subgen
 
+import "time"
+
 // Kinds of endpoints.
 const (
 	KindVLESS       = "vless"
@@ -70,8 +72,8 @@ type Endpoint struct {
 	// Hysteria2
 	Obfs         string `json:"obfs,omitempty"`
 	ObfsPassword string `json:"obfs_password,omitempty"`
-	UpMbps       int    `json:"up_mbps,omitempty"`
-	DownMbps     int    `json:"down_mbps,omitempty"`
+	UpMbps       int    `json:"up_mbps,omitempty"`   // what the device may send (the server's download limit)
+	DownMbps     int    `json:"down_mbps,omitempty"` // what it may receive (the server's upload limit)
 
 	// Shadowsocks
 	Method string `json:"method,omitempty"`
@@ -100,6 +102,7 @@ type Info struct {
 	Total     int64 // 0 = unlimited
 	Expire    int64 // unix seconds, 0 = never
 	UpdateHrs int
+	Zone      *time.Location // the panel's time zone: dates shown in it (nil = UTC)
 }
 
 // transport returns the endpoint's transport, raw when unset.

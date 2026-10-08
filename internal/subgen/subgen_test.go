@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -63,6 +65,32 @@ func TestClashIsValidYAMLAndContained(t *testing.T) {
 			if !strings.Contains(name, "Tokyo") {
 				t.Errorf("name lost: %q", name)
 			}
+		}
+	}
+}
+
+// TestClashWireGuardKeys: Stash and mihomo name the pre-shared key and the keepalive differently; each
+// gets its own names (Stash dropped mihomo's, and the handshake failed without the key).
+func TestClashWireGuardKeys(t *testing.T) {
+	wg := endpoints()[3]
+	wg.WG.PresharedKey = "cHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHM="
+	for stash, want := range map[bool][]string{false: {"pre-shared-key", "persistent-keepalive", "remote-dns-resolve"},
+		true: {"preshared-key", "keepalive", "dns"}} {
+		p, why := clashProxy(wg, stash)
+		if why != "" {
+			t.Fatalf("stash=%v: %s", stash, why)
+		}
+		keys := map[string]bool{}
+		for _, kv := range p {
+			keys[kv.k] = true
+		}
+		for _, k := range want {
+			if !keys[k] {
+				t.Errorf("stash=%v: no %q in %v", stash, k, keys)
+			}
+		}
+		if stash && (keys["pre-shared-key"] || keys["persistent-keepalive"] || keys["remote-dns-resolve"]) {
+			t.Errorf("stash got mihomo's keys: %v", keys)
 		}
 	}
 }
@@ -156,6 +184,11 @@ func TestLoon(t *testing.T) {
 	if line, _ := loonLine(wg); strings.Contains(line, "ipv6") || !strings.HasSuffix(line,
 		`allowed-ips="0.0.0.0/0",endpoint=203.0.113.7:51820,preshared-key="cHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHNrcHM="}]`) {
 		t.Errorf("IPv4-only tunnel: %s", line)
+	}
+	// an IPv6 server: the endpoint is bracketed so host and port can be told apart
+	wg.Host = "2001:db8::10"
+	if line, _ := loonLine(wg); !strings.Contains(line, ",endpoint=[2001:db8::10]:51820") {
+		t.Errorf("IPv6 endpoint: %s", line)
 	}
 	// Loon's own format has no gRPC, HTTPUpgrade or XHTTP
 	for _, e := range matrix() {
@@ -429,6 +462,45 @@ func TestNeverInsecure(t *testing.T) {
 			if strings.Contains(out, bad) {
 				t.Errorf("%s turns certificate checks off (%q)", f, bad)
 			}
+		}
+	}
+}
+
+// TestNothingUsableRefuses: a profile with no protocol the app can use refuses traffic - it never
+// sends everything out directly while looking active.
+func TestNothingUsableRefuses(t *testing.T) {
+	surge, _ := Surge(nil, info(), "")
+	if !strings.Contains(string(surge), groupProxy+" = select, REJECT") || strings.Contains(string(surge), groupProxy+" = select, DIRECT") {
+		t.Errorf("Surge:\n%s", surge)
+	}
+	sb, _ := SingBox(nil, info())
+	if !strings.Contains(string(sb), `"action": "reject"`) {
+		t.Errorf("sing-box: %s", sb)
+	}
+}
+
+// TestImportSchemes: every app's one-tap import scheme is allowed on the users' page (which shows a
+// Copy button instead for any scheme it does not know).
+func TestImportSchemes(t *testing.T) {
+	src, err := os.ReadFile("../../web/src/status/dom.ts")
+	if err != nil {
+		t.Skip("no web sources here")
+	}
+	m := regexp.MustCompile(`const SCHEMES = /\^\(([^)]*)\):/`).FindSubmatch(src)
+	if m == nil {
+		t.Fatal("SCHEMES not found in dom.ts")
+	}
+	allowed := map[string]bool{}
+	for _, s := range strings.Split(string(m[1]), "|") {
+		allowed[s] = true
+	}
+	for _, c := range Clients("https://panel.example.com/s/abc", "me") {
+		if c.Import == "" {
+			continue
+		}
+		scheme, _, _ := strings.Cut(c.Import, ":")
+		if !allowed[scheme] && !(scheme == "https" && allowed["https?"]) {
+			t.Errorf("%s: the users' page does not allow %q", c.Name, scheme)
 		}
 	}
 }

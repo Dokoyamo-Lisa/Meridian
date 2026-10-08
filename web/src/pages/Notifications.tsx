@@ -1,0 +1,205 @@
+import { useState } from 'preact/hooks'
+import { dateTime, get, post, put } from '../api'
+import { Icon } from '../icons'
+import { Check, ErrorBox, Field, Loading, ask, errText, toast, useAsync } from '../ui'
+
+// Notifications: what needs a person reaches the operator outside the panel - a Telegram chat and/or
+// an HTTPS webhook. Secrets are only ever shown masked; a new value replaces the stored one.
+
+interface NotifyView {
+  telegram_token: string
+  telegram_chat: string
+  webhook_url: string
+  groups: string[]
+  active: boolean
+  last_sent_at: number
+  last_error: string
+}
+
+const groupList: [string, string, string][] = [
+  ['servers', 'Servers', 'Offline and back online, a machine that restarted, a configuration a server refused, a core that crashed.'],
+  ['users', 'Users', 'Data used up, access ended or ending within 3 days, more devices than allowed. Nobody is paused by this - only you pause.'],
+  ['certificates', 'Certificates', 'Shared certificates that expire within 14 days.'],
+  ['security', 'Sign-ins and security', 'Every sign-in and failed sign-in, password and two-factor changes, new API tokens.'],
+]
+
+export function Notifications() {
+  const cur = useAsync(() => get<NotifyView>('/api/settings/notify'))
+  const [token, setToken] = useState('')
+  const [chat, setChat] = useState<string | null>(null)
+  const [hook, setHook] = useState('')
+  const [groups, setGroups] = useState<string[] | null>(null)
+  const [chats, setChats] = useState<{ id: string; title: string }[] | null>(null)
+  const [busy, setBusy] = useState('')
+  const [err, setErr] = useState('')
+  const [test, setTest] = useState<{ telegram?: string; webhook?: string } | null>(null)
+
+  if (!cur.data) return cur.error ? <ErrorBox error={cur.error} retry={cur.reload} /> : <Loading />
+  const v = cur.data
+  const chosen = groups ?? v.groups
+  const chatValue = chat ?? v.telegram_chat
+  const changed = token.trim() !== '' || hook.trim() !== '' || chat !== null || groups !== null
+
+  const act = async (what: string, fn: () => Promise<unknown>) => {
+    setErr('')
+    setBusy(what)
+    try {
+      await fn()
+    } catch (e) {
+      setErr(errText(e))
+    } finally {
+      setBusy('')
+    }
+  }
+  const store = (body: Record<string, unknown>, done: string) =>
+    act('save', async () => {
+      cur.set(await put<NotifyView>('/api/settings/notify', body))
+      setToken('')
+      setHook('')
+      setChat(null)
+      setGroups(null)
+      setChats(null)
+      toast(done)
+    })
+  const save = (e: Event) => {
+    e.preventDefault()
+    const body: Record<string, unknown> = { telegram_chat: chatValue.trim(), groups: chosen }
+    if (token.trim()) body.telegram_token = token.trim()
+    if (hook.trim()) body.webhook_url = hook.trim()
+    void store(body, 'Notifications saved')
+  }
+  const remove = async (which: 'telegram' | 'webhook') => {
+    const ok = await ask({
+      title: which === 'telegram' ? 'Stop notifying Telegram?' : 'Remove the webhook?',
+      body: <p style="margin-top:0">{which === 'telegram' ? 'The bot token and chat are deleted from the panel.' : 'The webhook address is deleted from the panel.'}</p>,
+      confirm: 'Remove',
+      danger: true,
+    })
+    if (ok) void store(which === 'telegram' ? { telegram_token: '', telegram_chat: '' } : { webhook_url: '' }, which === 'telegram' ? 'Telegram removed' : 'Webhook removed')
+  }
+  const findChats = () =>
+    act('chats', async () => {
+      const list = await post<{ id: string; title: string }[]>('/api/settings/notify/telegram-chats', { token: token.trim() })
+      setChats(list)
+      if (list.length === 1) setChat(list[0].id)
+    })
+  const sendTest = () =>
+    act('test', async () => {
+      setTest(await post('/api/settings/notify/test'))
+      void cur.reload()
+    })
+  const toggleGroup = (g: string, on: boolean) => setGroups(on ? [...new Set([...chosen, g])] : chosen.filter((x) => x !== g))
+
+  return (
+    <form onSubmit={save}>
+      {err && <ErrorBox error={err} />}
+      <p class="muted" style="margin-top:0">
+        Problems that need you, sent as they happen - to a Telegram chat, a webhook, or both. Turning notifications on never sends the past. They only tell: nothing is paused or changed by them.
+      </p>
+      <div class="grid two">
+        <section class="panel">
+          <div class="ph">
+            <span class="pn">01</span>
+            <h2 class="h">Telegram</h2>
+            {v.telegram_token && (
+              <span class="pm">
+                <button type="button" class="btn sm ghost" onClick={() => void remove('telegram')}>
+                  Remove
+                </button>
+              </span>
+            )}
+          </div>
+          <ol class="muted" style="margin:0 0 12px;padding-left:18px;font-size:12.5px;line-height:1.55">
+            <li>
+              In Telegram, open <b>@BotFather</b>, send <span class="mono">/newbot</span> and copy the token it gives you.
+            </li>
+            <li>Send your new bot a message - or add it to a group or channel.</li>
+            <li>Paste the token here and press Find chats.</li>
+          </ol>
+          <Field label="Bot token" hint={v.telegram_token ? `Saved: ${v.telegram_token} - paste a new one to replace it.` : 'Kept secret: it is never shown again.'}>
+            <input class="input mono" type="password" autoComplete="off" value={token} placeholder={v.telegram_token || '123456789:AAE…'} onInput={(e) => setToken(e.currentTarget.value)} spellcheck={false} />
+          </Field>
+          <Field label="Chat" hint="A person's or a group's numeric id (a group's starts with -), or a public @channel.">
+            <div class="row" style="gap:8px">
+              <input class="input mono grow" value={chatValue} placeholder="-1001234567890" onInput={(e) => setChat(e.currentTarget.value)} spellcheck={false} />
+              <button type="button" class="btn" onClick={() => void findChats()} disabled={busy !== '' || (!token.trim() && !v.telegram_token)}>
+                {busy === 'chats' ? <span class="spin" /> : 'Find chats'}
+              </button>
+            </div>
+          </Field>
+          {chats && (
+            <div class="chat-pick">
+              {chats.length === 0 ? (
+                <p class="muted" style="margin:0">Nobody wrote to the bot yet - send it a message, then press Find chats again.</p>
+              ) : (
+                chats.map((c) => (
+                  <button type="button" class={'btn sm' + (chatValue === c.id ? ' primary' : '')} onClick={() => setChat(c.id)}>
+                    {c.title || c.id} <span class="faint mono">{c.id}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </section>
+        <section class="panel">
+          <div class="ph">
+            <span class="pn">02</span>
+            <h2 class="h">Webhook</h2>
+            {v.webhook_url && (
+              <span class="pm">
+                <button type="button" class="btn sm ghost" onClick={() => void remove('webhook')}>
+                  Remove
+                </button>
+              </span>
+            )}
+          </div>
+          <p class="muted" style="margin-top:0;font-size:12.5px">
+            Slack, Discord and Mattermost incoming webhooks work as they are. Anything else receives JSON: <span class="mono">text</span>, and <span class="mono">events</span> with each event's time, level, kind and message. HTTPS only.
+          </p>
+          <Field label="Address" hint={v.webhook_url ? `Saved: ${v.webhook_url} - paste a new one to replace it.` : 'Kept secret: it is never shown again in full.'}>
+            <input class="input mono" type="url" autoComplete="off" value={hook} placeholder={v.webhook_url || 'https://hooks.slack.com/services/…'} onInput={(e) => setHook(e.currentTarget.value)} spellcheck={false} />
+          </Field>
+        </section>
+      </div>
+      <section class="panel">
+        <div class="ph">
+          <span class="pn">03</span>
+          <h2 class="h">What is sent</h2>
+        </div>
+        {groupList.map(([g, label, hint]) => (
+          <Check checked={chosen.includes(g)} onChange={(on) => toggleGroup(g, on)} label={label} hint={hint} />
+        ))}
+      </section>
+      <div class="row wrap" style="gap:10px;align-items:center;margin-top:4px">
+        <button class="btn primary" disabled={busy !== '' || !changed}>
+          {busy === 'save' ? <span class="spin" /> : 'Save'}
+        </button>
+        <button type="button" class="btn" onClick={() => void sendTest()} disabled={busy !== '' || !v.active || changed} title={changed ? 'Save first' : !v.active ? 'Set up Telegram or a webhook first' : undefined}>
+          {busy === 'test' ? <span class="spin" /> : <Icon name="zap" size="sm" />}
+          Send a test message
+        </button>
+        <span class="grow" />
+        <span class="faint" style="font-size:12px">
+          {v.last_error ? <span class="crit-ink">Last attempt failed: {v.last_error}</span> : v.last_sent_at ? `Last sent ${dateTime(v.last_sent_at)}` : v.active ? 'Nothing sent yet' : 'Off'}
+        </span>
+      </div>
+      {test && (
+        <div class="callout" style="margin-top:12px">
+          <Icon name="info" size="sm" />
+          <div>
+            {test.telegram !== undefined && (
+              <div>
+                Telegram: <b class={test.telegram === 'ok' ? 'good-ink' : 'crit-ink'}>{test.telegram === 'ok' ? 'sent - check the chat' : test.telegram}</b>
+              </div>
+            )}
+            {test.webhook !== undefined && (
+              <div>
+                Webhook: <b class={test.webhook === 'ok' ? 'good-ink' : 'crit-ink'}>{test.webhook === 'ok' ? 'delivered' : test.webhook}</b>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </form>
+  )
+}

@@ -43,6 +43,20 @@ type WGNat struct {
 // WGMark marks connections from WireGuard clients so the agent can read just those from conntrack.
 const WGMark = 0x4d570000
 
+// DirectMark marks the sockets of the outbounds users reach the internet through (Xray's "freedom"
+// outbounds). The kernel refuses such connections to this host itself and to anything that is not the
+// public internet - loopback (the Xray API), private and link-local networks, cloud metadata - whether
+// the user asked for an address or for a name that resolves there.
+const DirectMark = 0x4d580000
+
+// noReach4 and noReach6 are what users may never reach through the server (with the host's own
+// addresses, which are refused by interface: they go out through "lo").
+var (
+	noReach4 = []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
+		"192.0.0.0/24", "192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/3"}
+	noReach6 = []string{"::/127", "fc00::/7", "fe80::/10", "ff00::/8"}
+)
+
 // Spec is everything the table should contain.
 type Spec struct {
 	Forwards []proto.Forward
@@ -130,6 +144,32 @@ type Engine struct {
 	resolved   map[string][]netip.Addr
 	resolvedAt time.Time
 	geoDrops   int64 // packets the country rule dropped, not yet collected
+	adopt      bool  // no saved baselines: counters met at the first read were counted already
+}
+
+// Baseline is where each counter stood at the last read.
+func (e *Engine) Baseline() map[string][2]uint64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make(map[string][2]uint64, len(e.last))
+	for k, v := range e.last {
+		out[k] = v
+	}
+	return out
+}
+
+// Restore goes on from saved baselines. Without any (nil), the counters at the first read count as
+// already reported: the table runs across agent restarts.
+func (e *Engine) Restore(last map[string][2]uint64) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if last == nil {
+		e.adopt = true
+		return
+	}
+	for k, v := range last {
+		e.last[k] = v
+	}
 }
 
 // TakeGeoDrops returns the packets the country rule dropped since the last call.
@@ -168,7 +208,7 @@ func (e *Engine) Apply(spec Spec) error {
 			e.readCounters()
 			run("delete table inet " + Table + "\n")
 			e.applied = ""
-			e.last = map[string][2]uint64{}
+			e.last, e.adopt = map[string][2]uint64{}, false // the next table counts from zero
 		}
 		return nil
 	}
@@ -188,7 +228,7 @@ func (e *Engine) Apply(spec Spec) error {
 		return err
 	}
 	e.applied = text
-	e.last = map[string][2]uint64{}
+	e.last, e.adopt = map[string][2]uint64{}, false // a new table counts from zero
 	ensureForwardAccept(spec)
 	return nil
 }
@@ -319,6 +359,8 @@ func (e *Engine) render(spec Spec) string {
 	w("  set block6 { type ipv6_addr; flags interval; auto-merge;%s }", elems(blk6))
 	w("  set svc_tcp { type inet_service;%s }", elemsInt(tcp))
 	w("  set svc_udp { type inet_service;%s }", elemsInt(udp))
+	w("  set noreach4 { type ipv4_addr; flags interval;%s }", elems(append([]string{}, noReach4...)))
+	w("  set noreach6 { type ipv6_addr; flags interval;%s }", elems(append([]string{}, noReach6...)))
 	if spec.Geo != nil {
 		v4, v6, ex4, ex6 := spec.Geo.clean()
 		w("  set geo4 { type ipv4_addr; flags interval; auto-merge;%s }", bigElems(v4))
@@ -451,6 +493,9 @@ func (e *Engine) render(spec Spec) string {
 		w("    ct mark 0x%08x accept", mark)
 	}
 	for _, g := range spec.WG {
+		// WireGuard clients reach the internet, never the provider's network, metadata or each other
+		w("    iifname %q ip daddr @noreach4 counter reject", g.Iface)
+		w("    iifname %q ip6 daddr @noreach6 counter reject", g.Iface)
 		w("    iifname %q ct state new ct mark set 0x%08x", g.Iface, WGMark+uint32(g.NodeID&0xffff))
 		w("    iifname %q accept", g.Iface)
 		w("    oifname %q ct state established,related accept", g.Iface)
@@ -464,6 +509,8 @@ func (e *Engine) render(spec Spec) string {
 		if g.Subnet4 != "" { // the logging DNS resolver answers WireGuard clients only
 			w("    ip daddr %s meta l4proto { tcp, udp } th dport 53 iifname != %q drop", g.Subnet4, g.Iface)
 		}
+		// ...and is all of this host they may use: none of its other services
+		w("    iifname %q meta l4proto { tcp, udp } th dport != 53 counter reject", g.Iface)
 	}
 	for _, f := range spec.Forwards {
 		if f.Engine != "realm" {
@@ -482,6 +529,10 @@ func (e *Engine) render(spec Spec) string {
 	if local := uniqPorts(spec.LocalOnly); len(local) > 0 {
 		w("    oifname \"lo\" tcp dport { %s } meta skuid != 0 counter reject with tcp reset", joinInts(local))
 	}
+	// what users ask the proxies for never reaches this host or a private network (see DirectMark)
+	w("    meta mark 0x%08x oifname \"lo\" counter reject", DirectMark)
+	w("    meta mark 0x%08x ip daddr @noreach4 counter reject", DirectMark)
+	w("    meta mark 0x%08x ip6 daddr @noreach6 counter reject", DirectMark)
 	for _, f := range spec.Forwards {
 		if f.Engine != "realm" {
 			continue
@@ -597,8 +648,14 @@ func (e *Engine) readCounters() {
 			}
 		}
 	}
+	adopt := e.adopt
+	e.adopt = false
 	for key, cur := range sums {
-		prev := e.last[key]
+		prev, known := e.last[key]
+		if !known && adopt {
+			e.last[key] = cur
+			continue
+		}
 		if cur[0] < prev[0] || cur[1] < prev[1] {
 			prev = [2]uint64{} // counters were reset
 		}

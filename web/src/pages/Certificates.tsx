@@ -101,6 +101,14 @@ function CertCard(props: { cert: Cert; onEdit: () => void; onChanged: () => void
           Remove
         </button>
       </div>
+      {c.untrusted && (
+        <div class="callout warn" style="margin:10px 0 0">
+          <Icon name="alert" size="sm" />
+          <div>
+            <b>Apps will refuse this certificate:</b> {c.untrusted}. Links never pin a shared certificate - use one from a public authority (Let's Encrypt, ZeroSSL, …) with its full chain.
+          </div>
+        </div>
+      )}
       {c.uses.length > 0 && (
         <table class="table" style="margin-top:8px">
           <tbody>
@@ -124,7 +132,7 @@ function CertCard(props: { cert: Cert; onEdit: () => void; onChanged: () => void
           </tbody>
         </table>
       )}
-      <div class="faint mono" style="font-size:10.5px;margin-top:6px" title="SHA-256 of the certificate: what servers report holding and serving">
+      <div class="faint mono" style="font-size:10.5px;margin-top:6px;overflow-wrap:anywhere" title="SHA-256 of the certificate: what servers report holding and serving">
         {c.sha256}
       </div>
     </div>

@@ -2,39 +2,88 @@ import { useEffect, useMemo, useState } from 'preact/hooks'
 import { Client, DayTraffic, DestRow, Endpoint, PanelEvent, IPRow, Server, User, bytes, date, del, get, patch, pct, plural, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
-import {
-  Ago,
-  BarChart,
-  Code,
-  CopyButton,
-  Crumb,
-  Empty,
-  ErrorBox,
-  Loading,
-  Menu,
-  Meter,
-  Modal,
-  PageHead,
-  QR,
-  Search,
-  Seg,
-  Tabs,
-  ask,
-  copyText,
-  errText,
-  run,
-  toast,
-  useAsync,
-  usePoll,
-} from '../ui'
+import { Ago, BarChart, Code, CopyButton, Crumb, Empty, ErrorBox, Loading, Menu, Meter, Modal, PageHead, QR, Search, Seg, Tabs, ask, copyText, run, toast, toastError, useAsync, usePoll } from '../ui'
 import { BlockIPModal, DestTable, EventList, IPTable, Where } from './Monitor'
 import { NewUsers, UserForm, UserStatus } from './Users'
 import { userURL } from '../session'
+
+interface ProtocolUsage {
+  node_id: number
+  server_id: number
+  server: string
+  protocol: string
+  removed: boolean
+  cycle_up: number
+  cycle_down: number
+  total_up: number
+  total_down: number
+  last_at: number
+}
 
 interface UserDetail {
   user: User
   endpoints: (Endpoint & { node_id?: number })[]
   clients: Client[]
+  usage: ProtocolUsage[] | null
+}
+
+// UsageByProtocol is the user's usage per protocol: this cycle (which the quota counts) and all time.
+function UsageByProtocol(props: { usage: ProtocolUsage[]; cycle: number }) {
+  const [all, setAll] = useState(false)
+  if (props.usage.length === 0) return null
+  const shown = all ? props.usage : props.usage.slice(0, 6)
+  return (
+    <section class="panel">
+      <div class="ph">
+        <span class="pn">01</span>
+        <h2 class="h">Usage by protocol</h2>
+        <span class="pm">exact, as each server counted it</span>
+      </div>
+      <div class="table-wrap">
+        <table class="t">
+          <thead>
+            <tr>
+              <th>Protocol</th>
+              <th class="right">This cycle</th>
+              <th class="right hide-sm">Share</th>
+              <th class="right">All time</th>
+              <th class="right hide-sm">Last used</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((u) => {
+              const cyc = u.cycle_up + u.cycle_down
+              return (
+                <tr>
+                  <td>
+                    <span class="cell-main">{u.protocol}</span>
+                    <div class="cell-sub">
+                      {u.server_id > 0 && !u.removed ? <a href={`/servers/${u.server_id}`}>{u.server}</a> : u.server}
+                      {u.removed && ' · removed'}
+                    </div>
+                  </td>
+                  <td class="right">
+                    {bytes(cyc)}
+                    <div class="cell-sub">
+                      ↓ {bytes(u.cycle_down)} · ↑ {bytes(u.cycle_up)}
+                    </div>
+                  </td>
+                  <td class="right muted hide-sm">{props.cycle > 0 ? Math.round((cyc * 100) / props.cycle) : 0}%</td>
+                  <td class="right">{bytes(u.total_up + u.total_down)}</td>
+                  <td class="right muted hide-sm">{u.last_at ? <Ago ts={u.last_at} /> : '—'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      {props.usage.length > 6 && (
+        <button type="button" class="linkish" style="margin-top:10px" onClick={() => setAll(!all)}>
+          {all ? 'Show the most used only' : `Show all ${props.usage.length} protocols`}
+        </button>
+      )}
+    </section>
+  )
 }
 
 type Tab = 'online' | 'ips' | 'dests' | 'traffic' | 'endpoints' | 'activity' | 'preview'
@@ -204,9 +253,11 @@ export function UserPage(props: { id: number }) {
         </div>
       </div>
 
+      <UsageByProtocol usage={res.data.usage || []} cycle={used} />
+
       <section class="panel">
         <div class="ph">
-          <span class="pn">01</span>
+          <span class="pn">02</span>
           <h2 class="h">Link</h2>
           <span class="pm">one link - every app picks its own format</span>
         </div>
@@ -265,9 +316,10 @@ export function UserPage(props: { id: number }) {
         <UserForm
           user={sub}
           onClose={() => setEditing(false)}
-          onSaved={() => {
+          onSaved={(list) => {
             setEditing(false)
             void res.reload()
+            if (list[0]?.password) setShown(list[0]) // a sign-in made from the name: its password, once
           }}
         />
       )}
@@ -583,7 +635,7 @@ function SignIn(props: { user: User; onChanged: () => void; onPassword: (u: User
       props.onPassword(await post<User>(`/api/users/${u.id}/new-password`))
       props.onChanged()
     } catch (e) {
-      toast(errText(e))
+      toastError(e)
     } finally {
       setBusy(false)
     }
@@ -595,7 +647,7 @@ function SignIn(props: { user: User; onChanged: () => void; onPassword: (u: User
   return (
     <section class="panel">
       <div class="ph">
-        <span class="pn">02</span>
+        <span class="pn">03</span>
         <h2 class="h">Their own page</h2>
         <span class="pm">usage per server, devices and the link</span>
       </div>

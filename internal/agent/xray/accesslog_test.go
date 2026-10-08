@@ -1,6 +1,9 @@
 package xray
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestParseAccess(t *testing.T) {
 	cases := []struct {
@@ -58,5 +61,43 @@ func TestAccessIdentity(t *testing.T) {
 	}
 	if len(g.Dests) != 3 {
 		t.Errorf("dests %v", g.Dests)
+	}
+}
+
+// TestTailAcrossRestarts: the access log is read on from where the last agent stopped (the same file
+// only); with no record, from its end.
+func TestTailAcrossRestarts(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/xray-access.log"
+	os.WriteFile(path, []byte("one\ntwo\n"), 0o600)
+	read := func(tl *accessTail) []string {
+		var got []string
+		tl.read(func(l string) { got = append(got, l) })
+		return got
+	}
+	first := &accessTail{path: path, atEnd: true}
+	if got := read(first); len(got) != 0 {
+		t.Fatalf("read again: %v", got)
+	}
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	f.WriteString("three\n")
+	f.Close()
+	if got := read(first); len(got) != 1 || got[0] != "three" {
+		t.Fatalf("new line: %v", got)
+	}
+	pos := first.pos()
+	f, _ = os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	f.WriteString("four\n")
+	f.Close()
+	next := &accessTail{path: path, start: &pos}
+	if got := read(next); len(got) != 1 || got[0] != "four" {
+		t.Fatalf("after a restart: %v", got)
+	}
+	// another file (the machine restarted): from its start
+	os.Remove(path)
+	os.WriteFile(path, []byte("fresh\n"), 0o600)
+	again := &accessTail{path: path, start: &pos}
+	if got := read(again); len(got) != 1 || got[0] != "fresh" {
+		t.Fatalf("a new file: %v", got)
 	}
 }

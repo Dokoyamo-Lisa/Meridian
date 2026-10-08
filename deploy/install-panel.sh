@@ -40,10 +40,11 @@ LIB=/usr/local/lib/meridian
 DATA=/var/lib/meridian
 ETC=/etc/meridian
 UNIT=/etc/systemd/system/meridian.service
+UPDATER=/etc/systemd/system/meridian-update
 
 if [ "$ACTION" = "uninstall" ]; then
-  systemctl disable --now meridian 2>/dev/null || true
-  rm -f "$UNIT" "$BIN"
+  systemctl disable --now meridian meridian-update.path 2>/dev/null || true
+  rm -f "$UNIT" "$UPDATER.path" "$UPDATER.service" "$BIN"
   rm -rf "$LIB"
   systemctl daemon-reload
   say "Meridian panel removed. Its data is still in $DATA and $ETC - delete them yourself if you no longer need them."
@@ -150,10 +151,37 @@ UMask=0077
 WantedBy=multi-user.target
 EOF
 
+# The updater: when the panel leaves a release it downloaded and checked in $DATA/update, root checks
+# it again (its signature against the key built into the installed binary, its checksum, that it is
+# newer) and installs it with that release's own install-panel.sh --upgrade (Settings > Updates).
+cat > "$UPDATER.path" <<'UNIT_EOF'
+[Unit]
+Description=Meridian panel updates (starts the updater when the panel asks for one)
+
+[Path]
+PathExists=/var/lib/meridian/update/request.json
+Unit=meridian-update.service
+
+[Install]
+WantedBy=multi-user.target
+UNIT_EOF
+cat > "$UPDATER.service" <<'UNIT_EOF'
+[Unit]
+Description=Meridian panel update (installs a signed release the panel downloaded)
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/meridian/meridian.env
+ExecStart=/usr/local/bin/meridian update-apply
+TimeoutStartSec=15min
+PrivateTmp=true
+UNIT_EOF
+
 systemctl daemon-reload
+systemctl enable --now meridian-update.path >/dev/null 2>&1 || die "could not start the updater (meridian-update.path)"
 if [ "$ACTION" = "upgrade" ]; then
   systemctl restart meridian
-  say "Meridian upgraded. Servers keep running; upgrade their agents from each server page when convenient."
+  say "Meridian upgraded. Servers keep running; upgrade their agents in Settings > Updates (Upgrade all agents) when convenient."
   exit 0
 fi
 if systemctl is-active --quiet meridian; then

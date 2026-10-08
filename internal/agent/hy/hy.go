@@ -8,15 +8,19 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,6 +31,7 @@ import (
 
 	"meridian/internal/agent/cores"
 	"meridian/internal/agent/service"
+	"meridian/internal/agent/sys"
 	"meridian/internal/proto"
 )
 
@@ -40,6 +45,7 @@ type Engine struct {
 	RunDir   string
 	AuthPort int
 	Events   func(kind, level, msg string)
+	HasAddr  func(netip.Addr) bool // nil: the host's interfaces (see sys.MissingAddr)
 
 	mu      sync.Mutex
 	nodes   map[int64]proto.HyNode
@@ -51,6 +57,36 @@ type Engine struct {
 	srv     *http.Server
 	lastPID map[int64]int
 	logOff  map[int64]int64
+	logID   map[int64]uint64 // the request log each offset is in (its inode)
+	pending map[int64]bool   // nodes whose new configuration waits for a restart (see inputKey)
+	// no record of where the last agent stopped reading: the logs as they are were read already
+	adoptLogs bool
+}
+
+// LogPos is where reading each node's request log stopped.
+func (e *Engine) LogPos() map[int64]sys.LogPos {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := map[int64]sys.LogPos{}
+	for id, off := range e.logOff {
+		out[id] = sys.LogPos{ID: e.logID[id], Off: off}
+	}
+	return out
+}
+
+// RestoreLogs makes reading go on where the last agent stopped - or, with nil (no record), at the end
+// of each log as it is now.
+func (e *Engine) RestoreLogs(pos map[int64]sys.LogPos) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.init()
+	if pos == nil {
+		e.adoptLogs = true
+		return
+	}
+	for id, p := range pos {
+		e.logOff[id], e.logID[id] = p.Off, p.ID
+	}
 }
 
 type destKey struct {
@@ -80,10 +116,18 @@ func (e *Engine) init() {
 		e.lastPID = map[int64]int{}
 		e.ports = map[int64]portInfo{}
 		e.logOff = map[int64]int64{}
+		e.logID = map[int64]uint64{}
+		e.pending = map[int64]bool{}
 		if b, err := os.ReadFile(filepath.Join(e.ConfDir, "ports.json")); err == nil {
 			_ = json.Unmarshal(b, &e.ports)
 		}
 	}
+}
+
+// reserved are the loopback control ports nothing may send strangers to: the Xray API (one below the
+// auth hook), the auth hook and the stats APIs. The caller holds no lock.
+func (e *Engine) reserved() []int {
+	return append([]int{e.AuthPort - 1}, e.LocalPorts()...)
 }
 
 // LocalPorts are the loopback ports this engine serves or talks to (user auth, stats APIs). The
@@ -174,6 +218,83 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
+// privateRejects keep Hysteria2 users away from this host's loopback services and from private,
+// link-local and metadata addresses. They come first whatever a protocol's own acl says: Hysteria
+// resolves a name before it matches the rules and then dials the address it matched, so a name that
+// leads there is refused too.
+var privateRejects = []string{"reject(0.0.0.0/8)", "reject(127.0.0.0/8)", "reject(10.0.0.0/8)", "reject(172.16.0.0/12)",
+	"reject(192.168.0.0/16)", "reject(169.254.0.0/16)", "reject(100.64.0.0/10)", "reject(224.0.0.0/3)",
+	"reject(::/127)", "reject(fc00::/7)", "reject(fe80::/10)", "reject(ff00::/8)"}
+
+// guardMasquerade refuses a masquerade that hands strangers to one of the agent's loopback control
+// ports (anything but a public address on such a port counts: a name can resolve to loopback).
+func guardMasquerade(cfg map[string]any, reserved []int) error {
+	m, _ := cfg["masquerade"].(map[string]any)
+	px, _ := m["proxy"].(map[string]any)
+	raw, _ := px["url"].(string)
+	if raw == "" {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("its masquerade address %q cannot be read", raw)
+	}
+	port := u.Port()
+	if port == "" {
+		port = map[string]string{"https": "443"}[u.Scheme]
+		if port == "" {
+			port = "80"
+		}
+	}
+	pn, _ := strconv.Atoi(port)
+	if !slices.Contains(reserved, pn) {
+		return nil
+	}
+	if a, err := netip.ParseAddr(strings.Trim(u.Hostname(), "[]")); err == nil && a.IsGlobalUnicast() && !a.IsPrivate() {
+		return nil
+	}
+	return fmt.Errorf("its masquerade would send strangers to %s, one of the agent's own control ports - choose another address", u.Host)
+}
+
+// guardACL puts the private-address rejects in front of the rules a configuration ends up with: the
+// agent's own (everything else direct), or the protocol's own list. A rules file cannot be checked,
+// so it is refused.
+func guardACL(cfg map[string]any) error {
+	acl, _ := cfg["acl"].(map[string]any)
+	if acl == nil {
+		acl = map[string]any{}
+	}
+	if _, ok := acl["file"]; ok {
+		return fmt.Errorf("its own acl.file cannot be used - write the rules under acl.inline")
+	}
+	var rules []any
+	switch l := acl["inline"].(type) {
+	case []any:
+		rules = l
+	case []string:
+		for _, r := range l {
+			rules = append(rules, r)
+		}
+	}
+	if len(rules) == 0 {
+		rules = []any{"direct(all)"}
+	}
+	out := make([]any, 0, len(privateRejects)+len(rules))
+	have := map[string]bool{}
+	for _, r := range privateRejects {
+		out = append(out, r)
+		have[r] = true
+	}
+	for _, r := range rules {
+		if s, ok := r.(string); !ok || !have[strings.ReplaceAll(s, " ", "")] {
+			out = append(out, r)
+		}
+	}
+	acl["inline"] = out
+	cfg["acl"] = acl
+	return nil
+}
+
 func (e *Engine) render(n proto.HyNode, pi portInfo) ([]byte, error) {
 	dir := e.ConfDir
 	// the node's own address: it listens there and its traffic leaves from there
@@ -200,10 +321,6 @@ func (e *Engine) render(n proto.HyNode, pi portInfo) ([]byte, error) {
 		"trafficStats": map[string]any{"listen": "127.0.0.1:" + strconv.Itoa(pi.Port), "secret": pi.Secret},
 		"sniff":        map[string]any{"enable": true, "timeout": "2s"},
 		"outbounds":    []any{map[string]any{"name": "direct", "type": "direct", "direct": direct}},
-		"acl": map[string]any{"inline": []string{
-			"reject(127.0.0.0/8)", "reject(10.0.0.0/8)", "reject(172.16.0.0/12)", "reject(192.168.0.0/16)",
-			"reject(169.254.0.0/16)", "reject(100.64.0.0/10)", "reject(fc00::/7)", "reject(fe80::/10)",
-			"reject(::1/128)", "direct(all)"}},
 	}
 	if n.ObfsPassword != "" {
 		cfg["obfs"] = map[string]any{"type": "salamander", "salamander": map[string]any{"password": n.ObfsPassword}}
@@ -228,6 +345,12 @@ func (e *Engine) render(n proto.HyNode, pi portInfo) ([]byte, error) {
 			cfg[k] = mergePatch(cfg[k], v)
 		}
 	}
+	if err := guardACL(cfg); err != nil {
+		return nil, fmt.Errorf("protocol n%d: %w", n.NodeID, err)
+	}
+	if err := guardMasquerade(cfg, e.reserved()); err != nil {
+		return nil, fmt.Errorf("protocol n%d: %w", n.NodeID, err)
+	}
 	var b bytes.Buffer
 	enc := yaml.NewEncoder(&b)
 	enc.SetIndent(2)
@@ -235,6 +358,103 @@ func (e *Engine) render(n proto.HyNode, pi portInfo) ([]byte, error) {
 		return nil, err
 	}
 	return b.Bytes(), nil
+}
+
+// inputKey is what a node's files are made from, its users aside (they change live); the key last
+// seen is kept next to them. When the files would come out different although the key is the same,
+// nothing was asked for: this agent writes the configuration differently (it was upgraded), and the
+// change waits for a restart someone confirms instead of dropping every device at the upgrade.
+func inputKey(n proto.HyNode, pi portInfo, authPort int) string {
+	n.Users = nil
+	b, _ := json.Marshal(struct {
+		Node proto.HyNode
+		Port portInfo
+		Auth int
+	}{n, pi, authPort})
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+func (e *Engine) keyPath(id int64) string { return filepath.Join(e.ConfDir, fmt.Sprintf("%d.in", id)) }
+
+// files are a node's configuration, certificate and key as they should be on disk.
+func (e *Engine) files(n proto.HyNode, body []byte) map[string][]byte {
+	return map[string][]byte{
+		filepath.Join(e.ConfDir, fmt.Sprintf("%d.crt", n.NodeID)):  []byte(n.CertPEM),
+		filepath.Join(e.ConfDir, fmt.Sprintf("%d.key", n.NodeID)):  []byte(n.KeyPEM),
+		filepath.Join(e.ConfDir, fmt.Sprintf("%d.yaml", n.NodeID)): body,
+	}
+}
+
+// write puts a node's files in place, and the key of what they were made from.
+func (e *Engine) write(n proto.HyNode, files map[string][]byte, key string) []string {
+	var errs []string
+	for path, content := range files {
+		if old, err := os.ReadFile(path); err != nil || !bytes.Equal(old, content) {
+			if err := os.WriteFile(path, content, 0o600); err != nil {
+				errs = append(errs, err.Error())
+			}
+		}
+	}
+	if err := os.WriteFile(e.keyPath(n.NodeID), []byte(key), 0o600); err != nil {
+		errs = append(errs, err.Error())
+	}
+	return errs
+}
+
+// Pending lists the nodes whose configuration waits for a restart.
+func (e *Engine) Pending() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var ids []int64
+	for id := range e.pending {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = fmt.Sprintf("Hysteria2 protocol n%d: a safer configuration from the upgraded agent", id)
+	}
+	return out
+}
+
+// RestartPending writes the configuration of the nodes that wait for a restart and restarts them:
+// their devices reconnect by themselves. It says how many restarted.
+func (e *Engine) RestartPending(ctx context.Context) (int, error) {
+	e.mu.Lock()
+	e.init()
+	var nodes []proto.HyNode
+	for id := range e.pending {
+		if n, ok := e.nodes[id]; ok {
+			nodes = append(nodes, n)
+		}
+	}
+	e.mu.Unlock()
+	var errs []string
+	done := 0
+	for _, n := range nodes {
+		e.mu.Lock()
+		pi := e.ports[n.NodeID]
+		e.mu.Unlock()
+		body, err := e.render(n, pi)
+		if err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+		errs = append(errs, e.write(n, e.files(n, body), inputKey(n, pi, e.AuthPort))...)
+		if err := service.Restart(unitName(n.NodeID)); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+		e.mu.Lock()
+		delete(e.pending, n.NodeID)
+		e.mu.Unlock()
+		done++
+	}
+	if len(errs) > 0 {
+		return done, errors.New(strings.Join(errs, "; "))
+	}
+	return done, nil
 }
 
 // Apply runs exactly the given nodes. User changes only update the in-memory table the auth
@@ -249,7 +469,7 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 		if err := os.MkdirAll(e.ConfDir, 0o700); err != nil {
 			return err
 		}
-		bin, err := cores.EnsureHysteria(ctx, e.Base, version, mirror)
+		bin, err := cores.InUse(ctx, e.Base, "hysteria", version, mirror)
 		if err != nil {
 			return fmt.Errorf("install Hysteria %s: %w", version, err)
 		}
@@ -299,6 +519,13 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 	e.mu.Unlock()
 
 	for id, n := range want {
+		if a, gone := sys.MissingAddr(n.Bind, e.HasAddr); gone {
+			// bound to an address this server does not have: it could not start, so it waits (stopped)
+			// and starts by itself once the address is back
+			_ = service.DisableNow(unitName(id))
+			errs = append(errs, fmt.Sprintf("protocol n%d is left out: this server has no address %s (it comes back by itself when the address does)", id, a))
+			continue
+		}
 		e.mu.Lock()
 		pi, ok := e.ports[id]
 		if !ok || pi.Port == 0 {
@@ -312,31 +539,47 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 			errs = append(errs, err.Error())
 			continue
 		}
+		files, key := e.files(n, body), inputKey(n, pi, e.AuthPort)
 		changed := false
-		for path, content := range map[string][]byte{
-			filepath.Join(e.ConfDir, fmt.Sprintf("%d.crt", id)):  []byte(n.CertPEM),
-			filepath.Join(e.ConfDir, fmt.Sprintf("%d.key", id)):  []byte(n.KeyPEM),
-			filepath.Join(e.ConfDir, fmt.Sprintf("%d.yaml", id)): body,
-		} {
+		for path, content := range files {
 			if old, err := os.ReadFile(path); err != nil || !bytes.Equal(old, content) {
-				if err := os.WriteFile(path, content, 0o600); err != nil {
-					errs = append(errs, err.Error())
-				}
 				changed = true
 			}
 		}
+		stored, _ := os.ReadFile(e.keyPath(id))
+		waits := false
 		switch {
 		case !service.IsActive(unitName(id)):
+			errs = append(errs, e.write(n, files, key)...)
 			if err := service.EnableNow(unitName(id)); err != nil {
 				errs = append(errs, err.Error())
 			}
-		case changed: // the admin changed this node's own settings
+		case !changed:
+			if string(stored) != key {
+				errs = append(errs, e.write(n, files, key)...)
+			}
+		case len(stored) == 0 || string(stored) == key:
+			// only this agent's way of writing it changed: no restart without a click. The key is kept
+			// so that a change the admin makes meanwhile still applies (and restarts) at once.
+			waits = true
+			if len(stored) == 0 {
+				if err := os.WriteFile(e.keyPath(id), []byte(key), 0o600); err != nil {
+					errs = append(errs, err.Error())
+				}
+			}
+		default: // the admin changed this node's own settings: saving said it restarts
+			errs = append(errs, e.write(n, files, key)...)
 			if err := service.Restart(unitName(id)); err != nil {
 				errs = append(errs, err.Error())
 			}
 		}
 		e.mu.Lock()
 		e.nodes[id] = n
+		if waits {
+			e.pending[id] = true
+		} else {
+			delete(e.pending, id)
+		}
 		e.mu.Unlock()
 	}
 	for id, ids := range kick {
@@ -362,13 +605,16 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 	}
 	for _, id := range gone {
 		service.Remove(unitName(id))
-		for _, ext := range []string{".yaml", ".crt", ".key"} {
+		for _, ext := range []string{".yaml", ".crt", ".key", ".in"} {
 			os.Remove(filepath.Join(e.ConfDir, fmt.Sprintf("%d%s", id, ext)))
 		}
 		e.mu.Lock()
 		delete(e.nodes, id)
 		delete(e.users, id)
 		delete(e.ports, id)
+		delete(e.pending, id)
+		delete(e.logOff, id)
+		delete(e.logID, id)
 		e.savePorts()
 		e.mu.Unlock()
 	}
@@ -376,6 +622,26 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// RestartAll restarts every Hysteria2 node (after an upgrade): their devices reconnect by themselves.
+func (e *Engine) RestartAll() (int, error) {
+	e.mu.Lock()
+	var ids []int64
+	for id := range e.nodes {
+		ids = append(ids, id)
+	}
+	e.mu.Unlock()
+	var errs []string
+	for _, id := range ids {
+		if err := service.Restart(unitName(id)); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+	if len(errs) > 0 {
+		return len(ids) - len(errs), errors.New(strings.Join(errs, "; "))
+	}
+	return len(ids), nil
 }
 
 // kick ends the sessions of removed users (they were paused or deleted on purpose).
@@ -560,7 +826,7 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 		pi := ports[id]
 		active := service.IsActive(unitName(id))
 		pid, since := service.Status(unitName(id))
-		st := proto.CoreStatus{Running: active, PID: pid, Since: since}
+		st := proto.CoreStatus{Running: active, PID: pid, Since: since, Version: cores.Current(e.Base, "hysteria")}
 		e.mu.Lock()
 		if last := e.lastPID[id]; last != 0 && pid != 0 && pid != last && e.Events != nil {
 			e.Events("core_restarted", "warn", fmt.Sprintf("Hysteria2 node %d process restarted", id))
@@ -630,6 +896,9 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 	for id := range nodes {
 		out.Dests = append(out.Dests, e.readLog(id, destLog)...)
 	}
+	e.mu.Lock()
+	e.adoptLogs = false // logs met from now on are new
+	e.mu.Unlock()
 	return out
 }
 
@@ -638,7 +907,8 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 func (e *Engine) readLog(node int64, destLog bool) []proto.DestSeen {
 	path := filepath.Join(e.RunDir, fmt.Sprintf("hy2-%d.log", node))
 	e.mu.Lock()
-	off := e.logOff[node]
+	off, known := e.logOff[node]
+	wantID, adopt := e.logID[node], e.adoptLogs && !known
 	e.mu.Unlock()
 	f, err := os.Open(path)
 	if err != nil {
@@ -649,8 +919,12 @@ func (e *Engine) readLog(node int64, destLog bool) []proto.DestSeen {
 	if err != nil {
 		return nil
 	}
-	if st.Size() < off {
-		off = 0 // started over
+	id := sys.FileID(st)
+	switch {
+	case adopt:
+		off = st.Size() // read by the agent before this one
+	case st.Size() < off || (wantID != 0 && wantID != id):
+		off = 0 // started over, or another file
 	}
 	if _, err := f.Seek(off, io.SeekStart); err != nil {
 		return nil
@@ -702,7 +976,7 @@ func (e *Engine) readLog(node int64, destLog bool) []proto.DestSeen {
 		}
 	}
 	e.mu.Lock()
-	e.logOff[node] = off
+	e.logOff[node], e.logID[node] = off, id
 	e.mu.Unlock()
 	out := make([]proto.DestSeen, 0, len(agg))
 	for _, d := range agg {

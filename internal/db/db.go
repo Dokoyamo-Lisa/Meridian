@@ -86,3 +86,6 @@ func (d *DB) Exec1(query string, args ...any) (sql.Result, error) {
 	})
 	return res, err
 }
+
+// Version is the schema version this build brings a database to.
+func Version() int { return len(migrations) }

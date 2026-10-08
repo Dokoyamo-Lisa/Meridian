@@ -8,17 +8,20 @@ sign-in to see their own usage; the supervisor watches every server on a live gl
 
 - **Simple to run.** One command installs the panel with HTTPS; one command (copied from the panel)
   installs the agent on each server. Protocols are added from guided forms that only accept
-  combinations that work, and show which apps can use each one.
+  combinations that work, and show which apps can use each one. The panel updates itself (only to
+  releases signed with Meridian's release key) and upgrades every agent with one click.
 - **Never disruptive on its own.** Nothing is paused automatically - quotas, expiry dates and IP
   limits only raise alerts. Users, keys and settings change live through the cores' APIs; a core
   restarts only when you click a button that says it will.
 - **Accountable.** Every connecting IP is recorded with its user, server, place and network;
-  destinations are recorded per user; traffic is counted exactly once per user, server and day.
-- **Users see their own usage.** Each user signs in to their own page: usage per server and per
-  day, devices connected now, their link with QR code and one-tap import for every app.
+  destinations are recorded per user; traffic is counted exactly once per user, protocol and day,
+  and each user's usage is shown per protocol.
+- **Users see their own usage.** Each user signs in to their own page: usage per server, per
+  protocol and per day, devices connected now, their link with QR code and one-tap import for every app.
 - **A status page built in.** As the site's front page, at `/status`, on its own domain, or only at
   `/me`: visitors see a sign-in and nothing else, users see their own page, and only you see the
-  servers - up or down, availability, throughput, load and bandwidth, on a live globe.
+  servers - up or down, availability, throughput, load and bandwidth, on a live globe (on its own
+  domain too, where the panel itself never opens).
 - **Country rules.** Block countries (or allow only some) on every server, cutting open connections
   at once; separately choose which countries may open the panel, the users' pages and the status page.
 - **Brings existing setups along.** The agent finds Xray, V2Ray, x-ui, 3x-ui, sing-box and Hysteria2

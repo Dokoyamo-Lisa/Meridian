@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,7 +34,7 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 	}
 	var ack int64
 	var events []func(tx *sql.Tx)
-	recompile, ipMoved := false, false
+	recompile, ipMoved, sites := false, false, false
 
 	err := p.db.Write(ctx, func(tx *sql.Tx) error {
 		// a new installation of the agent starts its own sequence
@@ -52,12 +54,21 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 
 		if h := rep.Hello; h != nil {
 			sanitizeHello(h)
+			// a lookup of the public address that failed this time is no new address: keep the known one
+			if h.IPv4 == "" {
+				h.IPv4 = srv.IPv4
+			}
+			if h.IPv6 == "" {
+				h.IPv6 = srv.IPv6
+			}
 			caps, _ := json.Marshal(h.Caps)
 			country, city, lat, lon := p.locateServer(srv, h)
 			first := srv.FirstSeenAt
 			if first == 0 {
 				first = t
-				recompile = true // the first contact may unlock a usable address for subscriptions
+				// the first contact may unlock a usable address for subscriptions, for proxy passes that
+				// lead here, and for other servers' country-rule exceptions
+				recompile, ipMoved = true, true
 				events = append(events, func(tx *sql.Tx) {
 					eventTx(tx, srv.AccountID, "info", "server_connected", srv.ID, 0,
 						fmt.Sprintf("%s connected for the first time (%s, %s)", srv.Name, h.OS, h.IPv4))
@@ -84,7 +95,13 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 					return err
 				}
 			}
-			if srv.AgentStartedAt != 0 && h.StartedAt != srv.AgentStartedAt {
+			switch {
+			case srv.BootTime != 0 && h.BootTime-srv.BootTime > 120: // (the boot time drifts a little with clock corrections)
+				events = append(events, func(tx *sql.Tx) {
+					eventTx(tx, srv.AccountID, "warn", "server_rebooted", srv.ID, 0,
+						fmt.Sprintf("%s restarted: the machine booted again, and its protocols were down until it was back", srv.Name))
+				})
+			case srv.AgentStartedAt != 0 && h.StartedAt != srv.AgentStartedAt:
 				events = append(events, func(tx *sql.Tx) {
 					eventTx(tx, srv.AccountID, "info", "agent_restarted", srv.ID, 0,
 						fmt.Sprintf("Agent on %s restarted (traffic was not affected)", srv.Name))
@@ -121,8 +138,8 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 		}
 
 		if a := rep.Applied; a != nil {
-			errs := strings.Join(a.Errors, "\n")
-			pending := strings.Join(a.Pending, "; ")
+			errs := nameProtocols(tx, srv.ID, strings.Join(a.Errors, "\n"))
+			pending := nameProtocols(tx, srv.ID, strings.Join(a.Pending, "; "))
 			if errs != srv.ApplyErrors && errs != "" {
 				events = append(events, func(tx *sql.Tx) {
 					eventTx(tx, srv.AccountID, "warn", "apply_failed", srv.ID, 0, fmt.Sprintf("%s: %s", srv.Name, firstLine(errs)))
@@ -154,6 +171,7 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 			}
 			if n, _ := res.RowsAffected(); n > 0 {
 				recompile = true
+				sites = sites || kind == proto.ActionCheckTarget // a switched site: passes through it follow
 				if err := p.applyTargetResult(tx, srv, ar); err != nil {
 					slog.Warn("target result", "err", err)
 				}
@@ -213,7 +231,9 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 	if recompile {
 		p.touchServers(srv.ID)
 	}
-	if ipMoved { // proxy passes on other servers connect to this one's IP
+	if ipMoved { // proxy passes on other servers connect to this one's IP; country rules let it in
+		p.touchAccount(srv.AccountID)
+	} else if sites { // an exit's camouflage may have changed: the protocols passing through it follow
 		p.touchServers(p.passEntriesOf(ctx, srv.ID)...)
 	}
 	return ack, nil
@@ -382,6 +402,9 @@ func (p *Panel) applyBatch(tx *sql.Tx, srv *Server, b *proto.Batch, set Settings
 		if _, err := tx.Exec(`INSERT INTO traffic_daily (day, sub_id, node_id, server_id, up, down) VALUES (?, ?, ?, ?, ?, ?)
 			ON CONFLICT(day, sub_id, node_id) DO UPDATE SET up = up + excluded.up, down = down + excluded.down,
 			server_id = excluded.server_id`, day, u.Sub, node, srv.ID, u.Up, u.Down); err != nil {
+			return err
+		}
+		if err := addNodeUsage(tx, u.Sub, node, srv.ID, u.Up, u.Down, ts); err != nil {
 			return err
 		}
 	}
@@ -643,4 +666,25 @@ func (p *Panel) applyTargetResult(tx *sql.Tx, srv *Server, ar proto.ActionResult
 	eventTx(tx, srv.AccountID, "info", "target_switched", srv.ID, 0, fmt.Sprintf(
 		"%s: REALITY camouflage %s %s from this server - switched to %s (%d ms)", srv.Name, old, why, best.Target, best.MS))
 	return nil
+}
+
+var protocolTag = regexp.MustCompile(`\bprotocol n(\d+)\b`)
+
+// nameProtocols turns the agent's "protocol n12" into the protocol's name as the panel shows it
+// ("protocol REALITY (n12)"), so an error says which protocol it means.
+func nameProtocols(tx *sql.Tx, serverID int64, msg string) string {
+	return protocolTag.ReplaceAllStringFunc(msg, func(m string) string {
+		id, err := strconv.ParseInt(protocolTag.FindStringSubmatch(m)[1], 10, 64)
+		if err != nil {
+			return m
+		}
+		var kind, settings, name string
+		if tx.QueryRow(`SELECT kind, settings, name FROM nodes WHERE id = ? AND server_id = ?`, id, serverID).Scan(&kind, &settings, &name) != nil {
+			return m
+		}
+		if name == "" {
+			name = protocolLabel(kind, json.RawMessage(settings))
+		}
+		return fmt.Sprintf("protocol %s (n%d)", name, id)
+	})
 }

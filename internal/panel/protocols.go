@@ -5,6 +5,7 @@ package panel
 // as supporting it. Anything else is refused with a reason that says what to do instead.
 
 import (
+	"context"
 	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -394,7 +395,7 @@ func trimLower(p *string) string { return strings.ToLower(strings.TrimSpace(*p))
 // apply merges in, fills what the final combination needs (keys, paths, certificates), drops what
 // it does not use, and checks it. fresh is true for a new protocol.
 func (s *xraySettings) apply(kind string, in *protoInput, fresh bool) error {
-	oldSNI, oldMode := s.SNI, s.CertMode
+	oldSNI, oldMode, oldSecurity := s.SNI, s.CertMode, s.Security
 	if in.Transport != nil {
 		s.Transport = trimLower(in.Transport)
 	}
@@ -482,9 +483,12 @@ func (s *xraySettings) apply(kind string, in *protoInput, fresh bool) error {
 	if s.CDN && s.CDNPort == 0 {
 		s.CDNPort = 443
 	}
-	if kind == subgen.KindVLESS && s.Transport == tRaw && (s.Security == secReality || s.Security == secTLS) &&
-		!s.CDN && in.Flow == nil && (fresh || in.Security != nil || in.Transport != nil) {
+	vision := kind == subgen.KindVLESS && s.Transport == tRaw && (s.Security == secReality || s.Security == secTLS) && !s.CDN
+	switch {
+	case vision && in.Flow == nil && (fresh || in.Security != nil || in.Transport != nil):
 		s.Flow = flowVision // the recommended flow wherever it works
+	case !vision && in.Flow == nil:
+		s.Flow = "" // a change that leaves no room for it takes the flow along, unless one was asked for
 	}
 	if s.Security == secReality {
 		if s.PrivateKey == "" {
@@ -492,6 +496,11 @@ func (s *xraySettings) apply(kind string, in *protoInput, fresh bool) error {
 		}
 		if len(s.ShortIDs) == 0 {
 			s.ShortIDs = []string{randHex(8)}
+		}
+		if oldSecurity != secReality && in.SNI == nil && !s.OwnSite {
+			// a TLS domain (often this server's own) is no camouflage: REALITY would hand every stranger
+			// to itself. A well-known site, checked from the server, unless one is asked for.
+			s.SNI, s.Target = "", ""
 		}
 		if s.SNI == "" {
 			s.SNI = RealityTargets[0]
@@ -704,8 +713,8 @@ func (s *xraySettings) checkReality() error {
 		}
 		s.Target = t
 	}
-	if len(s.ShortIDs) == 0 || len(s.ShortIDs) > 8 {
-		return errors.New("REALITY needs between one and eight short ids")
+	if len(s.ShortIDs) == 0 || len(s.ShortIDs) > 16 {
+		return errors.New("REALITY needs between one and sixteen short ids")
 	}
 	for _, id := range s.ShortIDs {
 		if !shortIDRE.MatchString(id) || len(id)%2 != 0 {
@@ -868,6 +877,43 @@ func (s *wgSettings) apply(in *protoInput) {
 // and its agent can route it (0.6 and later, with nftables).
 func wg6(srv *Server, s wgSettings) bool {
 	return s.IPv6 && s.Subnet6 != "" && srv.v6() && srv.caps().WG6
+}
+
+// checkOnServer runs the checks of a protocol's settings that need its server.
+func (p *Panel) checkOnServer(ctx context.Context, srv *Server, kind string, raw json.RawMessage) error {
+	if err := checkWG6(srv, kind, raw); err != nil {
+		return err
+	}
+	if err := checkOwnSite(srv, kind, raw, p.settings().AgentPort); err != nil {
+		return err
+	}
+	return p.checkSharedCert(ctx, srv, kind, raw)
+}
+
+// checkOwnSite refuses a REALITY "own site" on one of the server's agent ports: REALITY hands every
+// stranger to its site, and those ports (the Xray API, Hysteria's sign-in check) must never be reached
+// from outside.
+func checkOwnSite(srv *Server, kind string, raw json.RawMessage, agentPort int) error {
+	if kind == subgen.KindHysteria2 || kind == subgen.KindWireGuard {
+		return nil
+	}
+	s, err := parseXray(raw)
+	if err != nil || s.Security != secReality || !s.OwnSite {
+		return nil
+	}
+	_, ps, err := net.SplitHostPort(s.Target)
+	if err != nil {
+		return nil
+	}
+	pn, _ := strconv.Atoi(ps)
+	base := srv.caps().APIPort
+	if base == 0 {
+		base = agentPort
+	}
+	if pn == base || pn == base+1 {
+		return errStatus(400, fmt.Sprintf("port %d is one of the agent's own ports on this server (the Xray API and Hysteria's sign-in check) - point REALITY at the HTTPS port of your site", pn))
+	}
+	return nil
 }
 
 // checkWG6 refuses IPv6 inside a WireGuard tunnel where the server cannot route it.
@@ -1314,6 +1360,25 @@ func bindOutbound(srv *Server, n *Node) map[string]any {
 
 func passTag(entry int64) string { return fmt.Sprintf("pass-n%d", entry) }
 
+// passExit returns the exit of entry node n on server srv and the exit's server, or why the pass
+// cannot be used right now (the entry then blocks its traffic).
+func (p *Panel) passExit(ctx context.Context, srv *Server, n *Node) (*Node, *Server, string) {
+	exit, err := p.nodeByID(ctx, n.PassNode)
+	if err != nil {
+		return nil, nil, "its exit protocol was removed"
+	}
+	xs, err := p.serverByID(ctx, exit.ServerID)
+	switch {
+	case err != nil || xs.DeletedAt > 0:
+		return nil, nil, "the exit's server was removed"
+	case xs.AccountID != srv.AccountID || xs.ID == srv.ID || exit.PassNode != 0 || !canExit(exit.Kind):
+		return nil, nil, "its exit cannot be used as one any more"
+	case !exit.Enabled:
+		return nil, nil, fmt.Sprintf("its exit (%s · %s) is turned off", xs.Name, protocolLabel(exit.Kind, exit.Settings))
+	}
+	return exit, xs, ""
+}
+
 // passOutbound renders the hop from an entry node's server to its exit node: the exit as a client
 // would see it, with the pass credential.
 func passOutbound(entryServer *Server, entry *Node, exitServer *Server, exit *Node) (map[string]any, error) {
@@ -1406,7 +1471,9 @@ func clientEndpoint(n *Node, srv *Server, c creds, peer *wgPeer, name string) (s
 		if s.Obfs {
 			e.Obfs, e.ObfsPassword = "salamander", s.ObfsPassword
 		}
-		e.UpMbps, e.DownMbps = s.UpMbps, s.DownMbps
+		// apps say what they send and receive: a device sends what the server downloads, and receives
+		// what the server uploads
+		e.UpMbps, e.DownMbps = s.DownMbps, s.UpMbps
 		return e, nil
 	case subgen.KindWireGuard:
 		var s wgSettings

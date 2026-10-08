@@ -147,6 +147,7 @@ export function Modal(props: {
   children: ComponentChildren
   footer?: ComponentChildren
   wide?: boolean
+  class?: string // extra class on the dialog, e.g. for its width
   // dismissable: false keeps the dialog open on outside clicks (used while showing a secret once)
   dismissable?: boolean
 }) {
@@ -191,10 +192,10 @@ export function Modal(props: {
         if (e.target === e.currentTarget && props.dismissable !== false) props.onClose()
       }}
     >
-      <div class={'modal' + (props.wide ? ' wide' : '')} role="dialog" aria-modal="true" ref={box} tabIndex={-1}>
+      <div class={'modal' + (props.wide ? ' wide' : '') + (props.class ? ' ' + props.class : '')} role="dialog" aria-modal="true" ref={box} tabIndex={-1}>
         <div class="modal-head">
           <h3>{props.title}</h3>
-          <button class="icon-btn" aria-label="Close" onClick={props.onClose}>
+          <button type="button" class="icon-btn" aria-label="Close" onClick={props.onClose}>
             <Icon name="close" />
           </button>
         </div>
@@ -248,10 +249,10 @@ export function DialogHost() {
       onClose={() => close(false)}
       footer={
         <>
-          <button class="btn ghost" onClick={() => close(false)}>
+          <button type="button" class="btn ghost" onClick={() => close(false)}>
             Cancel
           </button>
-          <button class={'btn ' + (cur.o.danger ? 'danger' : 'primary')} disabled={blocked} onClick={() => close(true)} data-autofocus>
+          <button type="button" class={'btn ' + (cur.o.danger ? 'danger' : 'primary')} disabled={blocked} onClick={() => close(true)} data-autofocus>
             {cur.o.confirm || 'Confirm'}
           </button>
         </>
@@ -291,11 +292,11 @@ export function Menu(props: { label: string; icon?: string; children: ComponentC
   return (
     <div class="menu-wrap" ref={ref}>
       {props.button ? (
-        <button class="btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <button type="button" class="btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
           {props.button}
         </button>
       ) : (
-        <button class="icon-btn" aria-label={props.label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <button type="button" class="icon-btn" aria-label={props.label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
           <Icon name={props.icon || 'more'} />
         </button>
       )}
@@ -340,7 +341,7 @@ export function Tabs<T extends string>(props: { value: T; tabs: [T, string, numb
   return (
     <div class="tabs" role="tablist">
       {props.tabs.map(([v, l, n]) => (
-        <button role="tab" key={v} aria-selected={props.value === v} onClick={() => props.onChange(v)}>
+        <button type="button" role="tab" key={v} aria-selected={props.value === v} onClick={() => props.onChange(v)}>
           {l}
           {n !== undefined && <span class="count">{n}</span>}
         </button>
@@ -423,13 +424,13 @@ export function CopyButton(props: { text: string; label?: string; small?: boolea
   }
   if (props.asButton)
     return (
-      <button class={'btn' + (props.small ? ' sm' : '')} onClick={click}>
+      <button type="button" class={'btn' + (props.small ? ' sm' : '')} onClick={click}>
         <Icon name={done ? 'check' : 'copy'} size="sm" />
         {done ? 'Copied' : props.label || 'Copy'}
       </button>
     )
   return (
-    <button class={'icon-btn' + (props.small ? ' sm' : '')} onClick={click} aria-label={props.label || 'Copy'} title={props.label || 'Copy'}>
+    <button type="button" class={'icon-btn' + (props.small ? ' sm' : '')} onClick={click} aria-label={props.label || 'Copy'} title={props.label || 'Copy'}>
       <Icon name={done ? 'check' : 'copy'} size="sm" />
     </button>
   )
@@ -504,7 +505,7 @@ export function ErrorBox(props: { error: string; retry?: () => void }) {
       <Icon name="alert" size="sm" />
       <div class="grow">{props.error}</div>
       {props.retry && (
-        <button class="btn sm" onClick={props.retry}>
+        <button type="button" class="btn sm" onClick={props.retry}>
           Retry
         </button>
       )}

@@ -1,7 +1,9 @@
 package panel
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -81,5 +83,73 @@ func TestImportKeepsCredentials(t *testing.T) {
 	nodes := out["nodes"].([]any)
 	if pk := nodes[0].(map[string]any)["settings"].(map[string]any)["public_key"]; pk == nil || pk == "" {
 		t.Fatalf("no public key: %v", nodes[0])
+	}
+	// resetting bob's credentials retires the old ones too - from the server and from his link
+	b.must("POST", "/api/users/"+bobID+"/reset-keys", nil, 200)
+	resp, err = http.Get(h.srv.URL + link[strings.Index(link, "/s/"):] + "?client=uri")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if strings.Contains(string(body), "22222222-2222-4222-8222-222222222222") || strings.Contains(string(body), "dXNlci1rZXktMTZieXRlcw") {
+		t.Errorf("the old credentials are still in bob's link:\n%s", body)
+	}
+	st, err := h.p.compileServer(context.Background(), sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conf, _ := json.Marshal(st); strings.Contains(string(conf), "22222222-2222-4222-8222-222222222222") {
+		t.Error("the server still accepts bob's old id")
+	}
+}
+
+// TestImportEdgeCases: 3x-ui's eight short ids import; two new users whose names make the same
+// sign-in name both import; a matched user limited to another server gets the imported protocol.
+func TestImportEdgeCases(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	other := id(b.must("POST", "/api/servers", map[string]any{"name": "Other", "address": "203.0.113.21", "protocols": []string{}}, 201)["server"].(map[string]any)["id"])
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Box", "address": "203.0.113.22"}, 201)["server"].(map[string]any)["id"])
+	b.must("POST", "/api/users", map[string]any{"name": "zoe", "sign_in": false, "servers": []int64{other}}, 201)
+	short := []string{"6ba85179e30d4fc2", "1a", "2b3c", "4d5e6f", "7a8b9c0d", "1e2f3a4b5c", "6d7e8f9a0b1c", "2d3e4f5a6b7c8d"}
+	res := scan.Result{Found: []scan.Found{{Software: "x-ui", Config: "/usr/local/x-ui/bin/config.json", Running: true,
+		Inbounds: []scan.Inbound{{Tag: "reality", Protocol: "vless", Port: 443, Transport: "raw", Security: "reality",
+			SNI: "www.microsoft.com", Target: "www.microsoft.com:443", PrivateKey: "aGVsbG8taGVsbG8taGVsbG8taGVsbG8taGVsbG8tMTI",
+			ShortIDs: short, Users: []scan.User{
+				{Name: "علی", ID: "11111111-1111-4111-8111-111111111111", Flow: "xtls-rprx-vision"},
+				{Name: "رضا", ID: "22222222-2222-4222-8222-222222222222", Flow: "xtls-rprx-vision"},
+				{Name: "zoe", ID: "33333333-3333-4333-8333-333333333333", Flow: "xtls-rprx-vision"}}}}}}}
+	raw, _ := json.Marshal(res)
+	if _, err := h.p.db.Exec1(`INSERT INTO server_scans (server_id, at, data) VALUES (?, ?, ?)`, sid, now(), string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	ins := b.must("GET", "/api/servers/"+itoa(sid)+"/scan", nil, 200)["found"].([]any)[0].(map[string]any)["inbounds"].([]any)
+	if ins[0].(map[string]any)["importable"] != true {
+		t.Fatalf("eight short ids: %v", ins[0])
+	}
+	out := b.must("POST", "/api/servers/"+itoa(sid)+"/import", map[string]any{"items": []map[string]any{
+		{"config": "/usr/local/x-ui/bin/config.json", "tag": "reality", "port": 443}}}, 201)
+	users := out["users"].([]any)
+	if len(users) != 2 || out["matched"].(float64) != 1 {
+		t.Fatalf("import: %v", out)
+	}
+	logins := map[string]bool{}
+	for _, u := range users {
+		logins[fmt.Sprint(u.(map[string]any)["username"])] = true
+	}
+	if len(logins) != 2 {
+		t.Errorf("sign-in names: %v", logins)
+	}
+	nid := id(out["nodes"].([]any)[0].(map[string]any)["id"])
+	var scope string
+	_ = h.p.db.QueryRow(`SELECT scope FROM subs WHERE name = 'zoe'`).Scan(&scope)
+	if !strings.Contains(scope, fmt.Sprint(nid)) || !strings.Contains(scope, fmt.Sprint(other)) {
+		t.Errorf("zoe's access: %s", scope)
+	}
+	st := out["nodes"].([]any)[0].(map[string]any)["settings"].(map[string]any)
+	if ids := st["short_ids"].([]any); len(ids) != 8 || ids[0] != "6ba85179e30d4fc2" {
+		t.Errorf("short ids: %v", ids)
 	}
 }

@@ -130,14 +130,24 @@ func TestStatusPage(t *testing.T) {
 	if code, _ := owner.getHost("status.example.com", "/api/servers"); code != 404 {
 		t.Errorf("the panel's API on the status domain: %d", code)
 	}
+	// written with the trailing dot browsers keep, it is still the status domain
+	if code, _ := owner.getHost("status.example.com.", "/api/servers"); code != 404 || page("status.example.com.", "/overview") != "STATUS" {
+		t.Errorf("the panel on status.example.com.: %d %q", code, page("status.example.com.", "/overview"))
+	}
+	// users who sign in there get their links there: those work on it
+	me := carol.must("GET", "/api/portal/me", nil, 200)
+	link := me["link"].(string)
+	if code, _ := anon.getHost("status.example.com", link[strings.Index(link, "/s/"):]); code != 200 {
+		t.Errorf("a user's link on the status domain: %d", code)
+	}
 	if code, _ := anon.getHost("status.example.com", "/api/status"); code != 401 {
 		t.Errorf("the dashboard data for a stranger on the status domain: %d", code)
 	}
-	// the supervisor cannot sign in there, users can
+	// the supervisor signs in there to see the globe (the panel still never answers there); users too
 	for _, c := range []struct {
 		body string
 		want int
-	}{{`{"username":"owner","password":"owner-password-1"}`, 403}, {`{"username":"carol","password":"carol-password-1"}`, 200}} {
+	}{{`{"username":"owner","password":"owner-password-1"}`, 200}, {`{"username":"carol","password":"carol-password-1"}`, 200}} {
 		req, _ := http.NewRequest("POST", ts.URL+"/api/login", strings.NewReader(c.body))
 		req.Host = "status.example.com"
 		req.Header.Set("X-Meridian", "1")
@@ -148,6 +158,32 @@ func TestStatusPage(t *testing.T) {
 		}
 		if resp != nil {
 			resp.Body.Close()
+		}
+	}
+	// a supervisor session made there sees the globe's data, and still opens nothing of the panel
+	req, _ := http.NewRequest("POST", ts.URL+"/api/login", strings.NewReader(`{"username":"owner","password":"owner-password-1"}`))
+	req.Host = "status.example.com"
+	req.Header.Set("X-Meridian", "1")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	cookies := resp.Cookies()
+	for path, want := range map[string]int{"/api/status": 200, "/api/servers": 404, "/api/users": 404, "/mcp": 404} {
+		req, _ := http.NewRequest("GET", ts.URL+path, nil)
+		req.Host = "status.example.com"
+		for _, c := range cookies {
+			req.AddCookie(c)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("%s with a session made on the status domain: %d, want %d", path, resp.StatusCode, want)
 		}
 	}
 	// and the domain cannot be the panel's own address

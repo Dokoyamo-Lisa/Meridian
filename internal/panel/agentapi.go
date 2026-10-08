@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"context"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
@@ -251,6 +252,11 @@ func (p *Panel) handleMirror(w http.ResponseWriter, r *http.Request) {
 	dir := filepath.Join(p.cfg.DataDir, "mirror", core, version)
 	path := filepath.Join(dir, asset)
 	if _, err := os.Stat(path); err != nil {
+		// only versions the panel uses are fetched: anyone may ask, and every file stays on its disk
+		if !p.mirrorVersions(r.Context(), core)[version] {
+			http.NotFound(w, r)
+			return
+		}
 		if !p.limiter.allow("mirror:"+p.clientIP(r), 30, time.Hour) {
 			http.Error(w, "too many requests", http.StatusTooManyRequests)
 			return
@@ -280,6 +286,50 @@ func (p *Panel) handleMirror(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	http.ServeFile(w, r, path)
+}
+
+// mirrorVersions are the versions of a core the mirror serves: the one in Settings and those the
+// servers run.
+func (p *Panel) mirrorVersions(ctx context.Context, core string) map[string]bool {
+	set := p.settings()
+	out := map[string]bool{}
+	switch core {
+	case "xray":
+		out[set.XrayVersion] = true
+		if servers, err := p.serversOf(ctx, 0); err == nil {
+			for _, s := range servers {
+				if s.XrayVersion != "" {
+					out[strings.TrimPrefix(s.XrayVersion, "v")] = true
+				}
+			}
+		}
+	case "hysteria":
+		out[set.HysteriaVersion] = true
+		for _, ls := range p.live.all() {
+			for name, cs := range ls.Live.Cores {
+				if strings.HasPrefix(name, "hysteria") && cs.Version != "" {
+					out[cs.Version] = true
+				}
+			}
+		}
+	case "realm":
+		out[set.RealmVersion] = true
+	}
+	return out
+}
+
+// pruneMirror deletes the versions the mirror no longer serves.
+func (p *Panel) pruneMirror(ctx context.Context) {
+	for core := range mirrorRepos {
+		keep := p.mirrorVersions(ctx, core)
+		dir := filepath.Join(p.cfg.DataDir, "mirror", core)
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			if e.IsDir() && !keep[e.Name()] {
+				_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+			}
+		}
+	}
 }
 
 // fetchOnce downloads url to path unless it is there, keeping it only if its SHA-256 is want.

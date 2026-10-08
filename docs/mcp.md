@@ -73,9 +73,11 @@ Read (any token):
 | `check_protocol` | whether a protocol draft can be saved, what it becomes, which apps can use it; with `protocol_id`, a change to that protocol (as saving would apply it) |
 | `get_scan` | what a scan found on a server (existing Xray, V2Ray, x-ui, 3x-ui, sing-box, Hysteria2) |
 | `get_access` | the country rules, devices connected now by country, refused packets |
+| `get_notifications` | where notifications go (masked) and what is sent |
 | `get_status_page` | how the status page is set up, and where users sign in |
 | `list_certificates` | shared certificates, the protocols using each and whether each server serves it yet (no private keys) |
 | `list_blocked_ips`, `action_status` | |
+| `check_updates` | this panel's version, the newest release and its notes, whether updates install by themselves, servers with an older agent |
 
 Change (full-access token):
 
@@ -84,13 +86,15 @@ Change (full-access token):
 | `create_user`, `update_user`, `new_user_password`, `resume_user`, `reset_user_usage`, `sign_out_user` | generated passwords come back once; access by whole servers (`server_ids`) and single protocols (`protocol_ids`) |
 | `pause_user`, `rotate_user_link`, `reset_user_credentials`, `delete_user` | disconnect people - need `confirm=true` |
 | `add_server`, `get_install_command` | return the install command (it contains the server's secret) |
-| `update_server`, `set_server_ports` | name, address (an IP also sets the location from DB-IP), IP version, ports from the provider, Xray configuration code - nothing restarts |
+| `update_server`, `set_server_ports` | name, address (an IP also sets the location from DB-IP), IP version, ports from the provider, Xray configuration code - Xray takes them live; an IP version change restarts Hysteria2 protocols once, so it needs `confirm=true` |
 | `add_protocol`, `add_forward`, `unblock_ip`, `scan_server` | applied live; a scan changes nothing; a protocol can have its own server address (`bind_ip`) or serve only proxy passes (`pass_only`) |
-| `set_protocol_code` | a protocol's own settings as code: Xray JSON (its inbound, outbounds, rules for its traffic only) or Hysteria2 YAML (it restarts) |
-| `replace_certificate` | replaces a shared certificate once for every server that uses it |
+| `set_protocol_code` | a protocol's own settings as code: Xray JSON (its inbound, outbounds, rules for its traffic only) or Hysteria2 YAML (it restarts, so that needs `confirm=true`) |
+| `replace_certificate` | replaces a shared certificate once for every server that uses it (Hysteria2 protocols using it restart: then it needs `confirm=true`) |
 | `set_status_page`, `set_server_on_status_page` | where the status page is, and how each server appears on its globe |
+| `set_notifications`, `test_notifications` | send problems to Telegram and/or an HTTPS webhook; a test message per channel |
 | `set_branding` | the panel's name, its logo (SVG markup or a base64 image; checked like an upload) and how the logo moves |
 | `import_protocols`, `set_country_rule`, `set_protocol_enabled`, `remove_forward`, `block_ip`, `server_action` | can disconnect people or stop services - need `confirm=true` |
+| `update_panel`, `upgrade_all_agents` | install the newest release (the panel restarts; proxies keep running) and upgrade every older agent (nobody is disconnected) - need `confirm=true` |
 
 ## Safety model
 

@@ -140,7 +140,7 @@ export interface NodeView {
   pass_only: boolean
   /** The server address this protocol has to itself ('' = all of them). */
   bind_ip: string
-  /** Hysteria2: the operator's own configuration (YAML), merged on top of the generated one. */
+  /** Advanced settings: Xray JSON or Hysteria2 YAML, merged on top of the generated configuration and taking precedence. */
   code: string
   sort: number
   label: string
@@ -149,6 +149,10 @@ export interface NodeView {
   notes?: string[]
   online: number
   pass_name?: string
+  /** Why the proxy pass cannot be used right now (exit turned off or removed); its traffic is blocked meanwhile. */
+  pass_broken?: string
+  /** Protocols on other servers that pass through this one, as 'server · protocol'. */
+  pass_entries?: string[]
   /** The port devices connect to, when the server's provider forwards it under another number. */
   public_port?: number
 }
@@ -270,7 +274,7 @@ export interface User {
   expires_at: number
   ip_limit: number
   /** What the user can connect to: whole servers and single protocols; both empty = everything. */
-  scope: { servers?: number[]; protocols?: number[] }
+  scope: { servers?: number[]; protocols?: number[]; none?: boolean }
   cycle_up: number
   cycle_down: number
   total_up: number
@@ -377,6 +381,7 @@ export interface Settings {
   status_hub: { city: string; cc: string; lat: number; lon: number } | null
   logo_animation: string
   agent_port: number
+  auto_update: boolean
 }
 
 export interface ProtocolCatalog {
@@ -570,4 +575,6 @@ export interface Cert {
   updated_at: number
   uses: CertUse[]
   live: number
+  /** Why apps will refuse it: it does not chain to a publicly trusted authority. */
+  untrusted?: string
 }

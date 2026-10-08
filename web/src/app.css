@@ -160,8 +160,8 @@ h2.h { margin: 0; font-size: 12.5px; font-weight: 600; letter-spacing: .08em; co
 
 /* ------------------------------------------------------------------ panels */
 .panel { position: relative; border-top: 1px solid var(--line); padding-top: 14px; margin-bottom: 30px; min-width: 0; }
-.ph { display: flex; align-items: center; gap: 10px; min-height: 28px; margin-bottom: 12px; }
-.ph .pm { margin-left: auto; font-size: 11.5px; color: var(--ink-3); display: flex; gap: 8px; align-items: center; }
+.ph { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 28px; margin-bottom: 12px; }
+.ph .pm { margin-left: auto; font-size: 11.5px; color: var(--ink-3); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; }
 .pn { font: 500 10px/1 var(--mono); color: var(--accent); letter-spacing: .04em; }
 .grid { display: grid; gap: 0 36px; }
 .grid.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
@@ -195,6 +195,7 @@ h2.h { margin: 0; font-size: 12.5px; font-weight: 600; letter-spacing: .08em; co
 .btn.danger:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: var(--crit-soft); }
 .btn.ghost { border-color: transparent; color: var(--ink-2); }
 .btn.ghost:is(:enabled, a, label):not([aria-disabled="true"]):hover { color: var(--ink); background: var(--hover); }
+.kv-list { display: grid; gap: 6px; font-size: 13.5px; }
 .linkish { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 .linkish:hover { color: var(--ink-2); }
 .btn.sm { height: 26px; padding: 0 9px; font-size: 12px; border-radius: 7px; }
@@ -474,6 +475,32 @@ details.adv summary:hover { color: var(--ink); }
 .preset b { font-weight: 500; font-size: 13px; }
 .preset span { font-size: 11.5px; color: var(--ink-3); line-height: 1.4; }
 .subsection { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 4px; margin: 4px 0 14px; display: flex; flex-direction: column; gap: 4px; }
+/* the protocol window: the form on the left, its advanced settings (code) on the right */
+.modal.proto-modal { width: min(1180px, 100%); }
+.proto-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); gap: 24px; align-items: start; }
+.proto-main { min-width: 0; }
+.proto-adv { position: sticky; top: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+.proto-adv.on { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.proto-adv .adv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.proto-adv .adv-head .faint { font-size: 11.5px; margin-top: 2px; }
+.proto-adv > .muted { font-size: 12.5px; margin: 0; line-height: 1.5; }
+.proto-adv .code-edit { min-height: 320px; }
+.adv-hint { margin: 0; padding-left: 16px; font-size: 11.5px; color: var(--ink-3); line-height: 1.5; }
+.adv-hint li + li { margin-top: 3px; }
+.runs-now summary { cursor: pointer; font-size: 12px; color: var(--ink-2); user-select: none; }
+.runs-now summary:hover { color: var(--ink); }
+.runs-now .code { margin-top: 8px; max-height: 320px; overflow: auto; font-size: 11px; }
+fieldset.lockable { border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset.lockable:disabled { opacity: .42; filter: grayscale(1); }
+fieldset.lockable:disabled, fieldset.lockable:disabled * { cursor: not-allowed; }
+fieldset.lockable:disabled .preset:hover { border-color: var(--line); }
+.lock-note { margin-bottom: 12px; }
+.chat-pick { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 12px; }
+.chat-pick .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 960px) {
+  .proto-cols { grid-template-columns: minmax(0, 1fr); }
+  .proto-adv { position: static; }
+}
 .subsection > .muted { font-size: 12px; margin: 0 0 10px; }
 .check-panel { border-radius: 12px; padding: 12px 14px; margin: 6px 0 14px; border: 1px solid var(--line); min-height: 22px; }
 .check-panel.good { background: color-mix(in srgb, var(--good-soft) 55%, transparent); border-color: transparent; }

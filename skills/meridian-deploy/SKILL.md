@@ -351,7 +351,15 @@ scripts/api.sh POST /api/servers/ID/actions '{"kind":"upgrade_agent"}'
 scripts/wait-server.sh ID
 ```
 
-`upgrade_xray` and `restart_xray` disconnect Xray users for a moment - only after the human says yes.
+`upgrade_xray`, `restart_xray` and `restart_pending` disconnect users for a moment - only after the
+human says yes.
+
+**Update the panel itself** (installs since 0.7.0 have the updater service): `scripts/api.sh GET /api/update`
+shows the newest release; `scripts/api.sh POST /api/update/install '{"agents":true}'` installs it (the
+panel restarts once - expect the API to drop for a few seconds - and then upgrades every agent).
+Check afterwards: `scripts/api.sh GET /api/meta` shows the new version, and `GET /api/events?limit=5`
+has "Meridian updated from ... to ..." (or why it failed - the previous version is then running
+again). Only after the human agreed. Older installs: upgrade once with `install-panel.sh --upgrade`.
 
 **Back up the panel** (one file holds everything, including every secret - keep it private):
 
@@ -360,8 +368,10 @@ sudo -u meridian meridian backup /var/lib/meridian/backup-$(date +%F).db
 ```
 
 **Restore**: `sudo systemctl stop meridian`, then
-`sudo install -m 0600 -o meridian -g meridian backup.db /var/lib/meridian/meridian.db`, then
-`sudo systemctl start meridian`.
+`sudo meridian restore --data /var/lib/meridian backup.db` (it refuses while the panel runs, checks
+the file and keeps the replaced database as `meridian.db.before-restore-...`), then
+`sudo systemctl start meridian`. Never copy a backup over `meridian.db` by hand: the old database's
+write-ahead log would be laid over it.
 
 **Move the panel to another host**: back up; install on the new host (steps 1-2); stop it; restore
 the backup there; start it; point the domain at the new host. Servers reconnect by themselves.

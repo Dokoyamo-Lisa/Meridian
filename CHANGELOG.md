@@ -1,5 +1,157 @@
 # Changelog
 
+## 0.7.0 - 2026-10-08
+
+Upgrade the agents too (Settings › Updates › Upgrade all agents - nobody is disconnected): the
+security fixes below are theirs. After the agent upgrade, servers with Hysteria2 protocols show
+"Waiting for a restart" once, for its stricter blocks: click Restart now when convenient.
+
+- **The panel updates itself.** Settings › Updates shows the newest release and installs it with one
+  click: the panel downloads it, checks that it carries Meridian's release signature (a key built
+  into the panel; a release without it is never installed) and its checksum, backs up its database,
+  and a small updater service installs it - checking all of it again - with the release's own
+  install-panel.sh. If the new version does not stay up, the previous one is put back by itself.
+  Proxies keep running; the panel restarts once. **Install new releases by themselves** does the same
+  at night (03:00-05:00 panel time). Run install-panel.sh --upgrade once from this release to set up
+  the updater. New MCP tools: check_updates, update_panel.
+- **Upgrade all agents** at once (Settings › Updates, or the button on Servers when some are older);
+  offline servers upgrade as soon as they connect. Agents restart themselves; nobody is disconnected.
+  MCP: upgrade_all_agents.
+- **Usage by protocol**: each user's page shows their usage on every protocol - this cycle and all
+  time, exact as each server counted it - and users see the same on their own page. Usage so far is
+  filled in from the daily records. Also in the API (/api/users/{id} usage) and MCP (get_user).
+- **The status page on its own domain** is a choice of its own (Settings › Status page › Its own
+  domain): visitors see the sign-in, users their own page and links, and you see every server on
+  the live globe when you sign in there. The panel and its API still never open on that domain.
+- **Hysteria and realm keep their version** until you upgrade them (server page › More actions ›
+  Upgrade Hysteria / Upgrade realm): a new version in Settings used to reach running servers at
+  once, and a download that failed held back every other change on them. Now a failed download
+  holds back only that core.
+
+- **Security: users can no longer reach the server itself through a proxy.** The block of private
+  addresses only matched addresses typed as numbers, so a user who asked for `localhost` (or any
+  name that resolves to the server, a private network or the cloud's metadata address) reached them -
+  including Xray's API, which runs without a password on loopback. The agent now marks every
+  connection Xray makes for users, and the kernel refuses those that lead to this host or to a
+  private, link-local or metadata address, whatever name was asked for. Hysteria2 always keeps its
+  blocks first, even when a protocol's own settings bring an `acl` (an `acl.file` is refused), and
+  also refuses `0.0.0.0` and `::`, which Linux treats as this host. WireGuard devices reach the
+  internet only: not private networks, the metadata address, each other, or the server's own
+  services (DNS aside). Without nftables, Xray resolves names before its routing rules instead.
+  No inbound, fallback, REALITY site or Hysteria2 masquerade may send strangers to the agent's own
+  ports.
+- **Changes that need a restart wait for one - Hysteria2 too.** An upgraded agent that writes a
+  Hysteria2 protocol's configuration differently no longer restarts it: the server page shows what
+  waits, and **Restart now** restarts exactly that (Xray only when its own settings wait).
+- **`meridian restore`**: restoring a backup by copying it over the database could be undone - or the
+  database damaged - by the old write-ahead log, which SQLite lays over the copy on the next start.
+  `meridian restore FILE` refuses while the panel runs, checks the backup, removes what must not
+  survive and keeps the replaced database. The panel also closes its database cleanly when it stops,
+  and two panels can no longer run on the same data directory.
+- **Removing a server or protocol takes it out of users' access.** Before, its id stayed behind: such
+  users could not be edited any more ("there is no protocol 12"), a user left with nothing could only
+  be given everything, and - since ids were handed out again - the next new protocol went to whoever
+  had the removed one. Ids are now never reused; a user whose every server and protocol was removed
+  has no access (the timeline says so) instead of everything; editing a user leaves their access as
+  it is unless it is changed. In MCP, `update_user` with two empty lists is refused - `everything:
+  true` says "every server".
+- **Timed IP blocks end on time.** "For 1 day" stayed in force until something else changed the
+  servers; expired blocks are lifted within seconds and no longer listed or counted.
+- **Changing the time zone no longer resets this month's usage** of every user and server.
+  Next-reset dates for reset days 29-31 match the day the reset really happens, and "today" /
+  "tomorrow" are counted by calendar day in the panel's time zone (the day before a reset said
+  "today").
+- **WireGuard and forward traffic is counted once across agent restarts and upgrades.** A restarted
+  agent counted again everything the kernel still held (weeks of WireGuard traffic, forwards, the
+  country rule's refusals) and read the access logs again from the start. Where counting stood is now
+  saved with the data, before each report goes out.
+- **Live routing changes keep balancers**: with balancers in the server's configuration code, any
+  change to the rules wiped them and left Xray with a partial rule list (and the error vanished a
+  minute later). Rules now go with the running balancers; a rule for a new balancer waits for the
+  restart; a change that could not be applied is retried and keeps being reported.
+- VLESS protocols without Vision (WebSocket, gRPC, XHTTP, HTTPUpgrade, CDN) could not be saved any
+  more: the form turned Vision on for every VLESS protocol it opened. A protocol keeps the flow it has;
+  a change that leaves no room for Vision takes it away.
+- The copy button in "What the server runs for it" saved the protocol and closed the window.
+- "Reset credentials" now also retires the credentials a user kept from an import, which kept working.
+- Stash: WireGuard got mihomo's key names, so the pre-shared key was dropped and the tunnel never
+  connected. Loon: WireGuard on an IPv6 address was written without brackets.
+- With the status page on its own domain, users who sign in there get links that work there (they
+  answered 404), and `status.example.com.` (with a trailing dot) no longer opens the panel.
+- **Notifications** (Settings › Notifications): what needs you reaches you outside the panel - a
+  Telegram chat and/or an HTTPS webhook (Slack, Discord and Mattermost work as they are). Choose the
+  groups: servers (offline and back, a machine that restarted, a refused configuration, a crashed
+  core), users (data used up, access ended or ending within 3 days, too many devices), certificates
+  (shared ones expiring within 14 days), and optionally sign-ins and security changes. "Find chats"
+  picks the Telegram chat for you; "Send a test message" checks each channel. Events go out in order,
+  never twice, and never from before notifications were on; nothing is ever paused by them. The
+  timeline now also records used-up quotas, ended and ending access, and expiring certificates. New
+  MCP tools: get_notifications, set_notifications, test_notifications.
+- **A protocol bound to an address the server does not have no longer takes Xray down**: after a
+  reboot (or when an address was removed), Xray refused to start at all and every protocol on the
+  server stayed down. The agent now leaves out only that protocol, says so on the server's page (by
+  name), and adds it back by itself, live, as soon as the address returns. Agents report a change of
+  addresses at once instead of within 10 minutes.
+- **Proxy pass never leaks to the entry's own address**: while an exit is turned off (or its server
+  was removed) the entry blocks its traffic instead of quietly leaving from the entry server - and its
+  card says why. Every change to an exit (turned on or off, its port, address or address override)
+  now reaches the protocols that pass through it at once; before, only changes to its settings did.
+  Turning off or removing an exit names the protocols that pass through it.
+- A server that rebooted is reported as rebooted, not as "agent restarted (traffic was not affected)".
+- A shared certificate that apps will refuse (self-signed, a private CA, or a missing intermediate)
+  is flagged on its card: links never pin shared certificates.
+- Monitor and users' pages name protocols as their cards do ("REALITY", "VLESS gRPC TLS" or their own
+  name) instead of "VLESS"; "1 IP on 1 user" instead of "1 IPs on 1 users"; a subscription page says
+  "2 servers, 34 ways to connect" instead of "34 servers available".
+- Phone width: the server page's section buttons and a certificate's fingerprint no longer push the
+  page wider than the screen.
+- A reused two-factor code is explained ("already used - wait for the next one") instead of being
+  called wrong.
+
+- **Advanced settings have their own place**: a protocol's window shows its form on the left and its
+  advanced settings (Xray JSON or Hysteria2 YAML) on the right, switched on and off there. They take
+  precedence: while they are on, the form's settings are locked and greyed out (port, name, address
+  and proxy pass stay editable); turning them off removes them when you save. "What the server runs
+  for it" shows the protocol's saved configuration under the editor.
+- Saving a protocol without touching how apps connect asked "Devices must refresh" anyway (an unset
+  CDN option counted as a change); it now asks only when something changed.
+
+- Ports: editing a running realm forward (or giving a protocol its own address, or turning on SOCKS5
+  UDP) failed with "port in use by another program" - the program was the forward or protocol itself.
+- Switching a TLS protocol to REALITY kept its TLS domain as the camouflage (often this server's
+  own, so REALITY handed every stranger to itself); a well-known site is used now, and the server
+  tries the usual ones.
+- Importing: users matched by name who could only use other servers get the imported protocol (their
+  devices were cut off after a takeover); two new users whose names make the same sign-in name both
+  import (the import failed); REALITY with eight short ids (3x-ui's default) imports; an inbound that
+  listened only on loopback (behind nginx) is no longer opened to the internet.
+- Throughput charts: the status page's total showed one server at a time, and the overview counted a
+  server once per report (about three times the real throughput).
+- Proxy pass: a server's first contact, a new address, and an exit's automatic camouflage switch now
+  reach the protocols that pass through it, and country rules let every address of the panel's
+  servers in (a protocol's own address included).
+- Surge and sing-box profiles with no protocol the app can use refuse traffic instead of sending
+  everything out directly. Hysteria2 speed limits reach apps the right way round. Expiry dates on
+  the link's page and in Shadowrocket follow the panel's time zone. Loon has its one-tap import on
+  the users' page.
+- Security: the agent's install command passes the server's token in the environment, never on a
+  command line other users can read; two-factor sign-in cannot be replaced without turning it off
+  (which asks for the password); the core mirror fetches only versions the panel uses (anyone may
+  ask it); port forwards may not lead to this server or the cloud's metadata, also through a name
+  (refused when saved, and checked again by the agent on every pass); MCP calls that restart
+  Hysteria2 need confirm=true; get_server no longer hands configuration code to assistants.
+- A country rule stays on its servers when the panel restarts before its country database is back
+  (it was taken off until something else changed them).
+- A shared certificate replaced with the same certificate and its intermediate added now reaches the
+  servers. An agent too old for its panel no longer asks for the state in a tight loop. Read-only API
+  tokens can check protocols (check_protocol). Addresses of containers, VPNs and tunnels are not
+  offered as a protocol's own address.
+- Small things: cancelling "Turn off?" no longer says it was turned off; a WireGuard protocol's IPv6
+  box can be unticked when the server no longer uses IPv6; a REALITY protocol with its own site
+  opens showing it; an empty username keeps a user's sign-in (or makes one from the name) instead of
+  removing it; quotas below a GB are kept as they are; Add forward starts with realm on servers
+  without nftables; the API example and the user actions in the API reference are right.
+
 ## 0.6.2 - 2026-10-07
 
 Panel only: agents stay as they are.

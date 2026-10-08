@@ -183,6 +183,87 @@ func TestPassOnlyExit(t *testing.T) {
 	}
 }
 
+// TestPassExitOff: an entry whose exit is turned off (or whose exit's server is removed) blocks its
+// traffic instead of leaving from the entry's own server, and says why; turning the exit on again
+// restores the pass. Every change to the exit reaches the entry's server.
+func TestPassExitOff(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	exit := b.must("POST", "/api/servers", map[string]any{"name": "Exit", "address": "198.51.100.61", "protocols": []string{"vless"}}, 201)["server"].(map[string]any)
+	exitNode := id(exit["nodes"].([]any)[0].(map[string]any)["id"])
+	entry := b.must("POST", "/api/servers", map[string]any{"name": "Entry", "address": "203.0.113.61"}, 201)["server"].(map[string]any)
+	eid := id(entry["id"])
+	entryNode := id(b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", eid), map[string]any{"kind": "vless", "pass_node": exitNode}, 201)["id"])
+	b.must("POST", "/api/users", map[string]any{"name": "eve"}, 201)
+
+	route := func() (outbound string, hasPassOut bool) {
+		st, err := h.p.compileServer(context.Background(), eid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var base struct {
+			Outbounds []map[string]any `json:"outbounds"`
+			Routing   struct {
+				Rules []map[string]any `json:"rules"`
+			} `json:"routing"`
+		}
+		_ = json.Unmarshal(st.Xray.Base, &base)
+		for _, r := range base.Routing.Rules {
+			if r["ruleTag"] == passTag(entryNode) {
+				outbound = fmt.Sprint(r["outboundTag"])
+			}
+		}
+		for _, o := range base.Outbounds {
+			if o["tag"] == passTag(entryNode) {
+				hasPassOut = true
+			}
+		}
+		return
+	}
+	broken := func() string {
+		v := b.must("GET", fmt.Sprintf("/api/servers/%d", eid), nil, 200)["server"].(map[string]any)
+		n := v["nodes"].([]any)[0].(map[string]any)
+		return fmt.Sprint(n["pass_broken"], " | ", n["notes"])
+	}
+	if out, ok := route(); out != passTag(entryNode) || !ok {
+		t.Fatalf("working pass: rule to %q, outbound %v", out, ok)
+	}
+	rev := func() string {
+		st, _ := h.p.compileServer(context.Background(), eid)
+		return st.Rev
+	}
+	before := rev()
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", exitNode), map[string]any{"enabled": false}, 200)
+	if out, ok := route(); out != "block" || ok {
+		t.Errorf("exit turned off: rule to %q, outbound %v - the entry must block, not leave directly", out, ok)
+	}
+	if got := broken(); !strings.Contains(got, "is turned off") || !strings.Contains(got, "Its traffic is blocked") {
+		t.Errorf("the entry should say its pass does not work: %s", got)
+	}
+	if rev() == before {
+		t.Error("the entry's state did not change when its exit was turned off")
+	}
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", exitNode), map[string]any{"enabled": true}, 200)
+	if out, ok := route(); out != passTag(entryNode) || !ok {
+		t.Errorf("exit back on: rule to %q, outbound %v", out, ok)
+	}
+	// a new port on the exit reaches the entry's outbound
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", exitNode), map[string]any{"port": 8443}, 200)
+	st, _ := h.p.compileServer(context.Background(), eid)
+	if !strings.Contains(string(st.Xray.Base), "8443") {
+		t.Errorf("the entry still points at the old port: %s", st.Xray.Base)
+	}
+	// the exit's server removed: the entry blocks
+	b.must("DELETE", fmt.Sprintf("/api/servers/%d", id(exit["id"])), nil, 200)
+	if out, _ := route(); out != "block" {
+		t.Errorf("exit server removed: rule to %q", out)
+	}
+	if got := broken(); !strings.Contains(got, "server was removed") {
+		t.Errorf("removed exit server: %s", got)
+	}
+}
+
 func TestEndpointNames(t *testing.T) {
 	srv := &Server{Name: "Tokyo", Country: "JP"}
 	for _, c := range []struct{ name, kind, want string }{
@@ -256,5 +337,81 @@ func TestWGPeersOnce(t *testing.T) {
 		if !keys[pr.PublicKey] {
 			t.Errorf("user %d: the server has another key", pr.SubID)
 		}
+	}
+}
+
+// TestRemovedAccess: removing a protocol or a server takes it out of users' access; a user left with
+// nothing has no access (never everything), can still be edited, and a new protocol never takes a
+// removed one's id - so it never reaches the people who had the old one.
+func TestRemovedAccess(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	srv := b.must("POST", "/api/servers", map[string]any{"name": "S", "address": "203.0.113.51", "protocols": []string{"vless", "shadowsocks"}}, 201)["server"].(map[string]any)
+	other := b.must("POST", "/api/servers", map[string]any{"name": "O", "address": "203.0.113.52", "protocols": []string{"vless"}}, 201)["server"].(map[string]any)
+	sid, oid := id(srv["id"]), id(other["id"])
+	var newest int64
+	for _, n := range srv["nodes"].([]any) {
+		newest = max(newest, id(n.(map[string]any)["id"]))
+	}
+	create := func(body map[string]any) int64 {
+		var list []map[string]any
+		_, _, raw := b.do("POST", "/api/users", body)
+		if err := json.Unmarshal(raw, &list); err != nil || len(list) != 1 {
+			t.Fatalf("create %v: %s", body, raw)
+		}
+		return id(list[0]["id"])
+	}
+	single := create(map[string]any{"name": "single", "protocols": []int64{newest}})
+	whole := create(map[string]any{"name": "whole", "servers": []int64{sid}})
+	both := create(map[string]any{"name": "both", "servers": []int64{oid}, "protocols": []int64{newest}})
+	scopeOf := func(u int64) string {
+		raw, _ := json.Marshal(b.must("GET", fmt.Sprintf("/api/users/%d", u), nil, 200)["user"].(map[string]any)["scope"])
+		var sc Scope
+		_ = json.Unmarshal(raw, &sc)
+		return fmt.Sprintf("servers %v protocols %v none:%v", sc.Servers, sc.Nodes, sc.None)
+	}
+
+	b.must("DELETE", fmt.Sprintf("/api/nodes/%d", newest), nil, 200)
+	if sc := scopeOf(single); !strings.Contains(sc, "none:true") {
+		t.Errorf("single protocol removed: %s", sc)
+	}
+	if sc := scopeOf(both); sc != fmt.Sprintf("servers [%d] protocols [] none:false", oid) {
+		t.Errorf("one of two removed: %s", sc)
+	}
+	added := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "trojan", "port": 8443,
+		"settings": map[string]any{"security": "tls", "cert_mode": "self", "sni": "www.example.com"}}, 201)
+	if id(added["id"]) <= newest {
+		t.Errorf("a removed protocol's id was handed out again: %v", added["id"])
+	}
+	for node, users := range usersOn(t, h, sid) {
+		for _, u := range users {
+			if u == single {
+				t.Errorf("a user with no access is on protocol %d", node)
+			}
+		}
+	}
+	// editing such a user keeps their access as it is (nothing), unless it is changed
+	b.must("PATCH", fmt.Sprintf("/api/users/%d", single), map[string]any{"note": "still here"}, 200)
+	if sc := scopeOf(single); !strings.Contains(sc, "none:true") {
+		t.Errorf("after an edit: %s", sc)
+	}
+
+	b.must("DELETE", fmt.Sprintf("/api/servers/%d", sid), nil, 200)
+	if sc := scopeOf(whole); !strings.Contains(sc, "none:true") {
+		t.Errorf("server removed: %s", sc)
+	}
+	if sc := scopeOf(both); sc != fmt.Sprintf("servers [%d] protocols [] none:false", oid) {
+		t.Errorf("both, after the server went: %s", sc)
+	}
+	var events int
+	_ = h.p.db.QueryRow(`SELECT COUNT(*) FROM events WHERE kind = 'user_no_access'`).Scan(&events)
+	if events != 2 {
+		t.Errorf("no-access events: %d", events)
+	}
+	// both lists sent empty is everything, on purpose
+	b.must("PATCH", fmt.Sprintf("/api/users/%d", whole), map[string]any{"servers": []int64{}, "protocols": []int64{}}, 200)
+	if sc := scopeOf(whole); sc != "servers [] protocols [] none:false" {
+		t.Errorf("everything: %s", sc)
 	}
 }

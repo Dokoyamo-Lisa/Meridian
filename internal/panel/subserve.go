@@ -25,7 +25,7 @@ func clientLinks(link, name string) []subgen.Client {
 
 func (p *Panel) subInfo(s *Sub) subgen.Info {
 	return subgen.Info{Title: s.Name, Upload: s.CycleUp, Download: s.CycleDown, Total: s.Quota, Expire: s.ExpiresAt,
-		UpdateHrs: 12}
+		UpdateHrs: 12, Zone: p.loc()}
 }
 
 // renderSub builds the body a client receives. client is a format name; empty means detect.
@@ -199,6 +199,14 @@ func (p *Panel) subPage(w http.ResponseWriter, r *http.Request, s *Sub) {
 		}
 		wgs = append(wgs, wgItem{Name: e.Name, URL: fmt.Sprintf("%s/wg/%d.conf", link, e.NodeID), QR: qrSVG(subgen.WGConf(e))})
 	}
+	servers := map[string]bool{}
+	for _, e := range eps {
+		servers[e.Server] = true
+	}
+	summary := "Nothing to connect to yet - your administrator adds servers here"
+	if len(eps) > 0 { // each app entry is a way to connect; several can share one server
+		summary = fmt.Sprintf("%s, %s", countOf(len(servers), "server", "servers"), countOf(len(eps), "way to connect", "ways to connect"))
+	}
 	used := s.Used()
 	pct := 0.0
 	if s.Quota > 0 {
@@ -206,7 +214,7 @@ func (p *Panel) subPage(w http.ResponseWriter, r *http.Request, s *Sub) {
 	}
 	expires := ""
 	if s.ExpiresAt > 0 {
-		expires = time.Unix(s.ExpiresAt, 0).UTC().Format("2 January 2006")
+		expires = time.Unix(s.ExpiresAt, 0).In(p.loc()).Format("2 January 2006") // the day the panel shows
 	}
 	nonce := make([]byte, 16)
 	_, _ = rand.Read(nonce)
@@ -215,7 +223,7 @@ func (p *Panel) subPage(w http.ResponseWriter, r *http.Request, s *Sub) {
 		"Site": p.settings().SiteTitle, "Name": s.Name, "Paused": s.Paused, "Link": link, "QR": qrSVG(link),
 		"Used": fmtBytes(used), "Quota": fmtBytes(s.Quota), "Unlimited": s.Quota == 0, "Pct": fmt.Sprintf("%.1f", pct),
 		"Expires": expires, "Clients": subgen.Clients(link, s.Name), "WG": wgs, "Nonce": n,
-		"Count": len(eps), "Logo": template.URL(p.logoDataURI()), // a data: URI of a checked image, or empty
+		"Summary": summary, "Logo": template.URL(p.logoDataURI()), // a data: URI of a checked image, or empty
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
@@ -258,7 +266,7 @@ a.dl{color:var(--accent)}
 </style></head><body><main>
 <div class="brand">{{if .Logo}}<img class="mark" src="{{.Logo}}" alt="">{{else}}<svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#d8232a" d="M12 12L16.02 2.3L7.98 2.3ZM12 12L2.3 7.98L2.3 16.02ZM12 12L7.98 21.7L16.02 21.7ZM12 12L21.7 16.02L21.7 7.98Z"/><path fill="#f5f3ef" d="M12 12L21.7 7.98L16.02 2.3ZM12 12L7.98 2.3L2.3 7.98ZM12 12L2.3 16.02L7.98 21.7ZM12 12L16.02 21.7L21.7 16.02Z"/><path fill="none" stroke="currentColor" stroke-opacity=".35" stroke-width=".7" stroke-linejoin="round" d="M16.02 2.3L7.98 2.3L2.3 7.98L2.3 16.02L7.98 21.7L16.02 21.7L21.7 16.02L21.7 7.98Z"/></svg>{{end}}{{.Site}}</div>
 <h1>{{.Name}}</h1>
-<div class="sub">{{if .Paused}}<span class="paused">Paused by your administrator.</span>{{else}}{{.Count}} servers available{{end}}</div>
+<div class="sub">{{if .Paused}}<span class="paused">Paused by your administrator.</span>{{else}}{{.Summary}}{{end}}</div>
 
 <section><h2>Usage</h2>
 <div class="figs"><div class="fig"><b>{{.Used}}</b><span>used{{if not .Unlimited}} of {{.Quota}}{{end}}</span></div>
@@ -302,10 +310,11 @@ type ipBlock struct {
 
 func (p *Panel) apiBlocks(w http.ResponseWriter, r *http.Request, a *Account) error {
 	acct := scopeAccount(r, a)
-	q := `SELECT id, account_id, ip, reason, created_at, created_by, expires_at FROM ip_blocks`
-	var args []any
+	// blocks whose time is up are lifted by the jobs within seconds: never shown as current
+	q := `SELECT id, account_id, ip, reason, created_at, created_by, expires_at FROM ip_blocks WHERE (expires_at = 0 OR expires_at > ?)`
+	args := []any{now()}
 	if acct > 0 {
-		q += ` WHERE account_id = ?`
+		q += ` AND account_id = ?`
 		args = append(args, acct)
 	}
 	rows, err := p.db.QueryContext(r.Context(), q+` ORDER BY id DESC`, args...)
@@ -374,7 +383,8 @@ func (p *Panel) apiCreateBlock(w http.ResponseWriter, r *http.Request, a *Accoun
 		exp = now() + int64(in.Hours)*3600
 	}
 	var n int
-	_ = p.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM ip_blocks WHERE account_id = ?`, acct).Scan(&n)
+	_ = p.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM ip_blocks WHERE account_id = ? AND (expires_at = 0 OR expires_at > ?)`,
+		acct, now()).Scan(&n)
 	if n >= 5000 {
 		return errStatus(http.StatusForbidden, "at most 5000 blocked addresses - use ranges")
 	}
@@ -410,4 +420,12 @@ func (p *Panel) apiDeleteBlock(w http.ResponseWriter, r *http.Request, a *Accoun
 	p.touchAccount(acct)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	return nil
+}
+
+// countOf writes n with the right form of a noun: "1 server", "2 servers".
+func countOf(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }

@@ -64,6 +64,15 @@ export interface PortalServer {
   cycle: Usage
   days30: Usage
   devices: number
+  former: boolean // no longer in the user's access (or removed): shown for its traffic only
+}
+
+export interface PortalProtocol {
+  server: string
+  name: string
+  removed: boolean
+  cycle: Usage
+  total: Usage
 }
 
 // one device: an address, however many servers and protocols it is connected through
@@ -111,6 +120,7 @@ export interface PortalMe {
   servers: PortalServer[]
   days: PortalDay[]
   total: Usage
+  protocols: PortalProtocol[]
 }
 
 export interface LoginResult {

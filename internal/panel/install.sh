@@ -5,7 +5,8 @@
 # running it, and this script checks the agent binary against checksums written into it by the
 # panel - so nothing can be swapped on the way, even over plain HTTP.
 #
-#   install:    sh meridian-install.sh --token <token> [--api-port 50000]
+#   install:    MERIDIAN_TOKEN=<token> sh meridian-install.sh [--api-port 50000]
+#               (--token <token> works too, but puts the token where other users can read it)
 #   uninstall:  meridian-agent uninstall
 set -eu
 

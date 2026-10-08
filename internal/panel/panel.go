@@ -44,6 +44,9 @@ type Panel struct {
 	set   Settings
 
 	limiter  *rateLimiter
+	notify   *notifier  // notifications outside the panel (Telegram, webhook)
+	upd      *updater   // installing a new release
+	geoMu    sync.Mutex // the country rules last sent (rememberGeo)
 	nonces   *nonceCache
 	mirrorMu sync.Mutex
 	mux      *http.ServeMux // the routes, for MCP tools that call the API in-process
@@ -57,21 +60,24 @@ type Panel struct {
 }
 
 func New(cfg Config, d *db.DB) (*Panel, error) {
-	p := &Panel{cfg: cfg, db: d, hub: newHub(), live: newLiveStore(), limiter: newRateLimiter(),
+	p := &Panel{cfg: cfg, db: d, hub: newHub(), live: newLiveStore(), limiter: newRateLimiter(), notify: newNotifier(), upd: &updater{},
 		nonces: newNonceCache(), digests: newDigestCache(),
 		agentSums: agentSums{at: map[string]time.Time{}, sums: map[string]string{}}}
 	if err := p.loadSettings(); err != nil {
 		return nil, err
 	}
+	p.fillNodeUsageCycle()
 	if err := p.loadBrand(); err != nil {
 		return nil, err
 	}
 	p.geo = geo.Open(cfg.DataDir)
+	p.geo.OnLoad = p.touchAll // country rules held back for want of the database go out now
 	return p, nil
 }
 
 // Run starts background work and blocks until ctx ends.
 func (p *Panel) Run(ctx context.Context) {
+	p.updateResult(ctx) // a new version: say so, and upgrade the agents when that was asked for
 	if err := p.compileAll(ctx); err != nil {
 		slog.Error("initial compile", "err", err)
 	}
@@ -201,6 +207,17 @@ func (l *liveStore) put(id int64, lv proto.Live) {
 		i++
 	}
 	ls.Rates = ls.Rates[i:]
+}
+
+// all is a copy of every server's latest snapshot.
+func (l *liveStore) all() []liveServer {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	out := make([]liveServer, 0, len(l.m))
+	for _, ls := range l.m {
+		out = append(out, *ls)
+	}
+	return out
 }
 
 func (l *liveStore) get(id int64) *liveServer {

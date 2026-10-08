@@ -80,7 +80,10 @@ All must be clean. Then update `docs/STATUS.md` and, for user-visible changes, `
 ## Release
 
 1. Bump `VERSION`, add a `CHANGELOG.md` entry.
-2. `make check && make release` - produces `dist/release/*.tar.gz`, desktop CLI builds and
-   `SHA256SUMS`.
+2. `make check && make release` - produces `dist/release/*.tar.gz`, desktop CLI builds,
+   `SHA256SUMS` and `SHA256SUMS.sig`. The signature needs the release key
+   (`~/.config/meridian/release-signing.key`, or `MERIDIAN_SIGNING_KEY`): panels update themselves
+   only to releases signed with it (`internal/update/keys.go` holds its public half). Upload all of
+   these files to the GitHub release, `SHA256SUMS.sig` included.
 3. Upgrade path to verify: `install-panel.sh --upgrade` on a test panel, then **Upgrade agent** on a
    test server; traffic must keep flowing throughout.

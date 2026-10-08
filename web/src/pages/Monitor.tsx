@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { DestRow, PanelEvent, IPRow, OnlineIP, Server, User, bytes, dateTime, del, flag, get, post } from '../api'
+import { DestRow, PanelEvent, IPRow, OnlineIP, Server, User, bytes, dateTime, del, flag, get, plural, post } from '../api'
 import { Icon } from '../icons'
 import { setQuery, useLocation } from '../router'
 import { Ago, Empty, ErrorBox, Field, Loading, Modal, PageHead, Search, Seg, Tabs, ask, errText, run, toast, useAsync, usePoll } from '../ui'
@@ -163,7 +163,7 @@ function LiveTab() {
     <>
       <div class="row wrap" style="margin-bottom:12px">
         <span class="muted grow">
-          {new Set(live.data.map((r) => r.ip)).size} IPs on {subsOnline} users
+          {plural(new Set(live.data.map((r) => r.ip)).size, 'IP')} on {plural(subsOnline, 'user')}
           {over > 0 && <span class="crit-ink"> · {over} over their IP limit</span>} · refreshes every 10 s
         </span>
         <Search value={q} onInput={setQ} placeholder="IP, user, place…" />

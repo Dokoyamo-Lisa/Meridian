@@ -50,7 +50,7 @@ then shows a guide:
 2. **Paste the command** it shows on the server as root:
 
    ```bash
-   { curl -fsSLo meridian-install.sh https://panel.example.com/agent/install.sh || wget -qO meridian-install.sh https://panel.example.com/agent/install.sh; } && echo '<checksum>  meridian-install.sh' | sha256sum -c - && sh meridian-install.sh --token '<token>' --api-port 50000
+   { curl -fsSLo meridian-install.sh https://panel.example.com/agent/install.sh || wget -qO meridian-install.sh https://panel.example.com/agent/install.sh; } && echo '<checksum>  meridian-install.sh' | sha256sum -c - && MERIDIAN_TOKEN='<token>' sh meridian-install.sh --api-port 50000
    ```
 
    It works the same on every distribution (curl or busybox's wget, plain `sh`). The command checks
@@ -173,8 +173,10 @@ merged on top of what the panel generates. Only the syntax is checked: Xray and 
 rest. If the core refuses the result, the server's page shows why and the running configuration
 stays. **What the server gets** shows the merged result.
 
-**A protocol's own settings** (*Port, name and more › Advanced Xray settings*) - JSON, comments
-allowed:
+**A protocol's own settings** (the **Advanced settings** panel on the right of the protocol's
+window) - JSON, comments allowed. They take precedence: whatever they set overrides the form, and
+the form is locked while they are on (port, name, address and proxy pass stay editable). Turning
+them off removes them when you save:
 
 - its fields are merged into the protocol's inbound: `sniffing`, `streamSettings.sockopt`,
   `fallbacks`, ... Its tag, port and users stay the panel's;
@@ -191,8 +193,9 @@ allowed:
 }
 ```
 
-A Hysteria2 protocol takes YAML the same way (*Advanced Hysteria2 settings*); `auth` and
-`trafficStats` stay Meridian's, and saving restarts it.
+A Hysteria2 protocol takes YAML in the same panel; `auth` and `trafficStats` stay Meridian's, and
+saving restarts it. Apps' links are always built from the form: advanced settings that change how
+apps connect (transport, security, keys) make the links stop working.
 
 **A server's settings** (the server's **Configuration as code** section) - Xray JSON for everything
 on it, merged last:
@@ -268,6 +271,12 @@ office).
 - **Monitor › Destinations**: where traffic goes (domains for Xray and Hysteria, exact bytes for
   WireGuard with DNS logging on).
 - **Block** an abusive IP from any of these lists; **Pause** a user to stop them.
+- **Notifications** (Settings › Notifications): problems that need you, sent as they happen to a
+  Telegram chat and/or an HTTPS webhook (Slack, Discord and Mattermost work as they are) - servers
+  going offline or coming back, a machine that restarted, a configuration a server refused, a core
+  that crashed, users who used up their data or whose access ended, expiring shared certificates,
+  and (if you want) sign-ins. Create a bot with @BotFather, send it a message, paste its token and
+  press **Find chats**. Turning notifications on never sends the past, and they never pause anyone.
 
 ## 8. Country rules (optional)
 

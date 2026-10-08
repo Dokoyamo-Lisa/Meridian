@@ -15,9 +15,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strings"
 
 	"meridian/internal/agent/scan"
+	"meridian/internal/db"
 	"meridian/internal/proto"
 	"meridian/internal/subgen"
 )
@@ -181,6 +183,11 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 	if in.Port < 1 || in.Port > 65535 {
 		return "", nil, "", errors.New("no usable port")
 	}
+	// an inbound that serves only this machine (behind nginx, or local software) is no protocol for
+	// the internet: importing it would open it to everyone
+	if a, err := netip.ParseAddr(strings.Trim(in.Listen, "[]")); err == nil && (a.IsLoopback() || a.IsLinkLocalUnicast()) {
+		return "", nil, "", fmt.Errorf("it listens only on %s, behind another server or for local software - importing would open it to the internet", a)
+	}
 	switch in.Protocol {
 	case "hysteria2":
 		s := hy2Settings{SNI: nz(in.SNI, defaultSelfSignedName)}
@@ -237,15 +244,22 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 			s.OwnSite = true
 			s.Target = strings.Replace(s.Target, "localhost", "127.0.0.1", 1)
 		}
-		// Xray allows an empty short id; Meridian's links use the first one
+		// Meridian's links use the first short id: a non-empty one goes first; an empty one (devices
+		// that use none) stays only when the inbound had it
 		var ids []string
+		empty := false
 		for _, id := range s.ShortIDs {
 			if id != "" {
 				ids = append(ids, id)
+			} else {
+				empty = true
 			}
 		}
 		if len(ids) > 0 {
-			s.ShortIDs = append(ids, "")
+			if empty {
+				ids = append(ids, "")
+			}
+			s.ShortIDs = ids
 		}
 		if s.Target == "" && s.SNI != "" {
 			s.Target = s.SNI + ":443"
@@ -397,6 +411,25 @@ func (p *Panel) apiImport(w http.ResponseWriter, r *http.Request, a *Account) er
 	var newSubs []int64
 	passwords := map[int64]string{}
 	err = p.db.Write(ctx, func(tx *sql.Tx) error {
+		// sign-in names handed out in this import: the database does not show them until it is done
+		taken := map[string]bool{}
+		freeLogin := func(name string) string {
+			base := loginFromName(name)
+			for i := 1; i <= 50; i++ {
+				cand := base
+				if i > 1 {
+					cand = fmt.Sprintf("%s-%d", base, i)
+				}
+				if taken[cand] {
+					continue
+				}
+				if l, err := p.cleanLogin(ctx, cand, 0); err == nil && l != "" {
+					taken[l] = true
+					return l
+				}
+			}
+			return "" // no free name: the user gets no sign-in (one can be given later)
+		}
 		byName := map[string]int64{}
 		rows, err := tx.Query(`SELECT id, name FROM subs WHERE account_id = ?`, srv.AccountID)
 		if err != nil {
@@ -434,8 +467,8 @@ func (p *Panel) apiImport(w http.ResponseWriter, r *http.Request, a *Account) er
 				out.Notes = append(out.Notes, fmt.Sprintf("%s: port %d is in use, imported on port %d - devices must refresh their subscription", pk.in.Tag, pk.in.Port, port))
 			}
 			name := cleanName(pk.in.Tag, 40)
-			res, err := tx.Exec(`INSERT INTO nodes (server_id, kind, name, port, enabled, settings, sort, created_at, updated_at, imported)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, kind, name, port, enabled, string(raw), len(all), t, t,
+			res, err := tx.Exec(`INSERT INTO nodes (id, server_id, kind, name, port, enabled, settings, sort, created_at, updated_at, imported)
+				VALUES (`+db.NextID("nodes")+`, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, kind, name, port, enabled, string(raw), len(all), t, t,
 				importKey(pk.found.Config, pk.in.Tag, pk.in.Port))
 			if err != nil {
 				return err
@@ -453,17 +486,28 @@ func (p *Panel) apiImport(w http.ResponseWriter, r *http.Request, a *Account) er
 				if ok {
 					if !contains64(newSubs, sid) {
 						out.Matched++
+						// a matched user limited to other servers gets this protocol: their devices keep working
+						var raw string
+						var sc Scope
+						if tx.QueryRow(`SELECT scope FROM subs WHERE id = ?`, sid).Scan(&raw) == nil && raw != "" &&
+							json.Unmarshal([]byte(raw), &sc) == nil && !sc.HasNode(id, nid) {
+							sc.Nodes, sc.None = append(sc.Nodes, nid), false
+							if _, err := tx.Exec(`UPDATE subs SET scope = ? WHERE id = ?`, sc.String(), sid); err != nil {
+								return err
+							}
+							out.Notes = append(out.Notes, fmt.Sprintf("%s: %s could use only other servers - this protocol was added to their access", pk.in.Tag, cleanName(u.Name, 64)))
+						}
 					}
 				} else {
-					login, _ := p.cleanLogin(ctx, loginFromName(u.Name), 0)
+					login := freeLogin(u.Name)
 					pw := genPassword()
 					h, _ := hashPassword(pw)
 					if login == "" {
 						h = ""
 					}
 					scope := Scope{Servers: []int64{id}}
-					r, err := tx.Exec(`INSERT INTO subs (account_id, name, note, token, uuid, secret, scope, cycle_start, created_at,
-						updated_at, login, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, srv.AccountID,
+					r, err := tx.Exec(`INSERT INTO subs (id, account_id, name, note, token, uuid, secret, scope, cycle_start, created_at,
+						updated_at, login, password_hash) VALUES (`+db.NextID("subs")+`, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, srv.AccountID,
 						cleanName(u.Name, 64), "Imported from "+pk.found.Software+" on "+srv.Name, randB64URL(18), newUUID(),
 						randB64URL(24), scope.String(), t, t, t, login, h)
 					if err != nil {

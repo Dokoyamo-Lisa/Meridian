@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -100,6 +101,8 @@ type Agent struct {
 	sampler *sys.Sampler
 	out     *outbox
 	started time.Time
+	boot    string // the kernel's boot id (see Baselines)
+	tooNew  string // the revision of a state this agent is too old for: asked for again only once it changes
 
 	mu        sync.Mutex
 	state     *proto.State
@@ -109,6 +112,7 @@ type Agent struct {
 	events    []proto.AgentEvent
 	lastHello time.Time
 	lastCaps  proto.Caps // what the last hello said the host supports
+	lastAddrs []string   // the addresses the last hello listed
 	cores     map[string]proto.CoreStatus
 	kick      chan struct{}
 	applyMu   sync.Mutex
@@ -141,15 +145,58 @@ func New(cfg *Config) (*Agent, error) {
 		out: loadOutbox(filepath.Join(DataDir, "outbox.json")), started: time.Now(), done: map[int64]bool{},
 		kick: make(chan struct{}, 1), cores: map[string]proto.CoreStatus{}}
 	a.xray = &xray.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "xray"), RunDir: RunDir, APIPort: cfg.APIPort,
-		Events: a.event}
+		Events: a.event, Reserved: func() []int { return append([]int{cfg.APIPort}, a.hy.LocalPorts()...) }}
 	a.wg.Events = a.event
 	a.hy = &hy.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "hy2"), RunDir: RunDir, AuthPort: cfg.APIPort + 1,
 		Events: a.event}
 	a.realm = &realm.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "realm")}
+	a.restoreBaselines()
 	a.certs = &acme.Manager{Dir: filepath.Join(DataDir, "certs"), Directory: cfg.ACMEDirectory, CAFile: cfg.ACMECAFile,
 		Events: a.event, OnChange: a.reapply}
 	a.loadDone()
 	return a, nil
+}
+
+// restoreBaselines makes counting go on where the last agent stopped (see Baselines).
+func (a *Agent) restoreBaselines() {
+	a.boot = sys.BootID()
+	switch b := a.out.Baselines; {
+	case b == nil:
+		// an agent that saved none ran before (or the file was lost): what the kernel and the logs
+		// hold now was counted by it
+		a.wg.Restore(nil)
+		a.nft.Restore(nil)
+		a.xray.RestoreLog(nil)
+		a.hy.RestoreLogs(nil)
+	case b.Boot != a.boot:
+		// the machine restarted: every counter and log started over, and nothing in them was counted
+		a.wg.Restore(map[string][2]int64{})
+		a.nft.Restore(map[string][2]uint64{})
+		a.xray.RestoreLog(&sys.LogPos{})
+		a.hy.RestoreLogs(map[int64]sys.LogPos{})
+	default:
+		a.wg.Restore(nz(b.WG))
+		a.nft.Restore(nz(b.NFT))
+		x := b.Xray
+		a.xray.RestoreLog(&x)
+		a.hy.RestoreLogs(nz(b.Hy))
+	}
+}
+
+// nzs is s, or d when s is empty.
+func nzs(s, d string) string {
+	if s == "" {
+		return d
+	}
+	return s
+}
+
+// nz is m, or an empty map for nil (known, but nothing in it).
+func nz[K comparable, V any](m map[K]V) map[K]V {
+	if m == nil {
+		return map[K]V{}
+	}
+	return m
 }
 
 // reapply applies the current state again (a certificate arrived).
@@ -275,6 +322,11 @@ func (a *Agent) watch(ctx context.Context) {
 		if st := a.current(); st != nil && !first {
 			rev = st.Rev // after a restart, always fetch the full state once
 		}
+		a.mu.Lock()
+		if a.tooNew != "" { // a state this agent cannot apply: wait for the next one, never loop on it
+			rev = a.tooNew
+		}
+		a.mu.Unlock()
 		st, err := a.client.State(ctx, rev, 25)
 		if err != nil {
 			var se *statusError
@@ -337,12 +389,16 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 		}
 		a.runActions(st, acts)
 		a.mu.Lock()
+		a.tooNew = st.Rev
 		a.applied = &proto.Applied{Rev: st.Rev, OK: false, At: time.Now().Unix(), Errors: []string{fmt.Sprintf(
 			"the panel needs a newer agent (contract %d, this agent speaks %d) - upgrade the agent; the current configuration keeps running",
 			st.Contract, proto.Version)}}
 		a.mu.Unlock()
 		return
 	}
+	a.mu.Lock()
+	a.tooNew = ""
+	a.mu.Unlock()
 	if st.Decommission {
 		a.decommission()
 		return
@@ -360,20 +416,32 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 	cores.SetDigests(st.Cores.Digests)
 	if !runtimeOK() {
 		note("agent", errors.New("this host is not Linux with systemd"))
-	} else if err := a.prepare(ctx, st); err != nil {
-		// a core could not be downloaded: change nothing, the running configuration stays
-		note("download", err)
 	} else {
+		// a core that could not be downloaded keeps running as it is; everything else applies
+		ready := a.prepare(ctx, st)
 		xr, hys, waiting := a.withCerts(st)
 		for _, w := range waiting {
 			errs = append(errs, "certificate: "+w)
 		}
-		res, err := a.xray.Apply(ctx, xr, st.Cores.Xray, st.Cores.Mirror, logOn, false)
-		note("xray", err)
-		pending = append(pending, res.Pending...)
-		note("hysteria", a.hy.Apply(ctx, hys, st.Cores.Hysteria, st.Cores.Mirror))
+		if ready.xray != nil {
+			note("download", ready.xray)
+		} else {
+			res, err := a.xray.Apply(ctx, xr, st.Cores.Xray, st.Cores.Mirror, logOn, false)
+			note("xray", err)
+			pending = append(pending, res.Pending...)
+		}
+		if ready.hysteria != nil {
+			note("download", ready.hysteria)
+		} else {
+			note("hysteria", a.hy.Apply(ctx, hys, st.Cores.Hysteria, st.Cores.Mirror))
+			pending = append(pending, a.hy.Pending()...)
+		}
 		note("wireguard", a.wg.Apply(st.WireGuard))
-		note("realm", a.realm.Apply(ctx, st.Forwards, st.Cores.Realm, st.Cores.Mirror))
+		if ready.realm != nil {
+			note("download", ready.realm)
+		} else {
+			note("realm", a.realm.Apply(ctx, st.Forwards, st.Cores.Realm, st.Cores.Mirror))
+		}
 		// nftables is optional (a bare Alpine has none): without it, country rules, IP blocks and kernel
 		// forwards do not apply here - the panel says so on the server page - and the rest runs
 		if nft.Available() {
@@ -434,26 +502,31 @@ func (a *Agent) runActions(st *proto.State, acts []proto.Action) {
 
 // prepare downloads every core the state needs before anything is changed, so a slow or failed
 // download never leaves a protocol half moved.
-func (a *Agent) prepare(ctx context.Context, st *proto.State) error {
+// The cores prepare downloads; each is applied only when it is in place, so one download that fails
+// holds back that core alone and every other change still goes through.
+type prepared struct{ xray, hysteria, realm error }
+
+func (a *Agent) prepare(ctx context.Context, st *proto.State) prepared {
+	var p prepared
 	if st.Xray != nil && len(st.Xray.Inbounds) > 0 && !a.xray.Installed() {
 		if err := a.xray.Install(ctx, st.Cores.Xray, st.Cores.Mirror); err != nil {
-			return fmt.Errorf("installing Xray %s: %w", st.Cores.Xray, err)
+			p.xray = fmt.Errorf("installing Xray %s: %w", st.Cores.Xray, err)
 		}
 	}
 	if len(st.Hysteria) > 0 {
-		if _, err := cores.EnsureHysteria(ctx, DataDir, st.Cores.Hysteria, st.Cores.Mirror); err != nil {
-			return fmt.Errorf("installing Hysteria %s: %w", st.Cores.Hysteria, err)
+		if _, err := cores.InUse(ctx, DataDir, "hysteria", st.Cores.Hysteria, st.Cores.Mirror); err != nil {
+			p.hysteria = fmt.Errorf("installing Hysteria %s: %w", st.Cores.Hysteria, err)
 		}
 	}
 	for _, f := range st.Forwards {
 		if f.Engine == "realm" {
-			if _, err := cores.EnsureRealm(ctx, DataDir, st.Cores.Realm, st.Cores.Mirror); err != nil {
-				return fmt.Errorf("realm %s: %w", st.Cores.Realm, err)
+			if _, err := cores.InUse(ctx, DataDir, "realm", st.Cores.Realm, st.Cores.Mirror); err != nil {
+				p.realm = fmt.Errorf("installing realm %s: %w", st.Cores.Realm, err)
 			}
 			break
 		}
 	}
-	return nil
+	return p
 }
 
 // geoSpec turns the country rule into firewall sets. When the list cannot be fetched, the last one
@@ -565,13 +638,61 @@ func (a *Agent) runAction(ctx context.Context, st *proto.State, act proto.Action
 			return "", err
 		}
 		a.event("core_restarted", "warn", "Xray restarted on request")
+		a.reapply()
 		return "Xray restarted", nil
+	case proto.ActionRestartPending:
+		var done []string
+		if a.xray.Waiting() {
+			if err := a.xray.Restart(ctx); err != nil {
+				return "", err
+			}
+			a.event("core_restarted", "warn", "Xray restarted on request to apply the settings that waited")
+			done = append(done, "Xray")
+		}
+		n, err := a.hy.RestartPending(ctx)
+		if n > 0 {
+			a.event("core_restarted", "warn", fmt.Sprintf("Hysteria2 restarted on request to apply the configuration that waited (%d protocol(s))", n))
+			done = append(done, fmt.Sprintf("%d Hysteria2 protocol(s)", n))
+		}
+		a.reapply()
+		if err != nil {
+			return strings.Join(done, " and "), err
+		}
+		if len(done) == 0 {
+			return "nothing waited for a restart", nil
+		}
+		return strings.Join(done, " and ") + " restarted", nil
 	case proto.ActionUpgradeXray:
 		v, _ := args["version"].(string)
 		if v == "" {
 			v = st.Cores.Xray
 		}
 		return a.xray.Upgrade(ctx, strings.TrimPrefix(v, "v"), st.Cores.Mirror)
+	case proto.ActionUpgradeHysteria, proto.ActionUpgradeRealm:
+		name, label, want := "hysteria", "Hysteria", st.Cores.Hysteria
+		if act.Kind == proto.ActionUpgradeRealm {
+			name, label, want = "realm", "realm", st.Cores.Realm
+		}
+		if v, _ := args["version"].(string); v != "" {
+			want = v
+		}
+		want = strings.TrimPrefix(want, "v")
+		prev, err := cores.Upgrade(ctx, DataDir, name, want, st.Cores.Mirror)
+		if err != nil {
+			return "", fmt.Errorf("upgrading %s to %s: %w", label, want, err)
+		}
+		var n int
+		if name == "hysteria" {
+			n, err = a.hy.RestartAll()
+		} else {
+			n, err = a.realm.RestartAll()
+		}
+		a.event("core_restarted", "warn", fmt.Sprintf("%s upgraded from %s to %s on request (%d restarted)", label, nzs(prev, "none"), want, n))
+		a.reapply()
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s %s -> %s (%d restarted)", label, nzs(prev, "none"), want, n), nil
 	case proto.ActionUpgradeAgent:
 		sums, _ := args["sha256"].(map[string]any)
 		want, _ := sums[runtime.GOARCH].(string)
@@ -770,15 +891,23 @@ func (a *Agent) report(ctx context.Context) {
 	results := append([]proto.ActionResult(nil), a.results...)
 	applied := a.applied
 	// the host facts every 10 minutes - or at once when what it supports changes (nftables installed)
+	// or its addresses do (one added or gone: protocols bound to it and the panel's warnings follow)
 	caps := sys.Caps()
 	caps.APIPort = a.cfg.APIPort
+	caps.RestartPending = true
 	caps.Certs = true // resolves the panel's shared certificates
-	sendHello := time.Since(a.lastHello) > 10*time.Minute || caps != a.lastCaps
+	addrs := sys.LocalAddrs()
+	sendHello := time.Since(a.lastHello) > 10*time.Minute || caps != a.lastCaps || !slices.Equal(addrs, a.lastAddrs)
 	a.mu.Unlock()
 
-	a.out.add(traffic, fwds, ips, dests, proto.NICDelta{RX: rx, TX: tx}, events, a.nft.TakeGeoDrops())
+	geoDrops := a.nft.TakeGeoDrops()
+	a.out.add(traffic, fwds, ips, dests, proto.NICDelta{RX: rx, TX: tx}, events, geoDrops, &Baselines{Boot: a.boot,
+		WG: a.wg.Baseline(), NFT: a.nft.Baseline(), Xray: a.xray.LogPos(), Hy: a.hy.LogPos()})
 	rep := &proto.Report{Instance: a.out.Instance, Batch: a.out.next(), Live: live, Applied: applied,
 		ActionResults: results}
+	// on disk before it leaves: the batch in flight and the counters it came from go together, so a
+	// stop during the send neither repeats nor loses anything
+	a.out.save()
 	if sendHello {
 		h := sys.Hello(Version, a.started)
 		h.Caps = caps
@@ -798,6 +927,7 @@ func (a *Agent) report(ctx context.Context) {
 	if sendHello {
 		a.lastHello = time.Now()
 		a.lastCaps = caps
+		a.lastAddrs = addrs
 	}
 	// results that reached the panel are done
 	keep := a.results[:0]

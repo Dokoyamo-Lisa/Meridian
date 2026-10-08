@@ -120,10 +120,34 @@ function cached<T>(key: string, ver: number, fn: () => T): T {
   memo.set(key, { ver, val })
   return val
 }
+// Servers report on their own timers, so their samples rarely share a second: a server's latest
+// sample counts until its next one (for at most STALE seconds), and the total adds them up at every
+// moment any server reported.
+const STALE = 35
+function latestAt(arr: [number, number, number][], t: number): [number, number, number] | null {
+  let lo = 0
+  let hi = arr.length - 1
+  let at = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (arr[mid][0] <= t) {
+      at = mid
+      lo = mid + 1
+    } else hi = mid - 1
+  }
+  return at >= 0 && t - arr[at][0] <= STALE ? arr[at] : null
+}
 function totalOf(map: Map<number, [number, number, number][]>): Pt[] {
-  const acc = new Map<number, number>()
-  for (const arr of map.values()) for (const p of arr) acc.set(p[0], (acc.get(p[0]) || 0) + p[1] + p[2])
-  return Array.from(acc.entries()).sort((a, b) => a[0] - b[0])
+  const lists = Array.from(map.values()).map((arr) => arr.slice().sort((a, b) => a[0] - b[0]))
+  const times = Array.from(new Set(lists.flatMap((arr) => arr.map((p) => p[0])))).sort((a, b) => a - b)
+  return times.map((t): Pt => {
+    let sum = 0
+    for (const arr of lists) {
+      const p = latestAt(arr, t)
+      if (p) sum += p[1] + p[2]
+    }
+    return [t, sum]
+  })
 }
 const liveTotal = () => cached('liveTotal', S.liveVer, () => totalOf(S.live))
 const liveOf = (sid: number) => cached('live' + sid, S.liveVer, () => (S.live.get(sid) || []).map((p): Pt => [p[0], p[1] + p[2]]))
@@ -131,7 +155,7 @@ function breakdownAt(t: number): TipRow[] | null {
   if (!S.pub) return null
   const rows: [string, number][] = []
   for (const sv of S.pub.servers) {
-    const p = (S.live.get(sv.id) || []).find((q) => q[0] === t)
+    const p = latestAt((S.live.get(sv.id) || []).slice().sort((a, b) => a[0] - b[0]), t)
     if (p && p[1] + p[2] > 0) rows.push([sv.name, p[1] + p[2]])
   }
   rows.sort((a, b) => b[1] - a[1])
@@ -1314,8 +1338,23 @@ function renderMyServers(m: PortalMe) {
   const rows = m.servers.map((sv) =>
     h(
       'tr',
-      { 'data-level': sv.online ? 'good' : 'crit' },
-      h('td.c-name', h('span.dot', { 'aria-hidden': 'true', title: sv.online ? 'Online' : 'Offline' }), h('div', h('b', sv.name), h('small', [placeOf(sv.city, sv.country), sv.online ? null : 'offline'].filter(Boolean).join(' · ') || '—'))),
+      { 'data-level': sv.former ? 'none' : sv.online ? 'good' : 'crit' },
+      h(
+        'td.c-name',
+        h('span.dot', { 'aria-hidden': 'true', title: sv.former ? '' : sv.online ? 'Online' : 'Offline' }),
+        h(
+          'div',
+          h('b', sv.name),
+          h(
+            'small',
+            sv.former
+              ? sv.name === 'Removed server'
+                ? 'removed'
+                : 'no longer in your access'
+              : [placeOf(sv.city, sv.country), sv.online ? null : 'offline'].filter(Boolean).join(' · ') || '—',
+          ),
+        ),
+      ),
       h('td.c-protos', sv.protocols.length ? sv.protocols.map((x) => h('span.chip', x)) : h('span.muted', '—')),
       h('td.r', bytes(sv.today.up + sv.today.down)),
       h('td.r', h('div.c-rate', h('span', bytes(sv.cycle.up + sv.cycle.down)), h('small', `↑ ${bytes(sv.cycle.up)} · ↓ ${bytes(sv.cycle.down)}`))),
@@ -1330,6 +1369,29 @@ function renderMyServers(m: PortalMe) {
       h('tbody', rows),
     ),
   )
+  // the same usage per protocol, exact: this cycle and since the start
+  const protos = m.protocols || []
+  if (protos.length) {
+    host.append(
+      h('div.sub-h', 'By protocol'),
+      h(
+        'table.t-me.t-proto',
+        h('thead', h('tr', h('th', 'Protocol'), h('th.r', 'This cycle'), h('th.r', 'All time'))),
+        h(
+          'tbody',
+          protos.map((x) =>
+            h(
+              'tr',
+              { 'data-level': 'none' },
+              h('td.c-name', h('div', h('b', x.name), h('small', x.removed ? `${x.server} · removed` : x.server))),
+              h('td.r', h('div.c-rate', h('span', bytes(x.cycle.up + x.cycle.down)), h('small', `↑ ${bytes(x.cycle.up)} · ↓ ${bytes(x.cycle.down)}`))),
+              h('td.r', bytes(x.total.up + x.total.down)),
+            ),
+          ),
+        ),
+      ),
+    )
+  }
 }
 
 function renderMyDays(m: PortalMe) {

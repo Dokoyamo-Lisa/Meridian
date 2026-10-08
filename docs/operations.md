@@ -11,19 +11,37 @@ sudo -u meridian meridian backup --data /var/lib/meridian /var/lib/meridian/back
 The copy contains every key, token and credential: it is created readable by its owner only - keep
 it that way wherever you store it. A daily cron job plus copying the file off the host is enough.
 
-**Restore**: stop the panel, put the copy in place, start it.
+**Restore**: stop the panel, put the copy in place with `meridian restore`, start it.
 
 ```bash
 sudo systemctl stop meridian
-sudo install -m 0600 -o meridian -g meridian backup.db /var/lib/meridian/meridian.db
+sudo meridian restore --data /var/lib/meridian backup.db
 sudo systemctl start meridian
 ```
+
+`restore` refuses to run while the panel is running, checks that the file is a sound Meridian
+database, and keeps the database it replaces next to it (`meridian.db.before-restore-...` - delete it
+once all is well, it holds keys too). Do not copy a backup over `meridian.db` by hand: SQLite would
+lay the old database's write-ahead log (`meridian.db-wal`) over it on the next start.
 
 Agents reconnect by themselves; nothing on the servers changes unless the restored data differs.
 
 ## Upgrades
 
-**Panel** - unpack the new release and run:
+**Panel** - **Settings › Updates** shows the newest release; **Update now** installs it, and
+**Install new releases by themselves** does the same at night (03:00-05:00, panel time). The panel
+downloads the release from GitHub, checks that its `SHA256SUMS` carries Meridian's release signature
+(the public key is built into the panel - a release without a valid signature is never installed)
+and that the archive matches it, and backs up its database (`/var/lib/meridian/backups`, the last
+three). It then leaves the release in `/var/lib/meridian/update`, where the updater service
+(`meridian-update.path` / `.service`, root) picks it up, checks the signature and checksum again
+with the installed binary's key, refuses anything not newer than what runs, and installs it with the
+release's own `install-panel.sh --upgrade`. If the new panel does not stay up, the updater puts the
+previous version back (kept in `/usr/local/lib/meridian/previous`). Servers keep running throughout;
+the panel restarts once; the timeline says how it went.
+
+The updater is installed by `install-panel.sh` (from 0.7.0). A panel installed before that is
+upgraded the manual way once - unpack the new release and run:
 
 ```bash
 sudo ./install-panel.sh --upgrade
@@ -32,16 +50,34 @@ sudo ./install-panel.sh --upgrade
 Servers keep running while the panel restarts; agents reconnect within seconds. Database
 migrations run at start-up.
 
-**Agents** - on each server page, **More actions › Upgrade agent**. Nobody is disconnected: the cores
-run in their own systemd units. The panel sends the new binary's checksum inside the signed state;
-the agent refuses anything else. When a new panel version changes the agent contract (the
-changelog says so), each server shows the alert "the panel needs a newer agent" until you upgrade
-its agent; the old agent keeps serving its last configuration meanwhile.
+**Agents** - **Settings › Updates › Upgrade all agents** (or the button on Servers) upgrades every
+server whose agent is older than the panel; offline servers upgrade as soon as they connect. One
+server at a time: its page, **More actions › Upgrade agent**. Nobody is disconnected: the cores run
+in their own systemd units. The panel sends the new binary's checksum inside the signed state; the
+agent refuses anything else. When a new panel version changes the agent contract (the changelog says
+so), each server shows the alert "the panel needs a newer agent" until you upgrade its agent; the old
+agent keeps serving its last configuration meanwhile. A new agent that writes a core's configuration
+differently never restarts it by itself: the server page says what waits, and **Restart now**
+restarts exactly that.
 
 **Cores (Xray, Hysteria, realm)** - set the versions in **Settings › Cores**. Running servers keep
-their version until you choose **More actions › Upgrade Xray** on a server (Xray restarts once; the
-agent tests the configuration with the new version first and rolls back if it does not stay up).
-New servers install the configured versions.
+their version until you choose **More actions › Upgrade Xray**, **Upgrade Hysteria** or **Upgrade
+realm** on a server (that core restarts once; Xray's configuration is tested with the new version
+first, and Xray is rolled back if it does not stay up). New servers install the configured versions.
+A core whose download fails holds back only its own changes; everything else still applies.
+
+## Notifications
+
+Settings › Notifications sends what needs you to a Telegram chat and/or an HTTPS webhook. Events are
+sent in order from the activity timeline; the panel remembers how far it got, so restarting it
+neither repeats nor loses anything, and turning notifications on never sends the past. While every
+channel fails, the events wait (retried with a growing pause, up to 15 minutes) and are dropped after
+a day - the timeline in the panel keeps them. The bot token and webhook address are stored apart from
+the other settings and never shown again in full (not even to read-only API tokens).
+
+Webhooks receive `{"text", "content", "site", "events": [{"time", "level", "kind", "message"}]}`:
+Slack and Mattermost read `text`, Discord reads `content`. Only `https://` addresses are accepted, none
+on the panel's own machine.
 
 ## API tokens without a browser
 
@@ -91,14 +127,15 @@ panel restarts.
 3. With `--domain` (automatic HTTPS) the panel obtains a certificate for it on the first visit.
    Behind your own reverse proxy, add the domain there too (see below).
 
-That domain serves only the status page and the users' sign-in; the panel and its API answer `404`
-there, and the supervisor cannot sign in on it (use the panel's own address to see the servers). Users are then told to sign in at
+That domain serves only the status page, the users' sign-in and pages, and their subscription links;
+the panel and its API answer `404` there. Sign in there to see every server on the live globe - the
+panel itself still opens only at its own address. Users are then told to sign in at
 `https://status.example.com/me`.
 
 ## Moving the panel
 
 1. Back up the database and install the panel on the new host.
-2. Restore the backup there.
+2. Stop the new panel, restore the backup there (`meridian restore`, above), start it.
 3. Point the domain to the new host (or change **Settings › Public URL** and reinstall agents with
    fresh commands if the address changes).
 

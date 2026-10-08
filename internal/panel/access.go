@@ -266,11 +266,18 @@ func (p *Panel) geoRule(ctx context.Context, s *Server) (*proto.GeoRule, error) 
 		return nil, err
 	}
 	except := append([]string{}, r.Exceptions...)
-	// every server of the panel may reach every other one (proxy pass), wherever it is
+	// every server of the panel may reach every other one (proxy pass), wherever it is - from any of
+	// its addresses, a protocol's own included
 	if all, err := p.serversOf(ctx, s.AccountID); err == nil {
 		for _, o := range all {
-			for _, ip := range []string{o.IPv4, o.IPv6, o.Address} {
-				if a, err := netip.ParseAddr(ip); err == nil && !slices.Contains(except, a.Unmap().String()) {
+			ips := append([]string{o.IPv4, o.IPv6, o.Address}, o.Addrs...)
+			if nodes, err := p.nodesOf(ctx, o.ID); err == nil {
+				for _, n := range nodes {
+					ips = append(ips, n.BindIP)
+				}
+			}
+			for _, ip := range ips {
+				if a, err := netip.ParseAddr(ip); err == nil && publicAddr(a.Unmap()) && !slices.Contains(except, a.Unmap().String()) {
 					except = append(except, a.Unmap().String())
 				}
 			}
@@ -359,8 +366,9 @@ func (p *Panel) siteDenied(r *http.Request, area string) (bool, string) {
 func (p *Panel) siteGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		area := siteArea(r.URL.Path)
-		// a domain dedicated to the status page serves the status page and the users' sign-in only
-		if d := p.settings().StatusDomain; d != "" && strings.EqualFold(hostOnly(r.Host), d) && (area == "admin" || area == "links") {
+		// a domain dedicated to the status page serves the status page, the users' own pages and their
+		// links - never the panel (users who sign in there get their links on it)
+		if d := p.settings().StatusDomain; d != "" && strings.EqualFold(hostOnly(r.Host), d) && area == "admin" {
 			http.NotFound(w, r)
 			return
 		}

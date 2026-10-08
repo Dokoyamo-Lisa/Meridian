@@ -7,12 +7,16 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
+	"meridian/internal/geo"
 	"meridian/internal/proto"
 	"meridian/internal/subgen"
 )
@@ -135,6 +139,62 @@ func (p *Panel) compileLoop(ctx context.Context) {
 
 // touchServers marks servers for recompilation.
 func (p *Panel) touchServers(ids ...int64) { p.hub.markDirty(ids...) }
+
+// rememberGeo keeps the country rule a server was last sent (settings key "geo_last"; nil: none), to
+// send it again while the country database is not there (a panel moved to a new host, DB-IP
+// unreachable).
+func (p *Panel) rememberGeo(serverID int64, gr *proto.GeoRule) {
+	p.geoMu.Lock()
+	defer p.geoMu.Unlock()
+	last := p.loadGeoLast()
+	key := strconv.FormatInt(serverID, 10)
+	old, had := last[key]
+	switch {
+	case gr == nil && !had: // no rule, none remembered
+		return
+	case gr == nil: // the rule was turned off: never send it again
+		delete(last, key)
+	case had && old.List == gr.List && old.Mode == gr.Mode && slices.Equal(old.Except, gr.Except):
+		return
+	default:
+		last[key] = *gr
+	}
+	b, _ := json.Marshal(last)
+	if _, err := p.db.Exec1(`INSERT INTO settings (key, value) VALUES ('geo_last', ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, string(b)); err != nil {
+		slog.Warn("country rule", "err", err)
+	}
+}
+
+// lastGeo is the country rule a server was last sent, or nil.
+func (p *Panel) lastGeo(serverID int64) *proto.GeoRule {
+	p.geoMu.Lock()
+	defer p.geoMu.Unlock()
+	if gr, ok := p.loadGeoLast()[strconv.FormatInt(serverID, 10)]; ok {
+		return &gr
+	}
+	return nil
+}
+
+func (p *Panel) loadGeoLast() map[string]proto.GeoRule {
+	out := map[string]proto.GeoRule{}
+	var raw string
+	if p.db.QueryRow(`SELECT value FROM settings WHERE key = 'geo_last'`).Scan(&raw) == nil {
+		_ = json.Unmarshal([]byte(raw), &out)
+	}
+	return out
+}
+
+// touchAll recompiles every server.
+func (p *Panel) touchAll() {
+	if servers, err := p.serversOf(context.Background(), 0); err == nil {
+		ids := make([]int64, 0, len(servers))
+		for _, sv := range servers {
+			ids = append(ids, sv.ID)
+		}
+		p.touchServers(ids...)
+	}
+}
 
 // touchAccount recompiles every server of an account (a subscription change touches them all).
 func (p *Panel) touchAccount(accountID int64) {
@@ -301,23 +361,24 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 				passRules = append(passRules, map[string]any{"ruleTag": bindTag(n.ID),
 					"inboundTag": []string{proto.InboundTag(n.ID)}, "outboundTag": bindTag(n.ID)})
 			}
-			// proxy pass, entry side: send this node's traffic out through its exit node
+			// proxy pass, entry side: send this node's traffic out through its exit node. While the exit
+			// cannot be used (turned off, its server removed) the traffic is blocked: users who chose to
+			// appear at the exit must never leave from here instead without anyone noticing.
 			if n.PassNode > 0 {
-				if exit, err := p.nodeByID(ctx, n.PassNode); err == nil && exit.Enabled && exit.PassNode == 0 {
-					if xs, err := p.serverByID(ctx, exit.ServerID); err == nil && xs.DeletedAt == 0 &&
-						xs.AccountID == srv.AccountID && xs.ID != srv.ID {
-						if ob, err := passOutbound(srv, n, xs, exit); err == nil {
-							if n.BindIP != "" {
-								ob["sendThrough"] = n.BindIP
-							}
-							passOut = append(passOut, ob)
-							passRules = append(passRules, map[string]any{"ruleTag": passTag(n.ID),
-								"inboundTag": []string{proto.InboundTag(n.ID)}, "outboundTag": passTag(n.ID)})
-						} else {
-							slog.Warn("proxy pass", "node", n.ID, "err", err)
+				out := "block"
+				if exit, xs, why := p.passExit(ctx, srv, n); why == "" {
+					if ob, err := passOutbound(srv, n, xs, exit); err == nil {
+						if n.BindIP != "" {
+							ob["sendThrough"] = n.BindIP
 						}
+						passOut = append(passOut, ob)
+						out = passTag(n.ID)
+					} else {
+						slog.Warn("proxy pass", "node", n.ID, "err", err)
 					}
 				}
+				passRules = append(passRules, map[string]any{"ruleTag": passTag(n.ID),
+					"inboundTag": []string{proto.InboundTag(n.ID)}, "outboundTag": out})
 			}
 		case "hysteria":
 			hn, err := hyNode(n, usersOf(subs, n), passByExit[n.ID], over)
@@ -381,6 +442,16 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 
 	if gr, err := p.geoRule(ctx, srv); err == nil {
 		st.Geo = gr
+		p.rememberGeo(srv.ID, gr)
+	} else if errors.Is(err, geo.ErrNoCountryDB) {
+		// a state without the rule would take it off the server: until the database is here (the
+		// panel recompiles everything then), the rule it had goes out again - the agent keeps that
+		// address list - and a server that never had one waits with its last configuration
+		if last := p.lastGeo(srv.ID); last != nil {
+			st.Geo = last
+		} else {
+			return nil, fmt.Errorf("server %d keeps its last configuration until the country database is downloaded: %w", srv.ID, err)
+		}
 	} else {
 		slog.Warn("country rule not applied", "server", srv.ID, "err", err)
 	}

@@ -190,7 +190,8 @@ func Surge(eps []Endpoint, info Info, subURL string) ([]byte, []string) {
 		fmt.Fprintf(&b, "%s = url-test, %s, url=https://www.gstatic.com/generate_204, interval=600, tolerance=50\n",
 			groupAuto, strings.Join(names, ", "))
 	} else {
-		fmt.Fprintf(&b, "%s = select, DIRECT\n", groupProxy)
+		// nothing this app can use: refuse traffic rather than send it out unprotected
+		fmt.Fprintf(&b, "%s = select, REJECT\n", groupProxy)
 	}
 	b.WriteString("\n[Rule]\n")
 	for _, c := range privateCIDRs {

@@ -172,6 +172,12 @@ func forwardTarget(t, engine string) (string, error) {
 		if h == "localhost" || strings.HasSuffix(h, ".localhost") {
 			return "", errStatus(http.StatusBadRequest, "forwarding to the server itself is not allowed")
 		}
+		// names that only mean something inside the provider's network (cloud metadata, local services)
+		for _, suffix := range []string{".internal", ".local", ".localdomain", ".home.arpa", ".lan", ".intranet"} {
+			if strings.HasSuffix(h, suffix) || h == strings.TrimPrefix(suffix, ".") {
+				return "", errStatus(http.StatusBadRequest, "forward to a public name or an address - "+h+" is a name inside the provider's or a local network")
+			}
+		}
 	}
 	return net.JoinHostPort(h, strconv.Itoa(pn)), nil
 }

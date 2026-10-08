@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"meridian/internal/db"
 	"meridian/internal/proto"
 	"meridian/internal/seal"
 	"meridian/internal/subgen"
@@ -51,13 +52,15 @@ func scopeAccount(r *http.Request, a *Account) int64 {
 
 type nodeView struct {
 	*Node
-	Settings map[string]any      `json:"settings" doc:"The protocol's settings without private keys"`
-	Label    string              `json:"label" doc:"How apps name it, e.g. REALITY or VLESS WS TLS"`
-	Net      string              `json:"net" doc:"tcp | udp | both"`
-	Apps     []subgen.AppSupport `json:"apps" doc:"Which apps can use it as configured"`
-	Notes    []string            `json:"notes,omitempty" doc:"What the admin needs to know or do"`
-	Online   int                 `json:"online"`
-	PassName string              `json:"pass_name,omitempty" doc:"The proxy pass exit, as 'server · protocol'"`
+	Settings    map[string]any      `json:"settings" doc:"The protocol's settings without private keys"`
+	Label       string              `json:"label" doc:"How apps name it, e.g. REALITY or VLESS WS TLS"`
+	Net         string              `json:"net" doc:"tcp | udp | both"`
+	Apps        []subgen.AppSupport `json:"apps" doc:"Which apps can use it as configured"`
+	Notes       []string            `json:"notes,omitempty" doc:"What the admin needs to know or do"`
+	Online      int                 `json:"online"`
+	PassName    string              `json:"pass_name,omitempty" doc:"The proxy pass exit, as 'server · protocol'"`
+	PassBroken  string              `json:"pass_broken,omitempty" doc:"Why the proxy pass cannot be used right now (the exit is turned off or removed); its traffic is blocked meanwhile"`
+	PassEntries []string            `json:"pass_entries,omitempty" doc:"Protocols on other servers that pass through this one, as 'server · protocol'"`
 	// on servers whose provider forwards other numbers than the ones the server listens on
 	PublicPort int `json:"public_port,omitempty" doc:"The port devices connect to, when the server's provider forwards it under another number than port"`
 }
@@ -137,7 +140,13 @@ func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*server
 		nv.Online = online[n.ID]
 		if n.PassNode > 0 {
 			nv.PassName = p.passName(ctx, n.PassNode)
+			if _, _, why := p.passExit(ctx, s, n); why != "" {
+				nv.PassBroken = why
+				nv.Notes = append(nv.Notes, "Proxy pass does not work: "+why+". Its traffic is blocked - nobody leaves from "+
+					s.Name+" instead - until the exit is back, or choose another exit (or Off) in its settings.")
+			}
 		}
+		nv.PassEntries = p.passEntryNames(ctx, n.ID)
 		if n.PassOnly {
 			if len(p.passEntries(ctx, n.ID)) == 0 {
 				nv.Notes = append(nv.Notes, "Serves only proxy passes, and no protocol passes through it yet: nobody can use it.")
@@ -256,6 +265,27 @@ func viewOfNode(n *Node, srv *Server) nodeView {
 	return v
 }
 
+// passEntryNames lists the protocols that pass through node exitID, as 'server · protocol'.
+func (p *Panel) passEntryNames(ctx context.Context, exitID int64) []string {
+	rows, err := p.db.QueryContext(ctx, `SELECT s.name, n.kind, n.settings, n.name FROM nodes n JOIN servers s ON s.id = n.server_id
+		WHERE n.pass_node = ? AND s.deleted_at = 0 ORDER BY s.name, n.id`, exitID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var srv, kind, settings, name string
+		if rows.Scan(&srv, &kind, &settings, &name) == nil {
+			if name == "" {
+				name = protocolLabel(kind, json.RawMessage(settings))
+			}
+			out = append(out, srv+" · "+name)
+		}
+	}
+	return out
+}
+
 // passName describes a proxy pass exit for display.
 func (p *Panel) passName(ctx context.Context, exitID int64) string {
 	exit, err := p.nodeByID(ctx, exitID)
@@ -278,8 +308,10 @@ func (p *Panel) installCommand(r *http.Request, s *Server) string {
 		return "# " + err.Error()
 	}
 	sum := sha256.Sum256([]byte(script))
-	// curl or wget (busybox's on Alpine), then sh: the same line works on Debian, Ubuntu, RHEL and Alpine
-	return fmt.Sprintf("{ curl -fsSLo meridian-install.sh %[1]s/agent/install.sh || wget -qO meridian-install.sh %[1]s/agent/install.sh; } && echo '%[2]s  meridian-install.sh' | sha256sum -c - && sh meridian-install.sh --token '%[3]s' --api-port %[4]d",
+	// curl or wget (busybox's on Alpine), then sh: the same line works on Debian, Ubuntu, RHEL and Alpine.
+	// The token goes in the environment, which only root can read - never on a command line, which every
+	// user on the server can see while the installer runs
+	return fmt.Sprintf("{ curl -fsSLo meridian-install.sh %[1]s/agent/install.sh || wget -qO meridian-install.sh %[1]s/agent/install.sh; } && echo '%[2]s  meridian-install.sh' | sha256sum -c - && MERIDIAN_TOKEN='%[3]s' sh meridian-install.sh --api-port %[4]d",
 		base, hex.EncodeToString(sum[:]), seal.Token(s.ID, s.Secret), p.settings().AgentPort)
 }
 
@@ -362,8 +394,8 @@ func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Accou
 			if port == 0 {
 				return errStatus(http.StatusConflict, noFreePort(srv))
 			}
-			res, err := tx.Exec(`INSERT INTO nodes (server_id, kind, port, settings, sort, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)`, id, kind, port, string(settings), len(made), t, t)
+			res, err := tx.Exec(`INSERT INTO nodes (id, server_id, kind, port, settings, sort, created_at, updated_at)
+				VALUES (`+db.NextID("nodes")+`, ?, ?, ?, ?, ?, ?, ?)`, id, kind, port, string(settings), len(made), t, t)
 			if err != nil {
 				return err
 			}
@@ -606,12 +638,35 @@ func (p *Panel) apiDeleteServer(w http.ResponseWriter, r *http.Request, a *Accou
 	if err != nil {
 		return err
 	}
-	// Soft delete: the agent receives a decommission state and cleans up. History stays.
-	if _, err := p.db.Exec1(`UPDATE servers SET deleted_at = ? WHERE id = ?`, now(), id); err != nil {
+	nodes, err := p.nodesOf(r.Context(), id)
+	if err != nil {
 		return err
 	}
-	p.event(s.AccountID, "warn", "server_deleted", id, 0, a.ID, fmt.Sprintf("Server %s deleted", s.Name), nil)
-	p.touchServers(id)
+	var nodeIDs []int64
+	for _, n := range nodes {
+		nodeIDs = append(nodeIDs, n.ID)
+	}
+	// the servers its protocols pass through drop their pass users; protocols elsewhere that passed
+	// through it block until they get another exit
+	exits, entries := p.passExitsOf(r.Context(), id), p.passEntriesOf(r.Context(), id)
+	var lost []string
+	// Soft delete: the agent receives a decommission state and cleans up. History stays.
+	if err := p.db.Write(r.Context(), func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`UPDATE servers SET deleted_at = ? WHERE id = ?`, now(), id); err != nil {
+			return err
+		}
+		lost, err = pruneScopes(tx, s.AccountID, id, nodeIDs)
+		return err
+	}); err != nil {
+		return err
+	}
+	msg := fmt.Sprintf("Server %s deleted", s.Name)
+	if len(entries) > 0 {
+		msg += fmt.Sprintf(" - protocols on %d other server(s) passed through it and are blocked until they get another exit", len(entries))
+	}
+	p.event(s.AccountID, "warn", "server_deleted", id, 0, a.ID, msg, nil)
+	p.noAccessLeft(s.AccountID, a.ID, lost)
+	p.touchServers(append(append(entries, exits...), id)...)
 	p.live.drop(id)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	return nil
@@ -653,9 +708,12 @@ func (p *Panel) apiServerAction(w http.ResponseWriter, r *http.Request, a *Accou
 	if err := readJSON(r, &in); err != nil {
 		return err
 	}
-	if !slices.Contains([]string{proto.ActionRestartXray, proto.ActionUpgradeXray, proto.ActionUpgradeAgent,
-		proto.ActionCheckTarget}, in.Kind) {
+	if !slices.Contains([]string{proto.ActionRestartXray, proto.ActionRestartPending, proto.ActionUpgradeXray,
+		proto.ActionUpgradeHysteria, proto.ActionUpgradeRealm, proto.ActionUpgradeAgent, proto.ActionCheckTarget}, in.Kind) {
 		return errStatus(http.StatusBadRequest, "unknown action")
+	}
+	if in.Kind == proto.ActionRestartPending && !s.caps().RestartPending {
+		in.Kind = proto.ActionRestartXray // agents before 0.6.3: only Xray's settings ever wait
 	}
 	args := "{}"
 	switch in.Kind {
@@ -832,6 +890,18 @@ func (p *Panel) hostPorts(id int64) []int {
 	return nil
 }
 
+// hostPortsBut leaves out the port an object listens on itself: changing a running protocol's address
+// or networks, or a forward's target, must not run into its own listener.
+func (p *Panel) hostPortsBut(id int64, own int) []int {
+	var out []int
+	for _, x := range p.hostPorts(id) {
+		if x != own {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
 // ---------------------------------------------------------------- nodes (protocols)
 
 type nodeInput struct {
@@ -914,10 +984,7 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	if err != nil {
 		return errStatus(http.StatusBadRequest, err.Error())
 	}
-	if err := checkWG6(s, in.Kind, settings); err != nil {
-		return err
-	}
-	if err := p.checkSharedCert(r.Context(), s, in.Kind, settings); err != nil {
+	if err := p.checkOnServer(r.Context(), s, in.Kind, settings); err != nil {
 		return err
 	}
 	bind := ""
@@ -966,8 +1033,8 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 		passNode = *in.PassNode
 	}
 	t := now()
-	res, err := p.db.Exec1(`INSERT INTO nodes (server_id, kind, name, port, settings, host, pass_node, pass_only, bind_ip,
-		code, sort, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, in.Kind, name, port,
+	res, err := p.db.Exec1(`INSERT INTO nodes (id, server_id, kind, name, port, settings, host, pass_node, pass_only, bind_ip,
+		code, sort, created_at, updated_at) VALUES (`+db.NextID("nodes")+`, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, in.Kind, name, port,
 		string(settings), host, passNode, passOnly, bind, code, len(nodes), t, t)
 	if err != nil {
 		return err
@@ -1024,10 +1091,7 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 		n.Settings = updated
 	}
 	if in.Settings != nil {
-		if err := checkWG6(s, n.Kind, n.Settings); err != nil {
-			return err
-		}
-		if err := p.checkSharedCert(r.Context(), s, n.Kind, n.Settings); err != nil {
+		if err := p.checkOnServer(r.Context(), s, n.Kind, n.Settings); err != nil {
 			return err
 		}
 	}
@@ -1049,7 +1113,11 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 		}
 		nodes, _ := p.nodesOf(r.Context(), n.ServerID)
 		fwds, _ := p.forwardsOf(r.Context(), n.ServerID)
-		if msg := portConflictAt(port, t1, u1, listenAddr(n.Kind, n.BindIP), nodes, fwds, n.ID, 0, p.hostPorts(n.ServerID)); msg != "" {
+		hp := p.hostPorts(n.ServerID)
+		if port == n.Port && n.Enabled {
+			hp = p.hostPortsBut(n.ServerID, port) // it listens there itself
+		}
+		if msg := portConflictAt(port, t1, u1, listenAddr(n.Kind, n.BindIP), nodes, fwds, n.ID, 0, hp); msg != "" {
 			return errStatus(http.StatusConflict, msg)
 		}
 		n.Port = port
@@ -1067,6 +1135,7 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 			return err
 		}
 	}
+	wasEnabled := n.Enabled
 	if in.Enabled != nil {
 		n.Enabled = *in.Enabled
 	}
@@ -1100,16 +1169,12 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 		}
 		n.PassNode = *in.PassNode
 	}
-	if in.Settings != nil {
-		// entry nodes that pass through this one carry its keys in their outbound
-		if rows, err := p.db.QueryContext(r.Context(), `SELECT server_id FROM nodes WHERE pass_node = ?`, n.ID); err == nil {
-			for rows.Next() {
-				var sid int64
-				if rows.Scan(&sid) == nil {
-					touch = append(touch, sid)
-				}
-			}
-			rows.Close()
+	// protocols that pass through this one carry its address, port and keys in their outbound, and
+	// block while it is turned off: every change reaches them
+	touch = append(touch, p.passEntries(r.Context(), n.ID)...)
+	if n.PassNode > 0 { // its exit holds this protocol's pass user, which follows it (on, off, settings)
+		if x, err := p.nodeByID(r.Context(), n.PassNode); err == nil {
+			touch = append(touch, x.ServerID)
 		}
 	}
 	n.UpdatedAt = now()
@@ -1119,10 +1184,22 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 		return err
 	}
 	if in.Settings != nil && isReality(n.Kind, n.Settings) && realityChanged(oldSettings, n.Settings) {
-		p.queueTargetCheck(s.ID, n.ID, n.Settings, false)
+		// newly REALITY without a site of its own: try the usual sites and pick a working one, as for a
+		// new protocol
+		named := in.Settings.SNI != nil && *in.Settings.SNI != "" || in.Settings.OwnSite != nil && *in.Settings.OwnSite
+		p.queueTargetCheck(s.ID, n.ID, n.Settings, !isReality(n.Kind, oldSettings) && !named)
 	}
-	p.event(s.AccountID, "info", "protocol_changed", s.ID, 0, a.ID, fmt.Sprintf("%s on %s changed",
-		protocolLabel(n.Kind, n.Settings), s.Name), nil)
+	msg := fmt.Sprintf("%s on %s changed", protocolLabel(n.Kind, n.Settings), s.Name)
+	if n.Enabled != wasEnabled { // switched on or off: say so, and what it means for proxy passes through it
+		msg = fmt.Sprintf("%s on %s turned on", protocolLabel(n.Kind, n.Settings), s.Name)
+		if !n.Enabled {
+			msg = fmt.Sprintf("%s on %s turned off", protocolLabel(n.Kind, n.Settings), s.Name)
+			if k := len(p.passEntryNames(r.Context(), n.ID)); k > 0 {
+				msg += fmt.Sprintf(" - %d protocol(s) passing through it are blocked until it is on again", k)
+			}
+		}
+	}
+	p.event(s.AccountID, "info", "protocol_changed", s.ID, 0, a.ID, msg, nil)
 	p.touchServers(touch...)
 	writeJSON(w, http.StatusOK, viewOfNode(n, s))
 	return nil
@@ -1163,18 +1240,33 @@ func (p *Panel) apiDeleteNode(w http.ResponseWriter, r *http.Request, a *Account
 		return err
 	}
 	entries := p.passEntries(r.Context(), n.ID)
-	if _, err := p.db.Exec1(`DELETE FROM nodes WHERE id = ?`, n.ID); err != nil {
-		return err
+	touch := append(entries, s.ID)
+	if n.PassNode > 0 { // its exit drops the pass user
+		if x, err := p.nodeByID(r.Context(), n.PassNode); err == nil {
+			touch = append(touch, x.ServerID)
+		}
 	}
-	if len(entries) > 0 {
-		_, _ = p.db.Exec1(`UPDATE nodes SET pass_node = 0 WHERE pass_node = ?`, n.ID)
+	var lost []string
+	if err := p.db.Write(r.Context(), func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM nodes WHERE id = ?`, n.ID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE nodes SET pass_node = 0 WHERE pass_node = ?`, n.ID); err != nil {
+			return err
+		}
+		var err error
+		lost, err = pruneScopes(tx, s.AccountID, 0, []int64{n.ID})
+		return err
+	}); err != nil {
+		return err
 	}
 	msg := fmt.Sprintf("%s removed from %s", protocolLabel(n.Kind, n.Settings), s.Name)
 	if len(entries) > 0 {
 		msg += fmt.Sprintf(" - %d protocol(s) that passed through it now leave directly", len(entries))
 	}
 	p.event(s.AccountID, "warn", "protocol_removed", s.ID, 0, a.ID, msg, nil)
-	p.touchServers(append(entries, s.ID)...)
+	p.noAccessLeft(s.AccountID, a.ID, lost)
+	p.touchServers(touch...)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	return nil
 }
@@ -1284,6 +1376,7 @@ func (p *Panel) apiUpdateForward(w http.ResponseWriter, r *http.Request, a *Acco
 	if err := readJSON(r, &in); err != nil {
 		return err
 	}
+	oldPort, oldNet := f.ListenPort, f.Network
 	if in.Name != nil {
 		f.Name = cleanName(*in.Name, 64)
 	}
@@ -1299,11 +1392,15 @@ func (p *Panel) apiUpdateForward(w http.ResponseWriter, r *http.Request, a *Acco
 	if in.ListenPort != nil {
 		f.ListenPort = *in.ListenPort
 	}
-	if in.ListenPort != nil || in.Network != nil {
+	if f.ListenPort != oldPort || f.Network != oldNet { // only a new port or network needs a free port
 		nodes, _ := p.nodesOf(r.Context(), f.ServerID)
 		fwds, _ := p.forwardsOf(r.Context(), f.ServerID)
 		tcp, udp := fwdNets(f.Network)
-		if msg := portConflict(f.ListenPort, tcp, udp, nodes, fwds, 0, f.ID, p.hostPorts(f.ServerID)); msg != "" {
+		hp := p.hostPorts(f.ServerID)
+		if f.ListenPort == oldPort && f.Enabled {
+			hp = p.hostPortsBut(f.ServerID, oldPort) // it listens there itself
+		}
+		if msg := portConflict(f.ListenPort, tcp, udp, nodes, fwds, 0, f.ID, hp); msg != "" {
 			return errStatus(http.StatusConflict, msg)
 		}
 		if msg := s.ports.unreachable(f.ListenPort, tcp, udp); msg != "" {
@@ -1393,6 +1490,32 @@ func (p *Panel) passEntries(ctx context.Context, exitID int64) []int64 {
 		}
 	}
 	return out
+}
+
+// passExitsOf are the servers that protocols of a server pass through.
+func (p *Panel) passExitsOf(ctx context.Context, serverID int64) []int64 {
+	var out []int64
+	rows, err := p.db.QueryContext(ctx, `SELECT DISTINCT x.server_id FROM nodes e JOIN nodes x ON e.pass_node = x.id
+		WHERE e.server_id = ? AND x.server_id != ?`, serverID, serverID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if rows.Scan(&id) == nil {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// noAccessLeft records the users a removal left with no access at all.
+func (p *Panel) noAccessLeft(accountID, by int64, names []string) {
+	for _, name := range names {
+		p.event(accountID, "warn", "user_no_access", 0, 0, by, fmt.Sprintf(
+			"%s has no access left: everything they could use was removed - give them other servers in Users", name), nil)
+	}
 }
 
 func (p *Panel) touchPassEntries(ctx context.Context, exitID int64) {

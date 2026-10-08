@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode"
 
+	"meridian/internal/db"
 	"meridian/internal/proto"
 	"meridian/internal/subgen"
 )
@@ -66,11 +67,13 @@ func (p *Panel) onlineBySub(ctx context.Context, accountID int64) map[int64][]on
 		if ls == nil {
 			continue
 		}
-		kinds := map[int64]string{}
+		kinds := map[int64]string{} // each protocol as its card names it ("REALITY", "VLESS gRPC TLS", its own name)
 		if nodes, err := p.nodesOf(ctx, s.ID); err == nil {
 			for _, n := range nodes {
-				k, _ := kindOf(n.Kind)
-				kinds[n.ID] = k.Short
+				kinds[n.ID] = n.Name
+				if n.Name == "" {
+					kinds[n.ID] = protocolLabel(n.Kind, n.Settings)
+				}
 			}
 		}
 		for _, u := range ls.Live.Online {
@@ -226,7 +229,8 @@ func (p *Panel) apiSub(w http.ResponseWriter, r *http.Request, a *Account) error
 		}
 		list = append(list, ev)
 	}
-	writeJSON(w, http.StatusOK, subDetail{Sub: v, Endpoints: list, Clients: clientLinks(v.Link, s.Name)})
+	writeJSON(w, http.StatusOK, subDetail{Sub: v, Endpoints: list, Clients: clientLinks(v.Link, s.Name),
+		Usage: p.nodeUsageOf(r.Context(), s.ID)})
 	return nil
 }
 
@@ -245,6 +249,7 @@ type subDetail struct {
 	Sub       *subView        `json:"user"`
 	Endpoints []epView        `json:"endpoints" doc:"What the subscription contains, one entry per protocol"`
 	Clients   []subgen.Client `json:"clients" doc:"One-tap import links for common apps"`
+	Usage     []nodeUsage     `json:"usage" doc:"Usage per protocol: this cycle and all time, exact (the most used first)"`
 }
 
 type nodeTotal struct {
@@ -304,7 +309,9 @@ func (in *subInput) validate() error {
 }
 
 // scopeFrom builds a user's scope from the request: whole servers and single protocols of the
-// account. Fields left out keep the current value.
+// account. Fields left out keep the current value; ids the user had that were removed since are
+// dropped (only a new id that does not exist is an error). Sending both lists empty gives
+// everything.
 func (p *Panel) scopeFrom(ctx context.Context, accountID int64, in *subInput, cur Scope) (Scope, error) {
 	sc := cur
 	if in.Servers != nil {
@@ -312,6 +319,9 @@ func (p *Panel) scopeFrom(ctx context.Context, accountID int64, in *subInput, cu
 		for _, id := range *in.Servers {
 			s, err := p.serverByID(ctx, id)
 			if err != nil || s.AccountID != accountID || s.DeletedAt > 0 {
+				if slices.Contains(cur.Servers, id) {
+					continue
+				}
 				return sc, errStatus(http.StatusBadRequest, fmt.Sprintf("there is no server %d", id))
 			}
 			if !slices.Contains(sc.Servers, id) {
@@ -323,11 +333,14 @@ func (p *Panel) scopeFrom(ctx context.Context, accountID int64, in *subInput, cu
 		sc.Nodes = []int64{}
 		for _, id := range *in.Nodes {
 			n, err := p.nodeByID(ctx, id)
-			if err != nil {
-				return sc, errStatus(http.StatusBadRequest, fmt.Sprintf("there is no protocol %d", id))
+			var s *Server
+			if err == nil {
+				s, err = p.serverByID(ctx, n.ServerID)
 			}
-			s, err := p.serverByID(ctx, n.ServerID)
 			if err != nil || s.AccountID != accountID || s.DeletedAt > 0 {
+				if slices.Contains(cur.Nodes, id) {
+					continue
+				}
 				return sc, errStatus(http.StatusBadRequest, fmt.Sprintf("there is no protocol %d", id))
 			}
 			if !slices.Contains(sc.Nodes, id) {
@@ -335,7 +348,58 @@ func (p *Panel) scopeFrom(ctx context.Context, accountID int64, in *subInput, cu
 			}
 		}
 	}
+	if in.Servers != nil || in.Nodes != nil {
+		// everything only when asked for with both lists empty: lists that came out empty otherwise
+		// (what was picked was removed, or one list was emptied) mean nothing
+		all := in.Servers != nil && in.Nodes != nil && len(*in.Servers) == 0 && len(*in.Nodes) == 0
+		sc.None = len(sc.Servers) == 0 && len(sc.Nodes) == 0 && !all
+	}
 	return sc, nil
+}
+
+// pruneScopes takes removed servers and protocols out of every user's access, in the removal's own
+// transaction. A user left with nothing has no access at all - never everything, which empty lists
+// would otherwise mean. It returns the names of those users.
+func pruneScopes(tx *sql.Tx, accountID, serverID int64, nodeIDs []int64) ([]string, error) {
+	rows, err := tx.Query(`SELECT id, name, scope FROM subs WHERE account_id = ? AND scope != ''`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	type change struct {
+		id    int64
+		scope string
+	}
+	var changes []change
+	var lost []string
+	for rows.Next() {
+		var id int64
+		var name, raw string
+		if err := rows.Scan(&id, &name, &raw); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		var sc Scope
+		if json.Unmarshal([]byte(raw), &sc) != nil || sc.All() || sc.None {
+			continue
+		}
+		next := Scope{Servers: slices.DeleteFunc(slices.Clone(sc.Servers), func(x int64) bool { return x == serverID }),
+			Nodes: slices.DeleteFunc(slices.Clone(sc.Nodes), func(x int64) bool { return slices.Contains(nodeIDs, x) })}
+		if len(next.Servers) == len(sc.Servers) && len(next.Nodes) == len(sc.Nodes) {
+			continue
+		}
+		if len(next.Servers) == 0 && len(next.Nodes) == 0 {
+			next.None = true
+			lost = append(lost, name)
+		}
+		changes = append(changes, change{id, next.String()})
+	}
+	rows.Close()
+	for _, c := range changes {
+		if _, err := tx.Exec(`UPDATE subs SET scope = ? WHERE id = ?`, c.scope, c.id); err != nil {
+			return nil, err
+		}
+	}
+	return lost, nil
 }
 
 var loginRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$`)
@@ -471,9 +535,9 @@ func (p *Panel) apiCreateSub(w http.ResponseWriter, r *http.Request, a *Account)
 			if count > 1 {
 				nm = fmt.Sprintf("%s-%0*d", name, len(strconv.Itoa(count)), i)
 			}
-			res, err := tx.Exec(`INSERT INTO subs (account_id, name, note, token, uuid, secret, quota, reset_day, expires_at,
+			res, err := tx.Exec(`INSERT INTO subs (id, account_id, name, note, token, uuid, secret, quota, reset_day, expires_at,
 				ip_limit, scope, cycle_start, created_at, updated_at, login, password_hash)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				VALUES (`+db.NextID("subs")+`, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				owner, nm, cleanNote(deref(in.Note, ""), 2000), randB64URL(18), newUUID(), randB64URL(24), deref(in.Quota, 0),
 				deref(in.ResetDay, 0), deref(in.ExpiresAt, 0), deref(in.IPLimit, 0), scope.String(),
 				t, t, t, made[i-1].login, made[i-1].hash)
@@ -612,7 +676,11 @@ func (p *Panel) apiUpdateSub(w http.ResponseWriter, r *http.Request, a *Account)
 	return nil
 }
 
-// apiSubAction runs a manual action: pause, resume, rotate-link, reset-keys, reset-usage.
+// subActions are the actions POST /api/users/{id}/{action} takes.
+var subActions = []string{"pause", "resume", "rotate-link", "reset-keys", "reset-usage", "sign-out", "new-password"}
+
+// apiSubAction runs a manual action: pause, resume, rotate-link, reset-keys, reset-usage, sign-out,
+// new-password.
 func (p *Panel) apiSubAction(w http.ResponseWriter, r *http.Request, a *Account) error {
 	id, err := pathID(r, "id")
 	if err != nil {
@@ -647,12 +715,21 @@ func (p *Panel) apiSubAction(w http.ResponseWriter, r *http.Request, a *Account)
 				randB64URL(24), t, id); err != nil {
 				return err
 			}
-			_, err := tx.Exec(`DELETE FROM wg_peers WHERE sub_id = ?`, id)
+			if _, err := tx.Exec(`DELETE FROM wg_peers WHERE sub_id = ?`, id); err != nil {
+				return err
+			}
+			// credentials kept from an import (the old panel's) go too: they are what was copied
+			_, err := tx.Exec(`DELETE FROM node_creds WHERE sub_id = ?`, id)
 			return err
 		})
 		msg, level = fmt.Sprintf("%s reset the credentials of %s - devices must refresh the subscription", a.Username, s.Name), "warn"
 	case "reset-usage":
-		_, err = p.db.Exec1(`UPDATE subs SET cycle_up = 0, cycle_down = 0, cycle_start = ?, updated_at = ? WHERE id = ?`, t, t, id)
+		err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`UPDATE subs SET cycle_up = 0, cycle_down = 0, cycle_start = ?, updated_at = ? WHERE id = ?`, t, t, id); err != nil {
+				return err
+			}
+			return resetNodeUsage(tx, id)
+		})
 		msg, level, touch = fmt.Sprintf("%s reset the usage of %s", a.Username, s.Name), "info", false
 	case "sign-out":
 		_, err = p.db.Exec1(`DELETE FROM user_sessions WHERE sub_id = ?`, id)

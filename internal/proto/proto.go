@@ -212,12 +212,19 @@ type Action struct {
 }
 
 const (
-	ActionRestartXray  = "restart_xray"
-	ActionUpgradeXray  = "upgrade_xray"
-	ActionUpgradeAgent = "upgrade_agent"
-	ActionCheckTarget  = "check_target" // probe a REALITY target from the server
-	ActionScan         = "scan"         // find proxy software already running on the server (read only)
-	ActionStopService  = "stop_service" // take over: stop and disable a unit the last scan found
+	ActionRestartXray = "restart_xray"
+	// ActionRestartPending restarts exactly what waits for a restart: Xray when settings wait, and
+	// each Hysteria2 protocol whose configuration waits (agents 0.6.3 and later, Caps.RestartPending)
+	ActionRestartPending = "restart_pending"
+	ActionUpgradeXray    = "upgrade_xray"
+	// ActionUpgradeHysteria / ActionUpgradeRealm switch the server to the version in the panel's
+	// settings and restart those cores (agents 0.7 and later); until then a server keeps its version
+	ActionUpgradeHysteria = "upgrade_hysteria"
+	ActionUpgradeRealm    = "upgrade_realm"
+	ActionUpgradeAgent    = "upgrade_agent"
+	ActionCheckTarget     = "check_target" // probe a REALITY target from the server
+	ActionScan            = "scan"         // find proxy software already running on the server (read only)
+	ActionStopService     = "stop_service" // take over: stop and disable a unit the last scan found
 )
 
 // TargetCheck asks the agent to test REALITY camouflage sites from the server (ActionCheckTarget).
@@ -296,6 +303,8 @@ type Caps struct {
 	// APIPort is the first of the agent's two loopback-only ports: the Xray API on it, Hysteria's
 	// auth hook one up (0 from agents before 0.4.2).
 	APIPort int `json:"api_port,omitempty"`
+	// RestartPending: the agent understands ActionRestartPending (0.6.3 and later).
+	RestartPending bool `json:"restart_pending,omitempty"`
 }
 
 // Batch holds everything that accumulates. It carries a sequence number so a retried batch is

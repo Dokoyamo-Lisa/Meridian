@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -27,6 +28,7 @@ import (
 
 	"meridian/internal/db"
 	"meridian/internal/panel"
+	"meridian/internal/update"
 	"meridian/web"
 
 	"golang.org/x/crypto/acme/autocert"
@@ -47,6 +49,10 @@ func main() {
 		resetSiteAccess(os.Args[2:])
 	case "backup":
 		backup(os.Args[2:])
+	case "restore":
+		restoreBackup(os.Args[2:])
+	case "update-apply":
+		updateApply(os.Args[2:])
 	case "token":
 		createToken(os.Args[2:])
 	case "mcp":
@@ -81,6 +87,10 @@ usage:
                                          turn off the rule for who may open the site (after being
                                          locked out of the panel by country); restart the panel after
   meridian backup [--data DIR] FILE      write a consistent copy of the database to FILE
+  meridian restore [--data DIR] FILE     put a backup in place of the database (stop the panel
+                                         first); the database it replaces is kept next to it
+  meridian update-apply [--data DIR]     install the release the panel downloaded (run as root by
+                                         meridian-update.service - see Settings › Updates)
   meridian token [--data DIR] [--name NAME] [--scope full|read] [--days N]
                                          print a new API token for scripts and AI agents (default:
                                          full access for 1 day); revoke it in Settings › API & MCP
@@ -90,7 +100,7 @@ usage:
   meridian version
 
 Commands that open the database (reset-password, reset-site-access, backup, token) run as the
-panel's user: sudo -u meridian meridian ...
+panel's user: sudo -u meridian meridian ... (restore may also run as root).
 
 Every flag can also be set as an environment variable: MERIDIAN_LISTEN, MERIDIAN_DOMAIN,
 MERIDIAN_EMAIL, MERIDIAN_DATA, MERIDIAN_AGENT_DIR, MERIDIAN_TRUSTED_PROXIES.`)
@@ -112,6 +122,9 @@ func serve(args []string) {
 	agentDir := fs.String("agent-dir", env("MERIDIAN_AGENT_DIR", ""), "directory with meridian-agent-linux-{amd64,arm64}")
 	trusted := fs.String("trusted-proxies", env("MERIDIAN_TRUSTED_PROXIES", ""), "comma-separated CIDRs of reverse proxies")
 	fs.Parse(args)
+	if u := os.Getenv("MERIDIAN_UPDATE_API"); strings.HasPrefix(u, "https://") { // a test's stand-in for GitHub
+		update.API = u
+	}
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	if err := os.MkdirAll(*data, 0o700); err != nil {
@@ -134,6 +147,13 @@ func serve(args []string) {
 	}
 	*domain = strings.ToLower(strings.TrimSpace(*domain))
 
+	release, err := lockData(*data)
+	if errors.Is(err, errLocked) {
+		fatal("data dir", fmt.Errorf("another Meridian panel (or a restore) is using %s", *data))
+	} else if err != nil {
+		fatal("data dir", err)
+	}
+	defer release()
 	d, err := db.Open(filepath.Join(*data, "meridian.db"))
 	if err != nil {
 		fatal("database", err)
@@ -209,6 +229,14 @@ func serve(args []string) {
 	for _, s := range servers {
 		_ = s.Shutdown(sctx)
 	}
+	stop()
+	// a clean stop leaves no write-ahead log behind, so a database put in place later (a restore)
+	// is never mixed with pages of this one
+	_, _ = d.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+	if err := d.Close(); err != nil {
+		slog.Warn("closing the database", "err", err)
+	}
+	slog.Info("meridian panel stopped")
 }
 
 // bootstrapOwner creates the supervisor account on first start, with its password in a note file.
@@ -375,8 +403,145 @@ func backup(args []string) {
 		fatal("backup", err)
 	}
 	_ = os.Chmod(out, 0o600)
-	fmt.Printf("Backup written to %s\nIt contains every key and credential - store it like a password.\nRestore: stop the panel, copy it to %s, start the panel.\n",
-		out, filepath.Join(*data, "meridian.db"))
+	fmt.Printf("Backup written to %s\nIt contains every key and credential - store it like a password.\nRestore: stop the panel, then: meridian restore --data %s %s\n",
+		out, *data, out)
+}
+
+// restoreBackup puts a backup in place of the database while the panel is stopped. The database it
+// replaces is kept next to it - with its write-ahead log, which must never be laid over the restored
+// copy (SQLite would replay it on the next start and undo or damage the restore).
+func restoreBackup(args []string) {
+	fs := flag.NewFlagSet("restore", flag.ExitOnError)
+	data := fs.String("data", env("MERIDIAN_DATA", "/var/lib/meridian"), "data directory")
+	fs.Parse(args)
+	if fs.NArg() != 1 {
+		usage()
+		os.Exit(2)
+	}
+	src, err := filepath.Abs(fs.Arg(0))
+	if err != nil {
+		fatal("restore", err)
+	}
+	if _, err := os.Stat(*data); err != nil {
+		fatal("restore", fmt.Errorf("%s not found - is --data right? (the default is /var/lib/meridian)", *data))
+	}
+	release, err := lockData(*data)
+	if errors.Is(err, errLocked) {
+		fatal("restore", errors.New("the panel is running - stop it first: sudo systemctl stop meridian"))
+	} else if err != nil {
+		fatal("restore", err)
+	}
+	defer release()
+	if err := checkBackup(src); err != nil {
+		fatal("restore", fmt.Errorf("%s: %w", src, err))
+	}
+	dbPath := filepath.Join(*data, "meridian.db")
+	tmp := dbPath + ".restoring"
+	if err := copyPrivate(src, tmp); err != nil {
+		os.Remove(tmp)
+		fatal("restore", err)
+	}
+	if err := chownLike(tmp, *data); err != nil {
+		os.Remove(tmp)
+		fatal("restore", err)
+	}
+	kept := ""
+	if _, err := os.Stat(dbPath); err == nil {
+		kept = dbPath + ".before-restore-" + time.Now().UTC().Format("20060102-150405")
+		for _, ext := range []string{"", "-wal", "-shm"} {
+			if err := os.Rename(dbPath+ext, kept+ext); err != nil && !errors.Is(err, os.ErrNotExist) {
+				os.Remove(tmp)
+				fatal("restore", err)
+			}
+		}
+	}
+	for _, ext := range []string{"-wal", "-shm", "-journal"} {
+		_ = os.Remove(dbPath + ext)
+	}
+	if err := os.Rename(tmp, dbPath); err != nil {
+		fatal("restore", err)
+	}
+	fmt.Printf("Restored %s.\n", src)
+	if kept != "" {
+		fmt.Printf("The database it replaced is kept as %s (delete it once all is well - it holds keys too).\n", kept)
+	}
+	fmt.Println("Start the panel: sudo systemctl start meridian - the servers reconnect by themselves.")
+}
+
+// checkBackup makes sure a file is a sound Meridian database this version can run.
+func checkBackup(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	head := make([]byte, 16)
+	_, err = io.ReadFull(f, head)
+	f.Close()
+	if err != nil || string(head) != "SQLite format 3\x00" {
+		return errors.New("this is not a Meridian backup (not an SQLite database)")
+	}
+	// read-only and immutable: nothing is written next to the backup
+	d, err := sql.Open("sqlite", "file:"+path+"?mode=ro&immutable=1")
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	var ok string
+	if err := d.QueryRow(`PRAGMA integrity_check`).Scan(&ok); err != nil || ok != "ok" {
+		return fmt.Errorf("the database is damaged (%s)", nz(ok, fmt.Sprint(err)))
+	}
+	var version int
+	if err := d.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&version); err != nil {
+		return errors.New("this is not a Meridian backup")
+	}
+	var servers int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM servers`).Scan(&servers); err != nil {
+		return errors.New("this is not a Meridian backup")
+	}
+	if version > db.Version() {
+		return errors.New("the backup comes from a newer Meridian - upgrade the panel first")
+	}
+	return nil
+}
+
+// copyPrivate copies src to a new file dst that only its owner can read, flushed to disk.
+func copyPrivate(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+func nz(s, d string) string {
+	if s == "" {
+		return d
+	}
+	return s
+}
+
+// updateApply is the updater service's command (root): it installs the release the panel left in its
+// data directory, after checking it again - see internal/update.
+func updateApply(args []string) {
+	fs := flag.NewFlagSet("update-apply", flag.ExitOnError)
+	data := fs.String("data", env("MERIDIAN_DATA", "/var/lib/meridian"), "data directory")
+	fs.Parse(args)
+	if err := update.Apply(*data, panel.Version, runtime.GOARCH); err != nil {
+		fatal("update", err)
+	}
 }
 
 // mcpBridge connects a local MCP client (stdio) to the panel's HTTP MCP endpoint.

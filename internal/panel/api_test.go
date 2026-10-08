@@ -439,6 +439,20 @@ func TestMCP(t *testing.T) {
 	if isErr || !strings.Contains(out, "paused") {
 		t.Fatalf("confirmed pause: %s", out)
 	}
+	// checking a protocol stores nothing: read-only tokens may do it
+	if out, isErr := text(call(read, `{"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"check_protocol","arguments":{"kind":"vless","transport":"ws","security":"tls","sni":"cdn.example.com"}}}`)); isErr || strings.Contains(out, "read-only") {
+		t.Fatalf("check_protocol with a read-only token: %s", out)
+	}
+	if out, isErr := text(call(read, `{"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"check_updates","arguments":{}}}`)); isErr || !strings.Contains(out, "current") {
+		t.Fatalf("check_updates with a read-only token: %s", out)
+	}
+	// two empty access lists read like "none" but would be everything: refused unless asked by name
+	if out, isErr := text(call(full, `{"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"update_user","arguments":{"user_id":`+sid+`,"server_ids":[],"protocol_ids":[]}}}`)); !isErr || !strings.Contains(out, "everything=true") {
+		t.Fatalf("update_user with two empty lists: %v %s", isErr, out)
+	}
+	if out, isErr := text(call(full, `{"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"update_user","arguments":{"user_id":`+sid+`,"everything":true}}}`)); isErr {
+		t.Fatalf("update_user everything: %s", out)
+	}
 	// a new sign-in password comes back once, with where to sign in
 	out, isErr = text(call(full, `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"new_user_password","arguments":{"user_id":`+sid+`}}}`))
 	if isErr || !strings.Contains(out, "password") || !strings.Contains(out, "/me") {
@@ -652,7 +666,7 @@ func TestAgentChannel(t *testing.T) {
 	b := h.browser()
 	b.login("owner", "owner-password-1")
 	srv := b.must("POST", "/api/servers", map[string]any{"name": "x", "address": "203.0.113.5", "protocols": []string{"vless"}}, 201)
-	tok := regexp.MustCompile(`--token '([^']+)'`).FindStringSubmatch(srv["install"].(string))[1]
+	tok := regexp.MustCompile(`MERIDIAN_TOKEN='([^']+)'`).FindStringSubmatch(srv["install"].(string))[1]
 	sid, secret, err := seal.ParseToken(tok)
 	if err != nil {
 		t.Fatal(err)

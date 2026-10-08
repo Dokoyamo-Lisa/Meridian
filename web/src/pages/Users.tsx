@@ -176,6 +176,14 @@ export function toDateInput(ts: number): string {
 }
 
 // UserForm creates a user (or several) or edits one.
+// quotaBytes is the quota field in bytes; an unchanged field keeps the exact stored value (a quota set
+// through the API need not be a round number of GB).
+function quotaBytes(field: string, stored = 0): number {
+  const gb = Number(field) || 0
+  if (stored && Math.round((stored / GB) * 100) / 100 === gb) return stored
+  return Math.round(gb * GB)
+}
+
 export function UserForm(props: { user?: User; onClose: () => void; onSaved: (users: User[]) => void }) {
   const v = props.user
   const [name, setName] = useState(v?.name || '')
@@ -183,13 +191,16 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
   const [signIn, setSignIn] = useState(v ? v.can_sign_in : true)
   const [username, setUsername] = useState(v?.username || '')
   const [password, setPassword] = useState('')
-  const [quota, setQuota] = useState(v?.quota ? String(Math.round(v.quota / GB)) : '')
+  // up to two decimals: a quota set elsewhere (0.5 GB) is shown, and saved back, as it is
+  const [quota, setQuota] = useState(v?.quota ? String(Math.round((v.quota / GB) * 100) / 100) : '')
   const [resetDay, setResetDay] = useState(String(v?.reset_day ?? 1))
   const [expires, setExpires] = useState(toDateInput(v?.expires_at || 0))
   const [ipLimit, setIpLimit] = useState(v?.ip_limit ? String(v.ip_limit) : '')
-  const [scopeAll, setScopeAll] = useState(!v?.scope?.servers?.length && !v?.scope?.protocols?.length)
+  const [scopeAll, setScopeAll] = useState(!v?.scope?.none && !v?.scope?.servers?.length && !v?.scope?.protocols?.length)
   const [picked, setPicked] = useState<number[]>(v?.scope?.servers || [])
   const [pickedNodes, setPickedNodes] = useState<number[]>(v?.scope?.protocols || [])
+  // access is sent only when changed here: a user's servers stay as they are otherwise
+  const [accessTouched, setAccessTouched] = useState(!v)
   const [note, setNote] = useState(v?.note || '')
   const [servers, setServers] = useState<Server[]>([])
   const [busy, setBusy] = useState(false)
@@ -197,12 +208,19 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
   const many = !v && Number(count) > 1
 
   useEffect(() => {
-    get<Server[]>('/api/servers').then(setServers).catch(() => setServers([]))
+    get<Server[]>('/api/servers')
+      .then((list) => {
+        setServers(list)
+        // what was removed since cannot be shown, so it is not kept either
+        setPicked((ids) => ids.filter((id) => list.some((x) => x.id === id)))
+        setPickedNodes((ids) => ids.filter((id) => list.some((x) => x.nodes.some((n) => n.id === id))))
+      })
+      .catch(() => setServers([]))
   }, [])
 
   const save = async (e: Event) => {
     e.preventDefault()
-    if (!scopeAll && picked.length === 0 && pickedNodes.length === 0) {
+    if (accessTouched && !scopeAll && picked.length === 0 && pickedNodes.length === 0) {
       setErr('Pick at least one server or protocol, or choose “Everything”.')
       return
     }
@@ -212,18 +230,29 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
       const body: Record<string, unknown> = {
         name: name.trim(),
         note,
-        quota: Math.round((Number(quota) || 0) * GB),
+        quota: quotaBytes(quota, v?.quota),
         reset_day: Number(resetDay) || 0,
         expires_at: endOfDay(expires),
         ip_limit: Number(ipLimit) || 0,
-        servers: scopeAll ? [] : picked,
+      }
+      if (accessTouched) {
+        body.servers = scopeAll ? [] : picked
         // a protocol of a whole server is covered already
-        protocols: scopeAll ? [] : pickedNodes.filter((nid) => !servers.some((x) => picked.includes(x.id) && x.nodes.some((n) => n.id === nid))),
+        body.protocols = scopeAll ? [] : pickedNodes.filter((nid) => !servers.some((x) => picked.includes(x.id) && x.nodes.some((n) => n.id === nid)))
       }
       if (v) {
-        body.username = signIn ? username.trim() : ''
+        // an empty username keeps the current one; a user without one gets one made from the name
+        // (with a generated password) - never a sign-in removed by an empty field
+        const newSignIn = signIn && !v.can_sign_in && !username.trim()
+        if (newSignIn && password) {
+          setErr('Enter a username for that password - or leave both empty to have them made')
+          return
+        }
+        if (!signIn) body.username = ''
+        else if (username.trim()) body.username = username.trim()
         if (signIn && password) body.password = password
-        const r = await patch<User>(`/api/users/${v.id}`, body)
+        let r = await patch<User>(`/api/users/${v.id}`, body)
+        if (newSignIn) r = await post<User>(`/api/users/${v.id}/new-password`)
         toast('Saved')
         props.onSaved([r])
       } else {
@@ -275,7 +304,10 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
         </div>
         {signIn && (
           <div class="inline-fields">
-            <Field label="Username" hint={many ? 'Used as the start of each name, e.g. team-1, team-2.' : 'Leave empty to make one from the name.'}>
+            <Field
+              label="Username"
+              hint={many ? 'Used as the start of each name, e.g. team-1, team-2.' : v?.can_sign_in ? 'Leave empty to keep the current one.' : 'Leave empty to make one from the name.'}
+            >
               <input class="input mono" value={username} maxLength={32} placeholder="automatic" autoComplete="off" spellcheck={false}
                 onInput={(e) => setUsername(e.currentTarget.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))} />
             </Field>
@@ -290,7 +322,7 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
 
         <div class="inline-fields">
           <Field label="Monthly quota (GB)" hint="Empty = unlimited.">
-            <input class="input" inputMode="numeric" value={quota} placeholder="unlimited" onInput={(e) => setQuota(e.currentTarget.value.replace(/[^0-9]/g, ''))} />
+            <input class="input" inputMode="decimal" value={quota} placeholder="unlimited" onInput={(e) => setQuota(e.currentTarget.value.replace(/[^0-9.]/g, ''))} />
           </Field>
           <Field label="Usage resets on day" hint="0 = never resets.">
             <input class="input" inputMode="numeric" value={resetDay} onInput={(e) => setResetDay(e.currentTarget.value.replace(/[^0-9]/g, ''))} />
@@ -309,13 +341,22 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
         <Field label="Access" hint={scopeAll ? undefined : 'A whole server includes the protocols added to it later. Or pick single protocols.'}>
           <Seg
             value={scopeAll ? 'all' : 'some'}
-            onChange={(x) => setScopeAll(x === 'all')}
+            onChange={(x) => {
+              setAccessTouched(true)
+              setScopeAll(x === 'all')
+            }}
             options={[
               ['all', 'Everything, including new servers'],
               ['some', 'Only these'],
             ]}
           />
         </Field>
+        {v?.scope?.none && !accessTouched && (
+          <div class="callout warn">
+            <Icon name="alert" size="sm" />
+            <div>{v.name} has no access: everything they could use was removed. Pick servers or protocols below.</div>
+          </div>
+        )}
         {!scopeAll && (
           <div class="scope-tree">
             {servers.length === 0 && <span class="muted">There are no servers yet.</span>}
@@ -326,7 +367,10 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
                 <div class="scope-srv">
                   <Check
                     checked={whole}
-                    onChange={(on) => setPicked(on ? [...picked, x.id] : picked.filter((id) => id !== x.id))}
+                    onChange={(on) => {
+                      setAccessTouched(true)
+                      setPicked(on ? [...picked, x.id] : picked.filter((id) => id !== x.id))
+                    }}
                     label={x.name}
                     hint={whole ? 'The whole server, with protocols added later' : usable.length ? 'Whole server' : 'no protocols yet'}
                   />
@@ -336,7 +380,10 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
                         <Check
                           checked={whole || pickedNodes.includes(n.id)}
                           disabled={whole}
-                          onChange={(on) => setPickedNodes(on ? [...pickedNodes, n.id] : pickedNodes.filter((id) => id !== n.id))}
+                          onChange={(on) => {
+                            setAccessTouched(true)
+                            setPickedNodes(on ? [...pickedNodes, n.id] : pickedNodes.filter((id) => id !== n.id))
+                          }}
                           label={n.name || n.label}
                           hint={`${n.name ? n.label + ' · ' : ''}port ${n.public_port || n.port}${n.enabled ? '' : ' · off'}`}
                         />

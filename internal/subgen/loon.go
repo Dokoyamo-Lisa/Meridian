@@ -142,8 +142,8 @@ func loonLine(e Endpoint) (string, string) {
 		if e.WG.Keepalive > 0 {
 			fmt.Fprintf(&b, ",keepalive=%d", e.WG.Keepalive)
 		}
-		fmt.Fprintf(&b, `,peers=[{public-key="%s",allowed-ips="%s",endpoint=%s:%d`, e.WG.PeerPublicKey,
-			strings.Join(e.WG.routes(), ","), e.Host, e.Port)
+		fmt.Fprintf(&b, `,peers=[{public-key="%s",allowed-ips="%s",endpoint=%s`, e.WG.PeerPublicKey,
+			strings.Join(e.WG.routes(), ","), hostPort(e.Host, e.Port)) // [IPv6]:port
 		if e.WG.PresharedKey != "" {
 			fmt.Fprintf(&b, `,preshared-key="%s"`, e.WG.PresharedKey)
 		}

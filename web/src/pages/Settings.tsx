@@ -7,8 +7,10 @@ import { loadSession, setMeta, useSession } from '../session'
 import { Ago, Check, Code, Empty, ErrorBox, Field, Loading, Modal, PageHead, QR, Seg, Tabs, ask, errText, run, toast, toastError, useAsync } from '../ui'
 import { ApiReference } from './ApiDocs'
 import { Certificates } from './Certificates'
+import { Notifications } from './Notifications'
+import { Updates } from './Updates'
 
-type Tab = 'general' | 'certs' | 'security' | 'api'
+type Tab = 'general' | 'certs' | 'notify' | 'updates' | 'security' | 'api'
 
 export function Settings() {
   const s = useSession()
@@ -23,12 +25,16 @@ export function Settings() {
         tabs={[
           ['general', 'Panel'],
           ['certs', 'Certificates'],
+          ['notify', 'Notifications'],
+          ['updates', 'Updates'],
           ['security', 'Security'],
           ['api', 'API & MCP'],
         ]}
       />
       {tab === 'general' && <General />}
       {tab === 'certs' && <Certificates />}
+      {tab === 'notify' && <Notifications />}
+      {tab === 'updates' && <Updates />}
       {tab === 'security' && <Security />}
       {tab === 'api' && <ApiTab />}
     </>
@@ -145,10 +151,15 @@ function Brand(props: { name: string; anim: string; onName: (v: string) => void;
 function General() {
   const res = useAsync(() => get<PanelSettings>('/api/settings'))
   const [v, setV] = useState<PanelSettings | null>(null)
+  // the status page on its own domain: a choice of its own, with the domain to enter
+  const [domainMode, setDomainMode] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   useEffect(() => {
-    if (res.data) setV(res.data)
+    if (res.data) {
+      setV(res.data)
+      setDomainMode(!!res.data.status_domain)
+    }
   }, [res.data])
   if (!v) return res.error ? <ErrorBox error={res.error} retry={res.reload} /> : <Loading />
   const set = <K extends keyof PanelSettings>(k: K, x: PanelSettings[K]) => setV({ ...v, [k]: x })
@@ -157,6 +168,10 @@ function General() {
 
   const save = async (e: Event) => {
     e.preventDefault()
+    if (domainMode && !v.status_domain.trim()) {
+      setErr("Enter the status page's domain, or choose where else it is.")
+      return
+    }
     const versions = res.data && (res.data.xray_version !== v.xray_version || res.data.hysteria_version !== v.hysteria_version || res.data.realm_version !== v.realm_version)
     setBusy(true)
     setErr('')
@@ -234,25 +249,38 @@ function General() {
         </div>
         <Field label="Where it is">
           <Seg
-            value={v.status_page}
-            onChange={(x) => set('status_page', x)}
+            value={domainMode ? 'domain' : v.status_page}
+            onChange={(x) => {
+              if (x === 'domain') {
+                setDomainMode(true)
+                setV({ ...v, status_page: 'off' })
+              } else {
+                setDomainMode(false)
+                setV({ ...v, status_page: x as PanelSettings['status_page'], status_domain: '' })
+              }
+            }}
             options={[
               ['off', 'Only at /me'],
               ['home', 'Front page'],
               ['page', 'At /status'],
+              ['domain', 'Its own domain'],
             ]}
           />
         </Field>
+        {domainMode && (
+          <Field label="Domain" hint="Point its DNS at this panel first (behind your own reverse proxy, add the domain there too). That domain shows the status page and the users' own pages - never the panel.">
+            <input class="input mono" value={v.status_domain} placeholder="status.example.com" onInput={(e) => set('status_domain', e.currentTarget.value.trim().toLowerCase())} autoComplete="off" spellcheck={false} />
+          </Field>
+        )}
         <p class="muted" style="margin:-2px 0 12px">
-          {v.status_page === 'home'
-            ? `Visitors to ${location.origin} see only a Sign in button. Users who sign in see the data they have left, their devices and their link; when you sign in there you see every server on a live globe. The panel stays at ${location.origin}/overview.`
-            : v.status_page === 'page'
-              ? `The status page is at ${location.origin}/status: a Sign in button for visitors, their own page for users, every server on a live globe for you. The panel stays at this address.`
-              : `Users sign in at ${location.origin}/me to see the data they have left, their devices and their link. The front page is the panel.`}
+          {domainMode
+            ? `The status page is at https://${v.status_domain || 'status.example.com'}: a Sign in button for visitors, their own page for users, and every server on a live globe when you sign in there. The panel itself stays at ${location.origin}; users can also sign in at ${location.origin}/me.`
+            : v.status_page === 'home'
+              ? `Visitors to ${location.origin} see only a Sign in button. Users who sign in see the data they have left, their devices and their link; when you sign in there you see every server on a live globe. The panel stays at ${location.origin}/overview.`
+              : v.status_page === 'page'
+                ? `The status page is at ${location.origin}/status: a Sign in button for visitors, their own page for users, every server on a live globe for you. The panel stays at this address.`
+                : `Users sign in at ${location.origin}/me to see the data they have left, their devices and their link. The front page is the panel.`}
         </p>
-        <Field label="Its own domain" hint="Optional. Point a domain such as status.example.com at this panel and enter it here: that domain then shows only the status page and the users' sign-in, never the panel.">
-          <input class="input mono" value={v.status_domain} placeholder="none" onInput={(e) => set('status_domain', e.currentTarget.value.trim().toLowerCase())} autoComplete="off" spellcheck={false} />
-        </Field>
         <Field label="A line on the sign-in page" hint="For example who runs the service, or how to reach support. Visitors see it.">
           <input class="input" value={v.status_about} maxLength={200} onInput={(e) => set('status_about', e.currentTarget.value)} />
         </Field>
@@ -672,7 +700,7 @@ function ApiTab() {
         <p class="muted" style="margin-top:0">
           Send the token as <span class="mono">Authorization: Bearer …</span>. Every request and response is JSON.
         </p>
-        <Code text={`curl -H "Authorization: Bearer YOUR_TOKEN" ${base}/api/subs`} />
+        <Code text={`curl -H "Authorization: Bearer YOUR_TOKEN" ${base}/api/users`} />
         <ApiReference />
       </section>
 

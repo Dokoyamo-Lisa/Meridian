@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meridian API",
-    "version": "0.6.2",
+    "version": "0.7.0",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -1133,7 +1133,7 @@
           "Servers"
         ],
         "summary": "Restart or upgrade",
-        "description": "Queues an explicit maintenance action. restart_xray and upgrade_xray disconnect Xray users for a moment; upgrade_agent disconnects nobody.",
+        "description": "Queues an explicit maintenance action. restart_pending restarts exactly what waits for a restart (the server's pending_restart) and disconnects those users for a moment; restart_xray and upgrade_xray disconnect Xray users for a moment; upgrade_hysteria and upgrade_realm switch the server to the version in Settings and restart those cores (their users reconnect); upgrade_agent disconnects nobody.",
         "operationId": "postServersIdActions",
         "parameters": [
           {
@@ -2334,7 +2334,9 @@
                 "resume",
                 "rotate-link",
                 "reset-keys",
-                "reset-usage"
+                "reset-usage",
+                "sign-out",
+                "new-password"
               ],
               "type": "string"
             }
@@ -3180,6 +3182,280 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LogoInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/settings/notify": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Notifications: where they go and what is sent",
+        "description": "The bot token and the webhook come back masked - they are never shown again in full.",
+        "operationId": "getSettingsNotify",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Notifications"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Set up notifications (Telegram, a webhook)",
+        "description": "New events of the chosen groups are sent as they happen, in order; turning notifications on never sends the past. Omitted fields keep their value; an empty token or webhook removes it. Webhooks must be HTTPS. Nothing is ever paused by them - they only tell.",
+        "operationId": "putSettingsNotify",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationsInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Notifications"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/settings/notify/test": {
+      "post": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Send a test message through every channel that is set up",
+        "operationId": "postSettingsNotifyTest",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationTest"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/settings/notify/telegram-chats": {
+      "post": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Chats that wrote to the bot lately",
+        "description": "Send the bot a message (or add it to a group) first; then pick the chat from this list instead of looking up its id. The body may carry a token that is not saved yet.",
+        "operationId": "postSettingsNotifyTelegramChats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TelegramChat"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/update": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Updates: this panel's version, the newest release, and servers with an older agent",
+        "operationId": "getUpdate",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Updates"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/update/check": {
+      "post": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Look for a new release now",
+        "operationId": "postUpdateCheck",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Updates"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/update/install": {
+      "post": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Install the newest release",
+        "description": "The panel downloads the release, checks its signature (Meridian's release key) and checksum, backs up the database and hands it to the updater service, which checks it again and installs it. Proxies keep running; the panel restarts once. With agents (the default), every server's agent is upgraded afterwards - nobody is disconnected. Needs a panel installed with install-panel.sh.",
+        "operationId": "postUpdateInstall",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Updates"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/agents/upgrade": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Upgrade every server's agent to this panel's version",
+        "description": "Only servers whose agent differs from the panel's are upgraded; offline ones as soon as they connect. Agents restart themselves; the proxies keep running and nobody is disconnected.",
+        "operationId": "postAgentsUpgrade",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsUpgraded"
                 }
               }
             },
@@ -4593,6 +4869,17 @@
             "description": "The proxy pass exit, as 'server · protocol'",
             "type": "string"
           },
+          "pass_broken": {
+            "description": "Why the proxy pass cannot be used right now (the exit is turned off or removed); its traffic is blocked meanwhile",
+            "type": "string"
+          },
+          "pass_entries": {
+            "description": "Protocols on other servers that pass through this one, as 'server · protocol'",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "public_port": {
             "description": "The port devices connect to, when the server's provider forwards it under another number than port",
             "type": "integer"
@@ -4699,6 +4986,9 @@
           },
           "api_port": {
             "type": "integer"
+          },
+          "restart_pending": {
+            "type": "boolean"
           }
         }
       },
@@ -4846,7 +5136,7 @@
         "type": "object",
         "properties": {
           "kind": {
-            "description": "restart_xray | upgrade_xray | upgrade_agent",
+            "description": "restart_pending | restart_xray | upgrade_xray | upgrade_hysteria | upgrade_realm | upgrade_agent",
             "type": "string"
           },
           "args": {
@@ -5562,6 +5852,9 @@
               "type": "integer"
             },
             "type": "array"
+          },
+          "none": {
+            "type": "boolean"
           }
         }
       },
@@ -5689,6 +5982,10 @@
           "live": {
             "description": "How many of the protocols using it serve it now",
             "type": "integer"
+          },
+          "untrusted": {
+            "description": "Why apps will refuse it - it does not chain to a publicly trusted authority (links never pin a shared certificate). Empty when it does",
+            "type": "string"
           }
         }
       },
@@ -5828,6 +6125,13 @@
               "$ref": "#/components/schemas/Client"
             },
             "type": "array"
+          },
+          "usage": {
+            "description": "Usage per protocol: this cycle and all time, exact (the most used first)",
+            "items": {
+              "$ref": "#/components/schemas/ProtocolUsage"
+            },
+            "type": "array"
           }
         }
       },
@@ -5880,6 +6184,56 @@
           },
           "link": {
             "type": "string"
+          }
+        }
+      },
+      "ProtocolUsage": {
+        "type": "object",
+        "properties": {
+          "node_id": {
+            "description": "The protocol (a negative id: one removed while its server still reported its traffic)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server": {
+            "description": "Its server's name",
+            "type": "string"
+          },
+          "protocol": {
+            "description": "The protocol's name, or what it is (REALITY, VLESS gRPC TLS, ...)",
+            "type": "string"
+          },
+          "removed": {
+            "description": "The protocol (or its server) was removed since",
+            "type": "boolean"
+          },
+          "cycle_up": {
+            "description": "Uploaded this cycle, bytes",
+            "format": "int64",
+            "type": "integer"
+          },
+          "cycle_down": {
+            "description": "Downloaded this cycle, bytes",
+            "format": "int64",
+            "type": "integer"
+          },
+          "total_up": {
+            "description": "Uploaded since the user was created",
+            "format": "int64",
+            "type": "integer"
+          },
+          "total_down": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_at": {
+            "description": "When it last carried traffic (0: not since this was counted)",
+            "format": "int64",
+            "type": "integer"
           }
         }
       },
@@ -6064,6 +6418,13 @@
               }
             ],
             "description": "Since the user was created"
+          },
+          "protocols": {
+            "description": "Usage per protocol, this cycle and all time (the most used first)",
+            "items": {
+              "$ref": "#/components/schemas/PortalProtocol"
+            },
+            "type": "array"
           }
         }
       },
@@ -6167,6 +6528,10 @@
           "devices": {
             "description": "The user's devices connected to this server now",
             "type": "integer"
+          },
+          "former": {
+            "description": "No longer in the user's access (or removed): shown for its traffic only",
+            "type": "boolean"
           }
         }
       },
@@ -6191,6 +6556,37 @@
             },
             "description": "Bytes per server id",
             "type": "object"
+          }
+        }
+      },
+      "PortalProtocol": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "removed": {
+            "description": "No longer there",
+            "type": "boolean"
+          },
+          "cycle": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Usage"
+              }
+            ],
+            "description": "This cycle"
+          },
+          "total": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Usage"
+              }
+            ],
+            "description": "Since the user was created"
           }
         }
       },
@@ -6768,6 +7164,10 @@
             "description": "Agents may download cores through the panel",
             "type": "boolean"
           },
+          "auto_update": {
+            "description": "Install new Meridian releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts",
+            "type": "boolean"
+          },
           "status_page": {
             "description": "off | home (the site's front page is the status page: a sign-in for users, the live dashboard for you; the panel stays at /overview) | page (at /status)",
             "type": "string"
@@ -6812,6 +7212,193 @@
           "animation": {
             "description": "assemble | rise | pulse | spin | none",
             "type": "string"
+          }
+        }
+      },
+      "Notifications": {
+        "type": "object",
+        "properties": {
+          "telegram_token": {
+            "description": "The bot token, masked (its bot id and last characters); empty when none is set",
+            "type": "string"
+          },
+          "telegram_chat": {
+            "description": "The Telegram chat notifications go to",
+            "type": "string"
+          },
+          "webhook_url": {
+            "description": "The webhook, masked (scheme and host); empty when none is set",
+            "type": "string"
+          },
+          "groups": {
+            "description": "What is sent: servers (offline, back online, rebooted, failed to apply, crashed cores), users (quota used up, access ended or ending, over the device limit), certificates (shared certificates expiring), security (sign-ins, failed sign-ins, password and two-factor changes, new API tokens)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "active": {
+            "description": "Whether a channel is set up",
+            "type": "boolean"
+          },
+          "last_sent_at": {
+            "description": "When a notification was last delivered (Unix seconds)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_error": {
+            "description": "Why the last attempt failed, if it did",
+            "type": "string"
+          }
+        }
+      },
+      "NotificationsInput": {
+        "type": "object",
+        "properties": {
+          "telegram_token": {
+            "description": "The bot's token from @BotFather; omit to keep the current one, empty to remove it",
+            "type": "string"
+          },
+          "telegram_chat": {
+            "description": "The chat to write to: a numeric id (a group's is negative) or @channelname",
+            "type": "string"
+          },
+          "webhook_url": {
+            "description": "An HTTPS address that receives a JSON POST ({text, content, events}) per batch; omit to keep the current one, empty to remove it",
+            "type": "string"
+          },
+          "groups": {
+            "description": "What to send: servers, users, certificates, security",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "NotificationTest": {
+        "type": "object",
+        "properties": {
+          "telegram": {
+            "description": "ok, or why it failed; empty when Telegram is not set up",
+            "type": "string"
+          },
+          "webhook": {
+            "description": "ok, or why it failed; empty when no webhook is set up",
+            "type": "string"
+          }
+        }
+      },
+      "TelegramChat": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "Updates": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "description": "The version this panel runs",
+            "type": "string"
+          },
+          "latest": {
+            "description": "The newest release (empty until the first check)",
+            "type": "string"
+          },
+          "newer": {
+            "description": "Whether the newest release is newer than this panel",
+            "type": "boolean"
+          },
+          "url": {
+            "description": "The newest release's page",
+            "type": "string"
+          },
+          "published": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "notes": {
+            "description": "The newest release's notes (Markdown)",
+            "type": "string"
+          },
+          "checked_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "check_error": {
+            "type": "string"
+          },
+          "auto_update": {
+            "description": "Whether new releases install by themselves (Settings › auto_update)",
+            "type": "boolean"
+          },
+          "ready": {
+            "description": "Whether this panel can install updates itself",
+            "type": "boolean"
+          },
+          "not_ready": {
+            "description": "Why it cannot, and what to do",
+            "type": "string"
+          },
+          "state": {
+            "description": "idle | downloading (the panel fetches and checks the release) | installing (the updater service has it; the panel restarts)",
+            "type": "string"
+          },
+          "error": {
+            "description": "Why the last update request failed",
+            "type": "string"
+          },
+          "outdated_agents": {
+            "description": "Servers whose agent is not this panel's version",
+            "items": {
+              "$ref": "#/components/schemas/OutdatedAgent"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "OutdatedAgent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          }
+        }
+      },
+      "UpdateInput": {
+        "type": "object",
+        "properties": {
+          "agents": {
+            "description": "Also upgrade every server's agent once the new panel runs (default true; nobody is disconnected)",
+            "type": "boolean"
+          }
+        }
+      },
+      "AgentsUpgraded": {
+        "type": "object",
+        "properties": {
+          "servers": {
+            "description": "The servers whose agent upgrades now",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         }
       },

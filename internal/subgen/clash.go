@@ -152,15 +152,23 @@ func clashProxy(e Endpoint, stash bool) (omap, string) {
 			m = m.set("ipv6", e.WG.Address6)
 		}
 		m = m.set("private-key", e.WG.PrivateKey).set("public-key", e.WG.PeerPublicKey)
+		// Stash names two keys the way Clash Premium did (preshared-key, keepalive); mihomo its own
+		psk, keepalive := "pre-shared-key", "persistent-keepalive"
+		if stash {
+			psk, keepalive = "preshared-key", "keepalive"
+		}
 		if e.WG.PresharedKey != "" {
-			m = m.set("pre-shared-key", e.WG.PresharedKey)
+			m = m.set(psk, e.WG.PresharedKey)
 		}
 		m = m.set("allowed-ips", e.WG.routes()).set("udp", true).set("mtu", e.WG.MTU)
-		if e.WG.Keepalive > 0 && !stash {
-			m = m.set("persistent-keepalive", e.WG.Keepalive)
+		if e.WG.Keepalive > 0 {
+			m = m.set(keepalive, e.WG.Keepalive)
 		}
-		if len(e.WG.DNS) > 0 && !stash {
-			m = m.set("remote-dns-resolve", true).set("dns", e.WG.DNS)
+		if len(e.WG.DNS) > 0 {
+			if !stash {
+				m = m.set("remote-dns-resolve", true)
+			}
+			m = m.set("dns", e.WG.DNS)
 		}
 		return m, ""
 	}

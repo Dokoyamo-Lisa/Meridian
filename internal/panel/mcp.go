@@ -218,6 +218,11 @@ func (c *mcpCall) run(t *mcpTool, args map[string]any) map[string]any {
 		return toolText("This action disconnects people or cannot be undone. Describe exactly what will happen, ask the user "+
 			"to confirm, and only then call it again with confirm=true.", true)
 	}
+	if t.Disrupts != nil && args["confirm"] != true {
+		if what := t.Disrupts(c, args); what != "" {
+			return toolText(what+" Tell the user, and only after they agree call it again with confirm=true.", true)
+		}
+	}
 	out, err := t.Run(c, args)
 	if err != nil {
 		return toolText(err.Error(), true)
@@ -338,7 +343,10 @@ type mcpTool struct {
 	Required    []string
 	Write       bool
 	Destructive bool
-	Run         func(c *mcpCall, args map[string]any) (any, error)
+	// Disrupts says what a call would restart (and so who it disconnects), "" when nothing: such a
+	// call needs confirm=true like a destructive tool
+	Disrupts func(c *mcpCall, args map[string]any) string
+	Run      func(c *mcpCall, args map[string]any) (any, error)
 }
 
 func (t *mcpTool) describe() map[string]any {
@@ -350,6 +358,8 @@ func (t *mcpTool) describe() map[string]any {
 	if t.Destructive {
 		props["confirm"] = map[string]any{"type": "boolean", "description": "Must be true, and only after the user explicitly confirmed this action."}
 		req = append(req, "confirm")
+	} else if t.Disrupts != nil {
+		props["confirm"] = map[string]any{"type": "boolean", "description": "Needed when the call restarts something (the tool answers what, if so): true only after the user confirmed it."}
 	}
 	schema := map[string]any{"type": "object", "properties": props, "additionalProperties": false}
 	if len(req) > 0 {
@@ -545,6 +555,14 @@ func (c *mcpCall) subBody(a map[string]any) (map[string]any, error) {
 			b[field] = ids
 		}
 	}
+	// everything only when asked for by name: two empty lists read like "none" but would be everything
+	if all, _ := argBool(a, "everything"); all {
+		b["servers"], b["protocols"] = []int64{}, []int64{}
+	} else if s, ok := b["servers"].([]int64); ok && len(s) == 0 {
+		if n, ok := b["protocols"].([]int64); ok && len(n) == 0 {
+			return nil, errors.New("server_ids and protocol_ids are both empty: pass everything=true for every server, or pause the user to stop their access")
+		}
+	}
 	return b, nil
 }
 
@@ -583,7 +601,7 @@ var mcpTools = []mcpTool{
 			return out, nil
 		}},
 	{Name: "get_server", Title: "Server details",
-		Description: "One server in detail: system, cores, protocols with their settings (no private keys), forwards and current load.",
+		Description: "One server in detail: system, cores, protocols with their settings (no private keys), forwards and current load. Configuration code (which may hold keys of its own) is not included - only whether there is some (has_code).",
 		Props:       map[string]any{"server_id": pInt("Server id")}, Required: []string{"server_id"},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
 			id, err := needInt(a, "server_id")
@@ -598,6 +616,17 @@ var mcpTools = []mcpTool{
 			srv, _ := m["server"].(map[string]any)
 			delete(srv, "rates")
 			delete(srv, "ports")
+			// code may carry the operator's own secrets (a WARP key...): say only that it is there
+			srv["has_code"] = srv["xray_code"] != nil && srv["xray_code"] != ""
+			delete(srv, "xray_code")
+			if nodes, ok := srv["nodes"].([]any); ok {
+				for _, n := range nodes {
+					if nm, ok := n.(map[string]any); ok {
+						nm["has_code"] = nm["code"] != nil && nm["code"] != ""
+						delete(nm, "code")
+					}
+				}
+			}
 			return srv, nil
 		}},
 	{Name: "list_users", Title: "List users",
@@ -642,7 +671,7 @@ var mcpTools = []mcpTool{
 			return out, nil
 		}},
 	{Name: "get_user", Title: "User details",
-		Description: "One user: limits, usage, sign-in, who is connected right now (IP, place, network, server) and which protocols their link contains. Includes the subscription link.",
+		Description: "One user: limits, usage (also per protocol: this cycle and all time), sign-in, who is connected right now (IP, place, network, server) and which protocols their link contains. Includes the subscription link.",
 		Props:       map[string]any{"user_id": pInt("User id")}, Required: []string{"user_id"},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
 			id, err := needInt(a, "user_id")
@@ -658,6 +687,7 @@ var mcpTools = []mcpTool{
 			out := pick(sub, append(subSummaryKeys, "link", "online", "scope", "total_up", "total_down",
 				"last_fetch_ip", "last_fetch_ua", "created_at")...).(map[string]any)
 			out["protocols"] = pick(m["endpoints"], "name", "kind", "server", "host", "port")
+			out["usage_by_protocol"] = m["usage"]
 			return out, nil
 		}},
 	{Name: "online_now", Title: "Who is online",
@@ -776,8 +806,9 @@ var mcpTools = []mcpTool{
 			"reset_day":    pInt("Day of the month usage resets (1-31); 0 = never"),
 			"expires_on":   pStr("Last valid day, YYYY-MM-DD; omit for no end"),
 			"ip_limit":     pInt("Alert when more IPs than this are online at once; 0 = no limit"),
-			"server_ids":   pInts("Only these whole servers (with protocols added to them later); omit both server_ids and protocol_ids for everything"),
+			"server_ids":   pInts("Only these whole servers (with protocols added to them later); omit both server_ids and protocol_ids (or pass everything=true) for everything"),
 			"protocol_ids": pInts("Single protocols (ids from list_servers), besides whole servers"),
+			"everything":   pBool("true: every server, including ones added later (the default when server_ids and protocol_ids are left out)"),
 			"note":         pStr("Private note"),
 			"count":        pInt("Create several at once (max 500), numbered name-01, name-02, ... (as many digits as the count needs), each with a generated password"),
 		},
@@ -810,8 +841,9 @@ var mcpTools = []mcpTool{
 			"reset_day":    pInt("Day of the month usage resets (1-31); 0 = never"),
 			"expires_on":   pStr("Last valid day, YYYY-MM-DD, or 'never'"),
 			"ip_limit":     pInt("IP limit; 0 = none"),
-			"server_ids":   pInts("Whole servers the user can use; [] for none (with protocol_ids []: everything)"),
-			"protocol_ids": pInts("Single protocols the user can use, besides whole servers; [] for none"),
+			"server_ids":   pInts("Whole servers the user can use (with protocols added to them later); [] for none. Omit to keep the current ones"),
+			"protocol_ids": pInts("Single protocols the user can use, besides whole servers; [] for none. Omit to keep the current ones"),
+			"everything":   pBool("true: every server, including ones added later (server_ids and protocol_ids are then ignored)"),
 			"note":         pStr("Private note"),
 		},
 		Required: []string{"user_id"},
@@ -935,6 +967,24 @@ var mcpTools = []mcpTool{
 			"xray_code":    pStr("Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates: outbounds (added, or replacing the one with the same tag), routing.rules (before the panel's), inbounds by a protocol's tag n<id> (merged into it) or new ones, other sections such as dns. api, stats, log and policy are Meridian's. Only the syntax is checked; Xray's refusals show in get_server (apply_errors). Empty string removes it"),
 		},
 		Required: []string{"server_id"},
+		Disrupts: func(c *mcpCall, a map[string]any) string {
+			id, _ := argInt(a, "server_id")
+			v, ok := argStr(a, "ip_version")
+			if !ok {
+				return ""
+			}
+			if v == "both" {
+				v = ""
+			}
+			s, err := c.p.ownServer(c.r.Context(), c.account, id)
+			if err != nil || s.IPVersion == v {
+				return ""
+			}
+			if n := c.p.countKind(c.r.Context(), s.ID, "hysteria2"); n > 0 {
+				return fmt.Sprintf("Changing the IP version restarts %d Hysteria2 protocol(s) on %s once: their devices drop and reconnect.", n, s.Name)
+			}
+			return ""
+		},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
 			id, err := needInt(a, "server_id")
 			if err != nil {
@@ -964,6 +1014,13 @@ var mcpTools = []mcpTool{
 		Description: "Set (or with an empty string remove) a protocol's own advanced settings as code, merged on top of what the panel generates. " + protocolCodeHelp + " Afterwards read apply_errors in get_server: what the core refuses leaves the running configuration as it was.",
 		Props:       map[string]any{"protocol_id": pInt("Protocol id (list_servers)"), "code": pStr("The settings: JSON for Xray protocols, YAML for Hysteria2")},
 		Required:    []string{"protocol_id", "code"},
+		Disrupts: func(c *mcpCall, a map[string]any) string {
+			id, _ := argInt(a, "protocol_id")
+			if n, s, err := c.p.ownNode(c.r.Context(), c.account, id); err == nil && n.Kind == "hysteria2" {
+				return fmt.Sprintf("This Hysteria2 protocol on %s restarts once to take the settings: its devices drop and reconnect.", s.Name)
+			}
+			return ""
+		},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
 			id, err := needInt(a, "protocol_id")
 			if err != nil {
@@ -987,6 +1044,17 @@ var mcpTools = []mcpTool{
 			"key_pem":  pStr("Its private key, PEM (privkey.pem)"),
 		},
 		Required: []string{"cert_id", "cert_pem", "key_pem"},
+		Disrupts: func(c *mcpCall, a map[string]any) string {
+			id, _ := argInt(a, "cert_id")
+			var n int
+			_ = c.p.db.QueryRowContext(c.r.Context(), `SELECT COUNT(*) FROM nodes n JOIN servers s ON s.id = n.server_id
+				WHERE s.account_id = ? AND s.deleted_at = 0 AND n.kind = 'hysteria2' AND json_extract(n.settings, '$.cert_mode') = 'shared'
+				AND json_extract(n.settings, '$.cert_id') = ?`, c.account.ID, id).Scan(&n)
+			if n > 0 {
+				return fmt.Sprintf("%d Hysteria2 protocol(s) use this certificate and restart once to take it: their devices drop and reconnect.", n)
+			}
+			return ""
+		},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
 			id, err := needInt(a, "cert_id")
 			if err != nil {
@@ -1219,6 +1287,52 @@ var mcpTools = []mcpTool{
 			}
 			return "Unblocked.", nil
 		}},
+	{Name: "check_updates", Title: "Updates",
+		Description: "This panel's Meridian version, the newest release (as of the last look on GitHub, every few hours) with its notes, whether the panel can install updates itself, whether automatic updates are on, and which servers run an older agent.",
+		Run:         func(c *mcpCall, a map[string]any) (any, error) { return c.api("GET", "/api/update", nil) }},
+	{Name: "update_panel", Title: "Install the newest release", Write: true, Destructive: true,
+		Description: "Install the newest Meridian release: the panel downloads it, checks its signature and checksum, backs up the database, and the updater service installs it. Proxies keep running; the panel restarts once (this connection drops for a few seconds). With agents (the default), every server's agent is upgraded afterwards - nobody is disconnected. Ask the user first.",
+		Props: map[string]any{
+			"agents": pBool("Also upgrade every server's agent afterwards (default true)"),
+		},
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			body := map[string]any{}
+			if v, ok := argBool(a, "agents"); ok {
+				body["agents"] = v
+			}
+			return c.api("POST", "/api/update/install", body)
+		}},
+	{Name: "upgrade_all_agents", Title: "Upgrade every agent", Write: true, Destructive: true,
+		Description: "Upgrade the agent on every server whose agent is not the panel's version (offline ones when they connect). Agents restart themselves; proxies keep running and nobody is disconnected. Ask the user first.",
+		Run:         func(c *mcpCall, a map[string]any) (any, error) { return c.api("POST", "/api/agents/upgrade", nil) }},
+	{Name: "get_notifications", Title: "Notifications",
+		Description: "Where notifications go (a Telegram chat, a webhook - both shown masked) and which groups are sent: servers (offline, back online, rebooted, refused configurations, crashed cores), users (data used up, access ended or ending, too many devices), certificates (shared ones expiring), security (sign-ins, failed sign-ins, password and two-factor changes, new tokens). Also when the last one went out and why the last attempt failed, if it did.",
+		Run:         func(c *mcpCall, a map[string]any) (any, error) { return c.api("GET", "/api/settings/notify", nil) }},
+	{Name: "set_notifications", Title: "Set up notifications", Write: true,
+		Description: "Send problems that need the operator to Telegram and/or an HTTPS webhook (Slack, Discord, Mattermost work as they are). Only the given fields change; an empty telegram_token or webhook_url removes it. Turning notifications on never sends the past; they never pause anything. Afterwards call test_notifications.",
+		Props: map[string]any{
+			"telegram_token": pStr("The bot token from @BotFather"),
+			"telegram_chat":  pStr("The chat: a numeric id (a group's starts with -) or @channel"),
+			"webhook_url":    pStr("An https:// address that receives JSON {text, content, events}"),
+			"groups":         map[string]any{"type": "array", "items": map[string]any{"type": "string", "enum": []string{"servers", "users", "certificates", "security"}}, "description": "What to send"},
+		},
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			body := map[string]any{}
+			for _, k := range []string{"telegram_token", "telegram_chat", "webhook_url"} {
+				if v, ok := argStr(a, k); ok {
+					body[k] = v
+				}
+			}
+			if g, ok := a["groups"]; ok {
+				body["groups"] = g
+			}
+			return c.api("PUT", "/api/settings/notify", body)
+		}},
+	{Name: "test_notifications", Title: "Send a test notification", Write: true,
+		Description: "Send one test message through every notification channel that is set up; says per channel whether it arrived or why not.",
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			return c.api("POST", "/api/settings/notify/test", nil)
+		}},
 	{Name: "get_status_page", Title: "Status page",
 		Description: "How the status page is set up: off, the site's front page (home) or at /status (page), and its own domain. Visitors see a sign-in there; users see their own data left, devices and usage; the supervisor sees every server on a live globe. Also where users sign in.",
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
@@ -1351,10 +1465,10 @@ var mcpTools = []mcpTool{
 			return pick(m["server"], "id", "name", "public_name", "status_hidden", "city", "country", "lat", "lon", "loc_manual"), nil
 		}},
 	{Name: "server_action", Title: "Restart or upgrade", Write: true, Destructive: true,
-		Description: "Run a maintenance action on a server: restart_xray or upgrade_xray (disconnects Xray users for a moment), upgrade_agent (nobody is disconnected). Returns an action id for action_status.",
+		Description: "Run a maintenance action on a server: restart_pending (restarts exactly what waits for a restart - the server's pending_restart - and disconnects those users for a moment), restart_xray or upgrade_xray (disconnects Xray users for a moment), upgrade_hysteria or upgrade_realm (switches to the version in Settings; those users reconnect), upgrade_agent (nobody is disconnected). Returns an action id for action_status.",
 		Props: map[string]any{
 			"server_id": pInt("Server id"),
-			"action":    pEnum("What to do", "restart_xray", "upgrade_xray", "upgrade_agent"),
+			"action":    pEnum("What to do", "restart_pending", "restart_xray", "upgrade_xray", "upgrade_hysteria", "upgrade_realm", "upgrade_agent"),
 		},
 		Required: []string{"server_id", "action"},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
@@ -1411,7 +1525,8 @@ func protocolProps(withServer bool) map[string]any {
 		"sni":          pStr("TLS: the certificate's domain. REALITY: the camouflage site (default www.apple.com). Hysteria2: the certificate name"),
 		"target":       pStr("REALITY: where visitors who are not users go, host:port (default sni:443)"),
 		"own_site":     pBool("REALITY: the camouflage is your own website on this server; target is then 127.0.0.1:port"),
-		"cert_mode":    pEnum("TLS and Hysteria2 certificate: self (self-signed, pinned in apps that can), acme (Let's Encrypt, needs a domain pointing at the server and TCP port 80), custom", certModes...),
+		"cert_mode":    pEnum("TLS and Hysteria2 certificate: self (self-signed, pinned in apps that can), acme (Let's Encrypt, needs a domain pointing at the server and TCP port 80), custom (cert_pem and key_pem), shared (one of list_certificates, with cert_id)", certModes...),
+		"cert_id":      pInt("cert_mode shared: the certificate's id from list_certificates (it must cover sni)"),
 		"cert_pem":     pStr("cert_mode custom: the certificate chain (PEM)"),
 		"key_pem":      pStr("cert_mode custom: the private key (PEM)"),
 		"path":         pStr("ws, httpupgrade, xhttp: the path (default random)"),
@@ -1465,12 +1580,19 @@ func protocolSettingsArg(a map[string]any) map[string]any {
 			out[k] = v
 		}
 	}
-	for _, k := range []string{"cdn_port", "up_mbps", "down_mbps", "mtu"} {
+	for _, k := range []string{"cdn_port", "up_mbps", "down_mbps", "mtu", "cert_id"} {
 		if v, ok := argInt(a, k); ok {
 			out[k] = v
 		}
 	}
 	return out
+}
+
+// countKind counts a server's protocols of a kind.
+func (p *Panel) countKind(ctx context.Context, serverID int64, kind string) int {
+	var n int
+	_ = p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM nodes WHERE server_id = ? AND kind = ?`, serverID, kind).Scan(&n)
+	return n
 }
 
 // findSharing scores users by how shared their links look.

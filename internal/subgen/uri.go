@@ -195,7 +195,7 @@ func Base64List(eps []Endpoint, info Info, p linkProfile, shadowrocket bool) ([]
 		// Shadowrocket shows this line as the subscription's usage and expiry.
 		status := fmt.Sprintf("STATUS=↑:%s,↓:%s,TOT:%s", gb(info.Upload), gb(info.Download), gbTotal(info.Total))
 		if info.Expire > 0 {
-			status += fmt.Sprintf("Expires:%s", unixDate(info.Expire))
+			status += fmt.Sprintf("Expires:%s", unixDate(info.Expire, info.Zone))
 		}
 		list = status + "\n" + list
 	}

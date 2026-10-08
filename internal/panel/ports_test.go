@@ -349,3 +349,33 @@ func TestTargetSummary(t *testing.T) {
 		}
 	}
 }
+
+// TestOwnListener: a running forward or protocol is never "in use by another program" because of its
+// own listener - editing its target, giving it an address or turning on UDP works.
+func TestOwnListener(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	srv := b.must("POST", "/api/servers", map[string]any{"name": "Own", "address": "203.0.113.97", "protocols": []string{}}, 201)["server"].(map[string]any)
+	sid := id(srv["id"])
+	if _, err := h.p.db.Exec1(`UPDATE servers SET first_seen_at = ?, caps = ?, addrs = ? WHERE id = ?`, now(),
+		`{"systemd":true,"nftables":true}`, `["203.0.113.97","203.0.113.98"]`, sid); err != nil {
+		t.Fatal(err)
+	}
+	fwd := b.must("POST", fmt.Sprintf("/api/servers/%d/forwards", sid), map[string]any{"engine": "realm", "listen_port": 8080,
+		"target": "10.0.0.5:80"}, 201)
+	socks := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "socks", "port": 1080,
+		"settings": map[string]any{"udp": false}}, 201)
+	vless := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "vless", "port": 443,
+		"settings": map[string]any{}}, 201)
+	h.p.live.put(sid, proto.Live{Ports: []int{8080, 1080, 443, 22}}) // the server reports them listening
+	b.must("PATCH", fmt.Sprintf("/api/forwards/%d", id(fwd["id"])), map[string]any{"target": "10.0.0.6:80", "listen_port": 8080,
+		"network": "tcp+udp"}, 200)
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", id(socks["id"])), map[string]any{"settings": map[string]any{"udp": true}}, 200)
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", id(vless["id"])), map[string]any{"bind_ip": "203.0.113.98"}, 200)
+	// another program's port is still refused
+	if code, m, _ := b.do("PATCH", fmt.Sprintf("/api/forwards/%d", id(fwd["id"])), map[string]any{"listen_port": 22}); code != 409 ||
+		!strings.Contains(fmt.Sprint(m["error"]), "another program") {
+		t.Errorf("a port another program holds: %d %v", code, m)
+	}
+}

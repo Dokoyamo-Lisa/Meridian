@@ -139,6 +139,9 @@ func (p *Panel) auth(h handlerFunc, o authOpts) http.HandlerFunc {
 
 func readOnlyMethod(m string) bool { return m == http.MethodGet || m == http.MethodHead }
 
+// readOnlyPost are POST requests that change nothing: read-only tokens may make them.
+var readOnlyPost = map[string]bool{"/api/protocols/check": true}
+
 // resolve authenticates a request by API token (Authorization: Bearer) or session cookie.
 func (p *Panel) resolve(w http.ResponseWriter, r *http.Request, o authOpts) (*Account, authInfo, error) {
 	if tok, ok := bearerToken(r); ok {
@@ -154,7 +157,7 @@ func (p *Panel) resolve(w http.ResponseWriter, r *http.Request, o authOpts) (*Ac
 			p.limiter.allow("tokfail:"+ip, 20, 15*time.Minute)
 			return nil, authInfo{}, errStatus(http.StatusUnauthorized, "invalid or expired API token")
 		}
-		if ai.Scope != "full" && !readOnlyMethod(r.Method) {
+		if ai.Scope != "full" && !readOnlyMethod(r.Method) && !(r.Method == http.MethodPost && readOnlyPost[r.URL.Path]) {
 			return nil, authInfo{}, errStatus(http.StatusForbidden, "this API token is read-only")
 		}
 		return a, ai, nil
@@ -251,20 +254,22 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, errStatus(http.StatusUnauthorized, "wrong username or password"))
 		return
 	}
-	if d := p.settings().StatusDomain; d != "" && strings.EqualFold(hostOnly(r.Host), d) {
-		// the status page's own domain never opens the panel (said only after the right password)
-		writeErr(w, errStatus(http.StatusForbidden, "the panel opens at its own address, not on the status page's domain"))
-		return
-	}
+	// on the status page's own domain the supervisor sees the globe; the panel and its API never
+	// answer there (siteGate), so a session made there opens nothing else
 	if a.TOTPSecret != "" {
 		if req.Code == "" {
 			writeJSON(w, http.StatusOK, map[string]any{"totp_required": true})
 			return
 		}
 		step, ok := totpMatch(a.TOTPSecret, req.Code, time.Now())
-		if !ok || step <= a.TOTPLast {
+		if !ok {
 			p.event(a.ID, "warn", "login_failed", 0, 0, a.ID, fmt.Sprintf("Wrong two-factor code for %s from %s", a.Username, ip), nil)
-			writeErr(w, errStatus(http.StatusUnauthorized, "wrong two-factor code"))
+			writeErr(w, errStatus(http.StatusUnauthorized, "wrong two-factor code - check the time on your phone"))
+			return
+		}
+		if step <= a.TOTPLast { // right code, but it already signed someone in: each code works once
+			p.event(a.ID, "warn", "login_failed", 0, 0, a.ID, fmt.Sprintf("A used two-factor code for %s from %s", a.Username, ip), nil)
+			writeErr(w, errStatus(http.StatusUnauthorized, "this code was already used - wait for the next one (at most 30 seconds)"))
 			return
 		}
 		// remember the step so the same code cannot be replayed
@@ -274,7 +279,7 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
-			writeErr(w, errStatus(http.StatusUnauthorized, "wrong two-factor code"))
+			writeErr(w, errStatus(http.StatusUnauthorized, "this code was already used - wait for the next one (at most 30 seconds)"))
 			return
 		}
 	}
@@ -431,6 +436,11 @@ func (p *Panel) apiTOTPEnable(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	if !p.limiter.allow("totp:"+fmt.Sprint(a.ID), 10, 15*time.Minute) {
 		return errStatus(http.StatusTooManyRequests, "too many attempts - wait a few minutes")
+	}
+	// replacing it would need neither the password nor the old code (someone at an open browser could
+	// lock the owner out): turning it off first asks for the password
+	if a.TOTPSecret != "" {
+		return errStatus(http.StatusConflict, "two-factor sign-in is on already - turn it off first (that asks for your password), then set it up again")
 	}
 	req.Secret = strings.ToUpper(strings.TrimSpace(req.Secret))
 	if len(req.Secret) < 16 || len(req.Secret) > 64 {

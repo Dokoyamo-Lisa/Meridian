@@ -43,12 +43,12 @@ interface Metric {
   online: number
 }
 
-const disruptive = (what: string) => (
+const disruptive = (what: string, who = 'Everyone connected through Xray on this server') => (
   <>
     <p style="margin-top:0">{what}</p>
     <div class="callout warn">
       <Icon name="alert" size="sm" />
-      <div>Everyone connected through Xray on this server is disconnected for a moment and their apps reconnect by themselves.</div>
+      <div>{who} is disconnected for a moment and their apps reconnect by themselves.</div>
     </div>
   </>
 )
@@ -157,6 +157,38 @@ export function ServerPage(props: { id: number }) {
                     <Icon name="download" size="sm" />
                     Upgrade Xray…
                   </button>
+                  {srv.nodes.some((n) => n.kind === 'hysteria2') && (
+                    <button
+                      onClick={() =>
+                        action(
+                          'upgrade_hysteria',
+                          'Upgrade Hysteria?',
+                          disruptive(`${srv.name} switches to the Hysteria version set in Settings. Each Hysteria2 protocol restarts once.`, 'Everyone connected through Hysteria2 on this server'),
+                          'Upgrade Hysteria',
+                          true,
+                        )
+                      }
+                    >
+                      <Icon name="download" size="sm" />
+                      Upgrade Hysteria…
+                    </button>
+                  )}
+                  {srv.forwards.some((f) => f.engine === 'realm') && (
+                    <button
+                      onClick={() =>
+                        action(
+                          'upgrade_realm',
+                          'Upgrade realm?',
+                          disruptive(`${srv.name} switches to the realm version set in Settings. Each realm forward restarts once.`, 'Every connection through a realm forward'),
+                          'Upgrade realm',
+                          true,
+                        )
+                      }
+                    >
+                      <Icon name="download" size="sm" />
+                      Upgrade realm…
+                    </button>
+                  )}
                   <button
                     onClick={() =>
                       action(
@@ -213,9 +245,9 @@ export function ServerPage(props: { id: number }) {
         <div class="callout warn">
           <Icon name="refresh" size="sm" />
           <div class="grow">
-            A saved change needs an Xray restart to take effect: <b>{srv.pending_restart}</b>. Nothing restarts until you say so.
+            Waiting for a restart: <b>{srv.pending_restart}</b>. Nothing restarts until you say so.
           </div>
-          <button class="btn sm" onClick={() => action('restart_xray', 'Restart Xray now?', disruptive('This applies: ' + srv.pending_restart), 'Restart Xray', true)}>
+          <button class="btn sm" onClick={() => action('restart_pending', 'Restart now?', disruptive('Only what waits restarts: ' + srv.pending_restart, 'Everyone connected through it'), 'Restart now', true)}>
             Restart now
           </button>
         </div>
@@ -569,7 +601,9 @@ function ForwardModal(props: { server: Server; fwd?: Forward; onClose: () => voi
   const [port, setPort] = useState(f ? String(f.listen_port) : '')
   const [target, setTarget] = useState(f?.target || '')
   const [network, setNetwork] = useState(f?.network || 'tcp+udp')
-  const [engine, setEngine] = useState(f?.engine || 'nft')
+  // the kernel engine needs nftables: a server that reported it has none starts with realm
+  const noNft = props.server.status !== 'pending' && !props.server.caps?.nftables
+  const [engine, setEngine] = useState(f?.engine || (noNft ? 'realm' : 'nft'))
   const [pp, setPp] = useState(!!f?.proxy_protocol)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -635,11 +669,15 @@ function ForwardModal(props: { server: Server; fwd?: Forward; onClose: () => voi
           Engine
         </div>
         <div class="pick">
-          <label class={engine === 'nft' ? 'on' : ''}>
-            <input type="radio" name="engine" checked={engine === 'nft'} onChange={() => setEngine('nft')} />
+          <label class={(engine === 'nft' ? 'on' : '') + (noNft ? ' off' : '')}>
+            <input type="radio" name="engine" checked={engine === 'nft'} disabled={noNft} onChange={() => setEngine('nft')} />
             <span>
               <b>Kernel (nftables)</b>
-              <span class="hint">Fastest: packets are forwarded inside the kernel, no extra process, exact byte counts. Recommended.</span>
+              <span class="hint">
+                {noNft
+                  ? 'Not on this server: nftables is not installed (apk add nftables on Alpine, apt install nftables on Debian or Ubuntu).'
+                  : 'Fastest: packets are forwarded inside the kernel, no extra process, exact byte counts. Recommended.'}
+              </span>
             </span>
           </label>
           <label class={engine === 'realm' ? 'on' : ''}>
@@ -1144,7 +1182,7 @@ function CodePanel(props: { server: Server; onSaved: () => void }) {
       ) : (
         <>
           <p class="muted" style="margin-top:0">
-            For the whole server's Xray - one protocol's own settings are in its editor (Port, name and more › Advanced Xray settings). JSON (comments allowed), merged on top of the generated Xray configuration: <span class="mono">outbounds</span> are added (or replace one with the same tag), <span class="mono">routing.rules</span> come before the panel's,{' '}
+            For the whole server's Xray - one protocol's own settings are in its window (Advanced settings, on the right). JSON (comments allowed), merged on top of the generated Xray configuration: <span class="mono">outbounds</span> are added (or replace one with the same tag), <span class="mono">routing.rules</span> come before the panel's,{' '}
             <span class="mono">inbounds</span> change a protocol by its tag or add your own, other sections (<span class="mono">dns</span>, …) are merged. Only the syntax is checked here - Xray decides the rest: what it refuses is shown on this page and the running configuration stays. Outbounds and rules apply live; other sections wait for “Restart Xray”.
           </p>
           {xrayNodes.length > 0 && (

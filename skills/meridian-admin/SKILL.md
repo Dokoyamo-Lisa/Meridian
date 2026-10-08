@@ -41,8 +41,9 @@ for its one supervisor account.
    - `apply_error` - the server could not apply the latest change and keeps the previous working
      configuration. `get_server` shows the message ("the panel needs a newer agent" means: upgrade
      the agent with `server_action upgrade_agent` - nobody is disconnected).
-   - `restart_pending` - a change needs one Xray restart; nothing restarts until the user clicks
-     **Restart now** (or confirms `server_action restart_xray`).
+   - `restart_pending` - a change waits for one restart (of Xray, or of the Hysteria2 protocols it
+     names); nothing restarts until the user clicks **Restart now** (or confirms
+     `server_action restart_pending`, which restarts exactly what waits).
    - `over_ip_limit`, `over_quota`, `expired` - soft limits; offer to investigate, never pause unasked.
    - `bandwidth` - a server is near its monthly plan.
 
@@ -104,8 +105,9 @@ and a generated password (shown once) - pass them on with the sign-in address fr
   use it, and protocols on different addresses may share a port.
 - **IPv4 or IPv6 only**: `update_server {server_id, ip_version: "ipv4" | "ipv6" | "both"}`.
 - **What a user gets**: `create_user` / `update_user` with `server_ids` (whole servers, with protocols
-  added later) and/or `protocol_ids` (single protocols, ids from `list_servers`); omit both for
-  everything.
+  added later) and/or `protocol_ids` (single protocols, ids from `list_servers`). For every server,
+  pass `everything: true`. In `update_user`, leaving both out keeps the current access; two empty
+  lists are refused (to stop someone's access, pause them).
 - **A relay whose exit nobody should use directly**: set `pass_only: true` on the exit protocol - it
   leaves users' links and accepts only the pass.
 - **Shared certificates**: `list_certificates` shows each one and, per server, whether it serves it

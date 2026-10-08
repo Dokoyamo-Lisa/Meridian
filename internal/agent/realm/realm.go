@@ -6,11 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"meridian/internal/agent/cores"
 	"meridian/internal/agent/service"
@@ -47,6 +50,55 @@ func render(f proto.Forward) []byte {
 	return append(b, '\n')
 }
 
+// RestartAll restarts every realm forward (after an upgrade): open connections through them drop.
+func (e *Engine) RestartAll() (int, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	entries, _ := os.ReadDir(e.ConfDir)
+	n := 0
+	var errs []string
+	for _, ent := range entries {
+		id, err := strconv.ParseInt(strings.TrimSuffix(ent.Name(), ".json"), 10, 64)
+		if err != nil || !strings.HasSuffix(ent.Name(), ".json") {
+			continue
+		}
+		if err := service.Restart(unitName(id)); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+		n++
+	}
+	if len(errs) > 0 {
+		return n, fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return n, nil
+}
+
+// unsafeTarget says why a forward's target must not be used: its name resolves to loopback, an
+// unspecified, link-local (cloud metadata) or multicast address. "" when it may be used (or does not
+// resolve right now - realm then fails by itself).
+func unsafeTarget(ctx context.Context, target string) string {
+	host, _, err := net.SplitHostPort(target)
+	if err != nil {
+		return "its target cannot be read"
+	}
+	var addrs []netip.Addr
+	if a, err := netip.ParseAddr(host); err == nil {
+		addrs = []netip.Addr{a}
+	} else {
+		lctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		addrs, _ = net.DefaultResolver.LookupNetIP(lctx, "ip", host)
+	}
+	for _, a := range addrs {
+		a = a.Unmap()
+		if a.IsLoopback() || a.IsUnspecified() || a.IsLinkLocalUnicast() || a.IsLinkLocalMulticast() || a.IsMulticast() {
+			return fmt.Sprintf("its target %s leads to %s - this server itself or the cloud's metadata, where forwards may not lead", host, a)
+		}
+	}
+	return ""
+}
+
 // Apply runs exactly the given realm forwards.
 func (e *Engine) Apply(ctx context.Context, forwards []proto.Forward, version, mirror string) error {
 	e.mu.Lock()
@@ -59,7 +111,7 @@ func (e *Engine) Apply(ctx context.Context, forwards []proto.Forward, version, m
 	}
 	var errs []string
 	if len(want) > 0 {
-		bin, err := cores.EnsureRealm(ctx, e.Base, version, mirror)
+		bin, err := cores.InUse(ctx, e.Base, "realm", version, mirror)
 		if err != nil {
 			return fmt.Errorf("install realm %s: %w", version, err)
 		}
@@ -83,6 +135,13 @@ func (e *Engine) Apply(ctx context.Context, forwards []proto.Forward, version, m
 		_ = os.Chmod(e.ConfDir, 0o755)
 	}
 	for id, f := range want {
+		// a name may lead anywhere: never to this server or the cloud's metadata (checked again on
+		// every pass, so a name that starts pointing there stops being forwarded)
+		if why := unsafeTarget(ctx, f.Target); why != "" {
+			_ = service.DisableNow(unitName(id))
+			errs = append(errs, fmt.Sprintf("forward %d is stopped: %s", id, why))
+			continue
+		}
 		body := render(f)
 		path := e.confPath(id)
 		old, _ := os.ReadFile(path)

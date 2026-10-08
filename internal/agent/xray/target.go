@@ -19,6 +19,7 @@ import (
 	"golang.org/x/net/proxy"
 
 	"meridian/internal/agent/acme"
+	"meridian/internal/agent/nft"
 	"meridian/internal/proto"
 )
 
@@ -52,6 +53,12 @@ func checkSpec(t proto.TargetSpec) error {
 		return fmt.Errorf("%q is not a public domain", host)
 	}
 	return nil
+}
+
+func randHexStr(n int) string {
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%x", b)
 }
 
 func freePort() int {
@@ -90,6 +97,10 @@ func (e *Engine) TestTarget(ctx context.Context, spec proto.TargetSpec) proto.Ta
 	priv := base64.RawURLEncoding.EncodeToString(b)
 	pub := base64.RawURLEncoding.EncodeToString(k.PublicKey().Bytes())
 	rp, sp := freePort(), freePort()
+	// the client side is a SOCKS proxy on loopback that runs as root: only this check may use it (a
+	// password of its own), and it reaches only the probe site - never this host or a private network
+	user, pass := randHexStr(8), randHexStr(16)
+	const probe = "www.gstatic.com"
 	cfg := map[string]any{
 		"log": map[string]any{"loglevel": "none"},
 		"inbounds": []any{
@@ -98,10 +109,13 @@ func (e *Engine) TestTarget(ctx context.Context, spec proto.TargetSpec) proto.Ta
 					"id": "00000000-0000-4000-8000-000000000001", "flow": "xtls-rprx-vision"}}},
 				"streamSettings": map[string]any{"network": "raw", "security": "reality", "realitySettings": map[string]any{
 					"target": spec.Addr, "serverNames": []string{target}, "privateKey": priv, "shortIds": []string{""}}}},
-			map[string]any{"tag": "socks", "listen": "127.0.0.1", "port": sp, "protocol": "socks"},
+			map[string]any{"tag": "socks", "listen": "127.0.0.1", "port": sp, "protocol": "socks",
+				"settings": map[string]any{"auth": "password", "accounts": []any{map[string]any{"user": user, "pass": pass}}}},
 		},
 		"outbounds": []any{
-			map[string]any{"tag": "direct", "protocol": "freedom"},
+			map[string]any{"tag": "direct", "protocol": "freedom",
+				"streamSettings": map[string]any{"sockopt": map[string]any{"mark": nft.DirectMark}}},
+			map[string]any{"tag": "block", "protocol": "blackhole"},
 			map[string]any{"tag": "cli", "protocol": "vless", "settings": map[string]any{"address": "127.0.0.1", "port": rp,
 				"id": "00000000-0000-4000-8000-000000000001", "flow": "xtls-rprx-vision", "encryption": "none"},
 				"streamSettings": map[string]any{"network": "raw", "security": "reality", "realitySettings": map[string]any{
@@ -109,7 +123,8 @@ func (e *Engine) TestTarget(ctx context.Context, spec proto.TargetSpec) proto.Ta
 		},
 		"routing": map[string]any{"rules": []any{
 			map[string]any{"inboundTag": []string{"socks"}, "outboundTag": "cli"},
-			map[string]any{"inboundTag": []string{"srv"}, "outboundTag": "direct"},
+			map[string]any{"inboundTag": []string{"srv"}, "domain": []string{"full:" + probe}, "outboundTag": "direct"},
+			map[string]any{"inboundTag": []string{"srv"}, "outboundTag": "block"},
 		}},
 	}
 	f, err := os.CreateTemp(e.RunDir, "target-*.json")
@@ -136,7 +151,7 @@ func (e *Engine) TestTarget(ctx context.Context, spec proto.TargetSpec) proto.Ta
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	dialer, err := proxy.SOCKS5("tcp", "127.0.0.1:"+strconv.Itoa(sp), nil, proxy.Direct)
+	dialer, err := proxy.SOCKS5("tcp", "127.0.0.1:"+strconv.Itoa(sp), &proxy.Auth{User: user, Password: pass}, proxy.Direct)
 	if err != nil {
 		res.Error = err.Error()
 		return res
@@ -146,7 +161,7 @@ func (e *Engine) TestTarget(ctx context.Context, spec proto.TargetSpec) proto.Ta
 			return dialer.(proxy.ContextDialer).DialContext(ctx, network, addr)
 		}}}
 	start := time.Now()
-	resp, err := client.Get("https://www.gstatic.com/generate_204")
+	resp, err := client.Get("https://" + probe + "/generate_204")
 	if err != nil {
 		if spec.Own {
 			res.Error = fmt.Sprintf("your site at %s did not complete a TLS 1.3 handshake for %s - check that it runs there with a valid certificate for %s", spec.Addr, target, target)
