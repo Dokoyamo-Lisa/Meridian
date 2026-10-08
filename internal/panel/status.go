@@ -10,6 +10,7 @@ import (
 	"context"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -137,6 +138,25 @@ type statusServer struct {
 	Speed        *statusSpeed  `json:"speed,omitempty"`
 	Bandwidth    *statusBW     `json:"bandwidth,omitempty"`
 	Sys          *statusSys    `json:"sys,omitempty"`
+	Addrs        []string      `json:"addrs,omitempty" doc:"Its public IP addresses (to visitors only where the status page shows them)"`
+	Host         *statusHost   `json:"host,omitempty"`
+	Cycle        *statusCycle  `json:"cycle,omitempty" doc:"Its own traffic since the monthly reset"`
+	Expires      string        `json:"expires,omitempty" doc:"The day its paid period ends (YYYY-MM-DD), when set"`
+}
+
+type statusHost struct {
+	OS    string `json:"os,omitempty"`
+	Arch  string `json:"arch,omitempty"`
+	CPU   string `json:"cpu,omitempty" doc:"Processor model"`
+	Cores int    `json:"cores,omitempty"`
+	Mem   int64  `json:"mem,omitempty" doc:"Memory, bytes"`
+	Disk  int64  `json:"disk,omitempty" doc:"Disk, bytes"`
+}
+
+type statusCycle struct {
+	Up    int64 `json:"up" doc:"Bytes sent"`
+	Down  int64 `json:"down" doc:"Bytes received"`
+	Start int64 `json:"start" doc:"When the count began"`
 }
 
 type statusSpeed struct {
@@ -145,18 +165,29 @@ type statusSpeed struct {
 }
 
 type statusBW struct {
-	Used      int64 `json:"used"`
-	Limit     int64 `json:"limit"`
-	ResetDay  int   `json:"reset_day"`
-	NextReset int64 `json:"next_reset"`
+	Used      int64  `json:"used"`
+	Limit     int64  `json:"limit"`
+	ResetDay  int    `json:"reset_day"`
+	NextReset int64  `json:"next_reset"`
+	Mode      string `json:"mode" doc:"What counts against the limit: both (sent and received) | up | down | max (the larger)"`
 }
 
 type statusSys struct {
-	CPU    float64 `json:"cpu"`
-	Mem    float64 `json:"mem" doc:"Percent used"`
-	Disk   float64 `json:"disk" doc:"Percent used"`
-	Uptime int64   `json:"uptime"`
-	Cores  int     `json:"cores"`
+	CPU       float64    `json:"cpu"`
+	Mem       float64    `json:"mem" doc:"Percent used"`
+	Disk      float64    `json:"disk" doc:"Percent used"`
+	Uptime    int64      `json:"uptime" doc:"Seconds since the machine started, when it last reported"`
+	Booted    int64      `json:"booted" doc:"When the machine started (Unix seconds)"`
+	Cores     int        `json:"cores"`
+	Load      [3]float64 `json:"load" doc:"Load averages over 1, 5 and 15 minutes"`
+	MemUsed   uint64     `json:"mem_used"`
+	MemTotal  uint64     `json:"mem_total"`
+	SwapUsed  uint64     `json:"swap_used"`
+	SwapTotal uint64     `json:"swap_total"`
+	DiskUsed  uint64     `json:"disk_used"`
+	DiskTotal uint64     `json:"disk_total"`
+	TCP       int        `json:"tcp" doc:"Open TCP connections"`
+	UDP       int        `json:"udp" doc:"Open UDP sockets"`
 }
 
 type statusEvent struct {
@@ -177,6 +208,8 @@ type statusPayload struct {
 	History   map[string][]int64 `json:"history,omitempty" doc:"Bytes per day per server id, aligned with days"`
 	Events    []statusEvent      `json:"events,omitempty"`
 	Hub       *statusHub         `json:"hub,omitempty" doc:"Where the panel is drawn on the globe"`
+	// Supervisor says the supervisor is signed in; everyone else sees what the status page shows them
+	Supervisor bool `json:"supervisor,omitempty" doc:"The supervisor is asking (else a visitor: the status page shows the servers to everyone)"`
 }
 
 type statusHub struct {
@@ -242,9 +275,14 @@ func (p *Panel) statusData(ctx context.Context) (*statusPayload, error) {
 			continue
 		}
 		keep[s.ID] = true
-		// no protocols, ports or addresses here: the page is public
+		// no users, protocols, ports or prices here: the page may be public (addresses are left out for
+		// visitors where it does not show them - see apiStatus)
 		v := statusServer{ID: s.ID, Name: s.ShownName(), Country: s.Country, City: s.City, TZ: tzOf(s.City, s.Country),
-			Online: s.Online, Since: s.StatusChangedAt, Availability: avail[s.ID]}
+			Online: s.Online, Since: s.StatusChangedAt, Availability: avail[s.ID], Addrs: publicAddrsOf(s),
+			Cycle: &statusCycle{Up: s.CycleTX, Down: s.CycleRX, Start: s.CycleStart}, Expires: s.ExpiresOn}
+		if s.OS != "" || s.CPUCores > 0 {
+			v.Host = &statusHost{OS: s.OS, Arch: s.Arch, CPU: s.CPUModel, Cores: s.CPUCores, Mem: s.MemTotal, Disk: s.DiskTotal}
+		}
 		if s.Lat != nil && s.Lon != nil {
 			v.Loc = []float64{round1(*s.Lat), round1(*s.Lon)}
 			v.Approx = !s.LocManual
@@ -255,7 +293,9 @@ func (p *Panel) statusData(ctx context.Context) (*statusPayload, error) {
 			out.Totals.Up += ls.Live.Sys.TXRate
 			out.Totals.Down += ls.Live.Sys.RXRate
 			y := ls.Live.Sys
-			v.Sys = &statusSys{CPU: y.CPU, Uptime: y.Uptime, Cores: s.CPUCores}
+			v.Sys = &statusSys{CPU: y.CPU, Uptime: y.Uptime, Booted: ls.At - y.Uptime, Cores: s.CPUCores, Load: [3]float64{y.Load1, y.Load5, y.Load15},
+				MemUsed: y.MemUsed, MemTotal: y.MemTotal, SwapUsed: y.SwapUsed, SwapTotal: y.SwapTotal, DiskUsed: y.DiskUsed,
+				DiskTotal: y.DiskTotal, TCP: y.TCP, UDP: y.UDP}
 			if y.MemTotal > 0 {
 				v.Sys.Mem = float64(y.MemUsed) * 100 / float64(y.MemTotal)
 			}
@@ -264,7 +304,7 @@ func (p *Panel) statusData(ctx context.Context) (*statusPayload, error) {
 			}
 		}
 		if s.BwLimit > 0 {
-			bw := &statusBW{Used: s.BwUsed(), Limit: s.BwLimit, ResetDay: s.BwResetDay}
+			bw := &statusBW{Used: s.BwUsed(), Limit: s.BwLimit, ResetDay: s.BwResetDay, Mode: nz(s.BwMode, "both")}
 			if s.BwResetDay > 0 {
 				bw.NextReset = nextReset(s.BwResetDay, time.Now().In(p.loc())).Unix()
 			}
@@ -358,14 +398,78 @@ func sign(v float64) float64 {
 }
 
 // apiStatus serves the dashboard's data to the supervisor (session or API token).
-func (p *Panel) apiStatus(w http.ResponseWriter, r *http.Request, a *Account) error {
+// publicAddrsOf lists a server's public IP addresses: an address set by hand that is an IP, those its
+// agent found on the internet side, and those on its interfaces.
+func publicAddrsOf(s *Server) []string {
+	var out []string
+	add := func(raw string) {
+		a, err := netip.ParseAddr(strings.Trim(strings.TrimSpace(raw), "[]"))
+		if err != nil || !publicAddr(a) {
+			return
+		}
+		if v := a.Unmap().String(); !slices.Contains(out, v) {
+			out = append(out, v)
+		}
+	}
+	add(s.Address)
+	add(s.IPv4)
+	add(s.IPv6)
+	for _, x := range s.Addrs {
+		add(x)
+	}
+	return out
+}
+
+// statusOpen says whether visitors see the servers: the status page is on (the front page, /status or
+// its own domain) and set to show them to everyone.
+func (p *Panel) statusOpen() bool {
+	set := p.settings()
+	return set.StatusPublic && (set.StatusPage != "off" || set.StatusDomain != "")
+}
+
+// statusViewer says who asks for the status page's data: the supervisor (a valid session or API token)
+// or a visitor. An API token that does not work is an error, never a visitor.
+func (p *Panel) statusViewer(w http.ResponseWriter, r *http.Request) (bool, error) {
+	if _, ok := bearerToken(r); ok {
+		a, _, err := p.resolve(w, r, authOpts{})
+		if err != nil {
+			return false, err
+		}
+		return a.IsOwner(), nil
+	}
+	if a, err := p.sessionAccount(r); err == nil && a.IsOwner() {
+		return true, nil
+	}
+	if !p.statusOpen() {
+		return false, errStatus(http.StatusUnauthorized, "sign in required")
+	}
+	return false, nil
+}
+
+// apiStatus serves the dashboard's data: to the supervisor, and to everyone while the status page shows
+// the servers - their IP addresses only where it shows those too.
+func (p *Panel) apiStatus(w http.ResponseWriter, r *http.Request) {
+	sup, err := p.statusViewer(w, r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	d, err := p.statusData(r.Context())
 	if err != nil {
-		return err
+		writeErr(w, err)
+		return
+	}
+	out := *d
+	out.Supervisor = sup
+	if !sup && !p.settings().StatusIPs {
+		out.Servers = make([]statusServer, len(d.Servers))
+		for i, s := range d.Servers {
+			s.Addrs = nil
+			out.Servers[i] = s
+		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, d)
-	return nil
+	writeJSON(w, http.StatusOK, &out)
 }
 
 type statusLive struct {
@@ -375,13 +479,19 @@ type statusLive struct {
 
 type statusPoint [3]int64
 
-// apiStatusLive serves recent throughput per server (the last 30 minutes at most).
-func (p *Panel) apiStatusLive(w http.ResponseWriter, r *http.Request, a *Account) error {
+// apiStatusLive serves recent throughput per server (the last 30 minutes at most), to whoever may see
+// the dashboard.
+func (p *Panel) apiStatusLive(w http.ResponseWriter, r *http.Request) {
+	if _, err := p.statusViewer(w, r); err != nil {
+		writeErr(w, err)
+		return
+	}
 	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
 	out := statusLive{T: now(), Servers: map[string][]statusPoint{}}
 	servers, err := p.serversOf(r.Context(), 0)
 	if err != nil {
-		return err
+		writeErr(w, err)
+		return
 	}
 	for _, s := range servers {
 		if s.FirstSeenAt == 0 || s.StatusHidden {
@@ -403,7 +513,6 @@ func (p *Panel) apiStatusLive(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, out)
-	return nil
 }
 
 // ---------------------------------------------------------------- server locations

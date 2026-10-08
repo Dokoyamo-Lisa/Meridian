@@ -1001,3 +1001,39 @@ html.vt-open .globe-area { view-transition-name: none; }
 .lg-srv::after { box-shadow: 0 0 0 2px var(--page), 0 0 0 3.2px color-mix(in srgb, var(--g-accent) 60%, transparent); }
 .lg-approx::after { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 1.2px dashed color-mix(in srgb, var(--g-accent) 70%, transparent); }
 .lsg-label { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 9%, transparent); }
+
+/* ------------------------------------------------------------------ the public probe page */
+.signin-btn { color: var(--ink); border-color: var(--line-2); }
+.signin-btn:hover { border-color: var(--accent); }
+body[data-view="signin"] .signin-btn { display: none; }
+.gate-back { margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+.gate-back:hover { color: var(--ink); }
+.card { cursor: pointer; }
+.card:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 2px; }
+.c-ips, .ips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ip {
+  font: 11.5px/1 var(--mono);
+  letter-spacing: -.01em;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: copy;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color .25s, border-color .25s, background .25s;
+}
+.ip:hover { color: var(--ink); border-color: var(--line-2); background: var(--hover); }
+.c-host { font-size: 11px; color: var(--ink-3); line-height: 1.5; }
+/* narrow cards wrap the detail rather than cut it off */
+.m-d { display: block; margin-top: 3px; font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.q-top .q-l { margin-right: auto; font-size: 11px; color: var(--ink-3); }
+.c-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 11px; color: var(--ink-3); padding-top: 12px; border-top: 1px solid var(--line); }
+.c-facts span { display: inline-flex; align-items: center; gap: 5px; }
+.c-facts .warn, .c-exp.warn { color: var(--warn); }
+.c-facts .crit, .c-exp.crit { color: var(--crit); }
+.kv-grid.one { grid-template-columns: 1fr; }
+.t-servers .c-name small .mono { color: var(--ink-3); }

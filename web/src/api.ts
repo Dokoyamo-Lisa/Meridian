@@ -379,6 +379,10 @@ export interface Settings {
   status_domain: string
   status_about: string
   status_hub: { city: string; cc: string; lat: number; lon: number } | null
+  /** Visitors see every server (place, state, load, bandwidth, traffic, expiry date) without signing in. */
+  status_public: boolean
+  /** Visitors also see the servers' public IP addresses. */
+  status_ips: boolean
   logo_animation: string
   agent_port: number
   auto_update: boolean

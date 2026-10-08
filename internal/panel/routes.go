@@ -102,8 +102,8 @@ func (p *Panel) Handler() http.Handler {
 	handle("POST /api/portal/logout", p.handlePortalLogout)
 
 	// the status page: the supervisor's live dashboard
-	handle("GET /api/status", p.authed(p.apiStatus))
-	handle("GET /api/status/live", p.authed(p.apiStatusLive))
+	handle("GET /api/status", p.apiStatus) // the supervisor's, and everyone's while the status page is public
+	handle("GET /api/status/live", p.apiStatusLive)
 	handle("GET /api/places", p.authed(p.apiPlaces))
 
 	// who may connect, by country

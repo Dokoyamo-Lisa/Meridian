@@ -134,6 +134,20 @@ function dayNumber(ts: number) {
 // negative when past. (A reset at midnight tomorrow is "tomorrow", not "today".)
 export const daysUntil = (ts: number) => dayNumber(ts) - dayNumber(now())
 
+// daysTo counts calendar days from today (in the panel's time zone) to a day written YYYY-MM-DD; null
+// when it is not one.
+export function daysTo(iso: string | null | undefined): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '')
+  if (!m) return null
+  return Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 - dayNumber(now())
+}
+
+// isoLong is a day written YYYY-MM-DD as "Dec 1, 2026".
+export function isoLong(iso: string | null | undefined) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '')
+  return m ? `${MON[+m[2] - 1]} ${+m[3]}, ${m[1]}` : '—'
+}
+
 export function inDays(d: number | null | undefined) {
   if (d == null) return ''
   if (d < 0) return -d === 1 ? '1 day ago' : `${-d} days ago`

@@ -89,8 +89,38 @@ func TestStatusPage(t *testing.T) {
 	if page("", "/") != "STATUS" || page("", "/overview") != "PANEL" || page("", "/servers/1") != "PANEL" {
 		t.Errorf("pages with the status page home: / %q, /overview %q", page("", "/"), page("", "/overview"))
 	}
-	if code, _, _ := anon.do("GET", "/api/status", nil); code != 401 {
-		t.Errorf("the status page being on opened the dashboard data to strangers: %d", code)
+	// public by default: visitors see every server and its addresses - never users, protocols, ports,
+	// keys or prices; the supervisor's answer says it is the supervisor's
+	code, pub, praw := anon.do("GET", "/api/status", nil)
+	if code != 200 || pub["supervisor"] != nil {
+		t.Fatalf("a visitor on the public status page: %d %s", code, praw)
+	}
+	if ps := pub["servers"].([]any); len(ps) != 1 || fmt.Sprint(ps[0].(map[string]any)["addrs"]) != "[203.0.113.7]" {
+		t.Errorf("visitor's servers: %s", praw)
+	}
+	for _, secret := range []string{"Carol", "carol", "vless", "reality", "\"port\"", "token", "price", "currency"} {
+		if strings.Contains(strings.ToLower(string(praw)), strings.ToLower(secret)) {
+			t.Errorf("the public dashboard data shows %q: %s", secret, praw)
+		}
+	}
+	if code, _, _ := anon.do("GET", "/api/status/live", nil); code != 200 {
+		t.Errorf("visitor's live data: %d", code)
+	}
+	// addresses hidden from visitors (the supervisor still sees them), then the servers too
+	set["status_ips"] = false
+	owner.must("PUT", "/api/settings", set, 200)
+	if code, _, praw = anon.do("GET", "/api/status", nil); code != 200 || strings.Contains(string(praw), "203.0.113.7") || strings.Contains(string(praw), "addrs") {
+		t.Errorf("addresses shown to visitors with show IPs off: %d %s", code, praw)
+	}
+	set["status_public"] = false
+	owner.must("PUT", "/api/settings", set, 200)
+	for _, p := range []string{"/api/status", "/api/status/live"} {
+		if code, _, _ := anon.do("GET", p, nil); code != 401 {
+			t.Errorf("%s for a visitor with the status page private: %d", p, code)
+		}
+	}
+	if code, _, _ := h.bearer("mrd_bogus").do("GET", "/api/status", nil); code != 401 {
+		t.Errorf("a token that does not work: %d", code)
 	}
 	code, st, raw := owner.do("GET", "/api/status", nil)
 	if code != 200 {
@@ -107,8 +137,11 @@ func TestStatusPage(t *testing.T) {
 	if hub, _ := st["hub"].(map[string]any); hub == nil || hub["tz"] != "Asia/Hong_Kong" {
 		t.Errorf("hub: %v", st["hub"])
 	}
-	// even the supervisor's dashboard data carries no addresses, users, protocols or ports
-	for _, secret := range []string{"203.0.113.7", "Carol", "carol", "vless", "reality", "\"port\"", "token"} {
+	// the supervisor's dashboard data has the addresses, and still no users, protocols, ports or prices
+	if st["supervisor"] != true || !strings.Contains(string(raw), "203.0.113.7") {
+		t.Errorf("supervisor's data: %s", raw)
+	}
+	for _, secret := range []string{"Carol", "carol", "vless", "reality", "\"port\"", "token", "price", "currency"} {
 		if strings.Contains(strings.ToLower(string(raw)), strings.ToLower(secret)) {
 			t.Errorf("the dashboard data shows %q: %s", secret, raw)
 		}
@@ -141,8 +174,15 @@ func TestStatusPage(t *testing.T) {
 		t.Errorf("a user's link on the status domain: %d", code)
 	}
 	if code, _ := anon.getHost("status.example.com", "/api/status"); code != 401 {
-		t.Errorf("the dashboard data for a stranger on the status domain: %d", code)
+		t.Errorf("the dashboard data for a stranger on the private status domain: %d", code)
 	}
+	set["status_public"] = true
+	owner.must("PUT", "/api/settings", set, 200)
+	if code, _ := anon.getHost("status.example.com", "/api/status"); code != 200 {
+		t.Errorf("the dashboard data for a visitor on the public status domain: %d", code)
+	}
+	set["status_public"] = false
+	owner.must("PUT", "/api/settings", set, 200)
 	// the supervisor signs in there to see the globe (the panel still never answers there); users too
 	for _, c := range []struct {
 		body string

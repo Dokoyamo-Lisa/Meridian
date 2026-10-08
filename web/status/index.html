@@ -51,15 +51,15 @@
       <span class="c-meta"><span id="cDate">&nbsp;</span><span id="cZone">&nbsp;</span></span>
     </div>
     <nav class="nav" aria-label="Pages">
-      <a href="#/" data-view="overview" class="need-admin hidden">Overview</a>
-      <a href="#/servers" data-view="servers" class="need-admin hidden">Servers</a>
-      <a href="#/events" data-view="events" class="need-admin hidden">Events</a>
+      <a href="#/" data-view="overview" class="need-data hidden">Overview</a>
+      <a href="#/servers" data-view="servers" class="need-data hidden">Servers</a>
+      <a href="#/events" data-view="events" class="need-data hidden">Events</a>
       <a href="#/me" data-view="me" class="need-user hidden">Your usage</a>
     </nav>
   </div>
   <div class="top-r">
     <div class="tools">
-      <span class="live need-admin hidden" id="live" title="Live data"><i aria-hidden="true"></i><span id="liveText">Connecting</span></span>
+      <span class="live need-data hidden" id="live" title="Live data"><i aria-hidden="true"></i><span id="liveText">Connecting</span></span>
       <div class="pal">
         <button class="icon-btn" id="palBtn" type="button" aria-label="Colour tone" aria-haspopup="true" aria-expanded="false"><svg class="ic"><use href="#i-palette"/></svg></button>
         <div class="pal-pop" id="palPop" role="menu" aria-label="Colour tone" hidden>
@@ -70,6 +70,7 @@
           <button type="button" role="menuitemradio" data-tone="mist"><i class="sw"></i><span>Mist</span></button>
         </div>
       </div>
+      <a class="pill-btn signin-btn hidden" id="signInBtn" href="#/signin"><svg class="ic sm"><use href="#i-lock"/></svg><span>Sign in</span></a>
       <a class="pill-btn hidden" id="userBtn" href="#/me" title="Your usage"><span class="avatar" id="avatar">?</span><span id="userName"></span></a>
       <button class="pill-btn hidden" id="adminBtn" type="button" title="Sign out"><span class="avatar">S</span><span>Supervisor</span><svg class="ic sm"><use href="#i-logout"/></svg></button>
     </div>
@@ -77,9 +78,9 @@
 </header>
 
 <nav class="mnav" aria-label="Pages">
-  <a href="#/" data-view="overview" class="need-admin hidden">Overview</a>
-  <a href="#/servers" data-view="servers" class="need-admin hidden">Servers</a>
-  <a href="#/events" data-view="events" class="need-admin hidden">Events</a>
+  <a href="#/" data-view="overview" class="need-data hidden">Overview</a>
+  <a href="#/servers" data-view="servers" class="need-data hidden">Servers</a>
+  <a href="#/events" data-view="events" class="need-data hidden">Events</a>
   <a href="#/me" data-view="me" class="need-user hidden">Your usage</a>
 </nav>
 
@@ -100,6 +101,7 @@
         <button type="button" class="btn ghost hidden" id="loginBack">Back</button>
       </form>
       <p class="gate-note" id="gateText">You will see the data you have left, the devices connected now and your link.</p>
+      <a class="gate-back hidden" id="gateBack" href="#/">Back to the status page</a>
     </div>
   </section>
 

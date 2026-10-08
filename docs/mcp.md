@@ -32,10 +32,10 @@ claude mcp add --transport http meridian https://panel.example.com/mcp \
 }
 ```
 
-**Clients that only start local programs** (for example Claude Desktop) use the bridge built into
-the `meridian` binary - each release has `meridian-cli-<version>-<os>-<arch>` builds for macOS,
-Windows and Linux; save one as, say, `/usr/local/bin/meridian`. It reads the token from the
-environment, never from the command line:
+**Clients that only start local programs** use the bridge built into the `meridian` binary - each
+release has `meridian-cli-<version>-linux-<arch>` builds (Meridian runs on Linux only); save one as,
+say, `/usr/local/bin/meridian`. On other systems, connect the client over HTTP as above. The bridge
+reads the token from the environment, never from the command line:
 
 ```json
 {
@@ -91,7 +91,7 @@ Change (full-access token):
 | `update_protocol` | changes a protocol in place (only the given fields); needs `confirm=true` when its devices must refresh their subscription (transport, security, domain, certificate, port, address...) or a Hysteria2 protocol restarts |
 | `set_protocol_code` | a protocol's own settings as code: Xray JSON (its inbound, outbounds, rules for its traffic only) or Hysteria2 YAML (it restarts, so that needs `confirm=true`) |
 | `replace_certificate` | replaces a shared certificate once for every server that uses it (Hysteria2 protocols using it restart: then it needs `confirm=true`) |
-| `set_status_page`, `set_server_on_status_page` | where the status page is, and how each server appears on its globe |
+| `set_status_page`, `set_server_on_status_page` | where the status page is, whether visitors see the servers (`public`) and their IP addresses (`show_ips`), and how each server appears on its globe |
 | `set_notifications`, `test_notifications` | send problems to Telegram and/or an HTTPS webhook; a test message per channel |
 | `set_branding` | the panel's name, its logo (SVG markup or a base64 image; checked like an upload) and how the logo moves |
 | `import_protocols`, `set_country_rule`, `set_protocol_enabled`, `remove_protocol`, `remove_forward`, `block_ip`, `server_action` | can disconnect people or stop services - need `confirm=true` |
@@ -119,6 +119,7 @@ Change (full-access token):
   usernames and passwords it returns.
 - "Put the status page on the front page and show the panel in Hong Kong." →
   `set_status_page {mode: "home", panel_city: "Hong Kong"}`.
+- "Don't show our server addresses on the status page." → `set_status_page {show_ips: false}`.
 - "The globe shows Seattle-1 in Kansas." → `set_server_on_status_page {server_id: 4, city: "Seattle"}`.
 - "Block 203.0.113.7 for a day, it's scanning us." → the assistant asks you to confirm, then
   `block_ip {ip: "203.0.113.7", hours: 24, confirm: true}`.

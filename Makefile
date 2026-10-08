@@ -71,11 +71,11 @@ release: web agents
 		cp deploy/install-panel.sh README.md SECURITY.md LICENSE $$dir/ || exit 1; \
 		COPYFILE_DISABLE=1 tar --no-xattrs -C dist/release -czf dist/release/meridian-$(VERSION)-linux-$$arch.tar.gz meridian-$(VERSION)-linux-$$arch || exit 1; \
 	done
-	# the same binary for desktops: the MCP stdio bridge (meridian mcp) and backups
-	for target in darwin/arm64 darwin/amd64 windows/amd64 linux/amd64 linux/arm64; do \
-		os=$${target%/*}; arch=$${target#*/}; ext=; [ $$os = windows ] && ext=.exe; \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build $(GOFLAGS) -ldflags "$(PANEL_LD)" \
-			-o dist/release/meridian-cli-$(VERSION)-$$os-$$arch$$ext ./cmd/meridian || exit 1; \
+	# the same binary on its own, for a Linux desktop: the MCP stdio bridge (meridian mcp) and backups.
+	# Meridian runs on Linux only - no other systems are built or supported.
+	for arch in amd64 arm64; do \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build $(GOFLAGS) -ldflags "$(PANEL_LD)" \
+			-o dist/release/meridian-cli-$(VERSION)-linux-$$arch ./cmd/meridian || exit 1; \
 	done
 	cd dist/release && (command -v sha256sum >/dev/null && sha256sum *.tar.gz meridian-cli-* || shasum -a 256 *.tar.gz meridian-cli-*) > SHA256SUMS
 	# panels install a release only with this signature (internal/update); the key stays off the repo

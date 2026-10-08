@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.7.2 - 2026-10-08
+
+**After upgrading, a status page that is turned on shows every server to everyone, IP addresses
+included.** To keep the addresses to yourself turn off Settings › Panel › Status page › **Show IP
+addresses**; to give visitors only the sign-in, as before, turn off **Show the servers to everyone**.
+The agents have no changes in this version: upgrading them is optional.
+
+- **The status page is a probe page**: after the umbrella loads, visitors see every server on the
+  live globe and in detail - where it is and its IP addresses, up or down, availability, throughput,
+  load, memory, disk, connections, the system it runs, bandwidth and traffic this month and the day
+  its paid period ends (the server's Renews on date). Prices, users, protocols and ports are never
+  shown. **Sign in** at the top right takes users to their own page, with their own use shown on
+  each server too; the supervisor signs in from the same button.
+- **More detail per server**: cards show the addresses (click one to copy it), the system, load,
+  memory and disk used of total, bandwidth used with what was sent, received and today and when it
+  resets, how long the machine has been running, connections and "paid until"; the servers table has
+  an Expires column; a server's panel adds its addresses, resources (all three load averages, swap),
+  system (OS, architecture, cores, processor, memory, disk, paid until) and what its bandwidth
+  counts. A paid period ending within a week, or ended, is shown to the supervisor as needing
+  attention.
+- API: `GET /api/status` and `/api/status/live` answer visitors while the status page shows the
+  servers (`status_public`, and the addresses with `status_ips`); a wrong API token is refused, not
+  treated as a visitor. New fields per server: `addrs`, `host`, `cycle`, `expires`, `bandwidth.mode`,
+  and in `sys` the load averages, memory, swap and disk used and total, connections and `booted`;
+  `supervisor` says whether the supervisor is signed in. MCP: `set_status_page` takes `public` and
+  `show_ips`.
+- **Linux only**: Meridian runs on Linux - the panel, the agent and the command-line tool. Releases
+  no longer include command-line builds for macOS or Windows; to connect an AI assistant from a
+  desktop, use the panel's MCP address over HTTPS (docs/mcp.md).
+
 ## 0.7.1 - 2026-10-08
 
 Upgrade the agents too (Settings › Updates › Upgrade all agents - nobody is disconnected): several

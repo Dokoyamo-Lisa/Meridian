@@ -19,11 +19,13 @@ import {
   bytes,
   clamp,
   dayLabel,
+  daysTo,
   daysUntil,
   diskSev,
   dur,
   hm,
   inDays,
+  isoLong,
   isoMD,
   loadSev,
   localTime,
@@ -182,8 +184,28 @@ function totalRate() {
 }
 const speedOf = (sv: StatusServer) => (sv.speed?.up || 0) + (sv.speed?.down || 0)
 const bwPct = (sv: StatusServer) => (sv.bandwidth && sv.bandwidth.limit ? (sv.bandwidth.used * 100) / sv.bandwidth.limit : null)
-const admin = () => !!S.pub // the supervisor is signed in: everything is shown
-const show = () => ({ bandwidth: admin(), throughput: admin(), resources: admin(), events: admin() })
+/** How long the machine has been running, counted to now (its last report may be a minute old). */
+const upSecs = (y: NonNullable<StatusServer['sys']>) => (y.booted ? Math.max(0, now() - y.booted) : y.uptime)
+// the server's paid period: days until it ends (null: no date), how urgent that is, and in words
+const expiryDays = (sv: StatusServer) => daysTo(sv.expires)
+const expirySev = (d: number | null) => (d == null ? '' : d < 0 ? 'crit' : d <= 7 ? 'warn' : '')
+const expiryText = (sv: StatusServer) => {
+  const d = expiryDays(sv)
+  return d == null ? '—' : d < 0 ? `ended ${inDays(d)}` : inDays(d)
+}
+// noonOf is a YYYY-MM-DD day as a time that stays on that day in every panel time zone
+const noonOf = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number)
+  return Date.UTC(y, m - 1, d, 12) / 1000
+}
+const todayOf = (sv: StatusServer) => {
+  const hist = S.pub?.history?.[String(sv.id)]
+  return hist ? hist[hist.length - 1] || 0 : null
+}
+// the servers are shown to everyone on a public status page, and always to the supervisor
+const dataOn = () => !!S.pub
+const sup = () => !!S.pub?.supervisor // the supervisor is signed in
+const show = () => ({ bandwidth: dataOn(), throughput: dataOn(), resources: dataOn(), events: dataOn() })
 const mineOf = (sid: number): PortalServer | null => (S.me ? S.me.servers.find((x) => x.id === sid) || null : null)
 
 // ================================================================ issues and events
@@ -200,6 +222,9 @@ function serverIssues(sv: StatusServer): Issue[] {
   const bp = bwPct(sv)
   if (bp != null && bp >= 90) out.push({ level: bp >= 100 ? 'crit' : 'warn', sid: sv.id, text: `${sv.name} has used ${bp.toFixed(0)}% of its monthly bandwidth` })
   if (sv.sys && sv.sys.disk >= 90) out.push({ level: sv.sys.disk >= 97 ? 'crit' : 'warn', sid: sv.id, text: `${sv.name} disk ${Math.round(sv.sys.disk)}% full` })
+  // a paid period running out is the supervisor's to-do; visitors see the date itself
+  const ed = expiryDays(sv)
+  if (sup() && ed != null && ed <= 7) out.push({ level: ed < 0 ? 'crit' : 'warn', sid: sv.id, text: ed < 0 ? `${sv.name}'s paid period ended ${inDays(ed)}` : `${sv.name}'s paid period ends ${inDays(ed)}` })
   return out
 }
 
@@ -226,7 +251,7 @@ function feedItems(): FeedItem[] {
 }
 
 interface Upcoming {
-  kind: 'reset' | 'mine-reset' | 'mine-expiry'
+  kind: 'reset' | 'expiry' | 'mine-reset' | 'mine-expiry'
   name: string
   t: number
   sid?: number
@@ -234,7 +259,11 @@ interface Upcoming {
 
 function upcoming(): Upcoming[] {
   const out: Upcoming[] = []
-  for (const sv of S.pub?.servers || []) if (sv.bandwidth?.next_reset) out.push({ kind: 'reset', name: sv.name, t: sv.bandwidth.next_reset, sid: sv.id })
+  for (const sv of S.pub?.servers || []) {
+    if (sv.bandwidth?.next_reset) out.push({ kind: 'reset', name: sv.name, t: sv.bandwidth.next_reset, sid: sv.id })
+    const ed = expiryDays(sv)
+    if (sv.expires && ed != null && ed >= 0) out.push({ kind: 'expiry', name: sv.name, t: noonOf(sv.expires), sid: sv.id })
+  }
   if (S.me?.next_reset) out.push({ kind: 'mine-reset', name: 'Your data allowance', t: S.me.next_reset })
   if (S.me?.expires_at && S.me.expires_at > now()) out.push({ kind: 'mine-expiry', name: 'Your access', t: S.me.expires_at })
   return out.filter((x) => daysUntil(x.t) <= 60).sort((a, b) => a.t - b.t || a.name.localeCompare(b.name))
@@ -263,7 +292,7 @@ function initClock() {
 
 function applyShow() {
   const on = (sel: string, v: boolean) => $$(sel).forEach((el) => el.classList.toggle('hidden', !v))
-  on('.need-admin', admin())
+  on('.need-data', dataOn())
   on('.need-user', !!S.me)
   const anyBW = !!S.pub && S.pub.servers.some((x) => x.bandwidth)
   $('#pQuota').classList.toggle('hidden', !anyBW)
@@ -366,7 +395,7 @@ function updateRes() {
     const r = ResRows.get(sv.id)!
     const y = sv.sys!
     setText(r.n, sv.name)
-    r.n.title = `${y.cores || '?'} cores · up ${dur(y.uptime)}`
+    r.n.title = `${y.cores || '?'} cores · up ${dur(upSecs(y))}`
     setMeterCell(r.cpu, y.cpu, loadSev(y.cpu), `CPU ${pctText(y.cpu, 0)} · ${y.cores || '?'} cores`)
     setMeterCell(r.mem, y.mem, loadSev(y.mem), `Memory ${pctText(y.mem, 0)} used`)
     setMeterCell(r.disk, y.disk, diskSev(y.disk), `Disk ${pctText(y.disk, 0)} used`)
@@ -558,6 +587,7 @@ interface TRow {
   c1: HTMLElement
   c2: HTMLElement
   c3: HTMLElement
+  c4: HTMLElement
 }
 const TRows = new Map<number, TRow>()
 let tableEl: HTMLElement | null = null
@@ -572,7 +602,7 @@ function updateTable() {
   if (!tableEl || tableEl.parentNode !== host || key !== tableKey) {
     tableKey = key
     TRows.clear()
-    const head = thru ? ['Server', 'Now ↑ / ↓', 'Today', 'Up, 24 h'] : ['Server', 'State', 'Up, 24 h', 'Up, 30 days']
+    const head = thru ? ['Server', 'Now ↑ / ↓', 'Today', 'Up, 24 h', 'Expires'] : ['Server', 'State', 'Up, 24 h', 'Up, 30 days', 'Expires']
     tableEl = h('table.t-servers.stagger', h('thead', h('tr', head.map((t, i) => h(i ? 'th.r' : 'th', t)))), h('tbody'))
     clear(host).append(tableEl)
   }
@@ -580,7 +610,7 @@ function updateTable() {
   const body = tableEl.querySelector('tbody')!
   const keep = new Set<number>()
   if (!p.servers.length && !body.children.length) {
-    body.append(h('tr', h('td.muted.empty-row', { colspan: 4 }, 'No servers yet')))
+    body.append(h('tr', h('td.muted.empty-row', { colspan: 5 }, 'No servers yet')))
   }
   p.servers.forEach((sv, i) => {
     keep.add(sv.id)
@@ -592,7 +622,8 @@ function updateTable() {
       const c1 = h('td.r')
       const c2 = h('td.r')
       const c3 = h('td.r')
-      const el = h('tr', { tabindex: '0', 'data-sid': String(sv.id), style: { '--i': String(i), '--d0': '450ms' } }, h('td.c-name', dot, h('div', name, sub)), c1, c2, c3)
+      const c4 = h('td.r.c-exp')
+      const el = h('tr', { tabindex: '0', 'data-sid': String(sv.id), style: { '--i': String(i), '--d0': '450ms' } }, h('td.c-name', dot, h('div', name, sub)), c1, c2, c3, c4)
       const open = () => go(`#/s/${sv.id}`)
       el.addEventListener('click', open)
       el.addEventListener('keydown', (e) => {
@@ -612,7 +643,7 @@ function updateTable() {
           globe.focus(null)
         }
       })
-      r = { el, dot, name, sub, c1, c2, c3 }
+      r = { el, dot, name, sub, c1, c2, c3, c4 }
       TRows.set(sv.id, r)
     }
     if (body.children[i] !== r.el) body.insertBefore(r.el, body.children[i] || null)
@@ -621,7 +652,13 @@ function updateTable() {
     r.el.dataset.level = level
     r.dot.title = !sv.online ? 'Offline' : issues.length ? issues.map((x) => x.text).join('; ') : 'Online'
     setText(r.name, sv.name)
-    setText(r.sub, [placeOf(sv.city, sv.cc) || '—', !sv.online ? 'offline' : null].filter(Boolean).join(' · '))
+    clear(r.sub).append(placeOf(sv.city, sv.cc) || '—')
+    if (sv.addrs?.length) r.sub.append(' · ', h('span.mono', sv.addrs[0]), sv.addrs.length > 1 ? ` +${sv.addrs.length - 1}` : '')
+    if (!sv.online) r.sub.append(' · offline')
+    const ed = expiryDays(sv)
+    setText(r.c4, expiryText(sv))
+    r.c4.className = 'r c-exp ' + expirySev(ed)
+    r.c4.title = sv.expires ? `Paid until ${isoLong(sv.expires)}` : 'No end date set'
     const av = sv.availability
     if (thru) {
       clear(r.c1).append(h('div.c-rate', h('span', `↑ ${rate(sv.speed?.up || 0)}`), h('span', `↓ ${rate(sv.speed?.down || 0)}`)))
@@ -1051,31 +1088,77 @@ interface Card {
 }
 const Cards = new Map<number, Card>()
 
-function cardMeter(label: string, pct: number | null, sev: string) {
+function cardMeter(label: string, pct: number | null, sev: string, detail = '') {
   return h(
     'div.mtr',
     { cls: sev },
     h('span.m-l', label),
     h('span.m-v', pct == null ? '—' : String(Math.round(pct)), pct == null ? null : h('small', '%')),
     h('span.m-bar', h('i', { style: { width: clamp(pct || 0, 0, 100) + '%' } })),
+    detail ? h('small.m-d', detail) : null,
   )
 }
+
+// ipChips are a server's IP addresses as buttons that copy them.
+function ipChips(addrs: string[] | undefined) {
+  return (addrs || []).map((ip) =>
+    h(
+      'button.ip',
+      {
+        type: 'button',
+        title: 'Copy',
+        onclick: (e: Event) => {
+          e.stopPropagation()
+          void copyText(ip, `${ip} copied`)
+        },
+      },
+      ip,
+    ),
+  )
+}
+
+// hostLine is what a server is: system, architecture, cores, memory and disk.
+function hostLine(sv: StatusServer) {
+  const x = sv.host
+  if (!x) return ''
+  const mem = sv.sys?.mem_total || x.mem
+  const disk = sv.sys?.disk_total || x.disk
+  return [x.os, x.arch, x.cores ? `${x.cores} ${x.cores === 1 ? 'core' : 'cores'}` : '', mem ? `${bytes(mem)} RAM` : '', disk ? `${bytes(disk)} disk` : '']
+    .filter(Boolean)
+    .join(' · ')
+}
+
+const usedOf = (used: number | undefined, total: number | undefined) => (total ? `${bytes(used || 0)} of ${bytes(total)}` : '')
+const shortOf = (used: number | undefined, total: number | undefined) => (total ? `${bytes(used || 0)} / ${bytes(total)}` : '')
+const loadOf = (sv: StatusServer) => (sv.sys?.load ? `load ${sv.sys.load.map((x) => x.toFixed(2)).join(' · ')}` : '')
 
 function makeCard(sv: StatusServer): Card {
   const dot = h('span.dot', { 'aria-hidden': 'true' })
   const name = h('b')
   const sub = h('small')
   const state = h('span.chip')
+  const ips = h('div.c-ips')
+  const host = h('div.c-host')
   const up = h('b')
   const down = h('b')
   const cv = h('canvas.c-spark', { 'aria-hidden': 'true' }) as HTMLCanvasElement
   const live = h('div.c-live', h('div.c-rates', h('span', icon('up', 'sm'), up), h('span', icon('down', 'sm'), down)), cv)
   const bw = h('div.c-quota')
   const res = h('div.c-res')
+  const facts = h('div.c-facts')
   const strip = h('div.strip.sm')
   const avail = h('small')
   const mine = h('div.c-mine')
-  const el = h('a.card', { href: `#/s/${sv.id}` }, h('div.c-head', dot, h('div.c-t', name, sub), state), live, bw, res, h('div.c-avail', strip, avail), mine)
+  // a card opens the server's details; its address buttons copy instead
+  const el = h('div.card', { role: 'link', tabindex: '0', 'aria-label': sv.name }, h('div.c-head', dot, h('div.c-t', name, sub), state), ips, host, live, res, bw, facts, h('div.c-avail', strip, avail), mine)
+  const open = (e: Event) => {
+    if ((e.target as Element).closest('button, a')) return
+    go(`#/s/${sv.id}`)
+  }
+  el.addEventListener('click', open)
+  el.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter' && e.target === el) open(e)
+  })
   const spark = show().throughput ? new FlowChart(cv, { fit: false, axes: false, hover: false, line: 1.4, fill: 0.14, headR: 2.4, minY: 4 * 1024, data: () => ({ pts: liveOf(sv.id), live: true, span: 600 }) }) : null
   const update = (v: StatusServer) => {
     const sh = show()
@@ -1086,25 +1169,55 @@ function makeCard(sv: StatusServer): Card {
     setText(sub, placeOf(v.city, v.cc) || '—')
     setText(state, v.online ? (issues.length ? 'Check' : 'Online') : 'Offline')
     state.className = 'chip ' + level
+    clear(ips).append(...ipChips(v.addrs))
+    ips.classList.toggle('hidden', !v.addrs?.length)
+    setText(host, hostLine(v))
+    host.classList.toggle('hidden', !v.host)
     live.classList.toggle('hidden', !sh.throughput)
     setText(up, rate(v.speed?.up || 0))
     setText(down, rate(v.speed?.down || 0))
-    clear(bw)
-    bw.classList.toggle('hidden', !(sh.bandwidth && v.bandwidth))
-    if (sh.bandwidth && v.bandwidth) {
-      const pct = bwPct(v) || 0
-      bw.append(
-        h('div.q-top', h('b', pctText(pct)), h('small', `${bytes(v.bandwidth.used)} / ${bytes(v.bandwidth.limit)}`)),
-        h('div.meter', { cls: severity(pct) }, h('i', { style: { width: clamp(pct, 0, 100) + '%' } })),
-        h('small.c-qsub', v.bandwidth.next_reset ? `Monthly bandwidth · resets ${inDays(daysUntil(v.bandwidth.next_reset))}` : 'Monthly bandwidth'),
-      )
-    }
+
     clear(res)
     res.classList.toggle('hidden', !sh.resources)
     if (sh.resources) {
-      if (v.sys) res.append(cardMeter('CPU', v.sys.cpu, loadSev(v.sys.cpu)), cardMeter('Memory', v.sys.mem, loadSev(v.sys.mem)), cardMeter('Disk', v.sys.disk, diskSev(v.sys.disk)))
+      const y = v.sys
+      // a card has room for the short forms; the server's panel shows all three load averages
+      if (y)
+        res.append(
+          cardMeter('CPU', y.cpu, loadSev(y.cpu), y.load ? `load ${y.load[0].toFixed(2)}` : ''),
+          cardMeter('Memory', y.mem, loadSev(y.mem), shortOf(y.mem_used, y.mem_total)),
+          cardMeter('Disk', y.disk, diskSev(y.disk), shortOf(y.disk_used, y.disk_total)),
+        )
       else res.append(h('small.muted', v.online ? 'No resource data yet' : 'Offline'))
     }
+
+    // the month's traffic: against the bandwidth when there is a limit
+    clear(bw)
+    const c = v.cycle
+    const split = c ? `↑ ${bytes(c.up)} · ↓ ${bytes(c.down)}` : ''
+    const today = todayOf(v)
+    if (sh.bandwidth && v.bandwidth) {
+      const pct = bwPct(v) || 0
+      bw.append(
+        h('div.q-top', h('span.q-l', 'Bandwidth this month'), h('b', pctText(pct)), h('small', `${bytes(v.bandwidth.used)} / ${bytes(v.bandwidth.limit)}`)),
+        h('div.meter', { cls: severity(pct) }, h('i', { style: { width: clamp(pct, 0, 100) + '%' } })),
+        h('small.c-qsub', [split, today != null ? `today ${bytes(today)}` : '', v.bandwidth.next_reset ? `resets ${inDays(daysUntil(v.bandwidth.next_reset))}` : ''].filter(Boolean).join(' · ')),
+      )
+    } else if (c) {
+      bw.append(h('div.q-top', h('span.q-l', 'Traffic this month'), h('b', bytes(c.up + c.down))), h('small.c-qsub', [split, today != null ? `today ${bytes(today)}` : ''].filter(Boolean).join(' · ')))
+    }
+    bw.classList.toggle('hidden', !bw.childElementCount)
+
+    // how long it has run, its connections, and its paid period
+    const ed = expiryDays(v)
+    clear(facts).append(
+      ...[
+        v.sys ? h('span', icon('power', 'sm'), `up ${dur(upSecs(v.sys))}`) : null,
+        v.sys?.tcp != null ? h('span', icon('server', 'sm'), `TCP ${v.sys.tcp} · UDP ${v.sys.udp ?? 0}`) : null,
+        h('span', { cls: expirySev(ed) }, icon('cal', 'sm'), v.expires ? `paid until ${isoLong(v.expires)} · ${expiryText(v)}` : 'no end date set'),
+      ].filter((x): x is HTMLElement => !!x),
+    )
+
     const av = v.availability
     const days = av?.days || []
     if (strip.children.length !== days.length) {
@@ -1214,12 +1327,20 @@ function updateEventsPage() {
       up.append(h('div.day-h', label))
       last = label
     }
-    const title = it.kind === 'reset' ? `${it.name}: bandwidth resets` : it.kind === 'mine-reset' ? 'Your data allowance starts over' : 'Your access ends'
+    const title =
+      it.kind === 'reset'
+        ? `${it.name}: bandwidth resets`
+        : it.kind === 'expiry'
+          ? `${it.name}: paid period ends`
+          : it.kind === 'mine-reset'
+            ? 'Your data allowance starts over'
+            : 'Your access ends'
+    const soon = (it.kind === 'mine-expiry' && d <= 3) || (it.kind === 'expiry' && d <= 7)
     up.append(
       h(
         it.sid ? 'a.ev' : 'div.ev',
-        { cls: it.kind === 'mine-expiry' && d <= 3 ? 'warn' : 'info', href: it.sid ? `#/s/${it.sid}` : it.kind.startsWith('mine') ? '#/me' : null },
-        h('span.e-ic', icon(it.kind === 'mine-expiry' ? 'cal' : 'reset')),
+        { cls: soon ? 'warn' : 'info', href: it.sid ? `#/s/${it.sid}` : it.kind.startsWith('mine') ? '#/me' : null },
+        h('span.e-ic', icon(it.kind === 'mine-expiry' || it.kind === 'expiry' ? 'cal' : 'reset')),
         h('div.e-t', title),
         h('time', isoDate(it.t)),
       ),
@@ -1578,7 +1699,7 @@ function buildDrawer(sv: StatusServer): Drawer {
     )
     d.charts.push(new FlowChart(cv, { data: () => ({ pts: liveOf(sv.id), live: true, span: LIVE_SPAN }), minY: 8 * 1024, pad: [18, 6, 22, 2] }))
   }
-  ;['mine', 'res', 'bw', 'traffic', 'avail', 'events'].forEach((k, i) => {
+  ;['mine', 'addrs', 'res', 'host', 'bw', 'traffic', 'avail', 'events'].forEach((k, i) => {
     d.secs[k] = h('section.d-sec', { style: { '--i': String(i + 1) } })
     body.append(d.secs[k])
   })
@@ -1597,7 +1718,7 @@ function updateDrawer() {
   const R = D.secs
   setText($('#dTitle'), sv.name)
   const where = sv.loc ? `${placeOf(sv.city, sv.cc)} (${Math.abs(sv.loc[0]).toFixed(1)}°${sv.loc[0] >= 0 ? 'N' : 'S'} ${Math.abs(sv.loc[1]).toFixed(1)}°${sv.loc[1] >= 0 ? 'E' : 'W'}${sv.approx ? ', approximate' : ''})` : placeOf(sv.city, sv.cc)
-  setText($('#dSub'), [sv.online ? 'Online' : 'Offline', where, sv.since ? `${sv.online ? 'up' : 'down'} for ${dur(now() - sv.since)}` : null].filter(Boolean).join(' · '))
+  setText($('#dSub'), [`${sv.online ? 'Online' : 'Offline'}${sv.since ? ' for ' + dur(now() - sv.since) : ''}`, where].filter(Boolean).join(' · '))
   if (sh.throughput) {
     figure(D.up, sv.speed?.up || 0, rsplit)
     figure(D.down, sv.speed?.down || 0, rsplit)
@@ -1619,9 +1740,12 @@ function updateDrawer() {
     if (m.protocols.length) R.mine.append(h('div.sub-h', 'Protocols'), h('div', m.protocols.map((x) => h('span.chip', x))))
   }
 
+  clear(R.addrs).classList.toggle('hidden', !sv.addrs?.length)
+  if (sv.addrs?.length) R.addrs.append(h('h4', 'IP addresses', h('span.aside', 'click one to copy it')), h('div.ips', ipChips(sv.addrs)))
+
   clear(R.res).classList.toggle('hidden', !sh.resources)
   if (sh.resources) {
-    R.res.append(h('h4', 'System'))
+    R.res.append(h('h4', 'Resources'))
     if (sv.sys) {
       const y = sv.sys
       const gauge = (ic: string, label: string, pct: number, sev: string, detail: string) =>
@@ -1629,16 +1753,35 @@ function updateDrawer() {
       R.res.append(
         h(
           'div.gauges',
-          gauge('cpu', 'CPU', y.cpu, loadSev(y.cpu), `${y.cores || '?'} cores`),
-          gauge('mem', 'Memory', y.mem, loadSev(y.mem), 'in use'),
-          gauge('db', 'Disk', y.disk, diskSev(y.disk), 'in use'),
+          gauge('cpu', 'CPU', y.cpu, loadSev(y.cpu), loadOf(sv) || `${y.cores || '?'} cores`),
+          gauge('mem', 'Memory', y.mem, loadSev(y.mem), usedOf(y.mem_used, y.mem_total) || 'in use'),
+          gauge('db', 'Disk', y.disk, diskSev(y.disk), usedOf(y.disk_used, y.disk_total) || 'in use'),
         ),
-        h('div.kv-grid', kv('Running for', dur(y.uptime)), kv('Cores', String(y.cores || '—'))),
+        h(
+          'div.kv-grid',
+          kv('Running for', dur(upSecs(y))),
+          kv('Connections', y.tcp != null ? `TCP ${y.tcp} · UDP ${y.udp ?? 0}` : '—'),
+          kv('Swap', y.swap_total ? usedOf(y.swap_used, y.swap_total) : 'none'),
+        ),
       )
     } else R.res.append(h('div.hint', icon('server', 'sm'), sv.online ? 'No resource data yet' : 'Offline, so not reporting'))
   }
 
-  clear(R.bw).classList.toggle('hidden', !(sh.bandwidth && sv.bandwidth))
+  const x = sv.host
+  clear(R.host).classList.toggle('hidden', !x)
+  if (x) {
+    append(R.host, [
+      h('h4', 'System'),
+      h('div.kv-grid', kv('Operating system', x.os || '—'), kv('Architecture', x.arch || '—'), kv('Cores', x.cores ? String(x.cores) : '—')),
+      x.cpu ? h('div.kv-grid.one', kv('Processor', x.cpu)) : null,
+      h('div.kv-grid', kv('Memory', unitB(sv.sys?.mem_total || x.mem || 0)), kv('Disk', unitB(sv.sys?.disk_total || x.disk || 0)), kv('Paid until', sv.expires ? `${isoLong(sv.expires)} · ${expiryText(sv)}` : 'not set', expirySev(expiryDays(sv)))),
+    ])
+  }
+
+  // the month's traffic: against the bandwidth when there is a limit
+  const c = sv.cycle
+  const counts: Record<string, string> = { both: 'sent and received', up: 'sent only', down: 'received only', max: 'the larger direction' }
+  clear(R.bw).classList.toggle('hidden', !((sh.bandwidth && sv.bandwidth) || c))
   if (sh.bandwidth && sv.bandwidth) {
     const b = sv.bandwidth
     const pct = bwPct(sv) || 0
@@ -1646,11 +1789,22 @@ function updateDrawer() {
     const [bv, bu] = bparts(b.used)
     big.textContent = bv
     big.append(h('span.unit', bu))
-    R.bw.append(
+    append(R.bw, [
       h('h4', 'Monthly bandwidth', h('span.aside', b.reset_day ? `resets on day ${b.reset_day} of each month` : '')),
       h('div.quota-big', big, h('span.of', `of ${bytes(b.limit)} · ${pctText(pct)} used`)),
       h('div.meter.lg', { cls: severity(pct) }, h('i', { style: { width: clamp(pct, 0, 100) + '%' } })),
-      h('div.kv-grid', kv('Left', unitB(Math.max(0, b.limit - b.used))), kv('Next reset', b.next_reset ? `${isoDate(b.next_reset)} · ${inDays(daysUntil(b.next_reset))}` : '—')),
+      h(
+        'div.kv-grid',
+        kv('Left', unitB(Math.max(0, b.limit - b.used))),
+        kv('Next reset', b.next_reset ? `${isoDate(b.next_reset)} · ${inDays(daysUntil(b.next_reset))}` : '—'),
+        kv('Counts', counts[b.mode || 'both'] || 'sent and received'),
+      ),
+      c ? h('div.kv-grid', kv('Sent', unitB(c.up)), kv('Received', unitB(c.down)), kv('Today', unitB(todayOf(sv) || 0))) : null,
+    ])
+  } else if (c) {
+    R.bw.append(
+      h('h4', 'Traffic this month', h('span.aside', c.start ? `since ${isoDate(c.start)}` : '')),
+      h('div.kv-grid', kv('Sent', unitB(c.up)), kv('Received', unitB(c.down)), kv('Today', unitB(todayOf(sv) || 0))),
     )
   }
 
@@ -1725,7 +1879,9 @@ function initDrawer() {
 function renderAuth() {
   const user = !!S.me
   $('#userBtn').classList.toggle('hidden', !user)
-  $('#adminBtn').classList.toggle('hidden', !admin())
+  $('#adminBtn').classList.toggle('hidden', !sup())
+  // visitors sign in from the top right; the sign-in page itself needs no button to itself
+  $('#signInBtn').classList.toggle('hidden', user || sup() || !dataOn())
   setText($('#userName'), S.me ? S.me.name || S.me.username : '')
   setText($('#avatar'), (S.me?.name || S.me?.username || '?').slice(0, 1).toUpperCase())
   applyShow()
@@ -1824,7 +1980,6 @@ function initAuth() {
     }
     S.me = null
     S.meState = 'none'
-    autoLogin = false
     meDaysFirst = true
     clear($('#meLink'))
     toast('Signed out')
@@ -1846,6 +2001,7 @@ function initAuth() {
     resetCards()
     closeDrawer(true)
     toast('Signed out')
+    await loadStatus() // what visitors see: every server where the status page is public, else the sign-in
     renderAuth()
     go('#/')
   })
@@ -1964,9 +2120,8 @@ function setLive(ok: boolean) {
 
 // ================================================================ router
 
-const VIEWS = new Set<View>(['overview', 'servers', 'events', 'me'])
+const VIEWS = new Set<View>(['overview', 'servers', 'events', 'me', 'signin'])
 const onMePath = () => /^\/me(\/|$)/.test(location.pathname)
-let autoLogin = true // a visit to /me opens the sign-in dialog by itself, once
 
 function go(hash: string) {
   if (hash === '#/me' && onMePath()) {
@@ -1985,7 +2140,8 @@ function go(hash: string) {
 }
 
 function defaultView(): View {
-  if (admin()) return S.me && onMePath() ? 'me' : 'overview'
+  if (S.me && onMePath()) return 'me'
+  if (S.pub) return 'overview'
   if (S.me) return 'me'
   return 'signin'
 }
@@ -2002,15 +2158,11 @@ function route() {
   // the hash picks the page; without one, /me means the user's page
   let v = ((/^#\/(\w+)/.exec(hsh) || [])[1] || (location.hash ? 'overview' : onMePath() ? 'me' : '')) as View
   if (!VIEWS.has(v)) v = defaultView()
-  if (v === 'me' && !S.me) {
-    v = defaultView()
-    if (autoLogin && S.pubState !== 'loading' && !admin()) {
-      autoLogin = false
-      focusLogin()
-    }
-  }
-  // the servers are the supervisor's to see
-  if ((v === 'overview' || v === 'servers' || v === 'events') && !admin()) v = defaultView()
+  // a user's own page needs their sign-in first; someone signed in has no sign-in page
+  if (v === 'me' && !S.me) v = sup() ? defaultView() : 'signin'
+  if (v === 'signin' && (S.me || sup())) v = defaultView()
+  // the servers, where the status page shows them (to everyone, or to the supervisor)
+  if ((v === 'overview' || v === 'servers' || v === 'events') && !dataOn()) v = defaultView()
   showView(v)
 }
 
@@ -2094,7 +2246,7 @@ function statusFailed(e: unknown) {
     const was = S.pubState
     S.pub = null
     S.pubState = 'none'
-    if (e.status === 403 && /region/.test(e.message)) setText($('#gateText'), 'This site is not available in your region.')
+    if (e.status === 403 && /region/.test(e.message)) setText($('#gateText'), 'The status page is not available in your region.')
     applyShow()
     if (was === 'ok') route()
     return
@@ -2237,6 +2389,7 @@ function renderGate(focus = true) {
   setText($('#gateAbout'), site.about)
   $('#gateAbout').classList.toggle('hidden', !site.about)
   const away = unreachable()
+  $('#gateBack').classList.toggle('hidden', !S.pub)
   $('#loginForm').classList.toggle('hidden', away)
   if (away) {
     setText($('#gateText'), 'The panel cannot be reached right now - this page tries again by itself.')

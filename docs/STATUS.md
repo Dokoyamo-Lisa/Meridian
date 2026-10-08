@@ -1,6 +1,25 @@
 # Meridian status
 
-Last updated 2026-10-08 (version 0.7.1).
+Last updated 2026-10-08 (version 0.7.2).
+
+## Tested for 0.7.2 (local panel, Ubuntu and Alpine VMs)
+
+- **Public status page**: a visitor got the umbrella while loading, then every server: the table with
+  each server's IP address and paid period ("in 4 days" in amber), cards with address, system
+  (OS, architecture, cores, memory, disk), load, memory and disk used of total, bandwidth this month
+  with sent / received / today and the reset, uptime, connections and "paid until"; a server's panel
+  with addresses (click to copy), resources, system and bandwidth. The JSON a visitor gets has no
+  price, currency, user, protocol, port or token (a server with a price set). At 390 px the cards'
+  details fit. The paid-period warning appears only for the supervisor.
+- **Sign in at the top right**: a user landed on their own page (servers, protocols, WireGuard
+  tunnels) and kept Overview / Servers / Events, with their own use in each server's panel; signing
+  out returned to the public page; the supervisor signed in from the same form and got every server.
+  The sign-in page hides the button that leads to itself.
+- **Switches**: with "Show IP addresses" off visitors got no addresses (the supervisor still did);
+  with "Show the servers to everyone" off visitors got `401` and the sign-in only; the same on the
+  status page's own domain; a wrong API token is refused rather than treated as a visitor.
+- **Linux only**: `make release` builds the panel tarballs and the command-line tool for Linux
+  (amd64, arm64) only; the code still builds on macOS for running the panel during development.
 
 ## Tested end to end for 0.7.1 (local VMs: Ubuntu with systemd, Alpine with OpenRC)
 
@@ -106,8 +125,10 @@ namespace inside the VM (`test/e2e/`).
   the agent reinstalled under the new names and all 62 proxies worked again (sing-box, mihomo, Xray).
 - **Your own logo**: uploaded in Settings, shown in the panel, on both loading screens (swapped by the
   server before any script runs), on the status page, on subscription pages and in the browser tab.
-- **Status page**: visitors get only the sign-in; a user gets their own page (data left, devices,
-  link, usage per server); the supervisor gets every server on the globe. Sign-in and loading show
+- **Status page**: visitors get every server on the globe and in detail (IP addresses, load, memory,
+  disk, bandwidth, the paid period's end - never prices, users or protocols) and sign in from the top
+  right, or only the sign-in when the page is set so; a user gets their own page (data left, devices,
+  link, usage per server); the supervisor always gets every server. Sign-in and loading show
   the umbrella assembling and opening into the page. The globe's dots stay evenly spaced from the
   small panel to full screen at the largest zoom, and a server's pin sits on its city on the
   coastline drawing (checked for Los Angeles at full zoom).

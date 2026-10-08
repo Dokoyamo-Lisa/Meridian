@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meridian API",
-    "version": "0.7.1",
+    "version": "0.7.2",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -2717,7 +2717,7 @@
           "Status page"
         ],
         "summary": "Every server for the live dashboard",
-        "description": "The status page's dashboard, for the supervisor: servers (name, place, up or down, availability over 24 hours and 30 days, throughput, load, monthly bandwidth), totals, traffic per day and outages. Nothing about users, addresses or keys. Users see only their own page (/api/portal/me).",
+        "description": "The status page's dashboard: servers (name, place, public IP addresses, up or down, availability over 24 hours and 30 days, throughput, load, memory, disk, connections, monthly bandwidth and traffic, expiry date, system), totals, traffic per day and outages. Visitors get it while the status page shows the servers to everyone (addresses only where it shows those too); the supervisor always. Nothing about users, protocols, ports, keys or prices.",
         "operationId": "getStatus",
         "responses": {
           "200": {
@@ -2740,7 +2740,17 @@
             },
             "description": "Error"
           }
-        }
+        },
+        "security": [
+          {},
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "x-scope": "status"
       }
     },
     "/api/status/live": {
@@ -2781,7 +2791,17 @@
             },
             "description": "Error"
           }
-        }
+        },
+        "security": [
+          {},
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "x-scope": "status"
       }
     },
     "/api/places": {
@@ -6708,6 +6728,10 @@
               }
             ],
             "description": "Where the panel is drawn on the globe"
+          },
+          "supervisor": {
+            "description": "The supervisor is asking (else a visitor: the status page shows the servers to everyone)",
+            "type": "boolean"
           }
         }
       },
@@ -6761,6 +6785,28 @@
           },
           "sys": {
             "$ref": "#/components/schemas/StatusSys"
+          },
+          "addrs": {
+            "description": "Its public IP addresses (to visitors only where the status page shows them)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "host": {
+            "$ref": "#/components/schemas/StatusHost"
+          },
+          "cycle": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StatusCycle"
+              }
+            ],
+            "description": "Its own traffic since the monthly reset"
+          },
+          "expires": {
+            "description": "The day its paid period ends (YYYY-MM-DD), when set",
+            "type": "string"
           }
         }
       },
@@ -6816,6 +6862,10 @@
           "next_reset": {
             "format": "int64",
             "type": "integer"
+          },
+          "mode": {
+            "description": "What counts against the limit: both (sent and received) | up | down | max (the larger)",
+            "type": "string"
           }
         }
       },
@@ -6834,10 +6884,103 @@
             "type": "number"
           },
           "uptime": {
+            "description": "Seconds since the machine started, when it last reported",
+            "format": "int64",
+            "type": "integer"
+          },
+          "booted": {
+            "description": "When the machine started (Unix seconds)",
             "format": "int64",
             "type": "integer"
           },
           "cores": {
+            "type": "integer"
+          },
+          "load": {
+            "description": "Load averages over 1, 5 and 15 minutes",
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "mem_used": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mem_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "swap_used": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "swap_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "disk_used": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "disk_total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tcp": {
+            "description": "Open TCP connections",
+            "type": "integer"
+          },
+          "udp": {
+            "description": "Open UDP sockets",
+            "type": "integer"
+          }
+        }
+      },
+      "StatusHost": {
+        "type": "object",
+        "properties": {
+          "os": {
+            "type": "string"
+          },
+          "arch": {
+            "type": "string"
+          },
+          "cpu": {
+            "description": "Processor model",
+            "type": "string"
+          },
+          "cores": {
+            "type": "integer"
+          },
+          "mem": {
+            "description": "Memory, bytes",
+            "format": "int64",
+            "type": "integer"
+          },
+          "disk": {
+            "description": "Disk, bytes",
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "StatusCycle": {
+        "type": "object",
+        "properties": {
+          "up": {
+            "description": "Bytes sent",
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "description": "Bytes received",
+            "format": "int64",
+            "type": "integer"
+          },
+          "start": {
+            "description": "When the count began",
+            "format": "int64",
             "type": "integer"
           }
         }
@@ -7231,7 +7374,7 @@
             "type": "boolean"
           },
           "status_page": {
-            "description": "off | home (the site's front page is the status page: a sign-in for users, the live dashboard for you; the panel stays at /overview) | page (at /status)",
+            "description": "off | home (the site's front page is the status page; the panel stays at /overview) | page (at /status)",
             "type": "string"
           },
           "status_domain": {
@@ -7249,6 +7392,14 @@
               }
             ],
             "description": "Where the panel is drawn on the status page's globe, with an arc from each server; null = not drawn"
+          },
+          "status_public": {
+            "description": "Visitors see every server on the status page without signing in - where it is, up or down, load, bandwidth, traffic, expiry date - and sign in from its top-right button. Off: visitors see only the sign-in. Prices are never shown",
+            "type": "boolean"
+          },
+          "status_ips": {
+            "description": "Visitors also see each server's public IP addresses (you always do)",
+            "type": "boolean"
           },
           "agent_port": {
             "description": "Where new agents put their two loopback-only ports: the Xray API on this port, Hysteria's auth hook on the next (1024-65534, default 50000). Agents already installed keep theirs.",

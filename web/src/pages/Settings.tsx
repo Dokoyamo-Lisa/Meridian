@@ -245,7 +245,7 @@ function General() {
         <div class="ph">
           <span class="pn">04</span>
           <h2 class="h">Status page</h2>
-          <span class="pm">a sign-in for users, every server for you</span>
+          <span class="pm">every server for everyone, their own page for users</span>
         </div>
         <Field label="Where it is">
           <Seg
@@ -273,20 +273,43 @@ function General() {
           </Field>
         )}
         <p class="muted" style="margin:-2px 0 12px">
-          {domainMode
-            ? `The status page is at https://${v.status_domain || 'status.example.com'}: a Sign in button for visitors, their own page for users, and every server on a live globe when you sign in there. The panel itself stays at ${location.origin}; users can also sign in at ${location.origin}/me.`
-            : v.status_page === 'home'
-              ? `Visitors to ${location.origin} see only a Sign in button. Users who sign in see the data they have left, their devices and their link; when you sign in there you see every server on a live globe. The panel stays at ${location.origin}/overview.`
-              : v.status_page === 'page'
-                ? `The status page is at ${location.origin}/status: a Sign in button for visitors, their own page for users, every server on a live globe for you. The panel stays at this address.`
-                : `Users sign in at ${location.origin}/me to see the data they have left, their devices and their link. The front page is the panel.`}
+          {(() => {
+            const seen = v.status_public
+              ? `visitors see every server on a live globe and in detail${v.status_ips ? ', IP addresses included' : ''}, and sign in from the top right; users then see their own usage and link`
+              : 'visitors see only a sign-in; users see their own usage and link, and you every server'
+            return domainMode
+              ? `The status page is at https://${v.status_domain || 'status.example.com'}: ${seen}. The panel itself stays at ${location.origin}; users can also sign in at ${location.origin}/me.`
+              : v.status_page === 'home'
+                ? `The status page is the front page, ${location.origin}: ${seen}. The panel stays at ${location.origin}/overview.`
+                : v.status_page === 'page'
+                  ? `The status page is at ${location.origin}/status: ${seen}. The panel stays at this address.`
+                  : `Users sign in at ${location.origin}/me to see the data they have left, their devices and their link. The front page is the panel.`
+          })()}
         </p>
+        {(domainMode || v.status_page !== 'off') && (
+          <>
+            <Check
+              checked={v.status_public}
+              onChange={(x) => set('status_public', x)}
+              label="Show the servers to everyone"
+              hint="Where each server is, whether it is up, its load, bandwidth, traffic and the day its paid period ends - like a probe page. Prices are never shown. Off: visitors see only the sign-in."
+            />
+            {v.status_public && (
+              <Check
+                checked={v.status_ips}
+                onChange={(x) => set('status_ips', x)}
+                label="Show IP addresses"
+                hint="Each server's public addresses, for visitors too. Anyone can then find, test - or block - your servers by address; you always see them when signed in."
+              />
+            )}
+          </>
+        )}
         <Field label="A line on the sign-in page" hint="For example who runs the service, or how to reach support. Visitors see it.">
           <input class="input" value={v.status_about} maxLength={200} onInput={(e) => set('status_about', e.currentTarget.value)} />
         </Field>
         <HubPicker value={v.status_hub} onChange={(x) => set('status_hub', x)} />
         <p class="faint" style="font-size:11.5px;margin-bottom:0">
-          Only you see the servers. To leave a server off the globe, rename it there or correct where it sits, open the server's page.
+          To leave a server off the status page, give it another name there or correct where it sits, open the server's page (Status page).
         </p>
       </section>
 

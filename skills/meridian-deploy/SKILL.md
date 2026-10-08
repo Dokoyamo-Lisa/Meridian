@@ -177,6 +177,8 @@ scripts/api.sh PUT /api/settings '{"site_title":"Acme Net","timezone":"Europe/Be
 | `logo_animation` | `assemble`, `rise`, `pulse`, `spin` or `none` |
 | `agent_port` | where new agents put their two local-only ports (default 50000, then 50001); change it **before** installing agents if something on the servers already uses them |
 | `status_page` | `off` (users sign in at /me), `home` (the status page is the front page), `page` (at /status) |
+| `status_public` | `true` (default): visitors see every server and sign in from the top right; `false`: visitors see only the sign-in |
+| `status_ips` | `true` (default): visitors also see each server's public IP addresses; `false`: only the supervisor does - ask the operator which they want |
 | `status_about` | one public line on the sign-in page - nothing private |
 
 The answer is the full settings object: check your values are in it.

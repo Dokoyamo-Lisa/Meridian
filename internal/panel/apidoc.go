@@ -109,7 +109,7 @@ type paramDoc struct {
 
 type opDoc struct {
 	Method, Path, Tag, Summary, Desc string
-	Scope                            string // public | session | user | token (API tokens only) | "" (session or token)
+	Scope                            string // public | session | user | token (API tokens only) | status (public while the status page is) | "" (session or token)
 	Query                            []paramDoc
 	Body                             any
 	BodyType                         string // a raw (non-JSON) request body, e.g. "image/*"
@@ -249,10 +249,10 @@ var apiOps = []opDoc{
 	{Method: "POST", Path: "/api/portal/logout", Tag: "User page", Scope: "user", Summary: "The user signs out", Resp: okResult{}},
 
 	// status page
-	{Method: "GET", Path: "/api/status", Tag: "Status page", Summary: "Every server for the live dashboard",
-		Desc: "The status page's dashboard, for the supervisor: servers (name, place, up or down, availability over 24 hours and 30 days, throughput, load, monthly bandwidth), totals, traffic per day and outages. Nothing about users, addresses or keys. Users see only their own page (/api/portal/me).",
+	{Method: "GET", Path: "/api/status", Tag: "Status page", Scope: "status", Summary: "Every server for the live dashboard",
+		Desc: "The status page's dashboard: servers (name, place, public IP addresses, up or down, availability over 24 hours and 30 days, throughput, load, memory, disk, connections, monthly bandwidth and traffic, expiry date, system), totals, traffic per day and outages. Visitors get it while the status page shows the servers to everyone (addresses only where it shows those too); the supervisor always. Nothing about users, protocols, ports, keys or prices.",
 		Resp: statusPayload{}},
-	{Method: "GET", Path: "/api/status/live", Tag: "Status page", Summary: "Throughput per server since a time",
+	{Method: "GET", Path: "/api/status/live", Tag: "Status page", Scope: "status", Summary: "Throughput per server since a time",
 		Query: []paramDoc{{Name: "since", Type: "integer", Desc: "Unix seconds; only newer points"}}, Resp: statusLive{}},
 	{Method: "GET", Path: "/api/places", Tag: "Status page", Summary: "Cities for setting a server's location by hand", Resp: []place{}},
 
@@ -567,6 +567,9 @@ func buildOpenAPI() *ordered {
 		case "token":
 			o.set("security", []any{map[string]any{"token": []string{}}})
 			o.set("x-scope", "token")
+		case "status":
+			o.set("security", []any{map[string]any{}, map[string]any{"session": []string{}}, map[string]any{"token": []string{}}})
+			o.set("x-scope", "status")
 		default:
 			if op.Method == "POST" && readOnlyPost[op.Path] { // stores nothing
 				o.set("x-scope", "read")

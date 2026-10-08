@@ -31,10 +31,12 @@ type Settings struct {
 	Mirror          bool   `json:"mirror" doc:"Agents may download cores through the panel"`
 	AutoUpdate      bool   `json:"auto_update" doc:"Install new Meridian releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts"`
 
-	StatusPage   string          `json:"status_page" doc:"off | home (the site's front page is the status page: a sign-in for users, the live dashboard for you; the panel stays at /overview) | page (at /status)"`
+	StatusPage   string          `json:"status_page" doc:"off | home (the site's front page is the status page; the panel stays at /overview) | page (at /status)"`
 	StatusDomain string          `json:"status_domain" doc:"Optional domain that shows only the status page and the users' sign-in, e.g. status.example.com (point it at the panel)"`
 	StatusAbout  string          `json:"status_about" doc:"A line of text on the sign-in page, e.g. who runs the service"`
 	StatusHub    *serverLocation `json:"status_hub" doc:"Where the panel is drawn on the status page's globe, with an arc from each server; null = not drawn"`
+	StatusPublic bool            `json:"status_public" doc:"Visitors see every server on the status page without signing in - where it is, up or down, load, bandwidth, traffic, expiry date - and sign in from its top-right button. Off: visitors see only the sign-in. Prices are never shown"`
+	StatusIPs    bool            `json:"status_ips" doc:"Visitors also see each server's public IP addresses (you always do)"`
 
 	AgentPort int `json:"agent_port" doc:"Where new agents put their two loopback-only ports: the Xray API on this port, Hysteria's auth hook on the next (1024-65534, default 50000). Agents already installed keep theirs."`
 
@@ -54,6 +56,8 @@ func defaultSettings() Settings {
 		RealmVersion:    "2.9.6",
 		Mirror:          true,
 		StatusPage:      "off",
+		StatusPublic:    true,
+		StatusIPs:       true,
 		LogoAnimation:   "assemble",
 		AgentPort:       50000,
 	}

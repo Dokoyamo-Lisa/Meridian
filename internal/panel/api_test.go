@@ -512,12 +512,19 @@ func TestMCP(t *testing.T) {
 	if out, isErr = text(call(full, `{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"list_servers","arguments":{}}}`)); isErr || !strings.Contains(out, `"public_port":443`) {
 		t.Fatalf("list_servers: %s", out)
 	}
-	// the dashboard's data is the supervisor's alone
+	// the status page (on since set_status_page above) shows the servers to everyone; set private, it
+	// is the supervisor's alone
 	if code, _, _ := b.do("GET", "/api/status", nil); code != 200 {
 		t.Fatalf("supervisor's dashboard data: %d", code)
 	}
+	if code, _, _ := h.browser().do("GET", "/api/status", nil); code != 200 {
+		t.Fatalf("a visitor on the public status page: %d", code)
+	}
+	if out, isErr = text(call(full, `{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"set_status_page","arguments":{"public":false}}}`)); isErr || !strings.Contains(out, `"status_public":false`) {
+		t.Fatalf("set_status_page public=false: %v %s", isErr, out)
+	}
 	if code, _, _ := h.browser().do("GET", "/api/status", nil); code != 401 {
-		t.Fatalf("a stranger got the dashboard data: %d", code)
+		t.Fatalf("a stranger got the dashboard data of a private status page: %d", code)
 	}
 	// origin check (DNS rebinding)
 	req, _ := http.NewRequest("POST", h.srv.URL+"/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))

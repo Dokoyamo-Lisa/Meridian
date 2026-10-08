@@ -128,9 +128,9 @@ panel restarts.
    Behind your own reverse proxy, add the domain there too (see below).
 
 That domain serves only the status page, the users' sign-in and pages, and their subscription links;
-the panel and its API answer `404` there. Sign in there to see every server on the live globe - the
-panel itself still opens only at its own address. Users are then told to sign in at
-`https://status.example.com/me`.
+the panel and its API answer `404` there. Visitors see every server there (unless **Show the servers
+to everyone** is off); signed in, you also see what needs you - the panel itself still opens only at
+its own address. Users are then told to sign in at `https://status.example.com/me`.
 
 ## Moving the panel
 

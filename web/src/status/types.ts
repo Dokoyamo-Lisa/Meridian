@@ -18,8 +18,32 @@ export interface StatusServer {
   since: number
   availability: Availability | null
   speed?: { up: number; down: number }
-  bandwidth?: { used: number; limit: number; reset_day: number; next_reset: number }
-  sys?: { cpu: number; mem: number; disk: number; uptime: number; cores: number }
+  bandwidth?: { used: number; limit: number; reset_day: number; next_reset: number; mode?: 'both' | 'up' | 'down' | 'max' }
+  sys?: {
+    cpu: number
+    mem: number
+    disk: number
+    uptime: number
+    /** When the machine started (Unix seconds). */
+    booted?: number
+    cores: number
+    load?: [number, number, number]
+    mem_used?: number
+    mem_total?: number
+    swap_used?: number
+    swap_total?: number
+    disk_used?: number
+    disk_total?: number
+    tcp?: number
+    udp?: number
+  }
+  /** Public IP addresses (to visitors only where the status page shows them). */
+  addrs?: string[]
+  host?: { os?: string; arch?: string; cpu?: string; cores?: number; mem?: number; disk?: number }
+  /** The server's own traffic since its monthly reset. */
+  cycle?: { up: number; down: number; start: number }
+  /** The day its paid period ends, YYYY-MM-DD. */
+  expires?: string
 }
 
 export interface StatusEvent {
@@ -40,6 +64,8 @@ export interface StatusPayload {
   history?: Record<string, number[]>
   events?: StatusEvent[]
   hub?: { city: string; cc: string; loc: [number, number]; tz?: string }
+  /** The supervisor is signed in (otherwise a visitor of a public status page). */
+  supervisor?: boolean
   show: { bandwidth: boolean; throughput: boolean; resources: boolean; events: boolean }
 }
 

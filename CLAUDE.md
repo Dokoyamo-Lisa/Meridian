@@ -18,7 +18,8 @@ skill has step-by-step procedures.
 - **Security bar is "zero known vulnerabilities"**: validate input where it enters (panel) and again
   where it is used (agent: nft, paths, systemd); never log secrets; every route checks ownership
   (`ownServer`/`ownSub`/`ownNode`); user sessions reach only `/api/portal/*`; the dashboard data
-  (`/api/status`) is the supervisor's and never contains users, addresses, ports or protocols; no
+  (`/api/status`) is public only while the status page shows the servers to everyone (IP addresses
+  only where it shows those too) and never contains users, ports, protocols, keys or prices; no
   subscription format ever turns certificate checks off; keep `make check` clean.
 - **Only working protocol combinations**: `xraySettings.check` refuses anything that would not work
   on the server or in the listed apps, and app support is computed by the subscription renderers.
@@ -32,7 +33,7 @@ make                 # UI + panel + agents
 make test            # go test -race ./... + UI typecheck   (MERIDIAN_NO_GEO_DOWNLOAD=1 is set)
 make check           # + vet, staticcheck, govulncheck (Go + Linux), npm audit
 make docs            # regenerate docs/openapi.json after API changes
-make release         # dist/release tarballs + desktop CLI builds + SHA256SUMS(.sig - needs the release key)
+make release         # dist/release tarballs + Linux CLI builds + SHA256SUMS(.sig - needs the release key)
 ```
 
 UI only: `cd web && npm run dev` (proxies /api to 127.0.0.1:18080).
@@ -50,7 +51,9 @@ UI only: `cd web && npm run dev` (proxies /api to 127.0.0.1:18080).
   `protocols_test.go` proves every accepted combination renders and works in at least one app.
 - Clean names with `cleanName`, notes with `cleanNote`, hosts with `normHost`; see `validate.go`.
 - The panel <-> agent contract is `internal/proto`. Any incompatible change bumps `proto.Version`.
-- Agent code must build and vet with `GOOS=linux`.
+- Agent code must build and vet with `GOOS=linux`. Meridian supports Linux only (panel, agent, CLI); the
+  code compiles on macOS solely so the panel can run on a development Mac - never ship or document other
+  systems.
 - Tests: `internal/panel/api_test.go` has an httptest harness (`newHarness`, `browser()`, `bearer()`).
 - Generated files: `docs/openapi.json` (`make docs`), `web/dist` (`make web`). Do not edit them.
 - The UI has two pages: the panel (`web/index.html`, `web/src/main.tsx`) and the status page / users'

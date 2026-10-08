@@ -19,9 +19,11 @@ sign-in to see their own usage; the supervisor watches every server on a live gl
 - **Users see their own usage.** Each user signs in to their own page: usage per server, per
   protocol and per day, devices connected now, their link with QR code and one-tap import for every app.
 - **A status page built in.** As the site's front page, at `/status`, on its own domain, or only at
-  `/me`: visitors see a sign-in and nothing else, users see their own page, and only you see the
-  servers - up or down, availability, throughput, load and bandwidth, on a live globe (on its own
-  domain too, where the panel itself never opens).
+  `/me`. Everyone sees every server on a live globe and in detail - where it is and its IP addresses,
+  up or down, availability, throughput, load, memory and disk, bandwidth used and the day its paid
+  period ends (never prices, users or protocols) - and signs in from the top right; users then see
+  their own page. One switch hides the addresses, another leaves visitors only the sign-in. On its own
+  domain the panel itself never opens.
 - **Country rules.** Block countries (or allow only some) on every server, cutting open connections
   at once; separately choose which countries may open the panel, the users' pages and the status page.
 - **Brings existing setups along.** The agent finds Xray, V2Ray, x-ui, 3x-ui, sing-box and Hysteria2
@@ -72,6 +74,8 @@ lists exactly which of these apps can use it, computed from the same code that w
 ## Quick start
 
 1. **Install the panel** on a Linux server (amd64 or arm64, systemd) with a domain pointing to it.
+   Meridian runs on Linux only: the panel, the agent (systemd or OpenRC, amd64 or arm64) and the
+   command-line tool.
    This downloads the newest [release](https://github.com/Dokoyamo-Lisa/Meridian/releases), checks
    its SHA-256 and installs it:
 
@@ -119,7 +123,7 @@ Go 1.26+ and Node 22+.
 make            # UI, panel (dist/meridian) and agents (dist/meridian-agent-linux-*)
 make test       # Go tests with the race detector + UI type check
 make check      # test + vet + staticcheck + govulncheck + npm audit
-make release    # dist/release: tarballs for linux/amd64 and linux/arm64, desktop CLI builds, SHA256SUMS
+make release    # dist/release: tarballs and CLI builds for linux/amd64 and linux/arm64, SHA256SUMS(.sig)
 make dev        # panel on 127.0.0.1:18080 and the UI dev server on :5173
 ```
 

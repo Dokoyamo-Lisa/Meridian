@@ -1410,9 +1410,11 @@ var mcpTools = []mcpTool{
 			return out, nil
 		}},
 	{Name: "set_status_page", Title: "Set up the status page", Write: true,
-		Description: "Turn the status page on or off. mode home: it is the site's front page (the panel stays at /overview); page: at /status; off: not at the front (users still sign in at /me). Visitors only see a sign-in; users see their own usage; the supervisor sees every server on a live globe. Only the given fields change.",
+		Description: "Turn the status page on or off. mode home: it is the site's front page (the panel stays at /overview); page: at /status; off: not at the front (users still sign in at /me). With public on, visitors see every server (place, up or down, load, bandwidth, traffic, expiry date, and the IP addresses when show_ips is on) and sign in from the top-right button; users see their own usage; the supervisor sees everything. Prices are never shown. Only the given fields change.",
 		Props: map[string]any{
 			"mode":       pEnum("Where it is", "off", "home", "page"),
+			"public":     pBool("Visitors see every server without signing in (default true); false: only a sign-in"),
+			"show_ips":   pBool("Visitors also see the servers' public IP addresses"),
 			"domain":     pStr("Its own domain (shows only the status page and user sign-in), e.g. status.example.com; empty removes it"),
 			"about":      pStr("A line on the sign-in page, e.g. who runs the service"),
 			"panel_city": pStr("Where the panel runs, drawn on the globe with an arc from every server: a city such as 'Hong Kong' or 'Frankfurt am Main, DE'; 'none' removes it"),
@@ -1425,6 +1427,11 @@ var mcpTools = []mcpTool{
 			s, _ := v.(map[string]any)
 			for arg, key := range map[string]string{"mode": "status_page", "domain": "status_domain", "about": "status_about"} {
 				if x, ok := argStr(a, arg); ok {
+					s[key] = x
+				}
+			}
+			for arg, key := range map[string]string{"public": "status_public", "show_ips": "status_ips"} {
+				if x, ok := argBool(a, arg); ok {
 					s[key] = x
 				}
 			}
@@ -1546,7 +1553,7 @@ var mcpTools = []mcpTool{
 		}},
 }
 
-var statusKeys = []string{"status_page", "status_domain", "status_about", "status_hub"}
+var statusKeys = []string{"status_page", "status_domain", "status_about", "status_hub", "status_public", "status_ips"}
 
 // findPlace looks up a city of the panel's list: "Osaka" or "Osaka, JP".
 func findPlace(q string) (place, error) {

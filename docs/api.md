@@ -108,7 +108,7 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json
   https://panel.example.com/api/access/servers
 ```
 
-Make the status page the site's front page (visitors get a sign-in, users their own page):
+Make the status page the site's front page (visitors see every server and sign in from the top right; users then get their own page). Add `| .status_ips = false` to keep the servers' addresses to yourself, or `| .status_public = false` to give visitors only the sign-in:
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" https://panel.example.com/api/settings \
@@ -148,7 +148,7 @@ curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
 | Forwards | `POST /api/servers/{id}/forwards`, `PATCH/DELETE /api/forwards/{id}` |
 | Users | `GET/POST /api/users`, `GET/PATCH/DELETE /api/users/{id}`, `POST /api/users/{id}/{pause,resume,rotate-link,reset-keys,reset-usage,sign-out,new-password}`, `ips`, `dests`, `traffic`, `preview` |
 | A user's own page | `GET /api/portal/me`, `POST /api/portal/password`, `POST /api/portal/logout` (user session) |
-| Status page | `GET /api/status`, `GET /api/status/live` (the live dashboard of every server - the supervisor only), `GET /api/places` |
+| Status page | `GET /api/status`, `GET /api/status/live` (the live dashboard of every server - public while the status page shows the servers to everyone, otherwise the supervisor's), `GET /api/places` |
 | Country rules | `GET /api/access`, `PUT /api/access/servers`, `PUT /api/access/site` (browser session only) |
 | IP blocks | `GET/POST /api/blocks`, `DELETE /api/blocks/{id}` |
 | Settings | `GET/PUT /api/settings` (including the status page), `GET /api/openapi.json` |

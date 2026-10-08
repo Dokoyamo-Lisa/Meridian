@@ -187,10 +187,13 @@ link token.
 
 Both are one static app (`web/status/index.html` and `web/src/status`), served by the panel for `/me`,
 for `/status` or `/` when the status page is there, and for every path on the status page's own
-domain. What it shows depends on who is signed in: visitors get the sign-in form; a user gets their
-own page from `/api/portal/me`; the supervisor gets the dashboard from `/api/status` (every server,
-cached for a few seconds, never containing users, addresses, ports or protocols) and
-`/api/status/live` (the last 30 minutes of throughput). Availability is sampled every minute into
+domain. The dashboard comes from `/api/status` (every server, built from a fixed set of fields and
+cached for a few seconds: place, public IP addresses, up or down, availability, load, memory, disk,
+connections, system, bandwidth and traffic, the paid period's end - never users, ports, protocols,
+keys or prices) and `/api/status/live` (the last 30 minutes of throughput). Visitors get both while
+the status page shows the servers to everyone (`status_public`; the addresses only with
+`status_ips`), otherwise only the sign-in form; a user gets their own page from `/api/portal/me`; the
+supervisor always gets the dashboard, addresses included. Availability is sampled every minute into
 10-minute buckets per server (`server_uptime`) and reported for 24 hours, 30 days and per day.
 
 ## Data

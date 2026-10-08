@@ -80,7 +80,7 @@ All must be clean. Then update `docs/STATUS.md` and, for user-visible changes, `
 ## Release
 
 1. Bump `VERSION`, add a `CHANGELOG.md` entry.
-2. `make check && make release` - produces `dist/release/*.tar.gz`, desktop CLI builds,
+2. `make check && make release` - produces `dist/release/*.tar.gz`, Linux CLI builds,
    `SHA256SUMS` and `SHA256SUMS.sig`. The signature needs the release key
    (`~/.config/meridian/release-signing.key`, or `MERIDIAN_SIGNING_KEY`): panels update themselves
    only to releases signed with it (`internal/update/keys.go` holds its public half). Upload all of

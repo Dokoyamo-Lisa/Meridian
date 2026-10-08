@@ -372,10 +372,10 @@ func (p *Panel) siteGate(next http.Handler) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		// the dashboard's data answers only the supervisor: a request without any sign-in gets its 401
-		// from the handler, never a refusal by region (the users' page asks it first, and users may be
-		// allowed where the status page is not)
-		if area == "status" && strings.HasPrefix(r.URL.Path, "/api/status") && !carriesSignIn(r) {
+		// while the dashboard's data answers only the supervisor, a request without any sign-in gets its
+		// 401 from the handler, never a refusal by region (the users' page asks it first, and users may
+		// be allowed where the status page is not); a public status page follows the rule
+		if area == "status" && strings.HasPrefix(r.URL.Path, "/api/status") && !carriesSignIn(r) && !p.statusOpen() {
 			next.ServeHTTP(w, r)
 			return
 		}
