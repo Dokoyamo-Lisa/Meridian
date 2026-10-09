@@ -92,6 +92,9 @@ func Install(panel, token string, apiPort int) error {
 	if err != nil {
 		return err
 	}
+	if st := (&Agent{}).loadState(); st != nil { // a reinstall: through the relay this server used, if any
+		c.follow(st)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	_, err = c.State(ctx, "", 0)
 	cancel()

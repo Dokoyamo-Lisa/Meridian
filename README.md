@@ -18,19 +18,49 @@ sign-in to see their own usage; the supervisor watches every server on a live gl
   and each user's usage is shown per protocol.
 - **Users see their own usage.** Each user signs in to their own page: usage per server, per
   protocol and per day, devices connected now, their link with QR code and one-tap import for every app.
+  They can link up to two Telegram accounts and ask the bot what they have left, or open their page
+  in Telegram.
 - **A status page built in.** As the site's front page, at `/status`, on its own domain, or only at
   `/me`. Everyone sees every server on a live globe and in detail - where it is, up or down,
   availability, throughput, load, memory and disk, bandwidth used and the day its paid period ends
   (never IP addresses unless you turn them on, never prices, users or protocols) - and signs in from
   the top right; users then see their own page. One switch leaves visitors only the sign-in. On its
-  own domain the panel itself never opens.
+  own domain the panel itself never opens. A server's details chart its processor, memory, disk,
+  network, load and ping monitors over up to 30 days - each viewer picks the charts, you decide which
+  visitors get.
 - **Country rules.** Block countries (or allow only some) on every server, cutting open connections
   at once; separately choose which countries may open the panel, the users' pages and the status page.
+- **Traffic splitting.** Send some sites, countries, ports or BitTorrent directly, through another
+  server, through a provider's proxy, across a load balancer, or nowhere - for every server, some
+  servers or some protocols, applied live. Proxies elsewhere are imported from their links, a
+  subscription or a Clash file as exits; any that would turn certificate checks off or travel
+  unencrypted are refused.
+- **Servers anywhere.** A server whose IP address changes is reached by its dynamic DNS name - the
+  panel checks the name and can keep it up to date in Cloudflare - and servers with IPv6 only are
+  linked only where both ends can reach each other. Every link follows a server's new address at
+  once.
 - **Brings existing setups along.** The agent finds Xray, V2Ray, x-ui, 3x-ui, sing-box and Hysteria2
   already on a server and imports their protocols with the same keys and passwords - devices keep
   working.
 - **Automatable.** A documented REST API with scoped tokens, and an MCP server so AI assistants can
   answer "who is sharing their link?" or add users - asking first before anything disruptive.
+- **Watches for break-ins.** Every few minutes each agent checks its server for crypto-miners,
+  programs run from temporary folders, ports nobody opened, new accounts and SSH keys, changed
+  scheduled tasks and services, SSH sign-ins, traffic Meridian does not account for and Meridian's
+  own programs changed. You mark each finding as yours or seen - here or on every server; nothing is
+  stopped on its own.
+- **A Telegram bot.** Notifications, a daily report (traffic per server and the top users,
+  availability, what ends soon, data running out, health risks) and commands - `/status`,
+  `/servers`, `/traffic`, `/users`, `/risks`, `/ping` and more - in your chat only; buttons to decide
+  about health risks or pause a user, each confirmed, once you allow changes from Telegram. Its Mini
+  App opens users' pages - and, if you allow it, the panel - inside Telegram.
+- **Shared servers.** A server can serve two more panels besides its own: a friend's panel runs its
+  own protocols and users on it, never its console, upgrades or country rule.
+- **PostgreSQL or SQLite.** New panels keep their data in PostgreSQL; a panel on SQLite keeps it, and
+  `meridian db to-postgres` / `to-sqlite` move it either way.
+- **Yours to change.** Plugins restyle the panel and the status page, add pages, API routes, MCP
+  tools and timers, and filter what servers run and what apps receive. They are installed only from
+  a signed-in browser and stay off until you agree to what each may do.
 
 ## Your name, your logo
 
@@ -46,12 +76,12 @@ the same.
 
 | Protocol | Core | Transports and security |
 | --- | --- | --- |
-| VLESS | Xray | raw, WebSocket, gRPC, HTTPUpgrade, XHTTP · REALITY, TLS or none · Vision flow · CDN |
+| VLESS | Xray | raw, WebSocket, gRPC, HTTPUpgrade, XHTTP · REALITY, TLS or none · Vision flow · post-quantum VLESS Encryption · CDN |
 | VMess | Xray | raw, WebSocket, gRPC, HTTPUpgrade, XHTTP · TLS or none · CDN |
-| Trojan | Xray | raw, WebSocket, gRPC, HTTPUpgrade, XHTTP · TLS · CDN |
+| Trojan | Xray | raw, WebSocket, gRPC, HTTPUpgrade, XHTTP · TLS or REALITY · CDN |
 | Shadowsocks | Xray | 2022 ciphers (AES-128/256) and classic AEAD ciphers, TCP and UDP |
 | SOCKS5, HTTP proxy | Xray | username and password per user |
-| Hysteria2 | official Hysteria server | QUIC, optional Salamander obfuscation, bandwidth limits |
+| Hysteria2 | official Hysteria server | QUIC, port hopping, optional Salamander obfuscation, bandwidth limits |
 | WireGuard | Linux kernel | official apps; destinations logged per device |
 | Port forwards | nftables (kernel) or realm | TCP/UDP relays with exact byte counts |
 
@@ -61,15 +91,21 @@ self-signed certificate is pinned in every app that can check it and left out of
 certificate checks are never turned off. REALITY can borrow a well-known site or front your own website on the server.
 **Proxy pass** chains a protocol through another server: users connect to a nearby entry server and
 leave the internet at the exit server (which can be kept for passes only) - or through two, with a
-relay in between.
+relay in between, or through a provider's proxy imported as an **external node**. **Traffic rules**
+send chosen sites elsewhere ([routing](docs/routing.md)).
 Each protocol can have **its own server address** (listening, outgoing and in links), each user can
 get **whole servers or single protocols**, servers can be **IPv4 or IPv6 only**, and anything the
 forms do not offer can be written as **configuration code** merged on top of the generated one.
+A server whose route to the panel is poor can **reach the panel through another server** - its
+agent's connection passed on, still encrypted end to end - chosen by you, or by itself once a server
+keeps losing the panel.
 
 Links work in Clash Verge / FlClash / mihomo, Stash, sing-box, Shadowrocket, Surge, Quantumult X,
 Hiddify, Loon, v2rayN / v2rayNG / v2Box, NekoBox / Karing and the official WireGuard apps. The link
 detects the app; browsers get a page with QR codes and one-tap import buttons. Every protocol page
-lists exactly which of these apps can use it, computed from the same code that writes the configs.
+lists exactly which of these apps can use it, computed from the same code that writes the configs,
+and the tests check every combination with sing-box, mihomo and Xray themselves
+([test/formats](test/formats/README.md)).
 
 ## Quick start
 
@@ -107,9 +143,14 @@ Details: [docs/getting-started.md](docs/getting-started.md).
 | | |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Install, first server, protocols, users, the status page |
-| [Operations](docs/operations.md) | Backups, upgrades, lost access, reverse proxies, troubleshooting |
+| [Routing](docs/routing.md) | Traffic rules, load balancers and external nodes: what goes where, what is refused and why |
+| [IPv6 and dynamic DNS](docs/ipv6-and-dynamic-dns.md) | Servers whose IP address changes, servers with IPv6 only, Cloudflare updates |
+| [Operations](docs/operations.md) | Backups, upgrades, lost access, reverse proxies, servers that keep losing the panel, troubleshooting |
 | [API](docs/api.md) | Tokens, conventions, examples; the full reference is [docs/openapi.json](docs/openapi.json) and Settings › API & MCP |
 | [MCP](docs/mcp.md) | Connecting Claude and other AI assistants |
+| [Health checks](docs/health.md) | What the agents look for on each server, and deciding about what they find |
+| [Telegram bot](docs/telegram.md) | Notifications, commands, the daily report and changes from Telegram |
+| [Plugins](docs/plugins.md) | Changing the panel's looks and functions: what plugins can do, the manifest, the protocol, the JavaScript APIs, safety and recovery; [examples](examples/plugins) |
 | [Deploying with an AI agent](skills/meridian-deploy/SKILL.md) | Step-by-step instructions Codex, Claude Code and other agents follow to install and configure a panel ([AGENTS.md](AGENTS.md) points them there) |
 | [Architecture](docs/architecture.md) | How the panel and the agents work together |
 | [Security](SECURITY.md) | Threat model, protections, reporting a problem |
@@ -140,6 +181,7 @@ internal/seal         agent channel crypto (HMAC-signed requests, AES-GCM sealed
 internal/proto        the panel <-> agent contract
 web/                  the panel UI and the status page (Preact + Vite), embedded into the panel binary
 deploy/               panel installer
+examples/plugins/     example plugins: a theme and a server plugin written in Go
 skills/               agent skills: meridian-deploy (install and configure), meridian-admin (operate through MCP)
 test/e2e/             end-to-end test kit for a local VM
 ```

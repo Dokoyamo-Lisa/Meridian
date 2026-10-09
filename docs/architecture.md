@@ -61,10 +61,10 @@ core's live interface:
 
 | Core | How changes apply |
 | --- | --- |
-| Xray | users are added and removed with the gRPC `HandlerService` (`AlterInbound`); inbounds, outbounds and routing rules are replaced with `xray api adi/ado/adrules` after `xray run -test` validates the full configuration. |
+| Xray | users are added and removed with the gRPC `HandlerService` (`AlterInbound`); inbounds, outbounds and routing rules (with their load balancers) are replaced with `xray api adi/ado/adrules` after `xray run -test` validates the full configuration. |
 | Hysteria2 | users authenticate against the agent over HTTP, so user changes only update an in-memory table; online users that lose access are kicked through the traffic-stats API. A node's server restarts only when its own port, certificate or obfuscation changes. |
 | WireGuard | peers are added and removed on the running interface (wgctrl). |
-| nftables | the whole `inet meridian` table is replaced in one atomic transaction; conntrack keeps existing NAT mappings. |
+| nftables | the whole `inet meridian` table is replaced in one atomic transaction; conntrack keeps existing NAT mappings. Hysteria2's port hopping ranges are redirected to their protocol's port here, so changing one restarts nothing. |
 | realm | one service instance per forward: editing a forward restarts only that forward. |
 
 Changes that genuinely need a restart (a different Xray core version, for example) are **not**
@@ -150,6 +150,20 @@ Each server has a 256-bit secret, shown only inside its install command. From it
 - The **contract version** (`proto.Version`, now 4) is part of every state. An agent that is too old
   for its panel keeps running its last configuration, reports "the panel needs a newer agent" and
   accepts only an upgrade.
+- **Relays** (`relay.go` in the panel and the agent): a server with a poor route to the panel can
+  reach it through another server (`servers.panel_relay`; one hop only). The relayed agent gets the
+  relay's addresses (`State.PanelVia`), keeps them with its state for restarts and dials them for
+  every panel request, TLS still under the panel's own name; the relay's agent gets a port the panel
+  picked (`servers.relay_port`, never a protocol's or a forward's, so neither the country rule nor
+  IP blocks filter it) and the relayed servers' addresses (`State.Relay`), and joins each connection
+  from those to the panel unread. A relay that fails sends the agent directly, and the other way
+  round; the agent reports which way it uses (`Live.PanelPath`, `Live.RelayError`). The panel finds
+  servers that keep losing it from the timeline (`server_offline` / `server_online`, without
+  reboots, agent restarts and drops nearly every server shared) and can move them to a relay itself
+  (`Settings.AutoRelay`).
+- Action results stay on the agent's disk until the panel acknowledges them, so an upgrade's result
+  survives the restart it causes; a pending upgrade is also settled when the agent reports the
+  version it installs.
 
 The channel is safe over plain HTTP; HTTPS is still recommended for the panel's web interface.
 
@@ -163,6 +177,22 @@ exactly), and an import creates protocols that keep the keys, and users matched 
 with their own IDs and passwords. **Take over** sends a `stop_service` action for the old service
 and enables the imported protocols on the same ports once it has stopped.
 
+## Health checks
+
+Every five minutes the agent's health check (`internal/agent/health`) reads `/proc` and a few
+files at the lowest processor and disk priority. Its first scan records what is normal on the server
+(accounts, SSH keys, scheduled tasks, services, kernel modules, listening ports, Meridian's programs)
+in the agent's data folder; later scans report what changed, plus what is bad in itself (miners,
+`ld.so.preload`, programs from temporary folders or deleted). Ports, programs and services are
+Meridian's when the state says so (protocols, WireGuard, forwards, the agent and its cores). Each
+finding has a stable key; findings travel in reports (`Report.Health`), numbered per baseline and
+kept on the server until a report with them is acknowledged, so none is lost or counted twice.
+
+The panel keeps them as risks (`risks`, one per server and key), with the operator's decision:
+acknowledged (flagged again when it happens again), expected (never flagged again - on the server,
+or on every server through `risk_rules`) or open. High and critical risks are events of the
+"health" notification group and alerts on the overview. Nothing acts on them.
+
 ## Proxy pass
 
 A protocol on an entry server can send its traffic out through a protocol on another server (the
@@ -174,6 +204,62 @@ protocol - its entries' pass users included - to its own exit, where it arrives 
 user, so each server only knows its neighbours. A chain has two passes at most, every hop goes to
 another server and none comes back to a server it passed (`checkPass` refuses it; `passExit` blocks a
 chain stored otherwise, and the relay then drops the entry's pass user).
+
+## External nodes and traffic rules
+
+**External nodes** (`ext_nodes`, `external.go`) are exits that are not servers: an endpoint read from a
+share link, a subscription or a Clash file (`internal/subgen/parse.go`, which refuses anything that
+turns certificate checks off or travels unencrypted, and loopback, link-local or multicast addresses
+and names inside a local network) and rendered as an Xray outbound like a proxy pass hop
+(`subgen.XrayOutbound`). A protocol passes through one with `pass_ext`; while the node is
+turned off or removed, that protocol's traffic is blocked. Their ids are never handed out again (the
+removal records them in `id_floor`), so a pass or rule that named a removed node never comes to mean
+a new one. Fetching a subscription address (`fetch.go`) is HTTPS only and dials only public addresses,
+checked on the address it connects to.
+
+### Traffic rules on a server
+
+Rules (`routes`) and load balancers (`balancers`) belong to the account; `routing.go` turns them, for
+each server, into Xray outbounds, rules and balancers (`routePlanFor`). A server's Xray rules come in
+this order:
+
+1. the operator's own rules from the server's configuration code;
+2. `no-private`: private addresses are blocked;
+3. each protocol's own rules from its configuration code (limited to its inbound);
+4. `passers-n<id>`: traffic arriving as a pass user - protocols elsewhere passing through, other
+   servers' rules sending traffic here - leaves the way that protocol's traffic always does, so it
+   never follows this server's rules;
+5. the traffic rules in their order (`r<rule id>`; a rule that matches both names and addresses
+   becomes two, `d` and `i`);
+6. each protocol's proxy pass or own address (`pass-n<id>`, `bind-n<id>`): what no rule took;
+7. `ipver`: on a server set to one IP version, the rest leaves through an outbound of that version.
+
+A rule's exit on another server is an outbound `route-node-<id>` to that protocol, with a credential
+derived from the sending server's pass secret (`routeCredentials`); the exit's protocol gets the user
+`r<server id>` for every server whose rules reach it (`routeClients`). On the exit's own server the
+outbound is a copy of the way that protocol's traffic leaves (directly, its address, its pass). An
+external node is `route-ext-<id>`. A load balancer is `lb-<id>` over the outbounds `lb<id>.<member>`
+(selected by that prefix); only a fastest-first one has a `fallbackTag` (`block` or the direct
+outbound) - Xray refuses a fallback without latency checks. What cannot be used on a server becomes
+`block` with a note (a fastest-first balancer with no usable member there: its fallback): the server
+view's `route_notes`, the routing view's `problems`; a protocol's view lists the rules that send
+traffic through it (`route_uses`).
+
+Rules and balancers apply live (`adrules` replaces both together). A fastest-first balancer needs
+Xray's `observatory` (it probes the `lb` outbounds every minute), which Xray reads only when it
+starts: the agent reports it as pending restart and runs those balancers as random until the
+restart (`runningBalancers`, which also leaves their fallback out until then). Checks no balancer
+needs any more ask for no restart: they stop with the next one (`checksGone`). Whatever changes how
+an exit is reached or who reaches it - its settings or keys, its server's address, ports or IP
+version, its removal, a new pass secret taking effect, a new server the rules apply to - recompiles
+the account's servers when it has rules (`touchRoutes`). Removing a server, protocol or external node
+takes it out of rules' scopes and load balancers in the same transaction (`pruneRoutes`): a rule left
+with nothing keeps the last ids and applies nowhere, never everywhere.
+
+The agent's `check_exit` action (agents 1.0 and later) opens a connection to an external node - and
+a TLS handshake checked against its server name for TLS and REALITY nodes - from that server and
+reports whether it worked and how long it took; it refuses loopback, link-local and multicast
+addresses on the address it actually connects to.
 
 ## Subscriptions
 
@@ -196,21 +282,39 @@ user gets their own page from `/api/portal/me`; the supervisor always gets the d
 addresses are left out for everyone, the supervisor included, unless `status_ips` is on. Availability is sampled every minute into
 10-minute buckets per server (`server_uptime`) and reported for 24 hours, 30 days and per day.
 
+## Plugins
+
+A plugin (`internal/panel/plugins*.go`, [plugins](plugins.md)) is a zip unpacked into
+`<data>/plugins/<id>`; the `plugins` table keeps whether it is on and what the supervisor agreed to.
+Its style sheets go into the two pages' HTML as they are served, the status page script too; the
+panel script is loaded by the panel UI after sign-in (`web/src/plugins.tsx`, `window.Meridian`;
+the status page's API is `window.MeridianStatus`). A server plugin's program is started by the panel
+and speaks JSON-RPC 2.0 over its standard input and output: it hears events, filters a server's
+desired state at the end of `compileServer`, the rendered subscription, the status data and
+notifications, answers its own routes and MCP tools, and calls the API in-process as the
+supervisor within its permissions. Every call has a time limit; a failing filter is passed over.
+
 ## Data
 
-One SQLite database in WAL mode, written through a single in-process writer queue. Main tables:
+One database, written through a single in-process writer queue: PostgreSQL on new panels, SQLite
+(WAL mode) on panels from before 1.0 or installed with `--database sqlite`. The SQL is written once,
+for SQLite; on PostgreSQL a driver around pgx translates each statement as it is sent (placeholders,
+case-insensitive names, upserts, SQLite's functions, booleans as 0/1, new rows' ids), and the schema
+is SQLite's read back - the migrations replayed in memory - so the two cannot drift
+(`internal/db/pg.go`, `pgschema.go`). `internal/db/copy.go` moves the data between them (`meridian db
+to-postgres / to-sqlite`), and backups are SQLite files either way. Main tables:
 `accounts` (the supervisor), `sessions`, `api_tokens`, `servers`, `nodes` (protocols), `node_creds`
 (imported credentials), `forwards`, `subs` (users) and `user_sessions`, `wg_peers`, `traffic_daily`,
 `server_daily`, `forward_daily`, `ip_log`, `dest_log`, `server_metrics`, `server_uptime`,
-`server_scans`, `events`, `actions`, `ip_blocks`, `settings`. Migrations run at start-up and are
-append-only.
+`server_scans`, `events`, `actions`, `ip_blocks`, `settings`, `ext_nodes` (external nodes), `routes`
+(traffic rules), `balancers`. Migrations run at start-up and are append-only.
 
 ## Code map
 
 | Package | Role |
 | --- | --- |
-| `internal/panel` | HTTP API, auth, protocol model, compiler, ingest, jobs, status page data, country rules, MCP, OpenAPI |
-| `internal/subgen` | subscription formats and which apps support what |
+| `internal/panel` | HTTP API, auth, protocol model, compiler, ingest, jobs, status page data, country rules, external nodes and traffic rules, MCP, OpenAPI |
+| `internal/subgen` | subscription formats and which apps support what; reading share links, subscriptions and Clash files (external nodes) |
 | `internal/geo` | IP locations and country address lists (DB-IP Lite) |
 | `internal/proto` | the contract between panel and agent |
 | `internal/seal` | channel crypto |
@@ -219,4 +323,5 @@ append-only.
 | `internal/agent/acme` | Let's Encrypt certificates for TLS protocols |
 | `internal/agent/scan` | finding existing proxy setups |
 | `internal/agent/cores` | verified core downloads |
+| `internal/agent/health` | the health check: signs of a break-in or abuse |
 | `web/` | the panel UI and the status page (Preact + Vite), embedded in the panel binary |

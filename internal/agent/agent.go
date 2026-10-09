@@ -29,6 +29,7 @@ import (
 
 	"meridian/internal/agent/acme"
 	"meridian/internal/agent/cores"
+	"meridian/internal/agent/health"
 	"meridian/internal/agent/hy"
 	"meridian/internal/agent/nft"
 	"meridian/internal/agent/realm"
@@ -43,12 +44,16 @@ import (
 var Version = "dev"
 
 const (
+	Unit    = "meridian-agent"
+	BinPath = "/usr/local/bin/meridian-agent"
+)
+
+// Where the agent keeps its configuration and data (variables only so tests can point them elsewhere).
+var (
 	ConfDir  = "/etc/meridian-agent"
 	ConfPath = "/etc/meridian-agent/agent.json"
 	DataDir  = "/var/lib/meridian-agent"
 	RunDir   = "/run/meridian-agent"
-	Unit     = "meridian-agent"
-	BinPath  = "/usr/local/bin/meridian-agent"
 )
 
 // DefaultAPIPort is where the agent's loopback-only ports start: the Xray API on it and Hysteria's
@@ -64,6 +69,8 @@ type Config struct {
 	// ACME overrides, for testing against a private certificate authority only
 	ACMEDirectory string `json:"acme_directory,omitempty"`
 	ACMECAFile    string `json:"acme_ca_file,omitempty"`
+	// Shares are the other panels the server's own panel shares it with (share.go)
+	Shares []ShareLink `json:"shares,omitempty"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -104,21 +111,39 @@ type Agent struct {
 	boot    string // the kernel's boot id (see Baselines)
 	tooNew  string // the revision of a state this agent is too old for: asked for again only once it changes
 
-	mu        sync.Mutex
-	state     *proto.State
-	applied   *proto.Applied
-	results   []proto.ActionResult
-	done      map[int64]bool
-	events    []proto.AgentEvent
-	lastHello time.Time
-	lastCaps  proto.Caps // what the last hello said the host supports
-	lastAddrs []string   // the addresses the last hello listed
-	cores     map[string]proto.CoreStatus
-	kick      chan struct{}
-	applyMu   sync.Mutex
-	geo       *geoCache
-	scanned   map[string]bool // units the last scan found: the only ones a takeover may stop
-	shared    sharedCerts     // the panel's shared certificates this server holds and serves
+	mu          sync.Mutex
+	state       *proto.State
+	applied     *proto.Applied
+	results     []proto.ActionResult
+	done        map[int64]bool
+	events      []proto.AgentEvent
+	lastHello   time.Time
+	limitWarned time.Time  // when a speed limit failure was last logged (limits.go)
+	cons        consoles   // the supervisor's consoles open now (console.go)
+	lastCaps    proto.Caps // what the last hello said the host supports
+	lastAddrs   []string   // the addresses the last hello listed
+	cores       map[string]proto.CoreStatus
+	kick        chan struct{}
+	applyMu     sync.Mutex
+	geo         *geoCache
+	scanned     map[string]bool // units the last scan found: the only ones a takeover may stop
+	shared      sharedCerts     // the panel's shared certificates this server holds and serves
+	relay       *relayServer    // passes other servers' agents through to the panel (relay.go)
+	actions     string          // the actions file (empty: in DataDir; tests keep their own)
+	actionsMu   sync.Mutex      // one write of the actions file at a time
+	health      *health.Monitor // signs of a break-in or abuse, reported to the panel
+	pub         publicAddrs     // the public addresses between hellos (publicaddr.go)
+
+	// the panels the server is shared with (share.go): their links, and the state the host runs -
+	// the home's with theirs laid over it - with what of theirs could not run
+	ping   *pinger         // the ping monitors (ping.go)
+	runCtx context.Context // lives as long as the agent runs
+
+	gmu       sync.Mutex
+	guests    map[int]*guest
+	cfgMu     sync.Mutex
+	full      *proto.State
+	mergeErrs map[int][]string
 }
 
 // geoCache keeps the address list of the country rule, by hash, in memory and on disk (so the rule
@@ -141,7 +166,7 @@ func New(cfg *Config) (*Agent, error) {
 		}
 		_ = os.Chmod(d, mode)
 	}
-	a := &Agent{cfg: cfg, client: c, nft: nft.New(), wg: wg.New(), sampler: &sys.Sampler{},
+	a := &Agent{cfg: cfg, client: c, nft: nft.New(), wg: wg.New(), sampler: &sys.Sampler{}, ping: newPinger(), runCtx: context.Background(),
 		out: loadOutbox(filepath.Join(DataDir, "outbox.json")), started: time.Now(), done: map[int64]bool{},
 		kick: make(chan struct{}, 1), cores: map[string]proto.CoreStatus{}}
 	a.xray = &xray.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "xray"), RunDir: RunDir, APIPort: cfg.APIPort,
@@ -150,9 +175,12 @@ func New(cfg *Config) (*Agent, error) {
 	a.hy = &hy.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "hy2"), RunDir: RunDir, AuthPort: cfg.APIPort + 1,
 		Events: a.event}
 	a.realm = &realm.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "realm")}
+	a.health = a.newHealth()
 	a.restoreBaselines()
 	a.certs = &acme.Manager{Dir: filepath.Join(DataDir, "certs"), Directory: cfg.ACMEDirectory, CAFile: cfg.ACMECAFile,
 		Events: a.event, OnChange: a.reapply}
+	a.relay = newRelayServer(c.link.host)
+	cores.SetTransport(c.link) // the panel's mirror the way the panel's requests go (a relay, when there is one)
 	a.loadDone()
 	return a, nil
 }
@@ -305,9 +333,19 @@ func (a *Agent) Run(ctx context.Context) error {
 		slog.Info("restoring last known state", "rev", st.Rev)
 		a.apply(ctx, st, false)
 	}
+	a.runCtx = ctx
+	a.ping.check = func(ctx context.Context, t proto.PingTarget) error { // a guest's monitors measure the internet only
+		if slot, _ := slotOf(t.ID); slot > 0 {
+			return publicTarget(ctx, t.Target)
+		}
+		return nil
+	}
+	a.startGuests(ctx) // the panels it is shared with (share.go)
 	go a.watch(ctx)
 	go a.reconcileLoop(ctx)
 	go a.certs.Run(ctx)
+	go a.health.Run(ctx)
+	go a.watchPublic(ctx)
 	a.reportLoop(ctx)
 	return nil
 }
@@ -369,7 +407,13 @@ func (a *Agent) reconcileLoop(ctx context.Context) {
 		case <-t.C:
 			if st := a.current(); st != nil {
 				a.apply(ctx, st, false)
-				a.shared.check(ctx, st)
+				a.mu.Lock()
+				full := a.full
+				a.mu.Unlock()
+				if full == nil {
+					full = st
+				}
+				a.shared.check(ctx, full)
 			}
 		}
 	}
@@ -379,6 +423,7 @@ func (a *Agent) reconcileLoop(ctx context.Context) {
 func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 	a.applyMu.Lock()
 	defer a.applyMu.Unlock()
+	a.client.follow(st) // first: even an agent too old for this state may need the relay for its upgrade
 	if st.Contract > proto.Version {
 		// a newer panel: keep running what we have, accept only the upgrade
 		var acts []proto.Action
@@ -409,7 +454,13 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 			errs = append(errs, what+": "+err.Error())
 		}
 	}
+	// what the host runs: this state, with the panels it is shared with laid over it (sharemerge.go);
+	// the host itself - cores, the country rule, relaying - follows this state alone
+	full, mergeErrs := mergeShared(st, a.guestStates(), []int{a.cfg.APIPort, a.cfg.APIPort + 1})
 	logOn := st.Agent.ConnLog || st.Agent.DestLog
+	for _, g := range a.guestStates() {
+		logOn = logOn || g.st.Agent.ConnLog || g.st.Agent.DestLog
+	}
 	geo, gerr := a.geoSpec(ctx, st.Geo)
 	note("country rule", gerr)
 
@@ -419,7 +470,7 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 	} else {
 		// a core that could not be downloaded keeps running as it is; everything else applies
 		ready := a.prepare(ctx, st)
-		xr, hys, waiting := a.withCerts(st)
+		xr, hys, waiting := a.withCerts(full)
 		for _, w := range waiting {
 			errs = append(errs, "certificate: "+w)
 		}
@@ -430,32 +481,47 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 			note("xray", err)
 			pending = append(pending, res.Pending...)
 		}
+		a.hy.SetRefused(full.Refuse) // devices over a user's limit, refused at sign-in (hy/limits.go)
 		if ready.hysteria != nil {
 			note("download", ready.hysteria)
 		} else {
 			note("hysteria", a.hy.Apply(ctx, hys, st.Cores.Hysteria, st.Cores.Mirror))
 			pending = append(pending, a.hy.Pending()...)
 		}
-		note("wireguard", a.wg.Apply(st.WireGuard))
+		note("wireguard", a.wg.Apply(full.WireGuard))
 		if ready.realm != nil {
 			note("download", ready.realm)
 		} else {
-			note("realm", a.realm.Apply(ctx, st.Forwards, st.Cores.Realm, st.Cores.Mirror))
+			note("realm", a.realm.Apply(ctx, full.Forwards, st.Cores.Realm, st.Cores.Mirror))
 		}
 		// nftables is optional (a bare Alpine has none): without it, country rules, IP blocks and kernel
 		// forwards do not apply here - the panel says so on the server page - and the rest runs
 		if nft.Available() {
-			spec := a.nftSpec(st)
+			spec := a.nftSpec(full)
 			spec.Geo = geo
 			note("nftables", a.nft.Apply(spec))
 		}
 	}
+	note("relay for other servers", a.relay.Apply(st.Relay, a.relayTaken(full)))
+	a.ping.Set(a.runCtx, full.Ping) // the ping monitors (ping.go)
 
 	a.runActions(st, st.Actions)
 
+	// what went wrong with a guest's part is that guest's to hear (in its own ids)
+	homeErrs, guestErrs := splitErrs(errs)
+	at := time.Now().Unix()
+	for _, g := range a.guestList() {
+		g.mu.Lock()
+		if g.state != nil && g.tooNew == "" {
+			ge := append(append([]string{}, mergeErrs[g.slot]...), guestErrs[g.slot]...)
+			g.applied = &proto.Applied{Rev: g.state.Rev, OK: len(ge) == 0, Errors: ge, Pending: pending, At: at}
+		}
+		g.mu.Unlock()
+	}
 	a.mu.Lock()
 	a.state = st
-	a.applied = &proto.Applied{Rev: st.Rev, OK: len(errs) == 0, Errors: errs, Pending: pending, At: time.Now().Unix()}
+	a.full, a.mergeErrs = full, mergeErrs
+	a.applied = &proto.Applied{Rev: st.Rev, OK: len(homeErrs) == 0, Errors: homeErrs, Pending: pending, At: at}
 	a.mu.Unlock()
 	if fresh {
 		a.saveState(st)
@@ -492,6 +558,7 @@ func (a *Agent) runActions(st *proto.State, acts []proto.Action) {
 			a.mu.Lock()
 			a.results = append(a.results, r)
 			a.mu.Unlock()
+			a.saveDone() // kept until the panel has it: an agent upgrade restarts the agent right after
 			select {
 			case a.kick <- struct{}{}:
 			default:
@@ -580,7 +647,7 @@ func (a *Agent) geoSpec(ctx context.Context, r *proto.GeoRule) (*nft.GeoSpec, er
 
 // nftSpec derives the nftables table from the state.
 func (a *Agent) nftSpec(st *proto.State) nft.Spec {
-	spec := nft.Spec{Forwards: st.Forwards, Blocked: st.BlockedIPs}
+	spec := nft.Spec{Forwards: st.Forwards, Blocked: st.BlockedIPs, Speed: st.Speed}
 	// the Xray API and the Hysteria auth/stats endpoints listen on loopback without passwords:
 	// only root (the agent and the cores) may connect to them
 	spec.LocalOnly = append([]int{a.cfg.APIPort}, a.hy.LocalPorts()...)
@@ -608,6 +675,7 @@ func (a *Agent) nftSpec(st *proto.State) nft.Spec {
 		}
 	}
 	spec.UDPPorts = append(spec.UDPPorts, hy.Ports(st.Hysteria)...)
+	spec.Hysteria = st.Hysteria // their port hopping ranges
 	for _, w := range st.WireGuard {
 		spec.UDPPorts = append(spec.UDPPorts, w.ListenPort)
 		g := nft.WGNat{NodeID: w.NodeID, Iface: w.Name, SNAT: w.SNAT}
@@ -756,6 +824,19 @@ func (a *Agent) runAction(ctx context.Context, st *proto.State, act proto.Action
 		}
 		a.event("service_stopped", "warn", unit+" stopped and disabled for the takeover")
 		return unit + " stopped and disabled", nil
+	case proto.ActionConsole:
+		return a.startConsole(args) // console.go
+	case proto.ActionShareAdd: // the server's own panel shares it with another (share.go)
+		return a.shareAdd(ctx, act.Args)
+	case proto.ActionShareRemove:
+		return a.shareRemove(act.Args)
+	case proto.ActionCheckExit:
+		var req proto.ExitCheck
+		if err := json.Unmarshal(act.Args, &req); err != nil {
+			return "", errors.New("the check's settings cannot be read")
+		}
+		b, _ := json.Marshal(checkExit(ctx, req))
+		return string(b), nil
 	}
 	return "", fmt.Errorf("unknown action %q", act.Kind)
 }
@@ -772,11 +853,18 @@ func (a *Agent) upgradeSelf(ctx context.Context, want string) (string, error) {
 	if len(want) != 64 {
 		return "", errors.New("the panel sent no checksum for this agent build - upgrade the panel first")
 	}
+	// a repeated request (an upgrade whose result was lost, sent again): no needless restart. The
+	// running binary counts, not the file - an upgrade that wrote it but never restarted still has to
+	if cur, err := os.ReadFile("/proc/self/exe"); err == nil {
+		if h := sha256.Sum256(cur); hex.EncodeToString(h[:]) == want {
+			return "the agent runs this build already - nothing to do", nil
+		}
+	}
 	name := "meridian-agent-linux-" + runtime.GOARCH
 	base := strings.TrimRight(a.cfg.Panel, "/") + "/agent/v1/download/" + name
 	get := func(u string) ([]byte, error) {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := (&http.Client{Transport: a.client.link, Timeout: 10 * time.Minute}).Do(req) // through the relay, when there is one
 		if err != nil {
 			return nil, err
 		}
@@ -795,6 +883,7 @@ func (a *Agent) upgradeSelf(ctx context.Context, want string) (string, error) {
 		return "", errors.New("downloaded agent does not match the checksum the panel sent")
 	}
 	tmp := BinPath + ".new"
+	a.health.Upgrading(want) // the agent's own new program: no finding
 	if err := os.WriteFile(tmp, bin, 0o755); err != nil {
 		return "", err
 	}
@@ -847,10 +936,17 @@ func (a *Agent) report(ctx context.Context) {
 	if st != nil {
 		connLog, destLog = st.Agent.ConnLog, st.Agent.DestLog
 	}
+	homeConn, homeDest := connLog, destLog
+	guests := a.guestStates()
+	for _, g := range guests { // collected when any panel wants them; each gets only what it asked for
+		connLog = connLog || g.st.Agent.ConnLog
+		destLog = destLog || g.st.Agent.DestLog
+	}
 	a.sampler.Sample()
 
 	live := &proto.Live{TS: time.Now().Unix(), Sys: a.sampler.Sys(), Ports: sys.ListeningPorts(),
-		Cores: map[string]proto.CoreStatus{}, Certs: a.shared.report()}
+		Cores: map[string]proto.CoreStatus{}, Certs: a.shared.report(), RelayConns: a.relay.open()}
+	a.client.linkStatus(live)
 	var traffic []proto.UserTraffic
 	var ips []proto.IPSeen
 	var dests []proto.DestSeen
@@ -878,12 +974,75 @@ func (a *Agent) report(ctx context.Context) {
 		ips = append(ips, wc.IPs...)
 		dests = append(dests, wc.Dests...)
 		live.Online = append(live.Online, wc.Online...)
+		a.mu.Lock()
+		full := a.full
+		a.mu.Unlock()
+		if full == nil {
+			full = st
+		}
+		a.limitDevices(full, live.Online) // users' speed limits follow their devices (limits.go)
 	}
 	var fwds []proto.FwdTraffic
 	for id, c := range a.nft.Take() {
 		fwds = append(fwds, proto.FwdTraffic{ID: id, Up: c.Up, Down: c.Down, Conns: c.Conns})
 	}
 	rx, tx := a.sampler.TakeNIC()
+	a.health.Carried(carriedBytes(traffic, fwds))
+	// the panels the server is shared with get their own part (share.go); the host's load, ports and
+	// Xray's state are every panel's
+	host := *live
+	host.Online, host.Certs, host.Cores = nil, nil, map[string]proto.CoreStatus{}
+	if xs, ok := live.Cores["xray"]; ok {
+		host.Cores["xray"] = xs
+	}
+	traffic, ips, dests, fwds, parts := splitCollected(traffic, ips, dests, live, fwds)
+	pings := a.ping.Take()
+	var homePings []proto.PingResult
+	guestPings := map[int][]proto.PingResult{}
+	for _, r := range pings {
+		if slot, own := slotOf(r.ID); slot > 0 {
+			r.ID = own
+			guestPings[slot] = append(guestPings[slot], r)
+		} else {
+			homePings = append(homePings, r)
+		}
+	}
+	a.out.addPings(homePings)
+	if !homeConn {
+		ips = nil
+	}
+	if !homeDest {
+		dests = nil
+	}
+	for _, g := range a.guestList() {
+		p := parts[g.slot]
+		if p == nil {
+			p = &guestPart{cores: map[string]proto.CoreStatus{}}
+		}
+		g.mu.Lock()
+		gConn, gDest := g.state != nil && g.state.Agent.ConnLog, g.state != nil && g.state.Agent.DestLog
+		gl := host
+		gl.Online, gl.Certs = p.online, p.certs
+		gl.Cores = map[string]proto.CoreStatus{}
+		for k, v := range host.Cores {
+			gl.Cores[k] = v
+		}
+		for k, v := range p.cores {
+			gl.Cores[k] = v
+		}
+		g.live = &gl
+		g.mu.Unlock()
+		gi, gd := p.ips, p.dests
+		if !gConn {
+			gi = nil
+		}
+		if !gDest {
+			gd = nil
+		}
+		g.out.add(p.traffic, p.fwds, gi, gd, proto.NICDelta{RX: rx, TX: tx}, nil, 0, nil)
+		g.out.addPings(guestPings[g.slot])
+		g.saveOut()
+	}
 
 	a.mu.Lock()
 	events := a.events
@@ -891,20 +1050,31 @@ func (a *Agent) report(ctx context.Context) {
 	results := append([]proto.ActionResult(nil), a.results...)
 	applied := a.applied
 	// the host facts every 10 minutes - or at once when what it supports changes (nftables installed)
-	// or its addresses do (one added or gone: protocols bound to it and the panel's warnings follow)
+	// or its addresses do (one added or gone: protocols bound to it and the panel's warnings follow;
+	// a new public address: links to this server follow)
 	caps := sys.Caps()
 	caps.APIPort = a.cfg.APIPort
 	caps.RestartPending = true
-	caps.Certs = true // resolves the panel's shared certificates
+	caps.Certs = true   // resolves the panel's shared certificates
+	caps.Relay = true   // reaches the panel through a relay, and relays others
+	caps.PortHop = true // redirects Hysteria2's port hopping ranges
+	caps.Limits = true  // enforces users' speed limits and turns away devices over a limit
+	caps.Console = consoleAllowed()
+	caps.Share = true // can be shared with other panels (share.go)
 	addrs := sys.LocalAddrs()
-	sendHello := time.Since(a.lastHello) > 10*time.Minute || caps != a.lastCaps || !slices.Equal(addrs, a.lastAddrs)
+	sendHello := time.Since(a.lastHello) > 10*time.Minute || caps != a.lastCaps || !slices.Equal(addrs, a.lastAddrs) || a.pub.moved()
 	a.mu.Unlock()
 
 	geoDrops := a.nft.TakeGeoDrops()
 	a.out.add(traffic, fwds, ips, dests, proto.NICDelta{RX: rx, TX: tx}, events, geoDrops, &Baselines{Boot: a.boot,
 		WG: a.wg.Baseline(), NFT: a.nft.Baseline(), Xray: a.xray.LogPos(), Hy: a.hy.LogPos()})
+	a.mu.Lock()
+	mergeErrs := a.mergeErrs
+	a.mu.Unlock()
+	live.Shares = a.shareStatus(mergeErrs) // the panels the server is shared with (share.go)
+	live.Taken = a.takenFor(0)
 	rep := &proto.Report{Instance: a.out.Instance, Batch: a.out.next(), Live: live, Applied: applied,
-		ActionResults: results}
+		ActionResults: results, Health: a.health.Report()}
 	// on disk before it leaves: the batch in flight and the counters it came from go together, so a
 	// stop during the send neither repeats nor loses anything
 	a.out.save()
@@ -923,11 +1093,13 @@ func (a *Agent) report(ctx context.Context) {
 	}
 	a.out.ack(ack)
 	a.out.save()
+	a.health.Delivered(rep.Health)
 	a.mu.Lock()
 	if sendHello {
 		a.lastHello = time.Now()
 		a.lastCaps = caps
 		a.lastAddrs = addrs
+		a.pub.delivered(rep.Hello)
 	}
 	// results that reached the panel are done
 	keep := a.results[:0]
@@ -942,8 +1114,12 @@ func (a *Agent) report(ctx context.Context) {
 			keep = append(keep, r)
 		}
 	}
+	delivered := len(keep) < len(a.results)
 	a.results = keep
 	a.mu.Unlock()
+	if delivered {
+		a.saveDone()
+	}
 }
 
 // ---------------------------------------------------------------- persistence
@@ -973,33 +1149,58 @@ func (a *Agent) loadState() *proto.State {
 	return &st
 }
 
-func (a *Agent) donePath() string { return filepath.Join(DataDir, "actions-done.json") }
+func (a *Agent) donePath() string {
+	if a.actions != "" { // a test's own file: DataDir is not read at all
+		return a.actions
+	}
+	return filepath.Join(DataDir, "actions-done.json")
+}
+
+// actionsFile is what the agent keeps of actions: the ids it started (each runs once, across restarts
+// too - an upgrade restarts the agent) and the results the panel has not acknowledged yet, so a
+// result outlives a restart before the next report (an upgrade's always does).
+type actionsFile struct {
+	Done    []int64              `json:"done"`
+	Results []proto.ActionResult `json:"results,omitempty"`
+}
 
 func (a *Agent) loadDone() {
 	b, err := os.ReadFile(a.donePath())
 	if err != nil {
 		return
 	}
-	var ids []int64
-	if json.Unmarshal(b, &ids) == nil {
-		for _, id := range ids {
-			a.done[id] = true
+	var f actionsFile
+	if json.Unmarshal(b, &f) != nil {
+		if json.Unmarshal(b, &f.Done) != nil { // agents before 1.0 kept the ids alone
+			return
 		}
 	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, id := range f.Done {
+		a.done[id] = true
+	}
+	a.results = append(a.results, f.Results...)
 }
 
 func (a *Agent) saveDone() {
+	a.actionsMu.Lock()
+	defer a.actionsMu.Unlock()
 	a.mu.Lock()
-	ids := make([]int64, 0, len(a.done))
+	f := actionsFile{Done: make([]int64, 0, len(a.done)), Results: slices.Clone(a.results)}
 	for id := range a.done {
-		ids = append(ids, id)
+		f.Done = append(f.Done, id)
 	}
 	a.mu.Unlock()
-	if len(ids) > 1000 {
-		ids = ids[len(ids)-1000:]
+	slices.Sort(f.Done)
+	if len(f.Done) > 1000 { // the newest: ids only grow
+		f.Done = f.Done[len(f.Done)-1000:]
 	}
-	b, _ := json.Marshal(ids)
-	_ = os.WriteFile(a.donePath(), b, 0o600)
+	b, _ := json.Marshal(f)
+	tmp := a.donePath() + ".tmp"
+	if os.WriteFile(tmp, b, 0o600) == nil {
+		_ = os.Rename(tmp, a.donePath())
+	}
 }
 
 // decommission removes everything the agent manages and the agent itself: the panel deleted

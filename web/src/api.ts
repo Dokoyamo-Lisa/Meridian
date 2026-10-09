@@ -40,7 +40,7 @@ export const get = <T = any>(p: string) => api<T>('GET', p)
 export const post = <T = any>(p: string, b?: unknown) => api<T>('POST', p, b ?? {})
 export const patch = <T = any>(p: string, b: unknown) => api<T>('PATCH', p, b)
 export const put = <T = any>(p: string, b: unknown) => api<T>('PUT', p, b)
-export const del = <T = any>(p: string) => api<T>('DELETE', p)
+export const del = <T = any>(p: string, b?: unknown) => api<T>('DELETE', p, b)
 
 // upload sends a file as the raw body (the logo); errors read like api()'s.
 export async function upload<T = any>(path: string, file: Blob): Promise<T> {
@@ -91,6 +91,17 @@ export interface Meta {
   user_url?: string
   kinds?: Kind[]
   reality_targets?: string[]
+  /** Cloudflare Turnstile's site key while every sign-in must pass it. */
+  turnstile?: string
+  /** The maintenance notice while the panel is in maintenance mode. */
+  maintenance?: string
+}
+
+export interface TurnstileView {
+  on: boolean
+  site_key: string
+  secret_set: boolean
+  disabled_on_host?: boolean
 }
 
 export interface Sys {
@@ -136,6 +147,7 @@ export interface NodeView {
   settings: Record<string, any>
   host: string
   pass_node: number
+  pass_ext: number
   /** Serves only proxy passes: users cannot connect to it directly. */
   pass_only: boolean
   /** The server address this protocol has to itself ('' = all of them). */
@@ -153,6 +165,8 @@ export interface NodeView {
   pass_broken?: string
   /** Protocols on other servers that pass through this one, as 'server · protocol'. */
   pass_entries?: string[]
+  /** Traffic rules that send traffic through this protocol (blocked while it is off or gone). */
+  route_uses?: string[]
   /** The port devices connect to, when the server's provider forwards it under another number. */
   public_port?: number
 }
@@ -173,11 +187,26 @@ export interface Forward {
   public_port?: number
 }
 
+/** A panel a server is shared with, as its agent reports it. */
+export interface ShareStatus {
+  panel: string
+  name?: string
+  connected: boolean
+  last_at?: number
+  error?: string
+}
+
 export interface Server {
   id: number
   name: string
   address: string
   note: string
+  /** Another panel shares this server with you: the console, upgrades and relaying stay with its owner. */
+  guest?: boolean
+  /** (Your own server) the other panels it is shared with. */
+  shares?: ShareStatus[]
+  /** Port ranges the other panels use on this server. */
+  taken?: [number, number][]
   status: 'pending' | 'online' | 'offline'
   agent_version: string
   hostname: string
@@ -237,10 +266,89 @@ export interface Server {
   forwards: Forward[]
   online_subs: number
   online_ips: number
-  caps: { systemd: boolean; wireguard: boolean; conntrack: boolean; nftables: boolean; iptables: boolean; api_port?: number; no_ipv6?: boolean; wg6?: boolean }
+  caps: {
+    systemd: boolean
+    wireguard: boolean
+    conntrack: boolean
+    nftables: boolean
+    iptables: boolean
+    api_port?: number
+    no_ipv6?: boolean
+    wg6?: boolean
+    relay?: boolean
+    /** Enforces users' speed and device limits (agent 1.0). */
+    limits?: boolean
+    /** Opens the supervisor's console (agent 1.0, not turned off on the server). */
+    console?: boolean
+    /** The agent can be shared with other panels (1.0 and later). */
+    share?: boolean
+  }
   desired_rev?: string
   limits?: string[]
+  /** Traffic rules and load balancers that cannot be used on this server as written (that traffic is blocked here). */
+  route_notes?: string[]
   ports?: number[]
+  /** The server whose agent this one reaches the panel through (a relay); 0 = directly. */
+  panel_relay: number
+  /** Where this server listens for the servers it relays to the panel (TCP; 0 = none picked yet). */
+  relay_port: number
+  /** Why it keeps losing the panel; empty when it does not. */
+  panel_trouble: string
+  /** How its agent reaches the panel now (agents 1.0 and later, while online). */
+  panel_path?: 'relay' | 'direct'
+  /** Why the relay failed, when the agent went directly instead. */
+  relay_error?: string
+  relay_name?: string
+  /** The servers that reach the panel through this one. */
+  relay_for?: { id: number; name: string }[]
+  relay_conns?: number
+  /** What its agent talks to the panel over now (agents 1.0 and later, while online). */
+  panel_conn?: 'websocket' | 'http'
+  /** Why its agent makes HTTP requests although it should use its WebSocket. */
+  conn_error?: string
+  /** Its IP address changes (dynamic DNS): address is its domain name, which every link to it uses. */
+  ddns: boolean
+  /** With ddns: the panel keeps the name's A and AAAA records in Cloudflare pointing at it. */
+  ddns_cloudflare: boolean
+  /** With ddns: what the name resolves to, and whether that is the server. */
+  dns?: DynamicDNS
+}
+
+/** A dynamic DNS name as the panel last saw it. */
+export interface DynamicDNS {
+  name: string
+  addrs: string[]
+  checked_at: number
+  problems?: string[]
+  cloudflare?: { state: 'ok' | 'failed' | 'waiting'; message?: string; at?: number }
+}
+
+/** Dynamic DNS through Cloudflare (Settings). The token is never shown. */
+export interface CloudflareView {
+  token_set: boolean
+  servers: string[]
+}
+
+export interface CloudflareTest {
+  ok: boolean
+  message: string
+  names: { name: string; zone?: string; records: string[]; error?: string }[]
+}
+
+/** The panel's public address as servers reach it. */
+export interface PanelAddress {
+  host: string
+  ipv4: string[]
+  ipv6: string[]
+  /** What a server with IPv6 only needs, when the panel's address has no IPv6. */
+  note?: string
+}
+
+/** What POST /api/agents/upgrade did. */
+export interface AgentsUpgraded {
+  servers: string[]
+  /** Servers left out, and why (an upgrade already waits for them or is under way). */
+  skipped: { name: string; why: string }[]
 }
 
 export interface OnlineIP {
@@ -258,6 +366,20 @@ export interface OnlineIP {
 }
 
 /** A user: a subscription link with limits, and optionally a sign-in to their own page. */
+/** A user's limit on one protocol, this cycle. */
+export interface NodeLimit {
+  node_id: number
+  server_id: number
+  server: string
+  protocol: string
+  quota: number
+  used: number
+  left: number
+  /** Used up, and the user's limits stop the protocol: it does not serve them until the cycle starts over. */
+  stopped: boolean
+  removed: boolean
+}
+
 export interface User {
   id: number
   name: string
@@ -291,6 +413,55 @@ export interface User {
   online?: OnlineIP[]
   ips_24h: number
   password?: string
+  /** What counts toward the quota: both, down (download only), up (upload only), max (the larger). */
+  count_mode: CountMode
+  /** What counts toward the quota this cycle. */
+  used: number
+  /** When the user's period started; 0 = when they were created. */
+  starts_at: number
+  /** Usage resets every this many days from starts_at; 0 = on reset_day. */
+  reset_every: number
+  /** When usage next resets; 0 = never. */
+  next_reset: number
+  /** Mbps for the user's devices together on each server; 0 = no limit. */
+  speed_limit: number
+  /** Devices over ip_limit: '' = an alert only, refuse = turned away. */
+  device_mode: '' | 'refuse'
+  /** The preset plan last applied; 0 = none. */
+  plan_id: number
+  /** Limits per protocol: protocol id -> bytes per cycle. */
+  node_quotas?: Record<string, number> | null
+  /** When one is used up: '' = an alert only, stop = that protocol stops serving the user until the cycle starts over. */
+  node_quota_mode?: '' | 'stop'
+  /** (One user) each limit per protocol with what was used of it this cycle. */
+  node_limits?: NodeLimit[]
+  /** Devices over the limit turned away now (device_mode refuse). */
+  turned_away?: string[]
+}
+
+export type CountMode = 'both' | 'down' | 'up' | 'max'
+
+/** A preset plan: what users on it get. */
+export interface Plan {
+  id: number
+  name: string
+  note: string
+  quota: number
+  count_mode: CountMode
+  duration: number
+  duration_unit: 'day' | 'month'
+  reset_day: number
+  reset_every: number
+  ip_limit: number
+  device_mode: '' | 'refuse'
+  speed_limit: number
+  scope: { servers?: number[]; protocols?: number[]; none?: boolean }
+  price: number
+  currency: string
+  sort: number
+  users: number
+  node_quotas?: Record<string, number> | null
+  node_quota_mode?: '' | 'stop'
 }
 
 export interface Endpoint {
@@ -383,9 +554,22 @@ export interface Settings {
   status_public: boolean
   /** Visitors also see the servers' public IP addresses. */
   status_ips: boolean
+  /** Visitors and users get the overview (else they start at the list of servers). */
+  status_overview: boolean
+  /** Visitors and users see the outages of the last 30 days. */
+  status_events: boolean
+  /** The charts of a server's details visitors and users get (cpu, memory, disk, diskio, network, load, connections, temperature, ping). */
+  status_charts: string[]
   logo_animation: string
   agent_port: number
   auto_update: boolean
+  /** A server that keeps losing the panel is moved to reach it through this server, once; 0 = off. */
+  auto_relay: number
+  /** How agents talk to the panel: ws = one lasting WebSocket each (the default), http = HTTP requests. */
+  agent_transport: 'ws' | 'http'
+  /** Maintenance mode: only the supervisor can sign in; servers keep working. */
+  maintenance?: boolean
+  maintenance_note?: string
 }
 
 export interface ProtocolCatalog {
@@ -468,6 +652,136 @@ export interface Place {
 }
 
 // ---------------------------------------------------------------- formatting
+
+// External nodes: proxies elsewhere, usable as exits (GET /api/external-nodes).
+export interface ExtUse {
+  type: 'protocol' | 'rule' | 'balancer'
+  id: number
+  name: string
+}
+
+export interface ExtNode {
+  id: number
+  name: string
+  kind: string
+  label: string
+  host: string
+  port: number
+  enabled: boolean
+  note: string
+  used_by: ExtUse[]
+  /** The subscription link it comes from and follows (0 = imported once). */
+  source_id: number
+  /** Gone from its subscription link since then (0 = still there): kept because something names it. */
+  missing_since: number
+  created_at: number
+  updated_at: number
+}
+
+// Subscription links: providers' subscriptions read again on a schedule (GET /api/external-sources).
+export interface ExtSource {
+  id: number
+  name: string
+  url: string
+  client: '' | 'clash' | 'singbox' | 'v2rayn'
+  every_hours: number
+  enabled: boolean
+  offer: boolean
+  offer_to: { users?: number[]; plans?: number[] }
+  prefix: string
+  include: string
+  exclude: string
+  note: string
+  fetched_at: number
+  ok_at: number
+  next_at: number
+  error: string
+  skipped: ImportSkip[]
+  usage: { upload: number; download: number; total: number; expire: number } | null
+  nodes: number
+  missing: number
+  used_by: ExtUse[]
+  created_at: number
+  updated_at: number
+}
+
+export interface SourceResult {
+  added: number
+  changed: number
+  removed: number
+  kept: string[]
+  skipped: ImportSkip[]
+}
+
+export interface SourceSaved {
+  source: ExtSource
+  result: SourceResult
+  error: string
+}
+
+export interface ImportSkip {
+  line: number
+  name?: string
+  reason: string
+}
+
+export interface ExtImport {
+  added: ExtNode[]
+  skipped: ImportSkip[]
+}
+
+// Traffic splitting (GET /api/routing).
+export interface RouteMatch {
+  all?: boolean
+  sites?: string[]
+  domains?: string[]
+  countries?: string[]
+  ips?: string[]
+  ports?: string
+  network?: '' | 'tcp' | 'udp'
+  bittorrent?: boolean
+}
+
+export interface Route {
+  id: number
+  sort: number
+  name: string
+  enabled: boolean
+  servers: number[]
+  nodes: number[]
+  match: RouteMatch
+  target: string
+  created_at: number
+  updated_at: number
+}
+
+export interface Balancer {
+  id: number
+  name: string
+  strategy: 'random' | 'roundRobin' | 'leastPing'
+  members: string[]
+  fallback: 'block' | 'direct'
+  used_by: string[]
+  created_at: number
+  updated_at: number
+}
+
+export interface RouteExit {
+  target: string
+  name: string
+  server_id?: number
+  enabled: boolean
+}
+
+export interface Routing {
+  rules: Route[]
+  balancers: Balancer[]
+  exits: RouteExit[]
+  /** Subscription links: a load balancer member each, standing for all of the link's nodes. */
+  sources: RouteExit[]
+  sites: string[]
+  problems: string[]
+}
 
 export function bytes(n: number | undefined | null, digits = 1): string {
   if (n === undefined || n === null || !isFinite(n)) return '—'
@@ -585,4 +899,120 @@ export interface Cert {
   live: number
   /** Why apps will refuse it: it does not chain to a publicly trusted authority. */
   untrusted?: string
+}
+
+/** Something a server's health check found that may be a break-in or abuse, and what was decided about it. */
+export interface Risk {
+  id: number
+  server_id: number
+  server: string
+  /** What was found, in a form that stays the same when it is found again (e.g. port:tcp:31337). */
+  key: string
+  kind: string
+  severity: 'info' | 'warning' | 'high' | 'critical'
+  title: string
+  detail: string
+  first_seen: number
+  last_seen: number
+  /** How many times it was found. */
+  count: number
+  /** It still holds: a process still runs, a port is still open. */
+  active: boolean
+  /** open; acknowledged (seen: flagged again if it happens again); expected (never flagged again). */
+  status: 'open' | 'acknowledged' | 'expected'
+  decided_by: string
+  decided_at: number
+  /** This kind of finding is expected on every server. */
+  expected_everywhere: boolean
+}
+
+/** A server's health check: when it last scanned, and what it found. */
+export interface ServerHealth {
+  /** When the first scan recorded what is normal on the server; 0 = no scan yet. */
+  baseline_at: number
+  scanned_at: number
+  open: number
+  worst: '' | Risk['severity']
+  risks: Risk[]
+}
+
+// ---------------------------------------------------------------- plugins (pages/Plugins.tsx, plugins.tsx)
+
+export interface PluginRunning {
+  since: number
+  hooks: string[]
+  routes: string[]
+  pages: string[]
+  tools: string[]
+  schedules: string[]
+  dropped_events?: number
+}
+
+export interface Plugin {
+  id: string
+  name: string
+  version: string
+  description: string
+  author: string
+  homepage: string
+  enabled: boolean
+  /** off | on (no program: its styles and scripts are served) | starting | running | restarting | held (started without plugins) | broken */
+  state: 'off' | 'on' | 'starting' | 'running' | 'restarting' | 'held' | 'broken'
+  parts: string[]
+  permissions: string[]
+  /** Everything it asks for: turning it on sends exactly this list. */
+  asks: string[]
+  warnings: string[]
+  /** Its panel script, loaded in the supervisor's browser while it is on. */
+  script?: string
+  running?: PluginRunning
+  last_error: string
+  restarts: number
+  installed_at: number
+  updated_at: number
+  sha256: string
+}
+
+export interface PluginsView {
+  plugins: Plugin[]
+  /** The panel was started without plugins (--no-plugins). */
+  disabled: boolean
+}
+
+export interface PluginUpload {
+  plugin: Plugin
+  message: string
+  turned_off?: boolean
+}
+
+export interface PluginLogLine {
+  t: number
+  text: string
+}
+
+// ---------------------------------------------------------------- ping monitors
+
+export interface PingLatest {
+  server_id: number
+  ts: number
+  avg_ms: number
+  /** Share of probes lost in the last hour (0-1). */
+  loss: number
+}
+
+export interface PingMonitor {
+  id: number
+  name: string
+  target: string
+  kind: 'icmp' | 'tcp'
+  port: number
+  every_secs: number
+  /** The servers that measure it; empty = all of them. */
+  servers: number[]
+  public: boolean
+  enabled: boolean
+  sort: number
+  created_at: number
+  updated_at: number
+  latest: PingLatest[]
 }

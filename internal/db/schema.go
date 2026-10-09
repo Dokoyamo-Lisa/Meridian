@@ -461,6 +461,291 @@ INSERT INTO settings (key, value) VALUES ('node_usage_cycle', 'pending')
 ALTER TABLE servers ADD COLUMN pass_secret TEXT NOT NULL DEFAULT '';
 UPDATE servers SET pass_secret = secret;
 `,
+	// 13: exits that are not servers - proxies elsewhere, imported from their links - and traffic
+	// splitting: rules that send matching traffic directly, through a proxy pass, to a load balancer
+	// (several exits taking turns) or nowhere. A protocol may pass through an external node.
+	`
+CREATE TABLE ext_nodes (
+  id         INTEGER PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name       TEXT    NOT NULL,
+  kind       TEXT    NOT NULL,
+  endpoint   TEXT    NOT NULL,
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  note       TEXT    NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX ext_nodes_account ON ext_nodes(account_id);
+ALTER TABLE nodes ADD COLUMN pass_ext INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE balancers (
+  id         INTEGER PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name       TEXT    NOT NULL,
+  strategy   TEXT    NOT NULL DEFAULT 'random',
+  members    TEXT    NOT NULL DEFAULT '[]',
+  fallback   TEXT    NOT NULL DEFAULT 'block',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE routes (
+  id         INTEGER PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  sort       INTEGER NOT NULL DEFAULT 0,
+  name       TEXT    NOT NULL DEFAULT '',
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  servers    TEXT    NOT NULL DEFAULT '[]',
+  nodes      TEXT    NOT NULL DEFAULT '[]',
+  match      TEXT    NOT NULL DEFAULT '{}',
+  target     TEXT    NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX routes_account ON routes(account_id, sort);
+`,
+	// 14: a server whose agent keeps losing the panel reaches it through another server the operator
+	// chooses (panel_relay; 0 = directly); a relay listens for them on relay_port (0 = none picked yet)
+	`
+ALTER TABLE servers ADD COLUMN panel_relay INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE servers ADD COLUMN relay_port INTEGER NOT NULL DEFAULT 0;
+`,
+	// 15: health checks: what the agents found that looks like a break-in or abuse (risks), what the
+	// operator decided about each, keys expected on every server, and how far each server's check got
+	`
+CREATE TABLE risks (
+  id          INTEGER PRIMARY KEY,
+  account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  server_id   INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  key         TEXT    NOT NULL,
+  kind        TEXT    NOT NULL,
+  severity    TEXT    NOT NULL,
+  title       TEXT    NOT NULL,
+  detail      TEXT    NOT NULL DEFAULT '',
+  first_seen  INTEGER NOT NULL,
+  last_seen   INTEGER NOT NULL,
+  count       INTEGER NOT NULL DEFAULT 1,
+  active      INTEGER NOT NULL DEFAULT 0, -- it still holds (a process runs, a port is open)
+  status      TEXT    NOT NULL DEFAULT 'open', -- open | acknowledged | expected
+  decided_by  TEXT    NOT NULL DEFAULT '',
+  decided_at  INTEGER NOT NULL DEFAULT 0,
+  notified_at INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (server_id, key)
+);
+CREATE INDEX risks_account ON risks(account_id, status);
+CREATE TABLE risk_rules (
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  key        TEXT    NOT NULL,
+  decided_by TEXT    NOT NULL DEFAULT '',
+  decided_at INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (account_id, key)
+);
+CREATE TABLE server_health (
+  server_id   INTEGER PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE,
+  health_id   TEXT    NOT NULL DEFAULT '',
+  seq         INTEGER NOT NULL DEFAULT 0,
+  baseline_at INTEGER NOT NULL DEFAULT 0,
+  scanned_at  INTEGER NOT NULL DEFAULT 0
+);
+`,
+	// 16: plugins - the operator's own additions (internal/panel/plugins.go). Their files live in the
+	// data directory (plugins/<id>); this keeps whether each is on, what the supervisor agreed to
+	// when turning it on, and its last problem.
+	`
+CREATE TABLE plugins (
+  id           TEXT    PRIMARY KEY,
+  enabled      INTEGER NOT NULL DEFAULT 0,
+  granted      TEXT    NOT NULL DEFAULT '[]',
+  version      TEXT    NOT NULL DEFAULT '',
+  sha256       TEXT    NOT NULL DEFAULT '',
+  last_error   TEXT    NOT NULL DEFAULT '',
+  installed_at INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
+`,
+	// 17: servers whose IP address changes (dynamic DNS): their address is a domain name the panel
+	// checks against the addresses the agent reports, and may keep up to date in Cloudflare
+	`
+ALTER TABLE servers ADD COLUMN ddns INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE servers ADD COLUMN ddns_cloudflare INTEGER NOT NULL DEFAULT 0;
+`,
+	// 18: what counts toward a user's quota (count_mode: both, down, up or max), when their period
+	// started (starts_at; 0 = when they were created), usage reset every N days from then
+	// (reset_every; 0 = by reset_day), a speed limit (Mbps; 0 = none), what happens to devices over
+	// the limit (device_mode: '' = an alert only, refuse = new devices are turned away) - and preset
+	// plans that fill all of that in
+	`
+ALTER TABLE subs ADD COLUMN count_mode TEXT NOT NULL DEFAULT 'both';
+ALTER TABLE subs ADD COLUMN starts_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE subs ADD COLUMN reset_every INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE subs ADD COLUMN speed_limit INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE subs ADD COLUMN device_mode TEXT NOT NULL DEFAULT '';
+ALTER TABLE subs ADD COLUMN plan_id INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE plans (
+  id            INTEGER PRIMARY KEY,
+  account_id    INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name          TEXT    NOT NULL,
+  note          TEXT    NOT NULL DEFAULT '',
+  quota         INTEGER NOT NULL DEFAULT 0,
+  count_mode    TEXT    NOT NULL DEFAULT 'both',
+  duration      INTEGER NOT NULL DEFAULT 0,
+  duration_unit TEXT    NOT NULL DEFAULT 'day',
+  reset_day     INTEGER NOT NULL DEFAULT 0,
+  reset_every   INTEGER NOT NULL DEFAULT 0,
+  ip_limit      INTEGER NOT NULL DEFAULT 0,
+  device_mode   TEXT    NOT NULL DEFAULT '',
+  speed_limit   INTEGER NOT NULL DEFAULT 0,
+  scope         TEXT    NOT NULL DEFAULT '',
+  price         REAL    NOT NULL DEFAULT 0,
+  currency      TEXT    NOT NULL DEFAULT '',
+  sort          INTEGER NOT NULL DEFAULT 0,
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
+);
+CREATE INDEX plans_account ON plans(account_id, sort);
+`,
+	// 19: providers' subscription links the panel reads again on a schedule (internal/panel/
+	// extsources.go). Their nodes are external nodes with source_id set, matched on each refresh by
+	// the provider's name for them (source_key); a node that left the subscription while something
+	// still sends traffic to it is kept, marked missing_since. offer gives the nodes to users too.
+	`
+CREATE TABLE ext_sources (
+  id          INTEGER PRIMARY KEY,
+  account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name        TEXT    NOT NULL,
+  url         TEXT    NOT NULL,
+  client      TEXT    NOT NULL DEFAULT '',
+  every_hours INTEGER NOT NULL DEFAULT 12,
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  offer       INTEGER NOT NULL DEFAULT 0,
+  offer_to    TEXT    NOT NULL DEFAULT '',
+  prefix      TEXT    NOT NULL DEFAULT '',
+  include     TEXT    NOT NULL DEFAULT '',
+  exclude     TEXT    NOT NULL DEFAULT '',
+  note        TEXT    NOT NULL DEFAULT '',
+  fetched_at  INTEGER NOT NULL DEFAULT 0,
+  ok_at       INTEGER NOT NULL DEFAULT 0,
+  error       TEXT    NOT NULL DEFAULT '',
+  skipped     TEXT    NOT NULL DEFAULT '',
+  usage       TEXT    NOT NULL DEFAULT '',
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+CREATE INDEX ext_sources_account ON ext_sources(account_id);
+ALTER TABLE ext_nodes ADD COLUMN source_id INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ext_nodes ADD COLUMN source_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE ext_nodes ADD COLUMN missing_since INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX ext_nodes_source ON ext_nodes(source_id);
+`,
+	// 20: limits per protocol, for a user and in a plan: bytes per cycle per protocol id (JSON), and
+	// what happens when one is used up ('' = an alert only, stop = that protocol stops serving the
+	// user until the cycle starts over)
+	`
+ALTER TABLE subs ADD COLUMN node_quotas TEXT NOT NULL DEFAULT '';
+ALTER TABLE subs ADD COLUMN node_quota_mode TEXT NOT NULL DEFAULT '';
+ALTER TABLE plans ADD COLUMN node_quotas TEXT NOT NULL DEFAULT '';
+ALTER TABLE plans ADD COLUMN node_quota_mode TEXT NOT NULL DEFAULT '';
+`,
+	// 21: servers another panel shares with this one (guest = 1): this panel runs its own protocols
+	// there, but the console, the agent's and the cores' upgrades and relaying are the owner's
+	`
+ALTER TABLE servers ADD COLUMN guest INTEGER NOT NULL DEFAULT 0;
+`,
+	// 22: a server's details over time (the status page's charts): more of each minute's sample, and
+	// five-minute averages kept a month; ping monitors - addresses the servers measure the way to at
+	// fixed intervals - with their rounds, raw for two days and in five-minute steps for a month
+	`
+ALTER TABLE servers ADD COLUMN virt TEXT NOT NULL DEFAULT '';
+ALTER TABLE server_metrics ADD COLUMN swap_used INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE server_metrics ADD COLUMN load5 REAL NOT NULL DEFAULT 0;
+ALTER TABLE server_metrics ADD COLUMN load15 REAL NOT NULL DEFAULT 0;
+ALTER TABLE server_metrics ADD COLUMN udp INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE server_metrics ADD COLUMN disk_read INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE server_metrics ADD COLUMN disk_write INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE server_metrics ADD COLUMN temp REAL NOT NULL DEFAULT 0;
+CREATE TABLE server_metrics_5m (
+  server_id  INTEGER NOT NULL,
+  ts         INTEGER NOT NULL,
+  cpu        REAL    NOT NULL DEFAULT 0,
+  mem_used   INTEGER NOT NULL DEFAULT 0,
+  swap_used  INTEGER NOT NULL DEFAULT 0,
+  disk_used  INTEGER NOT NULL DEFAULT 0,
+  load1      REAL    NOT NULL DEFAULT 0,
+  load5      REAL    NOT NULL DEFAULT 0,
+  load15     REAL    NOT NULL DEFAULT 0,
+  rx_rate    INTEGER NOT NULL DEFAULT 0,
+  tx_rate    INTEGER NOT NULL DEFAULT 0,
+  disk_read  INTEGER NOT NULL DEFAULT 0,
+  disk_write INTEGER NOT NULL DEFAULT 0,
+  tcp        INTEGER NOT NULL DEFAULT 0,
+  udp        INTEGER NOT NULL DEFAULT 0,
+  online     INTEGER NOT NULL DEFAULT 0,
+  temp       REAL    NOT NULL DEFAULT 0,
+  PRIMARY KEY (server_id, ts)
+);
+CREATE TABLE ping_monitors (
+  id         INTEGER PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name       TEXT    NOT NULL,
+  target     TEXT    NOT NULL,
+  kind       TEXT    NOT NULL DEFAULT 'icmp',
+  port       INTEGER NOT NULL DEFAULT 0,
+  every_secs INTEGER NOT NULL DEFAULT 60,
+  servers    TEXT    NOT NULL DEFAULT '',
+  public     INTEGER NOT NULL DEFAULT 1,
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  sort       INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX ping_monitors_account ON ping_monitors(account_id);
+CREATE TABLE ping_samples (
+  monitor_id INTEGER NOT NULL,
+  server_id  INTEGER NOT NULL,
+  ts         INTEGER NOT NULL,
+  sent       INTEGER NOT NULL DEFAULT 0,
+  lost       INTEGER NOT NULL DEFAULT 0,
+  avg_ms     REAL    NOT NULL DEFAULT 0,
+  min_ms     REAL    NOT NULL DEFAULT 0,
+  max_ms     REAL    NOT NULL DEFAULT 0,
+  PRIMARY KEY (monitor_id, server_id, ts)
+);
+CREATE INDEX ping_samples_server ON ping_samples(server_id, ts);
+CREATE TABLE ping_5m (
+  monitor_id INTEGER NOT NULL,
+  server_id  INTEGER NOT NULL,
+  ts         INTEGER NOT NULL,
+  sent       INTEGER NOT NULL DEFAULT 0,
+  lost       INTEGER NOT NULL DEFAULT 0,
+  avg_ms     REAL    NOT NULL DEFAULT 0,
+  min_ms     REAL    NOT NULL DEFAULT 0,
+  max_ms     REAL    NOT NULL DEFAULT 0,
+  PRIMARY KEY (monitor_id, server_id, ts)
+);
+`,
+	// 23: Telegram accounts linked to a user (up to two each) or to the supervisor, so the bot and its
+	// Mini App know who writes; the users' own unlinks (one a month); and how a session was made
+	// (via = 'telegram': signed in from the Mini App, which cannot change passwords, tokens or the
+	// site rule).
+	`
+CREATE TABLE tg_links (
+  id           INTEGER PRIMARY KEY,
+  tg_id        INTEGER NOT NULL UNIQUE,
+  tg_name      TEXT    NOT NULL DEFAULT '',
+  sub_id       INTEGER REFERENCES subs(id) ON DELETE CASCADE,
+  account_id   INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+  created_at   INTEGER NOT NULL,
+  last_used_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX tg_links_sub ON tg_links(sub_id);
+CREATE INDEX tg_links_account ON tg_links(account_id);
+CREATE TABLE tg_unlinks (
+  sub_id INTEGER NOT NULL REFERENCES subs(id) ON DELETE CASCADE,
+  at     INTEGER NOT NULL
+);
+CREATE INDEX tg_unlinks_sub ON tg_unlinks(sub_id);
+ALTER TABLE sessions ADD COLUMN via TEXT NOT NULL DEFAULT '';
+ALTER TABLE user_sessions ADD COLUMN via TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // NextID is an SQL expression for the id of a new row of nodes or subs: above every id the table
@@ -469,6 +754,6 @@ func NextID(table string) string {
 	if table != "nodes" && table != "subs" {
 		panic("NextID: " + table)
 	}
-	return "(SELECT MAX(COALESCE((SELECT MAX(id) FROM " + table + "), 0), COALESCE((SELECT last FROM id_floor WHERE name = '" +
-		table + "'), 0)) + 1)"
+	return "(SELECT MAX(v) + 1 FROM (SELECT COALESCE(MAX(id), 0) AS v FROM " + table + " UNION ALL SELECT COALESCE(MAX(last), 0) FROM id_floor WHERE name = '" +
+		table + "') floor_ids)"
 }

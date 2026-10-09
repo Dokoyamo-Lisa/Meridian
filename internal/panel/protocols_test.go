@@ -39,6 +39,27 @@ func combos() []protocolDraft {
 			}
 		}
 	}
+	// VLESS Encryption: every transport and security, each look; ML-KEM-768 keys with the native look,
+	// and without the Vision flow it brings by default
+	for _, tr := range allTransports {
+		for _, sec := range []string{secNone, secTLS, secReality} {
+			for _, cdn := range []*bool{nil, &yes} {
+				for _, enc := range [][2]string{{encNative, encAuthX25519}, {encXorPub, encAuthX25519},
+					{encRandom, encAuthX25519}, {encNative, encAuthMLKEM}} {
+					in := &protoInput{Transport: str(tr), Security: str(sec), CDN: cdn, Encryption: str(enc[0]), EncAuth: str(enc[1])}
+					if sec == secTLS {
+						in.CertMode, in.SNI = str(certSelf), str("proxy.example.com")
+					}
+					if cdn != nil {
+						in.CDNHost = str("cdn.example.com")
+					}
+					out = append(out, protocolDraft{Kind: subgen.KindVLESS, Settings: in})
+				}
+			}
+			out = append(out, protocolDraft{Kind: subgen.KindVLESS, Settings: &protoInput{Transport: str(tr), Security: str(sec),
+				Encryption: str(encRandom), Flow: str("")}})
+		}
+	}
 	for _, m := range ssMethods {
 		out = append(out, protocolDraft{Kind: subgen.KindShadowsocks, Settings: &protoInput{Method: str(m)}})
 	}
@@ -48,9 +69,11 @@ func combos() []protocolDraft {
 	}
 	for _, cm := range []string{certSelf, certACME} {
 		for _, obfs := range []bool{false, true} {
-			o := obfs
-			out = append(out, protocolDraft{Kind: subgen.KindHysteria2, Settings: &protoInput{CertMode: str(cm),
-				SNI: str("hy.example.com"), Obfs: &o}})
+			for _, hop := range []string{"", "20000-30000"} {
+				o := obfs
+				out = append(out, protocolDraft{Kind: subgen.KindHysteria2, Settings: &protoInput{CertMode: str(cm),
+					SNI: str("hy.example.com"), Obfs: &o, HopPorts: str(hop), UpMbps: intp(50), DownMbps: intp(200)}})
+			}
 		}
 	}
 	out = append(out, protocolDraft{Kind: subgen.KindWireGuard, Settings: &protoInput{}},
@@ -60,6 +83,8 @@ func combos() []protocolDraft {
 			SNI: str("www.microsoft.com")}})
 	return out
 }
+
+func intp(v int) *int { return &v }
 
 func describe(d protocolDraft) string {
 	b, _ := json.Marshal(d.Settings)

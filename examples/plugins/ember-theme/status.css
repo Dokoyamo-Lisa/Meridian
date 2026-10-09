@@ -1,0 +1,22 @@
+/* Ember for the status page and users' pages: the same warm accent, for the page, its charts and its
+   globe (the globe's colours must be written #rrggbb). The page reads these variables from
+   web/src/status/status.css; this file loads after it, so its rules win. */
+
+:root, :root[data-theme] {
+  --accent: #ff9a5c;
+  --accent-ink: #ffc49e;
+  --accent-soft: rgba(255, 154, 92, .14);
+  --on-accent: #1d0d02;
+  --pool: rgba(255, 140, 70, .06);
+  --g-arc: #ff9a5c;
+  --g-accent: #ffc49e;
+}
+
+:root[data-theme="paper"], :root[data-theme="mist"] {
+  --accent: #b4521a;
+  --accent-ink: #8e3f12;
+  --accent-soft: rgba(180, 82, 26, .1);
+  --on-accent: #ffffff;
+  --g-arc: #b4521a;
+  --g-accent: #8e3f12;
+}

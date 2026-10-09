@@ -30,7 +30,7 @@ export function AlertList(props: { alerts: Alert[] }) {
   return (
     <div class="list">
       {props.alerts.map((a) => {
-        const href = a.server_id ? `/servers/${a.server_id}` : a.user_id ? `/users/${a.user_id}` : ''
+        const href = a.kind === 'health_risk' ? `/monitor?tab=health&server=${a.server_id}` : a.server_id ? `/servers/${a.server_id}` : a.user_id ? `/users/${a.user_id}` : ''
         return (
           <a class={'li' + (href ? ' click' : '')} href={href || undefined}>
             <span class={'dot ' + (a.level === 'crit' ? 'crit' : a.level === 'warn' ? 'warn' : '')} />

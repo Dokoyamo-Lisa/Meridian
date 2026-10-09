@@ -144,6 +144,9 @@ var readOnlyPost = map[string]bool{"/api/protocols/check": true}
 
 // resolve authenticates a request by API token (Authorization: Bearer) or session cookie.
 func (p *Panel) resolve(w http.ResponseWriter, r *http.Request, o authOpts) (*Account, authInfo, error) {
+	if a, ai, ok, err := p.pluginAuth(r, o); ok { // a plugin's program calling the API (plugins_hooks.go)
+		return a, ai, err
+	}
 	if tok, ok := bearerToken(r); ok {
 		if o.sessionOnly {
 			return nil, authInfo{}, errStatus(http.StatusForbidden, "this needs a signed-in browser session - API tokens cannot do it")
@@ -168,6 +171,9 @@ func (p *Panel) resolve(w http.ResponseWriter, r *http.Request, o authOpts) (*Ac
 	a, err := p.sessionAccount(r)
 	if err != nil {
 		return nil, authInfo{}, errStatus(http.StatusUnauthorized, "sign in required")
+	}
+	if o.sessionOnly && p.sessionVia(r) == viaTelegram { // tglink.go
+		return nil, authInfo{}, errStatus(http.StatusForbidden, "a sign-in from Telegram cannot do this (passwords, two-factor, API tokens, sessions, the console, plugins and the site rule) - sign in with your password in a browser")
 	}
 	return a, authInfo{}, nil
 }
@@ -215,9 +221,10 @@ func (p *Panel) sessionAccount(r *http.Request) (*Account, error) {
 // ---------------------------------------------------------------- login / logout
 
 type loginReq struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Code     string `json:"code"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	Code      string `json:"code"`
+	Turnstile string `json:"turnstile"` // the Turnstile widget's token, when Turnstile is on (guard.go)
 }
 
 func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -235,14 +242,36 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if len(user) > 64 {
 		user = user[:64]
 	}
+	t0 := now()
+	if until := p.signin.shutOut(ip, t0); until > 0 {
+		writeErr(w, errStatus(http.StatusTooManyRequests, "too many failed sign-ins from your address - try again in "+waitWords(until-t0)))
+		return
+	}
 	if !p.limiter.allow("ip:"+ip, 10, 15*time.Minute) || !p.limiter.allow("user:"+user, 20, 15*time.Minute) {
 		writeErr(w, errStatus(http.StatusTooManyRequests, "too many attempts - wait a few minutes"))
+		return
+	}
+	if c := p.turnstile(); c.On && c.SiteKey != "" && c.Secret != "" {
+		if err := verifyTurnstile(r.Context(), c.Secret, req.Turnstile, ip, hostOnly(r.Host)); err != nil {
+			writeErr(w, errStatus(http.StatusForbidden, err.Error()))
+			return
+		}
+	}
+	known := p.knownAddr(r.Context(), user, ip)
+	if wait := p.signin.slowed(user, known, t0); wait > 0 {
+		writeErr(w, errStatus(http.StatusTooManyRequests, "this username had many failed sign-ins - from an address it does not know, it takes one try a minute: wait "+waitWords(wait)))
 		return
 	}
 	a, err := p.accountByName(r.Context(), user)
 	if err != nil || a == nil {
 		// not the supervisor: one of the users signing in to their own page
-		p.userLogin(w, r, user, req.Password, ip)
+		if p.inMaintenance(w) {
+			return
+		}
+		p.userLogin(w, r, user, req.Password, ip, known)
+		return
+	}
+	if !a.IsOwner() && p.inMaintenance(w) {
 		return
 	}
 	if denied, _ := p.siteDenied(r, "admin"); denied {
@@ -250,8 +279,7 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !checkPassword(a.PasswordHash, req.Password) || !a.Enabled {
-		p.event(0, "warn", "login_failed", 0, 0, 0, fmt.Sprintf("Failed sign-in for %q from %s", truncate(user, 32), ip), nil)
-		writeErr(w, errStatus(http.StatusUnauthorized, "wrong username or password"))
+		p.signinFailed(w, ip, user, known, fmt.Sprintf("Failed sign-in for %q from %s", truncate(user, 32), ip))
 		return
 	}
 	// on the status page's own domain the supervisor sees the globe; the panel and its API never
@@ -263,6 +291,7 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		step, ok := totpMatch(a.TOTPSecret, req.Code, time.Now())
 		if !ok {
+			p.signin.failed(ip, user, known, now())
 			p.event(a.ID, "warn", "login_failed", 0, 0, a.ID, fmt.Sprintf("Wrong two-factor code for %s from %s", a.Username, ip), nil)
 			writeErr(w, errStatus(http.StatusUnauthorized, "wrong two-factor code - check the time on your phone"))
 			return
@@ -284,6 +313,7 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p.limiter.reset("user:" + user)
+	p.signin.succeeded(ip)
 	tok := randToken(32)
 	t := now()
 	_, err = p.db.Exec1(`INSERT INTO sessions (token_hash, account_id, created_at, expires_at, last_seen_at, ip, ua)
@@ -302,6 +332,17 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Secure: p.isHTTPS(r), SameSite: http.SameSiteLaxMode, MaxAge: int(sessionTTL.Seconds())})
 	p.event(a.ID, "info", "login", 0, 0, a.ID, fmt.Sprintf("%s signed in from %s", a.Username, ip), nil)
 	writeJSON(w, http.StatusOK, map[string]any{"kind": "admin", "account": a})
+}
+
+// signinFailed answers a wrong username or password: the failure counts against the address (and,
+// from an address the username does not know, against the username), and is recorded.
+func (p *Panel) signinFailed(w http.ResponseWriter, ip, user string, known bool, msg string) {
+	if until := p.signin.failed(ip, user, known, now()); until > 0 {
+		p.event(0, "warn", "login_failed", 0, 0, 0, fmt.Sprintf("%s - the address cannot sign in for %s now", msg, waitWords(until-now())), nil)
+	} else {
+		p.event(0, "warn", "login_failed", 0, 0, 0, msg, nil)
+	}
+	writeErr(w, errStatus(http.StatusUnauthorized, "wrong username or password"))
 }
 
 func (p *Panel) handleLogout(w http.ResponseWriter, r *http.Request) {

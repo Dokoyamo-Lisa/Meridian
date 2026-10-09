@@ -1,0 +1,8 @@
+/* Plugins: their rows in Settings › Plugins, and the container their pages draw into. */
+.plugin-card { border-top: 1px solid var(--line); padding: 14px 0; }
+.plugin-card .chip { cursor: default; }
+.plugin-run { margin-top: 10px; font-size: 12.5px; }
+.plugin-run .mono { overflow-wrap: anywhere; }
+.plugin-warnings { margin: 0 0 14px; padding-left: 20px; display: grid; gap: 7px; line-height: 1.5; }
+.plugin-log { max-height: 50vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11.5px; }
+.plugin-page { min-height: 120px; }

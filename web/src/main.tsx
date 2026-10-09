@@ -4,14 +4,17 @@ import './app.css'
 import './mark.css'
 import { setUnauthorizedHandler } from './api'
 import { Icon, Logo } from './icons'
+import { PluginEvents, PluginMenuItems, PluginPage, isPluginPath, loadPluginScripts, usePluginNav } from './plugins'
 import { match, navigate, onLinkClick, useLocation } from './router'
 import { currentTone, loadSession, setTone, signOut, signedOut, tones, useSession } from './session'
 import { DialogHost, Empty, Loading, Menu, Toasts } from './ui'
 import { Access } from './pages/Access'
+import { ConsoleDock } from './pages/Console'
 import { Login } from './pages/Login'
 import { Monitor } from './pages/Monitor'
 import { Overview } from './pages/Overview'
 import { Protocols } from './pages/Protocols'
+import { Routing } from './pages/Routing'
 import { ServerPage } from './pages/Server'
 import { Servers } from './pages/Servers'
 import { Settings } from './pages/Settings'
@@ -24,6 +27,7 @@ const nav: { href: string; label: string }[] = [
   { href: '/overview', label: 'Overview' },
   { href: '/servers', label: 'Servers' },
   { href: '/protocols', label: 'Protocols' },
+  { href: '/routing', label: 'Routing' },
   { href: '/users', label: 'Users' },
   { href: '/monitor', label: 'Monitor' },
   { href: '/access', label: 'Access' },
@@ -44,11 +48,13 @@ function Routes() {
   if (p === '/servers') return <Servers />
   if ((m = match('/servers/:id', p))) return <ServerPage key={m.id} id={Number(m.id)} />
   if (p === '/protocols') return <Protocols />
+  if (p === '/routing') return <Routing />
   if (p === '/users') return <Users />
   if ((m = match('/users/:id', p))) return <UserPage key={m.id} id={Number(m.id)} />
   if (p === '/monitor') return <Monitor />
   if (p === '/access') return <Access />
   if (p === '/settings') return <Settings />
+  if (isPluginPath(p)) return <PluginPage path={p} />
   return (
     <Empty title="Page not found" action={<a class="btn" href="/overview">Go to the overview</a>}>
       There is nothing at this address.
@@ -84,10 +90,12 @@ function Shell() {
   const loc = useLocation()
   const a = s.account!
   const title = s.meta?.site_title || 'Meridian'
+  const links = [...nav.slice(0, -1), ...usePluginNav(), ...nav.slice(-1)] // plugins' pages go before Settings
+  useEffect(() => void loadPluginScripts(), [])
   useEffect(() => {
-    const section = nav.find((n) => n.href !== '/overview' && loc.path.startsWith(n.href))
+    const section = links.find((n) => n.href !== '/overview' && loc.path.startsWith(n.href))
     document.title = (section ? section.label + ' · ' : '') + title
-  }, [loc.path, title])
+  }, [loc.path, title, links.length])
   const current = (href: string) => loc.path === href || loc.path.startsWith(href + '/') || (href === '/overview' && home(loc.path))
   return (
     <div onClick={onLinkClick as any}>
@@ -97,7 +105,7 @@ function Shell() {
           <span>{title}</span>
         </a>
         <nav class="nav" aria-label="Main">
-          {nav.map((n) => (
+          {links.map((n) => (
             <a href={n.href} aria-current={current(n.href) ? 'page' : undefined}>
               {n.label}
             </a>
@@ -120,6 +128,7 @@ function Shell() {
               <Icon name="key" size="sm" />
               API &amp; MCP
             </button>
+            <PluginMenuItems />
             <div class="sep" />
             <button onClick={() => void signOut()}>
               <Icon name="logout" size="sm" />
@@ -131,6 +140,7 @@ function Shell() {
       <main id="main">
         <Routes />
       </main>
+      <PluginEvents />
       <footer class="app-foot">
         <span>
           <a href="https://github.com/Dokoyamo-Lisa/Meridian" target="_blank" rel="noopener noreferrer">
@@ -163,6 +173,7 @@ function App() {
   return (
     <>
       {s.account ? <Shell /> : <Login />}
+      {s.account && <ConsoleDock />}
       <DialogHost />
       <Toasts />
     </>

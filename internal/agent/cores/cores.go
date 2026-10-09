@@ -125,10 +125,26 @@ func realmAsset() (string, error) {
 	return "", fmt.Errorf("no realm build for %s", runtime.GOARCH)
 }
 
+// transport is how downloads go out (nil: Go's default). The agent sets one that takes the panel's
+// mirror through its relay to the panel, when it has one.
+var transport struct {
+	sync.Mutex
+	rt http.RoundTripper
+}
+
+// SetTransport sets how downloads go out.
+func SetTransport(rt http.RoundTripper) {
+	transport.Lock()
+	transport.rt = rt
+	transport.Unlock()
+}
+
 // fetch downloads the first URL that works.
 func fetch(ctx context.Context, urls []string, limit int64) ([]byte, error) {
 	var errs []string
-	client := &http.Client{Timeout: 5 * time.Minute}
+	transport.Lock()
+	client := &http.Client{Timeout: 5 * time.Minute, Transport: transport.rt}
+	transport.Unlock()
 	for _, u := range urls {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 		if err != nil {

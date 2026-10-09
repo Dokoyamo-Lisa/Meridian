@@ -51,6 +51,8 @@ type Inbound struct {
 	// Shadowsocks
 	Method    string `json:"method,omitempty"`
 	ServerKey string `json:"server_key,omitempty"`
+	// VLESS Encryption: the inbound's "decryption" (with its private key), "" when none
+	Decryption string `json:"decryption,omitempty"`
 	// Hysteria2
 	ObfsPassword string `json:"obfs_password,omitempty"`
 	UDP          bool   `json:"udp,omitempty"`
@@ -277,6 +279,8 @@ type xrayIn struct {
 		Password string           `json:"password"`
 		UDP      bool             `json:"udp"`
 		Network  string           `json:"network"`
+		// VLESS
+		Decryption string `json:"decryption"`
 	} `json:"settings"`
 	Stream struct {
 		Network  string `json:"network"`
@@ -400,6 +404,9 @@ func xrayInbound(raw json.RawMessage) (Inbound, bool) {
 	}
 	if in.Protocol == "socks" {
 		in.UDP = x.Settings.UDP
+	}
+	if in.Protocol == "vless" && x.Settings.Decryption != "none" {
+		in.Decryption = x.Settings.Decryption
 	}
 	for i, c := range x.Settings.Clients {
 		u := User{Name: str(c["email"]), ID: str(c["id"]), Password: str(c["password"]), Flow: str(c["flow"]),

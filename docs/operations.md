@@ -1,28 +1,70 @@
 # Operations
 
+## The database
+
+A new panel keeps its data in PostgreSQL: the installer installs it (apt or dnf), creates the role
+and the database `meridian`, and writes `/var/lib/meridian/database.url`
+(`postgres://meridian@/meridian?host=/var/run/postgresql` - the panel's own system user signs in over
+the local socket, so no password is stored). A panel installed before 1.0, or with
+`--database sqlite`, keeps everything in SQLite, `/var/lib/meridian/meridian.db`. Settings › Updates
+and `meridian db status` say which.
+
+Moving the data - with the panel stopped; the counts are checked, and what it moved from is kept:
+
+```bash
+sudo systemctl stop meridian
+# to PostgreSQL: an empty database the panel's user may use (for example the installer's)
+sudo -u meridian meridian db to-postgres --data /var/lib/meridian 'postgres://meridian@/meridian?host=/var/run/postgresql'
+# or back to SQLite
+sudo -u meridian meridian db to-sqlite --data /var/lib/meridian
+sudo systemctl start meridian
+```
+
+To create the role and database by hand: `sudo -u postgres createuser meridian` and
+`sudo -u postgres createdb -O meridian meridian`. A database on another host works too
+(`postgres://user:password@host/db?sslmode=verify-full`); `MERIDIAN_DATABASE_URL` in
+`/etc/meridian/meridian.env` overrides the file.
+
 ## Backups
 
-The whole panel is one SQLite database. Take a consistent copy while it runs:
+The panel keeps everything in its database (plus the plugins' files). Backups carry it as a SQLite
+file whichever database the panel uses, and restore into either. **Settings › Backups**:
+
+- **Download** a backup: a ZIP of the database and the plugins' files. It holds every key, token and
+  credential, so the panel asks for your password first; give a passphrase and the file is encrypted
+  (with [age](https://age-encryption.org) - `age -d -o backup.zip backup.zip.age` opens it too).
+- **Off this server**, automatically: a **WebDAV** folder (Nextcloud, ownCloud, a NAS, Koofr...) or an
+  **S3** bucket (AWS, Cloudflare R2, Backblaze B2, Wasabi, MinIO...), HTTPS only. Every backup sent
+  there is encrypted with your passphrase - keep the passphrase somewhere safe: without it nobody,
+  you included, can open them. Choose every day or every week at an hour, and how many to keep (older
+  ones are removed). **Save and check** writes a small file there, lists the folder and removes the
+  file. Each backup and each failure is in the timeline and the *servers* notifications.
+- **Restore** a backup from the list at the destination, or from a file. The panel checks it (a sound
+  database from this version or an older one, nothing in the ZIP that does not belong there), keeps
+  it ready and restarts with it; what it replaces is kept in `before-restore-<time>` in the data
+  directory (delete it once all is well - it holds keys too). The servers keep running throughout and
+  get the restored configuration when they reconnect - which may change what they run, if the backup
+  differs. The panel's service starts it again by itself (the installer sets that up).
+
+On the panel's host the same works from the command line - with the panel running:
 
 ```bash
 sudo -u meridian meridian backup --data /var/lib/meridian /var/lib/meridian/backup-$(date +%F).db
 ```
 
-The copy contains every key, token and credential: it is created readable by its owner only - keep
-it that way wherever you store it. A daily cron job plus copying the file off the host is enough.
-
-**Restore**: stop the panel, put the copy in place with `meridian restore`, start it.
+and to restore (a `.db` from that command, or a `.zip` / `.zip.age` made in the panel - the passphrase
+is asked, or taken from `MERIDIAN_BACKUP_PASSPHRASE`):
 
 ```bash
 sudo systemctl stop meridian
-sudo meridian restore --data /var/lib/meridian backup.db
+sudo meridian restore --data /var/lib/meridian backup.zip.age
 sudo systemctl start meridian
 ```
 
-`restore` refuses to run while the panel is running, checks that the file is a sound Meridian
-database, and keeps the database it replaces next to it (`meridian.db.before-restore-...` - delete it
-once all is well, it holds keys too). Do not copy a backup over `meridian.db` by hand: SQLite would
-lay the old database's write-ahead log (`meridian.db-wal`) over it on the next start.
+`restore` refuses to run while the panel is running, checks the backup, and keeps what it replaces
+next to the data (on PostgreSQL, as a SQLite file `meridian.db.before-restore-<time>`). Do not copy a
+database over `meridian.db` by hand: SQLite would lay the old database's write-ahead log
+(`meridian.db-wal`) over it on the next start.
 
 Agents reconnect by themselves; nothing on the servers changes unless the restored data differs.
 
@@ -58,7 +100,10 @@ agent refuses anything else. When a new panel version changes the agent contract
 so), each server shows the alert "the panel needs a newer agent" until you upgrade its agent; the old
 agent keeps serving its last configuration meanwhile. A new agent that writes a core's configuration
 differently never restarts it by itself: the server page says what waits, and **Restart now**
-restarts exactly that.
+restarts exactly that. An upgrade whose report never came back (an agent before 1.0 could lose it
+as it restarted) is settled as soon as the agent says it runs the new version; **Upgrade all
+agents** replaces an upgrade that still waits with binaries the panel no longer has, and says which
+servers it left out and why (an upgrade already under way, or waiting for an offline server).
 
 **Cores (Xray, Hysteria, realm)** - set the versions in **Settings › Cores**. Running servers keep
 their version until you choose **More actions › Upgrade Xray**, **Upgrade Hysteria** or **Upgrade
@@ -78,6 +123,11 @@ the other settings and never shown again in full (not even to read-only API toke
 Webhooks receive `{"text", "content", "site", "events": [{"time", "level", "kind", "message"}]}`:
 Slack and Mattermost read `text`, Discord reads `content`. Only `https://` addresses are accepted, none
 on the panel's own machine.
+
+The Telegram bot can also answer commands in its chat, send a daily report and - once you allow it -
+take decisions about health risks and pause users, each confirmed with a button: see
+[the Telegram bot](telegram.md). What the servers' health checks find is described in
+[health checks](health.md).
 
 ## API tokens without a browser
 
@@ -118,6 +168,32 @@ sudo systemctl restart meridian
 
 It turns the site rule off; the servers' country rule stays as it is. Proxies keep running while the
 panel restarts.
+
+### Turnstile keeps everyone out
+
+If Cloudflare's Turnstile cannot be reached from the panel (or from your browser), sign-ins fail with
+a message saying so. Turn it off on the panel's host: add `MERIDIAN_NO_TURNSTILE=1` to
+`/etc/meridian/meridian.env` and `sudo systemctl restart meridian` (proxies keep running). Sign in,
+fix or turn off Turnstile in **Settings › Security**, then remove the line and restart again.
+
+### Too many failed sign-ins
+
+An address that keeps failing to sign in is shut out for a while (15 minutes at first, longer if it
+keeps on); the message says how long. A name that many addresses fail at takes one try a minute from
+new addresses - your own usual address is never slowed down. Restarting the panel clears both.
+
+### A plugin keeps the panel from working
+
+Turn it off on the panel's host - a running panel follows within a few seconds:
+
+```bash
+sudo -u meridian meridian plugins list --data /var/lib/meridian
+sudo -u meridian meridian plugins disable ID --data /var/lib/meridian
+```
+
+Or start the panel without any plugin: add `MERIDIAN_NO_PLUGINS=1` to `/etc/meridian/meridian.env`
+and `sudo systemctl restart meridian`; remove the line (and restart) to bring the plugins back.
+Details: [plugins](plugins.md#safety-and-recovery).
 
 ## The status page on its own domain
 
@@ -182,6 +258,51 @@ server {
 
 Then set **Settings › Public URL** to `https://panel.example.com`.
 
+## A server that keeps losing the panel
+
+Some servers have a poor route to the panel - the server in one country, the panel in another,
+across a congested or filtered border. Their agent drops off again and again although the server
+and its users are fine. The panel notices: a server **keeps losing the panel** when, in the last 24
+hours, it went offline 3 times or more, or was offline for more than 1% of them (about 15 minutes)
+and came back in between. Drops that came with a reboot or an agent restart do not count, nor do
+drops nearly every server had at once (that is the panel's own network). The overview then lists
+the server, its page says why, and the timeline - and so notifications, group *servers* - says so
+once a day.
+
+Such a server can reach the panel **through another of your servers** with a good route to both (a
+relay): on its page, **Connection to the panel › Reach the panel through**, choose the relay and
+save. The agent switches within a minute. Nothing restarts and nothing changes for its users.
+
+- The relay only passes the connection on: TLS still ends at the panel, checked for the panel's own
+  name, and every request is signed and its body sealed as always - the relay sees neither content
+  nor keys, and logs nothing of it.
+- The relay listens on a TCP port the panel picks, away from its protocols and forwards (on a server
+  whose provider decides its ports, one the provider forwards); the relay's page shows it. **If a
+  firewall at the relay's provider filters what comes in, let that port in.** Only the addresses of
+  the servers it relays get through - anything else is closed at once - and at most 64 connections
+  at a time. The country rule and IP blocks never apply to that port, so a relayed server in a
+  blocked country still gets through.
+- When the relay cannot be reached, the agent goes to the panel directly by itself and tries the
+  relay again a minute later (then less often while it keeps failing). The server's page says so -
+  *The relay through Sweden failed (no answer from the relay server) - connected directly* - and so
+  does the overview.
+- One hop only: a relay reaches the panel directly, and a server that relays others is never relayed
+  itself. Both need agent 1.0 or later (**More actions › Upgrade agent** first).
+- The agent keeps its relay on disk: after a restart or a reboot it goes through the relay again
+  before the panel has answered.
+- When a relayed server's address changes, the relay does not know the new one yet: the agent
+  reaches the panel directly once, and the relay learns the address from that report. (Should the
+  direct way fail too, the server is out of touch with the panel until it gets through - its users
+  notice nothing.)
+
+**Automatically**: **Settings › Panel › Monitoring › When a server keeps losing the panel, relay it
+through** names a server that takes such servers by itself. The panel switches a server there once,
+records it in the timeline and notifies you; switch it back on the server's page at any time - for a
+week after a person chose a server's way, the automatic relay leaves it alone.
+
+Through the API: `PATCH /api/servers/{id}` with `{"panel_relay": <the relay's server id>}` (`0` =
+directly) and `auto_relay` in `PUT /api/settings`; AI assistants use the `set_panel_relay` tool.
+
 ## Logs
 
 | What | Where |
@@ -193,6 +314,32 @@ Then set **Settings › Public URL** to `https://panel.example.com`.
 | realm forwards | `journalctl -u 'meridian-realm@*'`; on Alpine `grep meridian-realm /var/log/messages` |
 | Services on Alpine | `rc-status` lists them (`meridian-agent`, `meridian-xray`, `meridian-hy2.N`, `meridian-realm.N`) |
 | What happened, in plain words | **Monitor › Events** |
+
+## The console
+
+**Console** on a server's page (or the terminal button in the server list) opens a root shell on that
+server in the panel - for a quick look or a fix without SSH. Several servers can be open at once, each
+in a tab; **–** hides the window while the shells keep running.
+
+- Only you, signed in to the panel in your browser, can open one - never an API token, MCP, a plugin
+  or a user - and the panel asks your password again when you have not confirmed it in the last 30
+  minutes.
+- The server's agent starts the shell and connects it to the panel the same way it sends everything
+  else (signed, TLS checked, through its relay if it uses one); nothing typed or shown is kept or
+  logged. Opening and closing are in the timeline and the *security* notifications.
+- Under systemd the shell runs in a scope of its own: what you start from it keeps running when the
+  agent is upgraded or restarted. A console with no key pressed for 30 minutes closes; at most four
+  are open on a server (three from the panel at a time).
+- To turn it off on a server, create `/etc/meridian-agent/no-console` there (or set
+  `MERIDIAN_NO_CONSOLE=1` in the agent's environment); the panel then hides the button and says why.
+
+## Maintenance mode
+
+**Settings › Security › Maintenance mode**: while you work on the panel (an upgrade of your own, a
+restore, moving it), only you can sign in. Users are signed out of their own pages and see
+*Maintenance in progress* - with the line you add, e.g. *back at 18:00 UTC* - there and on the
+status page. Their connections, subscriptions and the servers keep working the whole time. Turn it
+off when you are done.
 
 ## Settings reference (`/etc/meridian/meridian.env`)
 
@@ -206,6 +353,8 @@ Then set **Settings › Public URL** to `https://panel.example.com`.
 | `MERIDIAN_TRUSTED_PROXIES` | comma-separated CIDRs of reverse proxies |
 | `MERIDIAN_NO_GEO_DOWNLOAD` | `1` = never download the IP location database (country rules then stay unavailable) |
 | `MERIDIAN_ADMIN_USER`, `MERIDIAN_ADMIN_PASSWORD` | the supervisor's name and password on the very first start only (default `admin` and a generated password) |
+| `MERIDIAN_NO_TURNSTILE` | `1` = sign-ins do not need Cloudflare Turnstile, whatever Settings say (the way back in when Cloudflare cannot be reached) |
+| `MERIDIAN_NO_PLUGINS` | `1` = start without any plugin |
 
 Everything else lives in **Settings** in the panel.
 
@@ -225,6 +374,8 @@ Everything else lives in **Settings** in the panel.
 | Install says `meridian-install.sh: FAILED` | The panel was updated since you copied the command. Copy a fresh one from the server page. |
 | `clock skew` in the agent log | The server's time is off by more than 5 minutes: `timedatectl set-ntp true`. |
 | Server offline | The agent reports every few seconds. Check `systemctl status meridian-agent` (Alpine: `rc-service meridian-agent status`) and that the server can reach the panel. Protocols keep working while the agent is down. |
+| "keeps losing the panel" | The server's route to the panel is poor. Let it reach the panel through another server: its page, **Connection to the panel** (see [A server that keeps losing the panel](#a-server-that-keeps-losing-the-panel)). |
+| "The relay through … failed" | `refused`: the relay's agent is not running, or a firewall at its provider closes its port (its page shows the port). `closed the connection`: the relay does not know this server's address yet (it learns it within a minute) or cannot reach the panel itself. `no answer`: a firewall drops the port. The server reaches the panel directly meanwhile. |
 | A shared certificate is not live on a server | *Settings › Certificates* shows each server: **installed** means Xray loads it within ten minutes (nobody is disconnected); **pending** means the server has not taken it (offline, or the protocol is off); **needs agent 0.6** means upgrade that agent. |
 | "the configuration was rejected by Xray" after saving configuration code | Xray refused the merged result: nothing changed on the server. The message names the problem; **What the server gets** shows the merged configuration. |
 | WireGuard devices lost IPv6 | Since 0.6 tunnels carry IPv4 unless **IPv6 through the tunnel** is on (it never routed IPv6 before - `::/0` only swallowed it). Turn it on where the server has IPv6. |

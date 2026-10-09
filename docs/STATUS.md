@@ -1,6 +1,48 @@
 # Meridian status
 
-Last updated 2026-10-08 (version 0.7.4).
+Last updated 2026-10-09 (version 1.0.0).
+
+## Tested for 1.0 (local panel; Ubuntu VM with systemd, Alpine VM with OpenRC)
+
+- **PostgreSQL**: the whole panel test suite passes on PostgreSQL 18 as on SQLite
+  (`MERIDIAN_TEST_PG`), with no statement refused. A copy of a working panel's data (36 tables)
+  moved to PostgreSQL with `meridian db to-postgres`; the panel served from it (sign-in with a
+  differently-cased username, servers, users, charts, status page, Telegram links) and moved back
+  with `to-sqlite`: every table's count the same (bar the test's own sign-in), integrity and foreign
+  key checks clean. The installer on Ubuntu set up PostgreSQL (role, database, peer sign-in over the
+  local socket), started the hardened service on it, and `db status` reported it.
+- **Ping monitors and a server's history**: both VMs measured ICMP every 10 s and TCP every 30 s;
+  the panel was stopped for 150 s - every round measured meanwhile arrived afterwards (no gap), while
+  the minute metrics show the outage hatched. The details drawer's charts (area, line, bars; smooth
+  or as measured; 1 h to 30 d), the chart picker (kept per browser), the synced crosshair and the
+  visitor view (only public monitors, no addresses, no count of connected people) checked in a
+  browser at 1280 and 390 px.
+- **Telegram**: the Mini App flow in a browser with signed launch data - not linked: the sign-in
+  links the account and opens the user's page, whose Telegram panel lists it; linked: straight to
+  the page; the supervisor's account lands in the panel, and creating an API token from that session
+  is refused. Bot flows (codes, /usage, /unlink once a month, the supervisor's private chat, changes
+  only by listed or linked accounts) are covered by tests against a stand-in Telegram API.
+
+- **External nodes as proxy pass exits**: Alpine's VLESS REALITY, Shadowsocks 2022 and WireGuard
+  protocols imported from a user's share links, and Hysteria2 written as a link with its
+  certificate's SHA-256 (plain and with Salamander); a Shadowsocks protocol on the Ubuntu server passing
+  through each: three requests and a 5 MB download each (204, 200), the far end's log showing the
+  connections; the Ubuntu server's Xray process never restarted (same PID throughout).
+- **Traffic rules, live on the servers**: a domain rule through one external node and a site-list
+  rule (geosite) through another while everything else left directly; a block rule placed before
+  them; a load balancer taking turns (3 and 3 connections to its two members); a rule to a protocol
+  on the other server arriving there under the server's own identity (r1); all without an Xray
+  restart. A fastest-first balancer asked for one restart ("latency checks for a load balancer that
+  picks the fastest member"), ran at random until then, and picked by latency after the click.
+- **Found and fixed by these tests**: a random or round-robin load balancer made Xray refuse the
+  whole configuration (Xray needs latency checks for a balancer's fallback - only fastest-first ones
+  have one now); on OpenRC a core that died and stayed a zombie counted as running (a Hysteria2
+  protocol had been down since boot while the panel said running) - it now counts as dead and is
+  started again.
+- **Upgrade from 0.7.4**: a test opens a database made by 0.7.4 (servers with every kind of
+  protocol, a proxy pass, server and protocol code, protocols on their own addresses, an IPv4-only
+  server, users, a forward, a block), migrates it and compiles every server: each gets exactly what
+  0.7.4 sent it.
 
 ## Tested for 0.7.4 (local panel)
 

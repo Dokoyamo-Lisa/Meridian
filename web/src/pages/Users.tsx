@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'preact/hooks'
-import { GB, Server, User, bytes, date, get, patch, pct, post } from '../api'
+import { Plan, Server, User, bytes, date, get, patch, pct, post } from '../api'
 import { Icon } from '../icons'
 import { userURL } from '../session'
 import { navigate, setQuery, useLocation } from '../router'
-import { Ago, Check, Code, CopyButton, Empty, ErrorBox, Field, Loading, Meter, Modal, PageHead, Search, Seg, Toggle, errText, toast, useAsync, usePoll } from '../ui'
+import { Ago, Code, CopyButton, Empty, ErrorBox, Field, Loading, Meter, Modal, PageHead, Search, Seg, Tabs, Toggle, errText, toast, useAsync, usePoll } from '../ui'
+import { Limits, LimitFields, Plans, limitsBody, limitsOf, limitsSummary } from './Plans'
+import { ScopePicker, ScopeState, scopeBody, scopeState } from './ScopePicker'
 
 export const flagText: Record<string, [string, string]> = {
   over_quota: ['Over quota', 'crit'],
@@ -28,6 +30,33 @@ export function UserStatus(props: { user: User }) {
 type Filter = 'all' | 'online' | 'flagged' | 'paused'
 
 export function Users() {
+  const loc = useLocation()
+  if (loc.query.get('tab') === 'plans')
+    return (
+      <>
+        <PageHead title="Users" sub="Preset plans" />
+        <UsersTabs />
+        <Plans />
+      </>
+    )
+  return <UserList />
+}
+
+function UsersTabs() {
+  const loc = useLocation()
+  return (
+    <Tabs<'users' | 'plans'>
+      value={loc.query.get('tab') === 'plans' ? 'plans' : 'users'}
+      onChange={(t) => setQuery('tab', t === 'plans' ? 'plans' : null)}
+      tabs={[
+        ['users', 'Users'],
+        ['plans', 'Plans'],
+      ]}
+    />
+  )
+}
+
+function UserList() {
   const loc = useLocation()
   const list = useAsync(() => get<User[]>('/api/users'))
   const [q, setQ] = useState('')
@@ -63,6 +92,7 @@ export function Users() {
           </>
         }
       />
+      <UsersTabs />
       {list.error && !list.data && <ErrorBox error={list.error} retry={list.reload} />}
       {!list.data && !list.error && <Loading />}
       {list.data && all.length === 0 && (
@@ -126,10 +156,10 @@ export function Users() {
                     <td class="right hide-sm">{s.ips_24h}</td>
                     <td class="hide-sm" style="min-width:130px">
                       <div class="nowrap">
-                        {bytes(s.cycle_up + s.cycle_down)}
+                        {bytes(s.used)}
                         {s.quota > 0 && <span class="faint"> / {bytes(s.quota, 0)}</span>}
                       </div>
-                      {s.quota > 0 && <Meter pct={pct(s.cycle_up + s.cycle_down, s.quota)} label="Quota used" />}
+                      {s.quota > 0 && <Meter pct={pct(s.used, s.quota)} label="Quota used" />}
                     </td>
                     <td class="hide-sm nowrap">{s.expires_at ? date(s.expires_at) : <span class="faint">never</span>}</td>
                     <td class="hide-sm nowrap muted">
@@ -168,6 +198,13 @@ export function endOfDay(d: string): number {
   return Math.floor(new Date(y, m - 1, day, 23, 59, 59).getTime() / 1000)
 }
 
+// startOfDay turns a yyyy-mm-dd date input into the first second of that day, local time.
+export function startOfDay(d: string): number {
+  if (!d) return 0
+  const [y, m, day] = d.split('-').map(Number)
+  return Math.floor(new Date(y, m - 1, day, 0, 0, 0).getTime() / 1000)
+}
+
 export function toDateInput(ts: number): string {
   if (!ts) return ''
   const d = new Date(ts * 1000)
@@ -176,14 +213,6 @@ export function toDateInput(ts: number): string {
 }
 
 // UserForm creates a user (or several) or edits one.
-// quotaBytes is the quota field in bytes; an unchanged field keeps the exact stored value (a quota set
-// through the API need not be a round number of GB).
-function quotaBytes(field: string, stored = 0): number {
-  const gb = Number(field) || 0
-  if (stored && Math.round((stored / GB) * 100) / 100 === gb) return stored
-  return Math.round(gb * GB)
-}
-
 export function UserForm(props: { user?: User; onClose: () => void; onSaved: (users: User[]) => void }) {
   const v = props.user
   const [name, setName] = useState(v?.name || '')
@@ -191,14 +220,12 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
   const [signIn, setSignIn] = useState(v ? v.can_sign_in : true)
   const [username, setUsername] = useState(v?.username || '')
   const [password, setPassword] = useState('')
-  // up to two decimals: a quota set elsewhere (0.5 GB) is shown, and saved back, as it is
-  const [quota, setQuota] = useState(v?.quota ? String(Math.round((v.quota / GB) * 100) / 100) : '')
-  const [resetDay, setResetDay] = useState(String(v?.reset_day ?? 1))
+  const [limits, setLimits] = useState<Limits>(limitsOf(v))
+  const [starts, setStarts] = useState(toDateInput(v?.starts_at || v?.created_at || 0))
   const [expires, setExpires] = useState(toDateInput(v?.expires_at || 0))
-  const [ipLimit, setIpLimit] = useState(v?.ip_limit ? String(v.ip_limit) : '')
-  const [scopeAll, setScopeAll] = useState(!v?.scope?.none && !v?.scope?.servers?.length && !v?.scope?.protocols?.length)
-  const [picked, setPicked] = useState<number[]>(v?.scope?.servers || [])
-  const [pickedNodes, setPickedNodes] = useState<number[]>(v?.scope?.protocols || [])
+  const [scope, setScopeRaw] = useState<ScopeState>(scopeState(v?.scope))
+  const [plans, setPlans] = useState<Plan[]>([])
+  const [planId, setPlanId] = useState(0)
   // access is sent only when changed here: a user's servers stay as they are otherwise
   const [accessTouched, setAccessTouched] = useState(!v)
   const [note, setNote] = useState(v?.note || '')
@@ -207,20 +234,48 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
   const [err, setErr] = useState('')
   const many = !v && Number(count) > 1
 
+  const setScope = (sc: ScopeState) => {
+    setAccessTouched(true)
+    setScopeRaw(sc)
+  }
   useEffect(() => {
     get<Server[]>('/api/servers')
       .then((list) => {
         setServers(list)
         // what was removed since cannot be shown, so it is not kept either
-        setPicked((ids) => ids.filter((id) => list.some((x) => x.id === id)))
-        setPickedNodes((ids) => ids.filter((id) => list.some((x) => x.nodes.some((n) => n.id === id))))
+        setScopeRaw((sc) => ({
+          ...sc,
+          servers: sc.servers.filter((id) => list.some((x) => x.id === id)),
+          protocols: sc.protocols.filter((id) => list.some((x) => x.nodes.some((n) => n.id === id))),
+        }))
       })
       .catch(() => setServers([]))
+    if (!v)
+      get<{ plans: Plan[] }>('/api/plans')
+        .then((r) => setPlans(r.plans))
+        .catch(() => setPlans([]))
   }, [])
+
+  // a plan fills the form in; everything stays editable
+  const pickPlan = (id: number) => {
+    setPlanId(id)
+    const pl = plans.find((x) => x.id === id)
+    if (!pl) return
+    setLimits(limitsOf(pl))
+    setScope(scopeState(pl.scope))
+    const [y, m, d] = (starts || toDateInput(Math.floor(Date.now() / 1000))).split('-').map(Number)
+    if (pl.duration) {
+      const end = new Date(y, m - 1, d)
+      if (pl.duration_unit === 'month') end.setMonth(end.getMonth() + pl.duration)
+      else end.setDate(end.getDate() + pl.duration)
+      end.setDate(end.getDate() - 1) // the last full day
+      setExpires(toDateInput(Math.floor(end.getTime() / 1000)))
+    } else setExpires('')
+  }
 
   const save = async (e: Event) => {
     e.preventDefault()
-    if (accessTouched && !scopeAll && picked.length === 0 && pickedNodes.length === 0) {
+    if (accessTouched && !scope.all && scope.servers.length === 0 && scope.protocols.length === 0) {
       setErr('Pick at least one server or protocol, or choose “Everything”.')
       return
     }
@@ -230,16 +285,14 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
       const body: Record<string, unknown> = {
         name: name.trim(),
         note,
-        quota: quotaBytes(quota, v?.quota),
-        reset_day: Number(resetDay) || 0,
+        ...limitsBody(limits, v?.quota),
         expires_at: endOfDay(expires),
-        ip_limit: Number(ipLimit) || 0,
       }
-      if (accessTouched) {
-        body.servers = scopeAll ? [] : picked
-        // a protocol of a whole server is covered already
-        body.protocols = scopeAll ? [] : pickedNodes.filter((nid) => !servers.some((x) => picked.includes(x.id) && x.nodes.some((n) => n.id === nid)))
-      }
+      const startTs = startOfDay(starts)
+      // the start is sent when it is not just the day the user was created
+      if (!v || toDateInput(v.starts_at || v.created_at) !== starts) body.starts_at = startTs
+      if (planId) body.plan_id = planId
+      if (accessTouched) Object.assign(body, scopeBody(scope, servers))
       if (v) {
         // an empty username keeps the current one; a user without one gets one made from the name
         // (with a generated password) - never a sign-in removed by an empty field
@@ -320,81 +373,39 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
           </div>
         )}
 
-        <div class="inline-fields">
-          <Field label="Monthly quota (GB)" hint="Empty = unlimited.">
-            <input class="input" inputMode="decimal" value={quota} placeholder="unlimited" onInput={(e) => setQuota(e.currentTarget.value.replace(/[^0-9.]/g, ''))} />
+        {!v && plans.length > 0 && (
+          <Field label="Plan" hint={planId ? limitsSummary(plans.find((x) => x.id === planId) || plans[0]) : 'Fills in the fields below - everything stays editable.'}>
+            <select class="input" value={planId} onChange={(e) => pickPlan(Number(e.currentTarget.value))}>
+              <option value={0}>No plan - set it up by hand</option>
+              {plans.map((x) => (
+                <option value={x.id}>{x.name}</option>
+              ))}
+            </select>
           </Field>
-          <Field label="Usage resets on day" hint="0 = never resets.">
-            <input class="input" inputMode="numeric" value={resetDay} onInput={(e) => setResetDay(e.currentTarget.value.replace(/[^0-9]/g, ''))} />
+        )}
+        <LimitFields v={limits} set={setLimits} startHint="the start date" servers={servers} />
+        <div class="inline-fields">
+          <Field label="Starts" hint="The first day of the user's period.">
+            <input class="input" type="date" value={starts} onInput={(e) => setStarts(e.currentTarget.value)} />
           </Field>
           <Field label="Valid until" hint="Empty = no end date.">
             <input class="input" type="date" value={expires} onInput={(e) => setExpires(e.currentTarget.value)} />
           </Field>
-          <Field label="IP limit" hint="Alert when more IPs are online at once. Empty = no limit.">
-            <input class="input" inputMode="numeric" value={ipLimit} placeholder="none" onInput={(e) => setIpLimit(e.currentTarget.value.replace(/[^0-9]/g, ''))} />
-          </Field>
         </div>
         <div class="callout">
           <Icon name="info" size="sm" />
-          <div>Limits only raise alerts. Nothing is ever paused or cut off automatically - pausing is always your click.</div>
+          <div>
+            The quota and the end date only raise alerts - pausing is always your click. A speed limit, and turning extra devices away, are enforced by the servers: those devices keep working, just slower or not at
+            all beyond the limit.
+          </div>
         </div>
-        <Field label="Access" hint={scopeAll ? undefined : 'A whole server includes the protocols added to it later. Or pick single protocols.'}>
-          <Seg
-            value={scopeAll ? 'all' : 'some'}
-            onChange={(x) => {
-              setAccessTouched(true)
-              setScopeAll(x === 'all')
-            }}
-            options={[
-              ['all', 'Everything, including new servers'],
-              ['some', 'Only these'],
-            ]}
-          />
-        </Field>
         {v?.scope?.none && !accessTouched && (
           <div class="callout warn">
             <Icon name="alert" size="sm" />
             <div>{v.name} has no access: everything they could use was removed. Pick servers or protocols below.</div>
           </div>
         )}
-        {!scopeAll && (
-          <div class="scope-tree">
-            {servers.length === 0 && <span class="muted">There are no servers yet.</span>}
-            {servers.map((x) => {
-              const whole = picked.includes(x.id)
-              const usable = x.nodes.filter((n) => !n.pass_only)
-              return (
-                <div class="scope-srv">
-                  <Check
-                    checked={whole}
-                    onChange={(on) => {
-                      setAccessTouched(true)
-                      setPicked(on ? [...picked, x.id] : picked.filter((id) => id !== x.id))
-                    }}
-                    label={x.name}
-                    hint={whole ? 'The whole server, with protocols added later' : usable.length ? 'Whole server' : 'no protocols yet'}
-                  />
-                  {usable.length > 0 && (
-                    <div class="scope-nodes">
-                      {usable.map((n) => (
-                        <Check
-                          checked={whole || pickedNodes.includes(n.id)}
-                          disabled={whole}
-                          onChange={(on) => {
-                            setAccessTouched(true)
-                            setPickedNodes(on ? [...pickedNodes, n.id] : pickedNodes.filter((id) => id !== n.id))
-                          }}
-                          label={n.name || n.label}
-                          hint={`${n.name ? n.label + ' · ' : ''}port ${n.public_port || n.port}${n.enabled ? '' : ' · off'}`}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
+        <ScopePicker servers={servers} value={scope} onChange={setScope} />
         <Field label="Note">
           <textarea class="input" value={note} maxLength={2000} onInput={(e) => setNote(e.currentTarget.value)} placeholder="Who it is for, contact, invoice…" />
         </Field>

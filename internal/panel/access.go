@@ -270,15 +270,9 @@ func (p *Panel) geoRule(ctx context.Context, s *Server) (*proto.GeoRule, error) 
 	// its addresses, a protocol's own included
 	if all, err := p.serversOf(ctx, s.AccountID); err == nil {
 		for _, o := range all {
-			ips := append([]string{o.IPv4, o.IPv6, o.Address}, o.Addrs...)
-			if nodes, err := p.nodesOf(ctx, o.ID); err == nil {
-				for _, n := range nodes {
-					ips = append(ips, n.BindIP)
-				}
-			}
-			for _, ip := range ips {
-				if a, err := netip.ParseAddr(ip); err == nil && publicAddr(a.Unmap()) && !slices.Contains(except, a.Unmap().String()) {
-					except = append(except, a.Unmap().String())
+			for _, ip := range p.currentAddrs(ctx, o) {
+				if !slices.Contains(except, ip) {
+					except = append(except, ip)
 				}
 			}
 		}
@@ -324,7 +318,7 @@ func siteArea(path string) string {
 		return "users"
 	case strings.HasPrefix(path, "/api/status"), path == "/status" || strings.HasPrefix(path, "/status/"):
 		return "status"
-	case path == "/api/login", path == "/api/logout", path == "/api/meta":
+	case path == "/api/login", path == "/api/logout", path == "/api/meta", strings.HasPrefix(path, "/api/tg/"):
 		return "signin"
 	case strings.HasPrefix(path, "/api/"), path == "/mcp":
 		return "admin"

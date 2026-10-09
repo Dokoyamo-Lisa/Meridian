@@ -61,6 +61,7 @@ type nodeView struct {
 	PassName    string              `json:"pass_name,omitempty" doc:"The proxy pass exit, as 'server · protocol'"`
 	PassBroken  string              `json:"pass_broken,omitempty" doc:"Why the proxy pass cannot be used right now (the exit is turned off or removed); its traffic is blocked meanwhile"`
 	PassEntries []string            `json:"pass_entries,omitempty" doc:"Protocols on other servers that pass through this one, as 'server · protocol'"`
+	RouteUses   []string            `json:"route_uses,omitempty" doc:"Traffic rules that send traffic through this protocol: while it is off or removed, that traffic is blocked"`
 	// on servers whose provider forwards other numbers than the ones the server listens on
 	PublicPort int `json:"public_port,omitempty" doc:"The port devices connect to, when the server's provider forwards it under another number than port"`
 }
@@ -82,6 +83,12 @@ type serverView struct {
 	Limits     []string                    `json:"limits,omitempty" doc:"What does not work on this server, and how to change that"`
 	LocFrom    string                      `json:"loc_from,omitempty" doc:"The address whose DB-IP entry gives the location: the address when it was set by hand to an IP, otherwise the IP the agent reports (empty when the location was set by hand)"`
 	ACMEPort   int                         `json:"acme_port,omitempty" doc:"The TCP port Let's Encrypt's check arrives on - 80, or where the provider forwards port 80 - when a protocol gets its certificate from Let's Encrypt (its firewall must let it in); 0 when none does"`
+	RouteNotes []string                    `json:"route_notes,omitempty" doc:"Traffic rules and load balancers that cannot be used on this server as written, and what happens to that traffic instead (see /api/routing)"`
+	DNS        *dnsView                    `json:"dns,omitempty" doc:"A server whose IP address changes (ddns): what its name resolves to and whether that is the server"`
+	Shares     []proto.ShareStatus         `json:"shares,omitempty" doc:"(The server's own panel) the other panels it is shared with, as its agent reports them"`
+	Taken      [][2]int                    `json:"taken,omitempty" doc:"Port ranges the other panels' protocols and forwards use on this server (first, last): yours cannot use them"`
+
+	panelLinkView // how its agent reaches the panel (relay.go)
 }
 
 // noNftables says whether a server has told the panel it has no nftables.
@@ -125,6 +132,7 @@ func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*server
 			v.Rates = ls.Rates
 			v.Ports = ls.Live.Ports
 		}
+		v.Shares, v.Taken = ls.Live.Shares, ls.Live.Taken // sharing.go
 		for _, u := range ls.Live.Online {
 			online[u.Node] += len(u.IPs)
 			subs[u.Sub] = true
@@ -136,9 +144,19 @@ func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*server
 	if err != nil {
 		return nil, err
 	}
+	ruleUses := p.rulesByExit(ctx, s.AccountID)
 	for _, n := range nodes {
 		nv := viewOfNode(n, s)
 		nv.Online = online[n.ID]
+		nv.RouteUses = ruleUses[fmt.Sprintf("node:%d", n.ID)]
+		if n.PassExt > 0 {
+			nv.PassName = p.extTitle(ctx, n.PassExt)
+			if _, why := p.extExit(ctx, s.AccountID, n.PassExt); why != "" {
+				nv.PassBroken = why
+				nv.Notes = append(nv.Notes, "Proxy pass does not work: "+why+". Its traffic is blocked - nobody leaves from "+
+					s.Name+" instead - until the node is back, or choose another exit (or Off) in its settings.")
+			}
+		}
 		if n.PassNode > 0 {
 			nv.PassName = p.passName(ctx, n.PassNode)
 			if _, _, why := p.passExit(ctx, s, n); why != "" {
@@ -175,10 +193,21 @@ func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*server
 	}
 	for _, f := range fw {
 		f.PublicPort = publicPortOf(s, f)
+		f.TargetNow = p.forwardNow(ctx, s, f)
 	}
 	v.Forwards = append(v.Forwards, fw...)
 	v.Limits = append(v.Limits, portIssues(s, nodes, fw)...)
 	v.Limits = append(v.Limits, addressIssues(s, nodes)...)
+	if detail {
+		p.hub.settle(ctx, time.Second) // a change just made: what its compile found about the rules
+	}
+	v.RouteNotes = p.routeNotesOf(s.ID)
+	v.panelLinkView = p.panelLinkOf(ctx, s)
+	v.Limits = append(v.Limits, p.reachIssues(ctx, s, nodes)...)
+	if note := p.panelIPv6Issue(ctx, s); note != "" {
+		v.Limits = append(v.Limits, note)
+	}
+	v.DNS = p.dnsViewOf(s)
 	return v, nil
 }
 
@@ -261,7 +290,11 @@ func (p *Panel) apiServer(w http.ResponseWriter, r *http.Request, a *Account) er
 	redactCode(r, v)
 	out := map[string]any{"server": v}
 	if canWrite(r) { // the command carries the agent's secret: not for read-only tokens
-		out["install"] = p.installCommand(r, s)
+		if s.Guest {
+			out["share_code"] = p.shareCodeOf(r, s) // a server shared with this panel gets a code for its owner instead (sharing.go)
+		} else {
+			out["install"] = p.installCommand(r, s)
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 	return nil
@@ -320,6 +353,9 @@ func (p *Panel) passName(ctx context.Context, exitID int64) string {
 		return "a removed server"
 	}
 	name := srv.Name + " · " + protocolLabel(exit.Kind, exit.Settings)
+	if exit.PassExt != 0 { // a relay to an external node
+		return name + " → " + p.extTitle(ctx, exit.PassExt)
+	}
 	if exit.PassNode != 0 { // a relay: and where the chain leaves the internet
 		if next, err := p.nodeByID(ctx, exit.PassNode); err == nil {
 			if ns, err := p.serverByID(ctx, next.ServerID); err == nil && ns.DeletedAt == 0 {
@@ -368,8 +404,12 @@ type serverInput struct {
 	Countries    []string        `json:"countries" doc:"With country_mode block or allow: two-letter country codes"`
 	Protocols    []string        `json:"protocols" doc:"On create, optional: protocols to set up with their default settings (vless, vmess, trojan, shadowsocks, hysteria2, wireguard, socks, http)"`
 	XrayCode     *string         `json:"xray_code" doc:"Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates. Only the syntax is checked; empty removes it"`
+	Shared       bool            `json:"shared" doc:"On create: a server another panel shares with you - the answer has a share code for its owner instead of an install command (they paste it on the server's page in their panel)"`
 	IPVersion    *string         `json:"ip_version" doc:"'' = IPv4 and IPv6 (the default), ipv4 = IPv4 only, ipv6 = IPv6 only: how protocols reach sites, which address links use, and whether WireGuard may route IPv6. Xray takes it live; Hysteria2 protocols restart once"`
 	PublicPorts  *string         `json:"public_ports" doc:"Only for servers whose provider decides their ports (NAT servers, LXC and Incus containers): the ports it forwards, e.g. '20000-20019'; PUBLIC:LOCAL where the number on the server differs ('40001-40010:10001-10010'); /tcp or /udp where only one is forwarded. Protocols and forwards then use only these ports and links carry the public numbers. Empty = every port"`
+	PanelRelay   *int64          `json:"panel_relay" doc:"Reach the panel through another server (its id) - for a server that keeps losing the panel; 0 = directly. The relay must be another of your servers whose agent can relay (caps.relay) and that reaches the panel directly itself; a server that relays others cannot be relayed. Nothing changes for users: the agent switches within a minute, and goes directly by itself while the relay cannot be reached"`
+	DDNS         *bool           `json:"ddns" doc:"Its IP address changes (dynamic DNS): address must then be its domain name (e.g. home.example.com), which every link to it uses. The panel checks that the name points at the addresses the agent reports"`
+	Cloudflare   *bool           `json:"ddns_cloudflare" doc:"With ddns: the panel keeps the name's A and AAAA records in Cloudflare pointing at the server (DNS only, a short TTL) and removes the name's A or AAAA record when the server has no address of that kind; no other name is touched. Needs the Cloudflare token (PUT /api/settings/cloudflare)"`
 }
 
 func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Account) error {
@@ -400,6 +440,10 @@ func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Accou
 	if err != nil {
 		return err
 	}
+	ddns, ddnsCF, err := p.dynFields(&in, nil, addr)
+	if err != nil {
+		return err
+	}
 	srv := &Server{Address: addr, PublicPorts: pm.String(), ports: pm, IPVersion: ipv}
 	// an IP set by hand is where the server is: DB-IP places it right away
 	country, city, lat, lon := p.lookupPlace(srv.addrIP())
@@ -408,8 +452,8 @@ func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Accou
 	err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
 		secret := seal.NewSecret()
 		res, err := tx.Exec(`INSERT INTO servers (account_id, name, secret, pass_secret, address, public_ports, ip_version, country,
-			city, lat, lon, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, owner, name, secret, secret, addr, srv.PublicPorts,
-			ipv, country, city, lat, lon, t)
+			city, lat, lon, created_at, ddns, ddns_cloudflare, guest) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, owner, name, secret, secret, addr,
+			srv.PublicPorts, ipv, country, city, lat, lon, t, ddns, ddnsCF, in.Shared)
 		if err != nil {
 			return err
 		}
@@ -447,6 +491,10 @@ func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Accou
 	}
 	p.event(owner, "info", "server_added", id, 0, a.ID, fmt.Sprintf("Server %s added", name), nil)
 	p.touchServers(id)
+	p.touchRoutes(r.Context(), owner) // exits of the traffic rules it gets learn its identity there
+	if ddns {
+		p.dynSaved(r.Context(), nil, id, a.ID)
+	}
 	s, err := p.serverByID(r.Context(), id)
 	if err != nil {
 		return err
@@ -454,6 +502,10 @@ func (p *Panel) apiCreateServer(w http.ResponseWriter, r *http.Request, a *Accou
 	v, err := p.serverView(r.Context(), s, true)
 	if err != nil {
 		return err
+	}
+	if s.Guest {
+		writeJSON(w, http.StatusCreated, map[string]any{"server": v, "share_code": p.shareCodeOf(r, s)})
+		return nil
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"server": v, "install": p.installCommand(r, s)})
 	return nil
@@ -471,6 +523,11 @@ func (p *Panel) apiUpdateServer(w http.ResponseWriter, r *http.Request, a *Accou
 	var in serverInput
 	if err := readJSON(r, &in); err != nil {
 		return err
+	}
+	if in.PanelRelay != nil { // refused before anything else is written
+		if _, _, err := p.checkPanelRelay(r.Context(), s, *in.PanelRelay); err != nil {
+			return err
+		}
 	}
 	place := *s                      // the server as it will be, for its place
 	relocate, linked := false, false // the place follows the address; links elsewhere carry it
@@ -508,6 +565,14 @@ func (p *Panel) apiUpdateServer(w http.ResponseWriter, r *http.Request, a *Accou
 		}
 		set("ip_version", ipv)
 		linked = linked || ipv != s.IPVersion
+	}
+	if in.Address != nil || in.DDNS != nil || in.Cloudflare != nil {
+		ddns, cf, err := p.dynFields(&in, s, place.Address)
+		if err != nil {
+			return err
+		}
+		set("ddns", ddns)
+		set("ddns_cloudflare", cf)
 	}
 	if in.XrayCode != nil {
 		code, err := checkXrayCode(*in.XrayCode)
@@ -612,10 +677,22 @@ func (p *Panel) apiUpdateServer(w http.ResponseWriter, r *http.Request, a *Accou
 			return err
 		}
 		p.touchServers(id)
-		if linked { // proxy passes elsewhere connect to this server's address and ports
-			p.touchServers(p.passEntriesOf(r.Context(), id)...)
+		if linked { // proxy passes, traffic rules and forwards elsewhere connect to its address and ports
+			p.touchAccount(s.AccountID)
+			p.relayServerChanged(r.Context(), id, a.ID) // and agents relayed through it (relay.go)
 		}
 		p.status.forget() // its name, location or visibility on the status page may have changed
+		if s.DDNS || in.DDNS != nil {
+			p.dynSaved(r.Context(), s, id, a.ID)
+		}
+	}
+	if in.PanelRelay != nil {
+		if s, err = p.serverByID(r.Context(), id); err != nil {
+			return err
+		}
+		if err := p.setPanelRelay(r.Context(), s, *in.PanelRelay, a.ID, ""); err != nil {
+			return err
+		}
 	}
 	return p.apiServer(w, r, a)
 }
@@ -691,8 +768,10 @@ func (p *Panel) apiDeleteServer(w http.ResponseWriter, r *http.Request, a *Accou
 		if _, err := tx.Exec(`UPDATE servers SET deleted_at = ? WHERE id = ?`, now(), id); err != nil {
 			return err
 		}
-		lost, err = pruneScopes(tx, s.AccountID, id, nodeIDs)
-		return err
+		if lost, err = pruneScopes(tx, s.AccountID, id, nodeIDs); err != nil {
+			return err
+		}
+		return pruneRoutes(tx, s.AccountID, []int64{id}, nodeIDs)
 	}); err != nil {
 		return err
 	}
@@ -702,7 +781,9 @@ func (p *Panel) apiDeleteServer(w http.ResponseWriter, r *http.Request, a *Accou
 	}
 	p.event(s.AccountID, "warn", "server_deleted", id, 0, a.ID, msg, nil)
 	p.noAccessLeft(s.AccountID, a.ID, lost)
+	p.relayGone(r.Context(), s, a.ID)
 	p.touchServers(append(append(entries, exits...), id)...)
+	p.touchRoutes(r.Context(), s.AccountID) // rules elsewhere sent traffic to its protocols, or applied to it
 	p.live.drop(id)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	return nil
@@ -720,6 +801,12 @@ func (p *Panel) apiRotateServerToken(w http.ResponseWriter, r *http.Request, a *
 	s.Secret = seal.NewSecret()
 	if _, err := p.db.Exec1(`UPDATE servers SET secret = ? WHERE id = ?`, s.Secret, id); err != nil {
 		return err
+	}
+	if s.Guest { // the owner's agent knows the old one: a new code for the owner (sharing.go)
+		p.event(s.AccountID, "warn", "token_rotated", id, 0, a.ID,
+			fmt.Sprintf("The share code of %s was renewed - its owner must share it again with the new code", s.Name), nil)
+		writeJSON(w, http.StatusOK, map[string]any{"share_code": p.shareCodeOf(r, s)})
+		return nil
 	}
 	p.event(s.AccountID, "warn", "token_rotated", id, 0, a.ID,
 		fmt.Sprintf("Agent token of %s rotated - reinstall the agent with the new command", s.Name), nil)
@@ -748,19 +835,25 @@ func (p *Panel) apiServerAction(w http.ResponseWriter, r *http.Request, a *Accou
 		proto.ActionUpgradeHysteria, proto.ActionUpgradeRealm, proto.ActionUpgradeAgent, proto.ActionCheckTarget}, in.Kind) {
 		return errStatus(http.StatusBadRequest, "unknown action")
 	}
+	if s.Guest && !guestActionKinds[in.Kind] { // sharing.go
+		return ownerOnly(s, "upgrading the agent and the cores")
+	}
 	if in.Kind == proto.ActionRestartPending && !s.caps().RestartPending {
 		in.Kind = proto.ActionRestartXray // agents before 0.6.3: only Xray's settings ever wait
 	}
 	args := "{}"
+	var aid int64
 	switch in.Kind {
 	case proto.ActionUpgradeAgent:
-		// pin the exact binary: the agent may download it over plain HTTP, the checksum travels signed
+		// pin the exact binary: the agent may download it over plain HTTP, the checksum travels signed;
+		// an upgrade still waiting for the server is replaced (agentupgrades.go)
 		sums := p.agentSHA256()
 		if len(sums) == 0 {
 			return errStatus(http.StatusConflict, "the panel has no agent binaries to upgrade to (see --agent-dir)")
 		}
-		b, _ := json.Marshal(map[string]any{"sha256": sums})
-		args = string(b)
+		if aid, _, err = p.queueAgentUpgrade(r.Context(), s, sums, a.ID, true); err != nil {
+			return err
+		}
 	case proto.ActionUpgradeXray:
 		var x struct {
 			Version string `json:"version"`
@@ -779,12 +872,14 @@ func (p *Panel) apiServerAction(w http.ResponseWriter, r *http.Request, a *Accou
 			args = string(b)
 		}
 	}
-	res, err := p.db.Exec1(`INSERT INTO actions (server_id, kind, args, created_at, created_by) VALUES (?, ?, ?, ?, ?)`,
-		id, in.Kind, args, now(), a.ID)
-	if err != nil {
-		return err
+	if aid == 0 {
+		res, err := p.db.Exec1(`INSERT INTO actions (server_id, kind, args, created_at, created_by) VALUES (?, ?, ?, ?, ?)`,
+			id, in.Kind, args, now(), a.ID)
+		if err != nil {
+			return err
+		}
+		aid, _ = res.LastInsertId()
 	}
-	aid, _ := res.LastInsertId()
 	p.event(s.AccountID, "info", "action", id, 0, a.ID, fmt.Sprintf("%s requested %s on %s", a.Username,
 		strings.ReplaceAll(in.Kind, "_", " "), s.Name), nil)
 	p.touchServers(id)
@@ -913,6 +1008,9 @@ func portConflictAt(port int, tcp, udp bool, bind string, nodes []*Node, fwds []
 			return fmt.Sprintf("port %d is already used by a forward on this server", port)
 		}
 	}
+	if msg := hopConflict(port, udp, bind, nodes, skipNode); msg != "" {
+		return msg
+	}
 	if !ours && slices.Contains(hostPorts, port) {
 		return fmt.Sprintf("port %d is in use by another program on the server", port)
 	}
@@ -920,10 +1018,17 @@ func portConflictAt(port int, tcp, udp bool, bind string, nodes []*Node, fwds []
 }
 
 func (p *Panel) hostPorts(id int64) []int {
+	ports := p.relayPorts(id) // the relay for other servers (relay.go)
 	if ls := p.live.get(id); ls != nil {
-		return ls.Live.Ports
+		ports = append(ports, ls.Live.Ports...)
+		// on a shared server, what the other panels use - their port hopping ranges too (sharing.go)
+		for _, r := range ls.Live.Taken {
+			for port := r[0]; port <= r[1] && r[1]-r[0] < 70000; port++ {
+				ports = append(ports, port)
+			}
+		}
 	}
-	return nil
+	return ports
 }
 
 // hostPortsBut leaves out the port an object listens on itself: changing a running protocol's address
@@ -948,6 +1053,7 @@ type nodeInput struct {
 	Host     *string     `json:"host" doc:"Address override for this protocol only; empty = the server's address"`
 	Sort     *int        `json:"sort"`
 	PassNode *int64      `json:"pass_node" doc:"Proxy pass: id of the exit protocol on another server; 0 = leave directly. The exit may pass on once more (a relay): a chain has two passes at most, each to another server"`
+	PassExt  *int64      `json:"pass_ext" doc:"Proxy pass through an external node (its id, see /api/external-nodes); 0 = none. Either pass_node or pass_ext"`
 	PassOnly *bool       `json:"pass_only" doc:"Serve only proxy passes from other servers: users cannot connect directly and it is left out of their links (not for WireGuard)"`
 	Code     *string     `json:"code" doc:"The protocol's own settings, merged on top of what the panel generates. Xray protocols: JSON (comments allowed) - fields merged into the inbound (sniffing, streamSettings.sockopt, fallbacks, ...), outbounds added (own tags), rules for this protocol's traffic only; tag, port and users stay the panel's. Hysteria2: YAML; auth and trafficStats stay the panel's (saving restarts it). Only the syntax is checked; empty removes it"`
 	BindIP   *string     `json:"bind_ip" doc:"One of the server's addresses (see addrs on the server) for this protocol alone: it listens there, its traffic leaves from there, and links use it when it is public. Protocols on different addresses may share a port. Empty = all addresses"`
@@ -978,24 +1084,33 @@ func (p *Panel) checkPass(ctx context.Context, entry *Node, entrySrv *Server, ex
 	if !canExit(exit.Kind) {
 		return nil, errStatus(http.StatusBadRequest, "WireGuard cannot be a proxy pass exit - pick any other protocol")
 	}
+	// the exit is a relay to an external node: that leaves the internet itself
+	if exit.PassExt != 0 {
+		if _, why := p.extExit(ctx, entrySrv.AccountID, exit.PassExt); why != "" {
+			return nil, errStatus(http.StatusBadRequest, "the exit passes on, but "+why+" - choose another exit")
+		}
+	}
 	// the exit is a relay: its own exit leaves the internet itself, from yet another server
 	if exit.PassNode != 0 {
 		next, ns, prob := p.passHop(ctx, xs, exit.PassNode)
 		switch {
 		case prob != hopOK:
 			return nil, errStatus(http.StatusBadRequest, "the exit passes on to a protocol that cannot be used now (removed or turned off) - choose another exit")
-		case next.PassNode != 0:
+		case next.PassNode != 0 || next.PassExt != 0:
 			return nil, errStatus(http.StatusBadRequest, "the exit passes on twice already - a chain has two passes at most: choose another exit")
 		case ns.ID == entrySrv.ID:
 			return nil, errStatus(http.StatusBadRequest, fmt.Sprintf("the exit passes on back to %s - every pass goes to another server: choose another exit", entrySrv.Name))
 		}
+	}
+	if err := checkPassReach(entrySrv, exit, xs); err != nil {
+		return nil, err
 	}
 	// protocols that pass through this one make the chain one pass longer
 	if entry.ID > 0 {
 		for _, e := range p.passEntryNodes(ctx, entry.ID) {
 			name := p.nodeTitle(ctx, e)
 			switch {
-			case exit.PassNode != 0:
+			case exit.PassNode != 0 || exit.PassExt != 0:
 				return nil, errStatus(http.StatusBadRequest, fmt.Sprintf("%s passes through this protocol, and the exit passes on too - a chain has two passes at most: choose an exit that leaves the internet itself", name))
 			case len(p.passEntryNodes(ctx, e.ID)) > 0:
 				return nil, errStatus(http.StatusBadRequest, fmt.Sprintf("protocols pass through %s, which passes through this one - a chain has two passes at most", name))
@@ -1102,6 +1217,9 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	if err := checkNodePort(s, in.Kind, settings, port); err != nil {
 		return err
 	}
+	if err := p.checkHop(r.Context(), s, &Node{Kind: in.Kind, Port: port, BindIP: bind, Settings: settings}); err != nil {
+		return err
+	}
 	name, host := "", ""
 	if in.Name != nil {
 		name = cleanName(*in.Name, 40)
@@ -1123,10 +1241,20 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 		}
 		passNode = *in.PassNode
 	}
+	var passExt int64
+	if in.PassExt != nil && *in.PassExt > 0 {
+		if passNode > 0 {
+			return errStatus(http.StatusBadRequest, "a protocol passes through a protocol or an external node, not both")
+		}
+		if err := p.checkPassExt(r.Context(), &Node{Kind: in.Kind}, s, *in.PassExt); err != nil {
+			return err
+		}
+		passExt = *in.PassExt
+	}
 	t := now()
 	res, err := p.db.Exec1(`INSERT INTO nodes (id, server_id, kind, name, port, settings, host, pass_node, pass_only, bind_ip,
-		code, sort, created_at, updated_at) VALUES (`+db.NextID("nodes")+`, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, in.Kind, name, port,
-		string(settings), host, passNode, passOnly, bind, code, len(nodes), t, t)
+		code, sort, created_at, updated_at, pass_ext) VALUES (`+db.NextID("nodes")+`, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, in.Kind, name, port,
+		string(settings), host, passNode, passOnly, bind, code, len(nodes), t, t, passExt)
 	if err != nil {
 		return err
 	}
@@ -1140,6 +1268,7 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	p.event(s.AccountID, "info", "protocol_added", id, 0, a.ID, fmt.Sprintf("%s added on %s (port %d)",
 		protocolLabel(k.Kind, settings), s.Name, port), nil)
 	p.touchServers(id)
+	p.touchRoutes(r.Context(), s.AccountID)
 	n, err := p.nodeByID(r.Context(), nid)
 	if err != nil {
 		return err
@@ -1221,6 +1350,11 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 			return err
 		}
 	}
+	if in.Settings != nil || moved {
+		if err := p.checkHop(r.Context(), s, n); err != nil {
+			return err
+		}
+	}
 	if in.Name != nil {
 		n.Name = cleanName(*in.Name, 40)
 	}
@@ -1267,6 +1401,29 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 		}
 		n.PassNode = *in.PassNode
 	}
+	if in.PassExt != nil && *in.PassExt != n.PassExt {
+		if *in.PassExt > 0 {
+			if err := p.checkPassExt(r.Context(), n, s, *in.PassExt); err != nil {
+				return err
+			}
+		}
+		n.PassExt = *in.PassExt
+	}
+	if n.PassNode > 0 && n.PassExt > 0 {
+		chosenExt, chosenNode := in.PassExt != nil && *in.PassExt > 0, in.PassNode != nil && *in.PassNode > 0
+		if chosenExt && chosenNode {
+			return errStatus(http.StatusBadRequest, "a protocol passes through a protocol or an external node, not both - set the other to 0")
+		}
+		// the one just chosen replaces the other
+		if chosenExt {
+			if old, err := p.nodeByID(r.Context(), n.PassNode); err == nil {
+				touch = append(touch, old.ServerID) // it drops this protocol's pass user
+			}
+			n.PassNode = 0
+		} else {
+			n.PassExt = 0
+		}
+	}
 	// protocols that pass through this one carry its address, port and keys in their outbound, and
 	// block while it is turned off: every change reaches them
 	touch = append(touch, p.passEntries(r.Context(), n.ID)...)
@@ -1277,8 +1434,8 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	n.UpdatedAt = now()
 	if _, err := p.db.Exec1(`UPDATE nodes SET name = ?, port = ?, enabled = ?, settings = ?, host = ?, pass_node = ?,
-		pass_only = ?, bind_ip = ?, code = ?, sort = ?, updated_at = ? WHERE id = ?`, n.Name, n.Port, n.Enabled,
-		string(n.Settings), n.Host, n.PassNode, n.PassOnly, n.BindIP, n.Code, n.Sort, n.UpdatedAt, n.ID); err != nil {
+		pass_only = ?, bind_ip = ?, code = ?, sort = ?, updated_at = ?, pass_ext = ? WHERE id = ?`, n.Name, n.Port, n.Enabled,
+		string(n.Settings), n.Host, n.PassNode, n.PassOnly, n.BindIP, n.Code, n.Sort, n.UpdatedAt, n.PassExt, n.ID); err != nil {
 		return err
 	}
 	if in.Settings != nil && isReality(n.Kind, n.Settings) && realityChanged(oldSettings, n.Settings) {
@@ -1295,10 +1452,14 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 			if k := len(p.passEntryNames(r.Context(), n.ID)); k > 0 {
 				msg += fmt.Sprintf(" - %d protocol(s) passing through it are blocked until it is on again", k)
 			}
+			if k := len(p.rulesSendingTo(r.Context(), s.AccountID, fmt.Sprintf("node:%d", n.ID))); k > 0 {
+				msg += fmt.Sprintf(" - %d traffic rule(s) sending traffic there block it until it is on again", k)
+			}
 		}
 	}
 	p.event(s.AccountID, "info", "protocol_changed", s.ID, 0, a.ID, msg, nil)
 	p.touchServers(touch...)
+	p.touchRoutes(r.Context(), s.AccountID) // traffic rules elsewhere may send traffic to it
 	writeJSON(w, http.StatusOK, viewOfNode(n, s))
 	return nil
 }
@@ -1323,6 +1484,7 @@ func (p *Panel) apiRegenNodeKeys(w http.ResponseWriter, r *http.Request, a *Acco
 		"Keys of %s on %s regenerated - clients must refresh their subscription", protocolLabel(n.Kind, n.Settings), s.Name), nil)
 	p.touchServers(s.ID)
 	p.touchPassEntries(r.Context(), n.ID)
+	p.touchRoutes(r.Context(), s.AccountID)
 	n.Settings = merged
 	writeJSON(w, http.StatusOK, viewOfNode(n, s))
 	return nil
@@ -1353,8 +1515,10 @@ func (p *Panel) apiDeleteNode(w http.ResponseWriter, r *http.Request, a *Account
 			return err
 		}
 		var err error
-		lost, err = pruneScopes(tx, s.AccountID, 0, []int64{n.ID})
-		return err
+		if lost, err = pruneScopes(tx, s.AccountID, 0, []int64{n.ID}); err != nil {
+			return err
+		}
+		return pruneRoutes(tx, s.AccountID, nil, []int64{n.ID})
 	}); err != nil {
 		return err
 	}
@@ -1362,7 +1526,11 @@ func (p *Panel) apiDeleteNode(w http.ResponseWriter, r *http.Request, a *Account
 	if len(entries) > 0 {
 		msg += fmt.Sprintf(" - protocols on %d other server(s) passed through it and are blocked until they get another exit", len(entries))
 	}
+	if rules := p.rulesSendingTo(r.Context(), s.AccountID, fmt.Sprintf("node:%d", n.ID)); len(rules) > 0 {
+		msg += fmt.Sprintf(" - %d traffic rule(s) sent traffic there and block it until they get another exit", len(rules))
+	}
 	p.event(s.AccountID, "warn", "protocol_removed", s.ID, 0, a.ID, msg, nil)
+	p.touchRoutes(r.Context(), s.AccountID)
 	p.noAccessLeft(s.AccountID, a.ID, lost)
 	p.touchServers(touch...)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -1435,7 +1603,7 @@ func (p *Panel) apiCreateForward(w http.ResponseWriter, r *http.Request, a *Acco
 	if engine == "nft" && noNftables(s) {
 		return errStatus(http.StatusBadRequest, "the kernel engine needs nftables: "+nftMissing+" - or use the realm engine")
 	}
-	target, err := forwardTarget(*in.Target, engine)
+	target, err := p.forwardTargetFor(r.Context(), s, *in.Target, engine)
 	if err != nil {
 		return err
 	}
@@ -1519,7 +1687,7 @@ func (p *Panel) apiUpdateForward(w http.ResponseWriter, r *http.Request, a *Acco
 			return errStatus(http.StatusBadRequest, "the kernel engine needs nftables: "+nftMissing+" - or keep the realm engine")
 		}
 	}
-	if f.Target, err = forwardTarget(f.Target, f.Engine); err != nil {
+	if f.Target, err = p.forwardTargetFor(r.Context(), s, f.Target, f.Engine); err != nil {
 		return err
 	}
 	if in.Enabled != nil {
@@ -1645,9 +1813,9 @@ func targetCheckArgs(nodeID int64, settings json.RawMessage, auto bool) string {
 	return string(b)
 }
 
-// isReality says whether a node is VLESS with REALITY.
+// isReality says whether a node uses REALITY (VLESS or Trojan).
 func isReality(kind string, settings json.RawMessage) bool {
-	if kind != subgen.KindVLESS {
+	if kind != subgen.KindVLESS && kind != subgen.KindTrojan {
 		return false
 	}
 	s, err := parseXray(settings)
@@ -1690,7 +1858,7 @@ func (p *Panel) apiTestTarget(w http.ResponseWriter, r *http.Request, a *Account
 		return err
 	}
 	if !isReality(n.Kind, n.Settings) {
-		return errStatus(http.StatusBadRequest, "only VLESS with REALITY has a camouflage site")
+		return errStatus(http.StatusBadRequest, "only a protocol with REALITY has a camouflage site")
 	}
 	var in struct {
 		Auto bool `json:"auto"`

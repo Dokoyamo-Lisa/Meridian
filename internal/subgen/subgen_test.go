@@ -169,10 +169,10 @@ func TestLoon(t *testing.T) {
 		}
 	}
 	for i, want := range []string{
-		`=vless,203.0.113.7,443,"8f4c2c0e-1b7a-4b0e-9d0a-2f9f1b8c7d6e",transport=tcp,over-tls=true,flow=xtls-rprx-vision,sni=www.apple.com,public-key="gUZPg8yD1oW4n7sGQ4c3n3cYlL3S2mE4n5Yv6Q7R8S0",short-id=a1b2c3d4,tls-profile=chrome,udp=true`,
-		`=Hysteria2,2001:db8::7,443,"pa:ss/word",tls-name=www.bing.com,tls-cert-sha256=` + strings.Repeat("ab", 32) + `,udp=true`,
-		`=shadowsocks,203.0.113.7,8388,2022-blake3-aes-128-gcm,"c2VydmVya2V5c2VydmVyaw==:dXNlcmtleXVzZXJrZXl1cw==",udp=true`,
-		`=wireguard,interface-ip=10.66.0.2,interface-ipv6=fd00::2,private-key="cHJpdmF0ZWtleXByaXZhdGVrZXlwcml2YXRla2V5MTI=",mtu=1420,dns=10.66.0.1,keepalive=25,peers=[{public-key="cHVibGlja2V5cHVibGlja2V5cHVibGlja2V5cHVibA==",allowed-ips="0.0.0.0/0,::/0",endpoint=203.0.113.7:51820}]`,
+		`=VLESS,203.0.113.7,443,"8f4c2c0e-1b7a-4b0e-9d0a-2f9f1b8c7d6e",transport=tcp,over-tls=true,flow=xtls-rprx-vision,public-key="gUZPg8yD1oW4n7sGQ4c3n3cYlL3S2mE4n5Yv6Q7R8S0",short-id=a1b2c3d4,sni=www.apple.com,tls-profile=chrome,udp=true`,
+		`=Hysteria2,2001:db8::7,443,"pa:ss/word",sni=www.bing.com,tls-cert-sha256=` + strings.Repeat("ab", 32) + `,udp=true`,
+		`=Shadowsocks,203.0.113.7,8388,2022-blake3-aes-128-gcm,"c2VydmVya2V5c2VydmVyaw==:dXNlcmtleXVzZXJrZXl1cw==",udp=true`,
+		`=WireGuard,interface-ip=10.66.0.2,interface-ipv6=fd00::2,private-key="cHJpdmF0ZWtleXByaXZhdGVrZXlwcml2YXRla2V5MTI=",mtu=1420,dns=10.66.0.1,keepalive=25,peers=[{public-key="cHVibGlja2V5cHVibGlja2V5cHVibGlja2V5cHVibA==",allowed-ips="0.0.0.0/0,::/0",endpoint=203.0.113.7:51820}]`,
 	} {
 		if !strings.HasSuffix(lines[i], want) {
 			t.Errorf("line %d:\n got %s\nwant …%s", i+1, lines[i], want)
@@ -401,8 +401,9 @@ func TestEveryFormatParses(t *testing.T) {
 	if err := json.Unmarshal(body, &j); err != nil {
 		t.Fatalf("sing-box: %v", err)
 	}
-	loonKinds := map[string]bool{"vless": true, "vmess": true, "trojan": true, "shadowsocks": true, "Hysteria2": true,
-		"socks5": true, "http": true, "https": true, "wireguard": true}
+	// the protocol names Loon's manual writes
+	loonKinds := map[string]bool{"VLESS": true, "VMess": true, "Trojan": true, "Shadowsocks": true, "Hysteria2": true,
+		"socks5": true, "http": true, "https": true, "WireGuard": true}
 	loon, _, _ := Render(FormatLoon, eps, info(), "")
 	for _, l := range strings.Split(strings.TrimSpace(string(loon)), "\n") {
 		name, rest, _ := strings.Cut(l, "=")

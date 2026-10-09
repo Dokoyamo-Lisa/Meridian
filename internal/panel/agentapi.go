@@ -105,6 +105,7 @@ func (p *Panel) adoptPassSecret(ctx context.Context, srv *Server) {
 	}
 	srv.PassSecret = srv.Secret
 	p.touchServers(append(p.passExitsOf(ctx, srv.ID), srv.ID)...)
+	p.touchRoutes(ctx, srv.AccountID) // so do its traffic rules' identities at their exits
 }
 
 func agentDeny(w http.ResponseWriter, err error) {

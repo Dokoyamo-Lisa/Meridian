@@ -248,7 +248,7 @@ func selfIssued(c *x509.Certificate) bool {
 func (p *Panel) usesOf(ctx context.Context, certID, accountID int64) ([]*Node, error) {
 	rows, err := p.db.QueryContext(ctx, `SELECT `+prefixCols("n.", nodeCols)+` FROM nodes n JOIN servers s ON s.id = n.server_id
 		WHERE s.account_id = ? AND s.deleted_at = 0 AND json_extract(n.settings, '$.cert_mode') = 'shared'
-		AND json_extract(n.settings, '$.cert_id') = ? ORDER BY s.sort, s.id, n.sort, n.id`, accountID, certID)
+		AND CAST(json_extract(n.settings, '$.cert_id') AS INTEGER) = ? ORDER BY s.sort, s.id, n.sort, n.id`, accountID, certID)
 	if err != nil {
 		return nil, err
 	}

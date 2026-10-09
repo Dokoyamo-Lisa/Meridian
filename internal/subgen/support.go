@@ -90,14 +90,24 @@ const (
 )
 
 func linkWhy(e Endpoint, p linkProfile) string {
-	if _, why := uri(e); why != "" {
+	if _, why := uri(e, p); why != "" {
 		return why
 	}
 	switch p {
 	case profileSingBox:
+		if e.Kind == KindTrojan && e.reality() {
+			return whyTrojanReality // Hiddify's link reader (ray2sing) leaves REALITY out of Trojan
+		}
 		_, _, why := singboxOutbound(e)
 		return why
 	case profileRocket:
+		// Shadowrocket publishes no documentation of its links: only what it is known to read
+		if e.encrypted() {
+			return whyEncryption
+		}
+		if e.Kind == KindTrojan && e.reality() {
+			return whyTrojanReality
+		}
 		switch e.Kind {
 		case KindVLESS, KindVMess, KindTrojan:
 			switch e.transport() {

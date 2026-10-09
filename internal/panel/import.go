@@ -139,6 +139,9 @@ func (p *Panel) apiStartScan(w http.ResponseWriter, r *http.Request, a *Account)
 	if err != nil {
 		return err
 	}
+	if err := ownerOnly(s, "scanning for other software"); err != nil { // sharing.go
+		return err
+	}
 	if !s.Online {
 		return errStatus(http.StatusConflict, "the server is offline - the agent must be connected to scan")
 	}
@@ -297,6 +300,13 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 	// VLESS: the flow is per protocol in Meridian; take the one most users have (the others connect
 	// with their new link)
 	if kind == subgen.KindVLESS {
+		note, err := s.importDecryption(in.Decryption)
+		if err != nil {
+			return "", nil, "", err
+		}
+		if note != "" {
+			why = joinWhy(why, note)
+		}
 		flows := map[string]int{}
 		for _, u := range in.Users {
 			flows[u.Flow]++
@@ -569,7 +579,8 @@ func (p *Panel) apiImport(w http.ResponseWriter, r *http.Request, a *Account) er
 						c.Username = u.Name
 					}
 				}
-				if _, err := tx.Exec(`INSERT OR REPLACE INTO node_creds (node_id, sub_id, id, password, username) VALUES (?, ?, ?, ?, ?)`,
+				if _, err := tx.Exec(`INSERT INTO node_creds (node_id, sub_id, id, password, username) VALUES (?, ?, ?, ?, ?)
+					ON CONFLICT(node_id, sub_id) DO UPDATE SET id = excluded.id, password = excluded.password, username = excluded.username`,
 					nid, sid, c.ID, c.Password, c.Username); err != nil {
 					return err
 				}

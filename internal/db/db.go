@@ -1,4 +1,4 @@
-// Package db opens the panel's SQLite database and runs its migrations.
+// Package db opens the panel's database - SQLite, or PostgreSQL (pg.go) - and runs its migrations.
 package db
 
 import (
@@ -15,7 +15,8 @@ import (
 // they queue instead of failing with SQLITE_BUSY.
 type DB struct {
 	*sql.DB
-	wmu sync.Mutex
+	wmu     sync.Mutex
+	Dialect string // SQLite or Postgres
 }
 
 func Open(path string) (*DB, error) {
@@ -30,7 +31,7 @@ func Open(path string) (*DB, error) {
 	}
 	sqldb.SetMaxOpenConns(8)
 	sqldb.SetMaxIdleConns(8)
-	d := &DB{DB: sqldb}
+	d := &DB{DB: sqldb, Dialect: SQLite}
 	if err := d.migrate(); err != nil {
 		sqldb.Close()
 		return nil, err

@@ -1,0 +1,1755 @@
+{
+ "1": {
+  "contract": 4,
+  "rev": "e329160690b5cb0009c7",
+  "server_id": 1,
+  "agent": {
+   "report_interval": 10,
+   "conn_log": true,
+   "dest_log": true,
+   "latest_version": "dev"
+  },
+  "cores": {
+   "xray": "26.3.27",
+   "hysteria": "2.13.0",
+   "realm": "2.9.6"
+  },
+  "xray": {
+   "base": {
+    "outbounds": [
+     {
+      "protocol": "freedom",
+      "tag": "direct"
+     },
+     {
+      "protocol": "blackhole",
+      "tag": "block"
+     }
+    ],
+    "routing": {
+     "domainStrategy": "AsIs",
+     "rules": [
+      {
+       "ip": [
+        "geoip:private"
+       ],
+       "outboundTag": "block",
+       "ruleTag": "no-private"
+      }
+     ]
+    }
+   },
+   "inbounds": [
+    {
+     "tag": "n1",
+     "config": {
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+       "decryption": "none"
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "realitySettings": {
+        "privateKey": "gO1bNgJDx3Y8Qjiw_rGu0DRcIUqpFaSyPGFeKG9fx1M",
+        "serverNames": [
+         "www.apple.com"
+        ],
+        "shortIds": [
+         "323e0a74"
+        ],
+        "target": "www.apple.com:443"
+       },
+       "security": "reality"
+      },
+      "tag": "n1"
+     },
+     "clients": [
+      {
+       "email": "s1.n1",
+       "json": {
+        "email": "s1.n1",
+        "flow": "xtls-rprx-vision",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c",
+        "flow": "xtls-rprx-vision"
+       }
+      },
+      {
+       "email": "s2.n1",
+       "json": {
+        "email": "s2.n1",
+        "flow": "xtls-rprx-vision",
+        "id": "458be005-eca7-4d89-a949-2a80911362e6"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "458be005-eca7-4d89-a949-2a80911362e6",
+        "flow": "xtls-rprx-vision"
+       }
+      }
+     ]
+    },
+    {
+     "tag": "n3",
+     "config": {
+      "port": 8388,
+      "protocol": "shadowsocks",
+      "settings": {
+       "method": "2022-blake3-aes-128-gcm",
+       "network": "tcp,udp",
+       "password": "CTaKXOkQdUMsUONBuMTUPg=="
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "security": "none"
+      },
+      "tag": "n3"
+     },
+     "clients": [
+      {
+       "email": "s1.n3",
+       "json": {
+        "email": "s1.n3",
+        "password": "DH2qX/OjH9HQSimE29ZlZQ=="
+       },
+       "account": {
+        "kind": "ss2022",
+        "password": "DH2qX/OjH9HQSimE29ZlZQ=="
+       }
+      },
+      {
+       "email": "s2.n3",
+       "json": {
+        "email": "s2.n3",
+        "password": "yJxzFTyhYAMVip9G2UMYQg=="
+       },
+       "account": {
+        "kind": "ss2022",
+        "password": "yJxzFTyhYAMVip9G2UMYQg=="
+       }
+      },
+      {
+       "email": "reserved",
+       "json": {
+        "email": "reserved",
+        "password": "0OzxLlWAG/mLukMXlPr/YA=="
+       },
+       "account": {
+        "kind": "ss2022",
+        "password": "0OzxLlWAG/mLukMXlPr/YA=="
+       }
+      }
+     ]
+    },
+    {
+     "tag": "n4",
+     "config": {
+      "port": 8443,
+      "protocol": "trojan",
+      "settings": {},
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "security": "tls",
+       "tlsSettings": {
+        "alpn": [
+         "h2",
+         "http/1.1"
+        ],
+        "certificates": [
+         {
+          "certificate": [
+           "-----BEGIN CERTIFICATE-----",
+           "MIIBejCCASCgAwIBAgIQALgqTuRbcH1/aufSv6fyTTAKBggqhkjOPQQDAjAXMRUw",
+           "EwYDVQQDEwx3d3cuYmluZy5jb20wHhcNMjYxMDA4MDY1ODI5WhcNMzYxMDA5MDY1",
+           "ODI5WjAXMRUwEwYDVQQDEwx3d3cuYmluZy5jb20wWTATBgcqhkjOPQIBBggqhkjO",
+           "PQMBBwNCAAR7M9HTtduyZEHbKQxFmU7dlfbHlMKsRmlyQuo4dUew5kYBcvsbOLf0",
+           "DC2ZC95hk0ID/MQEdKYIJJKXlT85Uiqzo04wTDAOBgNVHQ8BAf8EBAMCB4AwEwYD",
+           "VR0lBAwwCgYIKwYBBQUHAwEwDAYDVR0TAQH/BAIwADAXBgNVHREEEDAOggx3d3cu",
+           "YmluZy5jb20wCgYIKoZIzj0EAwIDSAAwRQIgXpQQxSuOJRJpObQgItWibaycpw/e",
+           "OrNhznPypjZ9sUACIQCGA1xCeSRGGptCz2jRuO5ynNNV1NZQihXOw1z2xZapYg==",
+           "-----END CERTIFICATE-----"
+          ],
+          "key": [
+           "-----BEGIN EC PRIVATE KEY-----",
+           "MHcCAQEEIOYEkpw2tH1GSHv34rWQTw1xbFk+ryw5lx31O8fAiJb6oAoGCCqGSM49",
+           "AwEHoUQDQgAEezPR07XbsmRB2ykMRZlO3ZX2x5TCrEZpckLqOHVHsOZGAXL7Gzi3",
+           "9AwtmQveYZNCA/zEBHSmCCSSl5U/OVIqsw==",
+           "-----END EC PRIVATE KEY-----"
+          ]
+         }
+        ],
+        "minVersion": "1.2"
+       }
+      },
+      "tag": "n4"
+     },
+     "clients": [
+      {
+       "email": "s1.n4",
+       "json": {
+        "email": "s1.n4",
+        "password": "rRCtjCVLZDcfRFth0LE4ti"
+       },
+       "account": {
+        "kind": "trojan",
+        "password": "rRCtjCVLZDcfRFth0LE4ti"
+       }
+      },
+      {
+       "email": "s2.n4",
+       "json": {
+        "email": "s2.n4",
+        "password": "Xh6fLuluK1qWgCRk4VAWBG"
+       },
+       "account": {
+        "kind": "trojan",
+        "password": "Xh6fLuluK1qWgCRk4VAWBG"
+       }
+      }
+     ]
+    },
+    {
+     "tag": "n6",
+     "config": {
+      "port": 1080,
+      "protocol": "socks",
+      "settings": {
+       "auth": "password",
+       "udp": true
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "security": "none"
+      },
+      "tag": "n6"
+     },
+     "clients": [
+      {
+       "email": "s1.n6",
+       "json": {
+        "pass": "u58ttXHxCOFHOHkWxWew76",
+        "user": "s1.n6"
+       },
+       "account": {
+        "kind": "socks",
+        "password": "u58ttXHxCOFHOHkWxWew76",
+        "username": "s1.n6"
+       }
+      },
+      {
+       "email": "s2.n6",
+       "json": {
+        "pass": "X4FIdmH3pFhZzh87giphtQ",
+        "user": "s2.n6"
+       },
+       "account": {
+        "kind": "socks",
+        "password": "X4FIdmH3pFhZzh87giphtQ",
+        "username": "s2.n6"
+       }
+      }
+     ]
+    },
+    {
+     "tag": "n7",
+     "config": {
+      "port": 3128,
+      "protocol": "http",
+      "settings": {
+       "allowTransparent": false
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "security": "none"
+      },
+      "tag": "n7"
+     },
+     "clients": [
+      {
+       "email": "s1.n7",
+       "json": {
+        "pass": "u58ttXHxCOFHOHkWxWew76",
+        "user": "s1.n7"
+       },
+       "account": {
+        "kind": "http",
+        "password": "u58ttXHxCOFHOHkWxWew76",
+        "username": "s1.n7"
+       }
+      },
+      {
+       "email": "s2.n7",
+       "json": {
+        "pass": "X4FIdmH3pFhZzh87giphtQ",
+        "user": "s2.n7"
+       },
+       "account": {
+        "kind": "http",
+        "password": "X4FIdmH3pFhZzh87giphtQ",
+        "username": "s2.n7"
+       }
+      }
+     ]
+    },
+    {
+     "tag": "n8",
+     "config": {
+      "port": 10086,
+      "protocol": "vmess",
+      "settings": {},
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "security": "none"
+      },
+      "tag": "n8"
+     },
+     "clients": [
+      {
+       "email": "s1.n8",
+       "json": {
+        "email": "s1.n8",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c"
+       },
+       "account": {
+        "kind": "vmess",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c"
+       }
+      },
+      {
+       "email": "s2.n8",
+       "json": {
+        "email": "s2.n8",
+        "id": "458be005-eca7-4d89-a949-2a80911362e6"
+       },
+       "account": {
+        "kind": "vmess",
+        "id": "458be005-eca7-4d89-a949-2a80911362e6"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "hysteria": [
+   {
+    "node_id": 5,
+    "port": 443,
+    "cert_pem": "-----BEGIN CERTIFICATE-----\nMIIBeTCCAR+gAwIBAgIPPqIaKqZU9+v6uGYUOLOyMAoGCCqGSM49BAMCMBcxFTAT\nBgNVBAMTDHd3dy5iaW5nLmNvbTAeFw0yNjEwMDgwNjU4MjlaFw0zNjEwMDkwNjU4\nMjlaMBcxFTATBgNVBAMTDHd3dy5iaW5nLmNvbTBZMBMGByqGSM49AgEGCCqGSM49\nAwEHA0IABHySl51K8m80hGmRAaQlr88n4xj1FYHxjH2oDqwCD5OH082Grj/IOgiL\nYMev0CFy1mc2QCHN90p/y+jNRCHq5uqjTjBMMA4GA1UdDwEB/wQEAwIHgDATBgNV\nHSUEDDAKBggrBgEFBQcDATAMBgNVHRMBAf8EAjAAMBcGA1UdEQQQMA6CDHd3dy5i\naW5nLmNvbTAKBggqhkjOPQQDAgNIADBFAiEAka+k/mAtl3JhrGT6VnEh5wn5uA1v\nXKVs99nelP+OaEMCIAcl+oPxPSPELcOxnGSLGO1TerKm6nDTCl8QkCnYd6iz\n-----END CERTIFICATE-----\n",
+    "key_pem": "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIEiemaVd7HBbcjrVklZVjbFcBhOJjFR0yn8im61l6RO/oAoGCCqGSM49\nAwEHoUQDQgAEfJKXnUrybzSEaZEBpCWvzyfjGPUVgfGMfagOrAIPk4fTzYauP8g6\nCItgx6/QIXLWZzZAIc33Sn/L6M1EIerm6g==\n-----END EC PRIVATE KEY-----\n",
+    "users": [
+     {
+      "id": "s1.n5",
+      "password": "EaIGkcP8ZZ7Z-AkH9rrfaNtvAA98F8mF"
+     },
+     {
+      "id": "s2.n5",
+      "password": "yqHpVq50sNSbRVkQC_xZ2vZTuE6wmTRl"
+     }
+    ]
+   }
+  ],
+  "wireguard": [
+   {
+    "node_id": 2,
+    "name": "uwg2",
+    "private_key": "yMGn5z6mT5tLvwlmy1fyUh+jI7nbqsfk56Omq/13U28=",
+    "listen_port": 51820,
+    "address": [
+     "10.66.0.1/20"
+    ],
+    "mtu": 1420,
+    "dns": true,
+    "peers": [
+     {
+      "sub_id": 1,
+      "public_key": "y0OefeaR6MSKPA8ESuzzlx4B53FicP8BEfd6ZAkpFDc=",
+      "preshared_key": "/uGbuokCnUqLbm3zXWLL6k8AOcTZlz4KSiONNcdMvYQ=",
+      "allowed_ips": [
+       "10.66.0.2/32"
+      ]
+     },
+     {
+      "sub_id": 2,
+      "public_key": "SEKsbbZ2pNRhCfTK2kpumeJpenpr0owCV4rsjJD/9GE=",
+      "preshared_key": "SsgYug1RayeYB9SwCAfDyHkut9i5Z98iHBGR4RE00zE=",
+      "allowed_ips": [
+       "10.66.0.3/32"
+      ]
+     }
+    ]
+   }
+  ],
+  "forwards": [
+   {
+    "id": 1,
+    "listen_port": 30080,
+    "network": "tcp+udp",
+    "target": "198.51.100.80:443",
+    "engine": "nft"
+   }
+  ],
+  "blocked_ips": [
+   "198.51.100.200"
+  ],
+  "actions": [
+   {
+    "id": 1,
+    "kind": "check_target",
+    "args": {
+     "node_id": 1,
+     "auto": true,
+     "targets": [
+      {
+       "sni": "www.apple.com",
+       "addr": "www.apple.com:443"
+      },
+      {
+       "sni": "dl.google.com",
+       "addr": "dl.google.com:443"
+      },
+      {
+       "sni": "addons.mozilla.org",
+       "addr": "addons.mozilla.org:443"
+      },
+      {
+       "sni": "www.amazon.com",
+       "addr": "www.amazon.com:443"
+      },
+      {
+       "sni": "gateway.icloud.com",
+       "addr": "gateway.icloud.com:443"
+      },
+      {
+       "sni": "www.yahoo.com",
+       "addr": "www.yahoo.com:443"
+      },
+      {
+       "sni": "www.nvidia.com",
+       "addr": "www.nvidia.com:443"
+      },
+      {
+       "sni": "www.cloudflare.com",
+       "addr": "www.cloudflare.com:443"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "2": {
+  "contract": 4,
+  "rev": "2fed10fcc267c96f0e3a",
+  "server_id": 2,
+  "agent": {
+   "report_interval": 10,
+   "conn_log": true,
+   "dest_log": true,
+   "latest_version": "dev"
+  },
+  "cores": {
+   "xray": "26.3.27",
+   "hysteria": "2.13.0",
+   "realm": "2.9.6"
+  },
+  "xray": {
+   "base": {
+    "outbounds": [
+     {
+      "protocol": "freedom",
+      "tag": "direct"
+     },
+     {
+      "protocol": "blackhole",
+      "tag": "block"
+     },
+     {
+      "protocol": "vless",
+      "settings": {
+       "vnext": [
+        {
+         "address": "198.51.100.30",
+         "port": 443,
+         "users": [
+          {
+           "encryption": "none",
+           "flow": "xtls-rprx-vision",
+           "id": "67940061-de08-4967-88ff-fdada0cc5928"
+          }
+         ]
+        }
+       ]
+      },
+      "streamSettings": {
+       "network": "raw",
+       "realitySettings": {
+        "fingerprint": "chrome",
+        "publicKey": "hZz_lE23GEOV6SywhjjZ5DapBgpxfdIDaccWoj1wKDk",
+        "serverName": "www.apple.com",
+        "shortId": "d86f82c5"
+       },
+       "security": "reality"
+      },
+      "tag": "pass-n13"
+     }
+    ],
+    "routing": {
+     "domainStrategy": "AsIs",
+     "rules": [
+      {
+       "ip": [
+        "geoip:private"
+       ],
+       "outboundTag": "block",
+       "ruleTag": "no-private"
+      },
+      {
+       "inboundTag": [
+        "n13"
+       ],
+       "outboundTag": "pass-n13",
+       "ruleTag": "pass-n13"
+      }
+     ]
+    }
+   },
+   "inbounds": [
+    {
+     "tag": "n9",
+     "config": {
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+       "decryption": "none"
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "realitySettings": {
+        "privateKey": "cF2cgwt6mTTUFOn8gBMqAHpCDxkEz-J-bDRtB20Wb1c",
+        "serverNames": [
+         "www.apple.com"
+        ],
+        "shortIds": [
+         "f55c6a6c"
+        ],
+        "target": "www.apple.com:443"
+       },
+       "security": "reality"
+      },
+      "tag": "n9"
+     },
+     "clients": [
+      {
+       "email": "s1.n9",
+       "json": {
+        "email": "s1.n9",
+        "flow": "xtls-rprx-vision",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c",
+        "flow": "xtls-rprx-vision"
+       }
+      },
+      {
+       "email": "s2.n9",
+       "json": {
+        "email": "s2.n9",
+        "flow": "xtls-rprx-vision",
+        "id": "458be005-eca7-4d89-a949-2a80911362e6"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "458be005-eca7-4d89-a949-2a80911362e6",
+        "flow": "xtls-rprx-vision"
+       }
+      }
+     ]
+    },
+    {
+     "tag": "n10",
+     "config": {
+      "port": 8388,
+      "protocol": "shadowsocks",
+      "settings": {
+       "method": "2022-blake3-aes-128-gcm",
+       "network": "tcp,udp",
+       "password": "JQQ1N1yQVXn0t8rfyigiRw=="
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "security": "none"
+      },
+      "tag": "n10"
+     },
+     "clients": [
+      {
+       "email": "s1.n10",
+       "json": {
+        "email": "s1.n10",
+        "password": "DH2qX/OjH9HQSimE29ZlZQ=="
+       },
+       "account": {
+        "kind": "ss2022",
+        "password": "DH2qX/OjH9HQSimE29ZlZQ=="
+       }
+      },
+      {
+       "email": "s2.n10",
+       "json": {
+        "email": "s2.n10",
+        "password": "yJxzFTyhYAMVip9G2UMYQg=="
+       },
+       "account": {
+        "kind": "ss2022",
+        "password": "yJxzFTyhYAMVip9G2UMYQg=="
+       }
+      },
+      {
+       "email": "reserved",
+       "json": {
+        "email": "reserved",
+        "password": "FeI3pBjmxMI2B377zydw2w=="
+       },
+       "account": {
+        "kind": "ss2022",
+        "password": "FeI3pBjmxMI2B377zydw2w=="
+       }
+      }
+     ]
+    },
+    {
+     "tag": "n13",
+     "config": {
+      "port": 8443,
+      "protocol": "vless",
+      "settings": {
+       "decryption": "none"
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "realitySettings": {
+        "privateKey": "kGNHzoaKWyZlA8GHalqP663xjEzMl_Q_mTdAV9u2-EU",
+        "serverNames": [
+         "www.apple.com"
+        ],
+        "shortIds": [
+         "103008b8"
+        ],
+        "target": "www.apple.com:443"
+       },
+       "security": "reality"
+      },
+      "tag": "n13"
+     },
+     "clients": [
+      {
+       "email": "s1.n13",
+       "json": {
+        "email": "s1.n13",
+        "flow": "xtls-rprx-vision",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c",
+        "flow": "xtls-rprx-vision"
+       }
+      },
+      {
+       "email": "s2.n13",
+       "json": {
+        "email": "s2.n13",
+        "flow": "xtls-rprx-vision",
+        "id": "458be005-eca7-4d89-a949-2a80911362e6"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "458be005-eca7-4d89-a949-2a80911362e6",
+        "flow": "xtls-rprx-vision"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "wireguard": [
+   {
+    "node_id": 11,
+    "name": "uwg11",
+    "private_key": "uLlz5Ew3OEuyYDJg5Y0sumxD7u7bccKJpyLjexx2dk8=",
+    "listen_port": 51820,
+    "address": [
+     "10.66.0.1/20"
+    ],
+    "mtu": 1420,
+    "dns": true,
+    "peers": [
+     {
+      "sub_id": 1,
+      "public_key": "uGdr2kN/kt2CTeFaWySSEH9UhigoX5z+G6tEHMnApkI=",
+      "preshared_key": "VoEV46xsn4LvvF9wwwAI3MBr9lS2yfHSF8QMKAuZKgw=",
+      "allowed_ips": [
+       "10.66.0.2/32"
+      ]
+     },
+     {
+      "sub_id": 2,
+      "public_key": "VyvK3Xolga7RG2GlCYNP8w1ktrbuLauLNGgdYMB1pFM=",
+      "preshared_key": "eG3UaflDbyKPru6OWCrAS9sCnVVsvGSgH9XX30phqYw=",
+      "allowed_ips": [
+       "10.66.0.3/32"
+      ]
+     }
+    ]
+   }
+  ],
+  "blocked_ips": [
+   "198.51.100.200"
+  ],
+  "actions": [
+   {
+    "id": 2,
+    "kind": "check_target",
+    "args": {
+     "node_id": 9,
+     "auto": true,
+     "targets": [
+      {
+       "sni": "www.apple.com",
+       "addr": "www.apple.com:443"
+      },
+      {
+       "sni": "dl.google.com",
+       "addr": "dl.google.com:443"
+      },
+      {
+       "sni": "addons.mozilla.org",
+       "addr": "addons.mozilla.org:443"
+      },
+      {
+       "sni": "www.amazon.com",
+       "addr": "www.amazon.com:443"
+      },
+      {
+       "sni": "gateway.icloud.com",
+       "addr": "gateway.icloud.com:443"
+      },
+      {
+       "sni": "www.yahoo.com",
+       "addr": "www.yahoo.com:443"
+      },
+      {
+       "sni": "www.nvidia.com",
+       "addr": "www.nvidia.com:443"
+      },
+      {
+       "sni": "www.cloudflare.com",
+       "addr": "www.cloudflare.com:443"
+      }
+     ]
+    }
+   },
+   {
+    "id": 4,
+    "kind": "check_target",
+    "args": {
+     "node_id": 13,
+     "auto": true,
+     "targets": [
+      {
+       "sni": "www.apple.com",
+       "addr": "www.apple.com:443"
+      },
+      {
+       "sni": "dl.google.com",
+       "addr": "dl.google.com:443"
+      },
+      {
+       "sni": "addons.mozilla.org",
+       "addr": "addons.mozilla.org:443"
+      },
+      {
+       "sni": "www.amazon.com",
+       "addr": "www.amazon.com:443"
+      },
+      {
+       "sni": "gateway.icloud.com",
+       "addr": "gateway.icloud.com:443"
+      },
+      {
+       "sni": "www.yahoo.com",
+       "addr": "www.yahoo.com:443"
+      },
+      {
+       "sni": "www.nvidia.com",
+       "addr": "www.nvidia.com:443"
+      },
+      {
+       "sni": "www.cloudflare.com",
+       "addr": "www.cloudflare.com:443"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "3": {
+  "contract": 4,
+  "rev": "9512bed12aeba5619275",
+  "server_id": 3,
+  "agent": {
+   "report_interval": 10,
+   "conn_log": true,
+   "dest_log": true,
+   "latest_version": "dev"
+  },
+  "cores": {
+   "xray": "26.3.27",
+   "hysteria": "2.13.0",
+   "realm": "2.9.6"
+  },
+  "xray": {
+   "base": {
+    "outbounds": [
+     {
+      "protocol": "freedom",
+      "tag": "direct"
+     },
+     {
+      "protocol": "blackhole",
+      "tag": "block"
+     }
+    ],
+    "routing": {
+     "domainStrategy": "AsIs",
+     "rules": [
+      {
+       "ip": [
+        "geoip:private"
+       ],
+       "outboundTag": "block",
+       "ruleTag": "no-private"
+      }
+     ]
+    }
+   },
+   "inbounds": [
+    {
+     "tag": "n12",
+     "config": {
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+       "decryption": "none"
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "realitySettings": {
+        "privateKey": "oHvcR_oF8BVFB0FmCy2MbHH72RhJlQ_-_Q88l0lPVUE",
+        "serverNames": [
+         "www.apple.com"
+        ],
+        "shortIds": [
+         "d86f82c5"
+        ],
+        "target": "www.apple.com:443"
+       },
+       "security": "reality"
+      },
+      "tag": "n12"
+     },
+     "clients": [
+      {
+       "email": "s1.n12",
+       "json": {
+        "email": "s1.n12",
+        "flow": "xtls-rprx-vision",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c",
+        "flow": "xtls-rprx-vision"
+       }
+      },
+      {
+       "email": "p13",
+       "json": {
+        "email": "p13",
+        "flow": "xtls-rprx-vision",
+        "id": "67940061-de08-4967-88ff-fdada0cc5928"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "67940061-de08-4967-88ff-fdada0cc5928",
+        "flow": "xtls-rprx-vision"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "blocked_ips": [
+   "198.51.100.200"
+  ],
+  "actions": [
+   {
+    "id": 3,
+    "kind": "check_target",
+    "args": {
+     "node_id": 12,
+     "auto": true,
+     "targets": [
+      {
+       "sni": "www.apple.com",
+       "addr": "www.apple.com:443"
+      },
+      {
+       "sni": "dl.google.com",
+       "addr": "dl.google.com:443"
+      },
+      {
+       "sni": "addons.mozilla.org",
+       "addr": "addons.mozilla.org:443"
+      },
+      {
+       "sni": "www.amazon.com",
+       "addr": "www.amazon.com:443"
+      },
+      {
+       "sni": "gateway.icloud.com",
+       "addr": "gateway.icloud.com:443"
+      },
+      {
+       "sni": "www.yahoo.com",
+       "addr": "www.yahoo.com:443"
+      },
+      {
+       "sni": "www.nvidia.com",
+       "addr": "www.nvidia.com:443"
+      },
+      {
+       "sni": "www.cloudflare.com",
+       "addr": "www.cloudflare.com:443"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "4": {
+  "contract": 4,
+  "rev": "433bb5028adee0f61603",
+  "server_id": 4,
+  "agent": {
+   "report_interval": 10,
+   "conn_log": true,
+   "dest_log": true,
+   "latest_version": "dev"
+  },
+  "cores": {
+   "xray": "26.3.27",
+   "hysteria": "2.13.0",
+   "realm": "2.9.6"
+  },
+  "xray": {
+   "base": {
+    "outbounds": [
+     {
+      "protocol": "freedom",
+      "tag": "direct"
+     },
+     {
+      "protocol": "blackhole",
+      "tag": "block"
+     },
+     {
+      "protocol": "freedom",
+      "tag": "warp"
+     }
+    ],
+    "routing": {
+     "domainStrategy": "AsIs",
+     "rules": [
+      {
+       "domain": [
+        "geosite:openai"
+       ],
+       "outboundTag": "warp"
+      },
+      {
+       "ip": [
+        "geoip:private"
+       ],
+       "outboundTag": "block",
+       "ruleTag": "no-private"
+      }
+     ]
+    }
+   },
+   "inbounds": [
+    {
+     "tag": "n14",
+     "config": {
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+       "decryption": "none"
+      },
+      "sniffing": {
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "enabled": false,
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "realitySettings": {
+        "privateKey": "GJrnLzGN2S-hX0U385Fyfr-tXVkTX8wZQzFocDqdeVk",
+        "serverNames": [
+         "www.apple.com"
+        ],
+        "shortIds": [
+         "3eea6cf5"
+        ],
+        "target": "www.apple.com:443"
+       },
+       "security": "reality"
+      },
+      "tag": "n14"
+     },
+     "clients": [
+      {
+       "email": "s1.n14",
+       "json": {
+        "email": "s1.n14",
+        "flow": "xtls-rprx-vision",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c",
+        "flow": "xtls-rprx-vision"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "blocked_ips": [
+   "198.51.100.200"
+  ],
+  "actions": [
+   {
+    "id": 5,
+    "kind": "check_target",
+    "args": {
+     "node_id": 14,
+     "auto": true,
+     "targets": [
+      {
+       "sni": "www.apple.com",
+       "addr": "www.apple.com:443"
+      },
+      {
+       "sni": "dl.google.com",
+       "addr": "dl.google.com:443"
+      },
+      {
+       "sni": "addons.mozilla.org",
+       "addr": "addons.mozilla.org:443"
+      },
+      {
+       "sni": "www.amazon.com",
+       "addr": "www.amazon.com:443"
+      },
+      {
+       "sni": "gateway.icloud.com",
+       "addr": "gateway.icloud.com:443"
+      },
+      {
+       "sni": "www.yahoo.com",
+       "addr": "www.yahoo.com:443"
+      },
+      {
+       "sni": "www.nvidia.com",
+       "addr": "www.nvidia.com:443"
+      },
+      {
+       "sni": "www.cloudflare.com",
+       "addr": "www.cloudflare.com:443"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "5": {
+  "contract": 4,
+  "rev": "04ea7c06d5c7a154670f",
+  "server_id": 5,
+  "agent": {
+   "report_interval": 10,
+   "conn_log": true,
+   "dest_log": true,
+   "latest_version": "dev"
+  },
+  "cores": {
+   "xray": "26.3.27",
+   "hysteria": "2.13.0",
+   "realm": "2.9.6"
+  },
+  "xray": {
+   "base": {
+    "outbounds": [
+     {
+      "protocol": "freedom",
+      "tag": "direct"
+     },
+     {
+      "protocol": "blackhole",
+      "tag": "block"
+     },
+     {
+      "protocol": "freedom",
+      "sendThrough": "203.0.113.72",
+      "settings": {
+       "domainStrategy": "UseIPv4"
+      },
+      "tag": "bind-n15"
+     },
+     {
+      "protocol": "freedom",
+      "sendThrough": "203.0.113.71",
+      "settings": {
+       "domainStrategy": "UseIPv4"
+      },
+      "tag": "bind-n16"
+     }
+    ],
+    "routing": {
+     "domainStrategy": "AsIs",
+     "rules": [
+      {
+       "ip": [
+        "geoip:private"
+       ],
+       "outboundTag": "block",
+       "ruleTag": "no-private"
+      },
+      {
+       "inboundTag": [
+        "n15"
+       ],
+       "outboundTag": "bind-n15",
+       "ruleTag": "bind-n15"
+      },
+      {
+       "inboundTag": [
+        "n16"
+       ],
+       "outboundTag": "bind-n16",
+       "ruleTag": "bind-n16"
+      }
+     ]
+    }
+   },
+   "inbounds": [
+    {
+     "tag": "n15",
+     "config": {
+      "listen": "203.0.113.72",
+      "port": 9443,
+      "protocol": "vless",
+      "settings": {
+       "decryption": "none"
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "realitySettings": {
+        "privateKey": "ULPOIqFbcmjYhL-RFdZXFyGJgQq4tJUmMRKxgq0YJWk",
+        "serverNames": [
+         "www.apple.com"
+        ],
+        "shortIds": [
+         "6947730c"
+        ],
+        "target": "www.apple.com:443"
+       },
+       "security": "reality"
+      },
+      "tag": "n15"
+     },
+     "clients": [
+      {
+       "email": "s1.n15",
+       "json": {
+        "email": "s1.n15",
+        "flow": "xtls-rprx-vision",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c",
+        "flow": "xtls-rprx-vision"
+       }
+      }
+     ]
+    },
+    {
+     "tag": "n16",
+     "config": {
+      "listen": "203.0.113.71",
+      "port": 9443,
+      "protocol": "vless",
+      "settings": {
+       "decryption": "none"
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "realitySettings": {
+        "privateKey": "2N5P-CYNIezj7P3acxEbeIOw7zwBMW9peF1WwQpM3kA",
+        "serverNames": [
+         "www.apple.com"
+        ],
+        "shortIds": [
+         "453c86d1"
+        ],
+        "target": "www.apple.com:443"
+       },
+       "security": "reality"
+      },
+      "tag": "n16"
+     },
+     "clients": [
+      {
+       "email": "s1.n16",
+       "json": {
+        "email": "s1.n16",
+        "flow": "xtls-rprx-vision",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c",
+        "flow": "xtls-rprx-vision"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "blocked_ips": [
+   "198.51.100.200"
+  ],
+  "actions": [
+   {
+    "id": 6,
+    "kind": "check_target",
+    "args": {
+     "node_id": 15,
+     "auto": true,
+     "targets": [
+      {
+       "sni": "www.apple.com",
+       "addr": "www.apple.com:443"
+      },
+      {
+       "sni": "dl.google.com",
+       "addr": "dl.google.com:443"
+      },
+      {
+       "sni": "addons.mozilla.org",
+       "addr": "addons.mozilla.org:443"
+      },
+      {
+       "sni": "www.amazon.com",
+       "addr": "www.amazon.com:443"
+      },
+      {
+       "sni": "gateway.icloud.com",
+       "addr": "gateway.icloud.com:443"
+      },
+      {
+       "sni": "www.yahoo.com",
+       "addr": "www.yahoo.com:443"
+      },
+      {
+       "sni": "www.nvidia.com",
+       "addr": "www.nvidia.com:443"
+      },
+      {
+       "sni": "www.cloudflare.com",
+       "addr": "www.cloudflare.com:443"
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "kind": "check_target",
+    "args": {
+     "node_id": 16,
+     "auto": true,
+     "targets": [
+      {
+       "sni": "www.apple.com",
+       "addr": "www.apple.com:443"
+      },
+      {
+       "sni": "dl.google.com",
+       "addr": "dl.google.com:443"
+      },
+      {
+       "sni": "addons.mozilla.org",
+       "addr": "addons.mozilla.org:443"
+      },
+      {
+       "sni": "www.amazon.com",
+       "addr": "www.amazon.com:443"
+      },
+      {
+       "sni": "gateway.icloud.com",
+       "addr": "gateway.icloud.com:443"
+      },
+      {
+       "sni": "www.yahoo.com",
+       "addr": "www.yahoo.com:443"
+      },
+      {
+       "sni": "www.nvidia.com",
+       "addr": "www.nvidia.com:443"
+      },
+      {
+       "sni": "www.cloudflare.com",
+       "addr": "www.cloudflare.com:443"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "6": {
+  "contract": 4,
+  "rev": "ed78749abf827ecbde86",
+  "server_id": 6,
+  "agent": {
+   "report_interval": 10,
+   "conn_log": true,
+   "dest_log": true,
+   "latest_version": "dev"
+  },
+  "cores": {
+   "xray": "26.3.27",
+   "hysteria": "2.13.0",
+   "realm": "2.9.6"
+  },
+  "xray": {
+   "base": {
+    "outbounds": [
+     {
+      "protocol": "freedom",
+      "tag": "direct"
+     },
+     {
+      "protocol": "blackhole",
+      "tag": "block"
+     },
+     {
+      "protocol": "freedom",
+      "settings": {
+       "domainStrategy": "UseIPv4"
+      },
+      "tag": "direct-ipver"
+     }
+    ],
+    "routing": {
+     "domainStrategy": "AsIs",
+     "rules": [
+      {
+       "ip": [
+        "geoip:private"
+       ],
+       "outboundTag": "block",
+       "ruleTag": "no-private"
+      },
+      {
+       "network": "tcp,udp",
+       "outboundTag": "direct-ipver",
+       "ruleTag": "ipver"
+      }
+     ]
+    }
+   },
+   "inbounds": [
+    {
+     "tag": "n17",
+     "config": {
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+       "decryption": "none"
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "realitySettings": {
+        "privateKey": "kPfJKLb7WuFI_XihLEOMKLuNAi2vtL0-UXAJ6lq3YXc",
+        "serverNames": [
+         "www.apple.com"
+        ],
+        "shortIds": [
+         "a8de7dbb"
+        ],
+        "target": "www.apple.com:443"
+       },
+       "security": "reality"
+      },
+      "tag": "n17"
+     },
+     "clients": [
+      {
+       "email": "s1.n17",
+       "json": {
+        "email": "s1.n17",
+        "flow": "xtls-rprx-vision",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c",
+        "flow": "xtls-rprx-vision"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "hysteria": [
+   {
+    "node_id": 18,
+    "port": 443,
+    "cert_pem": "-----BEGIN CERTIFICATE-----\nMIIBezCCASCgAwIBAgIQAOGNTJXGzSxx0rUAdBk2FTAKBggqhkjOPQQDAjAXMRUw\nEwYDVQQDEwx3d3cuYmluZy5jb20wHhcNMjYxMDA4MDY1ODI5WhcNMzYxMDA5MDY1\nODI5WjAXMRUwEwYDVQQDEwx3d3cuYmluZy5jb20wWTATBgcqhkjOPQIBBggqhkjO\nPQMBBwNCAARd6JedG1FdIUqgU0NNTR8mQCQ2SYDNikfppdZ3FfMrzqv6zALrwjCz\nwkrPaAmB67YCqGaYyhMQHnCte4e1mzVKo04wTDAOBgNVHQ8BAf8EBAMCB4AwEwYD\nVR0lBAwwCgYIKwYBBQUHAwEwDAYDVR0TAQH/BAIwADAXBgNVHREEEDAOggx3d3cu\nYmluZy5jb20wCgYIKoZIzj0EAwIDSQAwRgIhAP5IbkJQ32Iv+YjysUqdkZwDp1bo\n61W/SecN1lFEz1ydAiEA3oGGv4ejbiW4R4CkP/yiw2cZ3+R32gPRqq90gg0ALgU=\n-----END CERTIFICATE-----\n",
+    "key_pem": "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIBmI8G/Zh1GXEpEp2kEJ8CYYFhhQB6eJxlgt4ms/4+pqoAoGCCqGSM49\nAwEHoUQDQgAEXeiXnRtRXSFKoFNDTU0fJkAkNkmAzYpH6aXWdxXzK86r+swC68Iw\ns8JKz2gJgeu2AqhmmMoTEB5wrXuHtZs1Sg==\n-----END EC PRIVATE KEY-----\n",
+    "users": [
+     {
+      "id": "s1.n18",
+      "password": "EaIGkcP8ZZ7Z-AkH9rrfaNtvAA98F8mF"
+     }
+    ],
+    "mode": "4"
+   }
+  ],
+  "blocked_ips": [
+   "198.51.100.200"
+  ],
+  "actions": [
+   {
+    "id": 8,
+    "kind": "check_target",
+    "args": {
+     "node_id": 17,
+     "auto": true,
+     "targets": [
+      {
+       "sni": "www.apple.com",
+       "addr": "www.apple.com:443"
+      },
+      {
+       "sni": "dl.google.com",
+       "addr": "dl.google.com:443"
+      },
+      {
+       "sni": "addons.mozilla.org",
+       "addr": "addons.mozilla.org:443"
+      },
+      {
+       "sni": "www.amazon.com",
+       "addr": "www.amazon.com:443"
+      },
+      {
+       "sni": "gateway.icloud.com",
+       "addr": "gateway.icloud.com:443"
+      },
+      {
+       "sni": "www.yahoo.com",
+       "addr": "www.yahoo.com:443"
+      },
+      {
+       "sni": "www.nvidia.com",
+       "addr": "www.nvidia.com:443"
+      },
+      {
+       "sni": "www.cloudflare.com",
+       "addr": "www.cloudflare.com:443"
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "7": {
+  "contract": 4,
+  "rev": "628360d907dfae19997f",
+  "server_id": 7,
+  "agent": {
+   "report_interval": 10,
+   "conn_log": true,
+   "dest_log": true,
+   "latest_version": "dev"
+  },
+  "cores": {
+   "xray": "26.3.27",
+   "hysteria": "2.13.0",
+   "realm": "2.9.6"
+  },
+  "xray": {
+   "base": {
+    "outbounds": [
+     {
+      "protocol": "freedom",
+      "tag": "direct"
+     },
+     {
+      "protocol": "blackhole",
+      "tag": "block"
+     }
+    ],
+    "routing": {
+     "domainStrategy": "AsIs",
+     "rules": [
+      {
+       "ip": [
+        "geoip:private"
+       ],
+       "outboundTag": "block",
+       "ruleTag": "no-private"
+      }
+     ]
+    }
+   },
+   "inbounds": [
+    {
+     "tag": "n19",
+     "config": {
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+       "decryption": "none"
+      },
+      "sniffing": {
+       "enabled": true,
+       "destOverride": [
+        "http",
+        "tls",
+        "quic"
+       ],
+       "routeOnly": true
+      },
+      "streamSettings": {
+       "network": "raw",
+       "realitySettings": {
+        "privateKey": "yPZnXQ8wpcq4oeIeKjUh-w5khdmxINtNNQFPbvftjUg",
+        "serverNames": [
+         "www.apple.com"
+        ],
+        "shortIds": [
+         "83852afd"
+        ],
+        "target": "www.apple.com:443"
+       },
+       "security": "reality"
+      },
+      "tag": "n19"
+     },
+     "clients": [
+      {
+       "email": "s1.n19",
+       "json": {
+        "email": "s1.n19",
+        "flow": "xtls-rprx-vision",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c"
+       },
+       "account": {
+        "kind": "vless",
+        "id": "0101a702-f79c-459d-8448-f60f333d9b4c",
+        "flow": "xtls-rprx-vision"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "blocked_ips": [
+   "198.51.100.200"
+  ],
+  "actions": [
+   {
+    "id": 9,
+    "kind": "check_target",
+    "args": {
+     "node_id": 19,
+     "auto": true,
+     "targets": [
+      {
+       "sni": "www.apple.com",
+       "addr": "www.apple.com:443"
+      },
+      {
+       "sni": "dl.google.com",
+       "addr": "dl.google.com:443"
+      },
+      {
+       "sni": "addons.mozilla.org",
+       "addr": "addons.mozilla.org:443"
+      },
+      {
+       "sni": "www.amazon.com",
+       "addr": "www.amazon.com:443"
+      },
+      {
+       "sni": "gateway.icloud.com",
+       "addr": "gateway.icloud.com:443"
+      },
+      {
+       "sni": "www.yahoo.com",
+       "addr": "www.yahoo.com:443"
+      },
+      {
+       "sni": "www.nvidia.com",
+       "addr": "www.nvidia.com:443"
+      },
+      {
+       "sni": "www.cloudflare.com",
+       "addr": "www.cloudflare.com:443"
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

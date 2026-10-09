@@ -164,6 +164,24 @@ func (o *outbox) add(traffic []proto.UserTraffic, fwds []proto.FwdTraffic, ips [
 	}
 }
 
+// addPings adds rounds of the ping monitors to the accumulating batch.
+func (o *outbox) addPings(rs []proto.PingResult) {
+	if len(rs) == 0 {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	a := o.Accum
+	if a == nil {
+		a = &proto.Batch{From: time.Now().Unix()}
+		o.Accum = a
+	}
+	a.Pings = append(a.Pings, rs...)
+	if len(a.Pings) > pingMaxQueue {
+		a.Pings = a.Pings[len(a.Pings)-pingMaxQueue:]
+	}
+}
+
 // next returns the batch to send: the one in flight, or a new one made from what accumulated.
 func (o *outbox) next() *proto.Batch {
 	o.mu.Lock()

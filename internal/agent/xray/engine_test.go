@@ -98,34 +98,75 @@ func TestGuard(t *testing.T) {
 	}
 }
 
-// TestLiveRules: rules applied live take the running balancers along; a rule for a balancer that is
-// not running yet waits; what failed stays as it was on disk.
+// TestLiveRules: rules and balancers apply live, together; a balancer that picks the fastest member
+// picks at random until Xray runs its latency checks (they need a restart); what failed stays as it
+// was on disk.
 func TestLiveRules(t *testing.T) {
-	rules := []any{map[string]any{"ruleTag": "warp", "balancerTag": "lb", "domain": []any{"example.com"}},
-		map[string]any{"ruleTag": "no-private", "ip": []any{"geoip:private"}, "outboundTag": "block"}}
-	if tag := missingBalancer(rules, []any{map[string]any{"tag": "lb", "selector": []any{"a"}}}); tag != "" {
-		t.Errorf("a running balancer counted as missing: %q", tag)
+	bals := []any{map[string]any{"tag": "lb-1", "selector": []any{"lb1."}, "strategy": map[string]any{"type": "leastPing"}, "fallbackTag": "block"},
+		map[string]any{"tag": "lb-2", "selector": []any{"lb2."}, "strategy": map[string]any{"type": "roundRobin"}}}
+	got := runningBalancers(bals, map[string]any{"log": "L"}).([]any)
+	if fmt.Sprint(got[0].(map[string]any)["strategy"]) != "map[type:random]" || got[0].(map[string]any)["fallbackTag"] != nil ||
+		fmt.Sprint(got[1].(map[string]any)["strategy"]) != "map[type:roundRobin]" || bals[0].(map[string]any)["fallbackTag"] != "block" ||
+		fmt.Sprint(bals[0].(map[string]any)["strategy"]) != "map[type:leastPing]" {
+		t.Errorf("without latency checks: %v (desired %v)", got, bals)
 	}
-	if tag := missingBalancer(rules, nil); tag != "lb" {
-		t.Errorf("missing balancer: %q", tag)
+	if got := runningBalancers(bals, map[string]any{"observatory": map[string]any{}}); !same(got, bals) {
+		t.Errorf("with latency checks: %v", got)
 	}
-	rest := map[string]any{"routing": map[string]any{"domainStrategy": "AsIs", "balancers": []any{map[string]any{"tag": "lb"}}}}
-	if len(balancersIn(rest)) != 1 || balancersIn(map[string]any{}) != nil {
-		t.Error("balancersIn")
+	full := map[string]any{"outbounds": []any{"new"}, "routing": map[string]any{"rules": []any{"new"}, "domainStrategy": "AsIs",
+		"balancers": bals}, "dns": "D"}
+	if rt := withBalancers(full, got)["routing"].(map[string]any); fmt.Sprint(rt["balancers"]) != fmt.Sprint(got) ||
+		fmt.Sprint(full["routing"].(map[string]any)["balancers"]) != fmt.Sprint(bals) {
+		t.Errorf("withBalancers: %v", rt)
 	}
-	full := map[string]any{"outbounds": []any{"new"}, "routing": map[string]any{"rules": []any{"new"}, "domainStrategy": "AsIs"}, "dns": "D"}
-	old := map[string]any{"outbounds": []any{"old"}, "routing": map[string]any{"rules": []any{"old"}}}
-	got := keepRunning(full, old, true, false)
-	if fmt.Sprint(got["outbounds"]) != "[old]" || fmt.Sprint(got["routing"].(map[string]any)["rules"]) != "[new]" || got["dns"] != "D" {
-		t.Errorf("outbounds kept: %v", got)
+	if rt := withBalancers(full, nil)["routing"].(map[string]any); rt["balancers"] != nil || rt["rules"] == nil {
+		t.Errorf("without balancers: %v", rt)
 	}
-	got = keepRunning(full, old, false, true)
-	if fmt.Sprint(got["outbounds"]) != "[new]" || fmt.Sprint(got["routing"].(map[string]any)["rules"]) != "[old]" ||
-		got["routing"].(map[string]any)["domainStrategy"] != "AsIs" || fmt.Sprint(full["routing"].(map[string]any)["rules"]) != "[new]" {
-		t.Errorf("rules kept: %v (desired %v)", got, full)
+	old := map[string]any{"outbounds": []any{"old"}, "routing": map[string]any{"rules": []any{"old"}, "balancers": []any{"old-lb"}}}
+	kept := keepRunning(full, old, true, false)
+	if fmt.Sprint(kept["outbounds"]) != "[old]" || fmt.Sprint(kept["routing"].(map[string]any)["rules"]) != "[new]" || kept["dns"] != "D" {
+		t.Errorf("outbounds kept: %v", kept)
+	}
+	kept = keepRunning(full, old, false, true)
+	rt := kept["routing"].(map[string]any)
+	if fmt.Sprint(kept["outbounds"]) != "[new]" || fmt.Sprint(rt["rules"]) != "[old]" || fmt.Sprint(rt["balancers"]) != "[old-lb]" ||
+		rt["domainStrategy"] != "AsIs" || fmt.Sprint(full["routing"].(map[string]any)["rules"]) != "[new]" {
+		t.Errorf("rules kept: %v (desired %v)", kept, full)
 	}
 	if keepRunning(full, nil, true, true)["outbounds"] == nil {
 		t.Error("without a file there is nothing to keep")
+	}
+	// waiting for a restart, the file has the live parts as desired and the rest as running
+	w := withRunning(full, map[string]any{"routing": map[string]any{"domainStrategy": "IPIfNonMatch", "balancers": []any{"stale"}}})
+	wr := w["routing"].(map[string]any)
+	if wr["domainStrategy"] != "IPIfNonMatch" || fmt.Sprint(wr["balancers"]) != fmt.Sprint(bals) || fmt.Sprint(wr["rules"]) != "[new]" {
+		t.Errorf("withRunning: %v", wr)
+	}
+	if msg := restChange(map[string]any{"log": "L"}, map[string]any{"log": "L", "observatory": map[string]any{}}); !strings.Contains(msg, "latency checks for a load balancer") ||
+		!strings.Contains(msg, "at random until then") {
+		t.Errorf("restart reason: %q", msg)
+	}
+	// the last fastest-first balancer gone: its checks stop with the next restart, nothing breaks meanwhile
+	if msg := restChange(map[string]any{"observatory": map[string]any{}}, map[string]any{}); !strings.Contains(msg, "stopping latency checks") {
+		t.Errorf("checks no longer needed: %q", msg)
+	}
+	if msg := restChange(map[string]any{"dns": "a", "log": "x"}, map[string]any{"dns": "b", "log": "y"}); msg != "Xray's DNS settings; global Xray settings" {
+		t.Errorf("several reasons: %q", msg)
+	}
+	// checks no longer wanted ask for no restart; anything else that changed with them still does
+	obs := map[string]any{"subjectSelector": []any{"lb"}}
+	if !checksGone(map[string]any{"log": "L", "observatory": obs}, map[string]any{"log": "L"}) {
+		t.Error("only the checks gone: a restart is asked for")
+	}
+	for _, c := range [][2]map[string]any{
+		{{"log": "L", "observatory": obs}, {"log": "M"}},
+		{{"log": "L"}, {"log": "L", "observatory": obs}},
+		{{"log": "L", "observatory": obs}, {"log": "L", "observatory": map[string]any{}}},
+		{{"log": "L"}, {"log": "L"}},
+	} {
+		if checksGone(c[0], c[1]) {
+			t.Errorf("%v -> %v: no restart asked for", c[0], c[1])
+		}
 	}
 }
 

@@ -34,6 +34,8 @@ type hub struct {
 	waiters map[int64]chan struct{}
 	dirty   map[int64]bool
 	kick    chan struct{}
+	looping bool // the compile loop runs (see settle)
+	busy    bool // it compiles servers it took from dirty
 }
 
 func newHub() *hub {
@@ -122,6 +124,7 @@ func (h *hub) takeDirty() []int64 {
 
 // compileLoop recompiles dirty servers shortly after they change, batching bursts of edits.
 func (p *Panel) compileLoop(ctx context.Context) {
+	p.hub.startLoop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -129,11 +132,12 @@ func (p *Panel) compileLoop(ctx context.Context) {
 		case <-p.hub.kick:
 		}
 		time.Sleep(60 * time.Millisecond) // let a burst of edits settle
-		for _, id := range p.hub.takeDirty() {
+		for _, id := range p.hub.takeRound() {
 			if err := p.recompile(ctx, id); err != nil {
 				slog.Error("compile", "server", id, "err", err)
 			}
 		}
+		p.hub.roundDone()
 	}
 }
 
@@ -319,11 +323,17 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			passByExit[e.PassNode] = append(passByExit[e.PassNode], passClient{Entry: e, UUID: uuid, Password: pw})
 		}
 	}
+	// and other servers whose traffic rules send traffic through our protocols
+	for nid, cs := range p.routeClients(ctx, srv, nodes) {
+		passByExit[nid] = append(passByExit[nid], cs...)
+	}
+	nodeOut := map[int64]string{} // how each Xray protocol's traffic leaves when no rule takes it
 
 	var passOut, passRules []map[string]any
 	var codeOut, codeRules []map[string]any // from protocols' own settings
 	codeTags := map[string]bool{}
 	xr := &proto.Xray{}
+	stopped := p.stoppedOn(ctx, nodes, subs) // users whose limit on a protocol stops it for them (nodequota.go)
 	shared := p.sharedCertsFor(ctx, nodes)
 	st.Certs = stateCerts(shared)
 	for _, n := range nodes {
@@ -337,7 +347,7 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 		over := p.credOverrides(ctx, n.ID)
 		switch k.Engine {
 		case "xray":
-			in, err := xrayInbound(n, usersOf(subs, n), passByExit[n.ID], over)
+			in, err := xrayInbound(n, servingOf(subs, n, stopped), passByExit[n.ID], over)
 			if err != nil {
 				slog.Error("render inbound", "node", n.ID, "err", err)
 				continue
@@ -359,11 +369,32 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 				}
 			}
 			xr.Inbounds = append(xr.Inbounds, in)
+			nodeOut[n.ID] = directTag(srv)
 			// a protocol with its own address sends its traffic from there (a proxy pass from there too)
-			if n.BindIP != "" && n.PassNode == 0 {
+			if n.BindIP != "" && n.PassNode == 0 && n.PassExt == 0 {
 				passOut = append(passOut, bindOutbound(srv, n))
 				passRules = append(passRules, map[string]any{"ruleTag": bindTag(n.ID),
 					"inboundTag": []string{proto.InboundTag(n.ID)}, "outboundTag": bindTag(n.ID)})
+				nodeOut[n.ID] = bindTag(n.ID)
+			}
+			// proxy pass through an external node: like one through a protocol, blocked while the node
+			// cannot be used
+			if n.PassExt > 0 {
+				out := "block"
+				if x, why := p.extExit(ctx, srv.AccountID, n.PassExt); why == "" {
+					if ob, err := subgen.XrayOutbound(x.Endpoint, passTag(n.ID)); err == nil {
+						if n.BindIP != "" {
+							ob["sendThrough"] = n.BindIP
+						}
+						passOut = append(passOut, ob)
+						out = passTag(n.ID)
+					} else {
+						slog.Warn("proxy pass", "node", n.ID, "err", err)
+					}
+				}
+				passRules = append(passRules, map[string]any{"ruleTag": passTag(n.ID),
+					"inboundTag": []string{proto.InboundTag(n.ID)}, "outboundTag": out})
+				nodeOut[n.ID] = out
 			}
 			// proxy pass, entry side: send this node's traffic out through its exit node. While the exit
 			// cannot be used (turned off, its server removed) the traffic is blocked: users who chose to
@@ -383,9 +414,10 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 				}
 				passRules = append(passRules, map[string]any{"ruleTag": passTag(n.ID),
 					"inboundTag": []string{proto.InboundTag(n.ID)}, "outboundTag": out})
+				nodeOut[n.ID] = out
 			}
 		case "hysteria":
-			hn, err := hyNode(n, usersOf(subs, n), passByExit[n.ID], over)
+			hn, err := hyNode(n, servingOf(subs, n, stopped), passByExit[n.ID], over)
 			if err != nil {
 				slog.Error("render hysteria", "node", n.ID, "err", err)
 				continue
@@ -409,7 +441,7 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			}
 			st.Hysteria = append(st.Hysteria, hn)
 		case "wireguard":
-			peers, err := p.ensureWGPeers(ctx, n, usersOf(subs, n))
+			peers, err := p.ensureWGPeers(ctx, n, servingOf(subs, n, stopped))
 			if err != nil {
 				slog.Error("wireguard peers", "node", n.ID, "err", err)
 				continue
@@ -422,8 +454,27 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			st.WireGuard = append(st.WireGuard, wg)
 		}
 	}
-	// a protocol's own rules come before its proxy pass or address: they are the more specific
-	xr.Base = xrayBase(srv, append(codeOut, passOut...), append(codeRules, passRules...))
+	// traffic splitting: what passes through our protocols keeps its way, then the account's rules
+	passers := map[int64][]string{}
+	for nid, cs := range passByExit {
+		for _, c := range cs {
+			passers[nid] = append(passers[nid], c.email())
+		}
+	}
+	plan, err := p.routePlanFor(ctx, srv, nodes, passers, nodeOut, passOut)
+	if err != nil {
+		return nil, err
+	}
+	p.setRouteNotes(srv.ID, plan.notes)
+	// a server that uses one IP version reaches its exits' names by that version (addresses.go)
+	pinFamilies(srv, plan.outbounds, passOut)
+	// a protocol's own rules come before traffic rules, and those before its proxy pass or address:
+	// the more specific first
+	outs := append(append(codeOut, plan.outbounds...), passOut...)
+	rules := append(append(codeRules, plan.rules...), passRules...)
+	// devices over a user's limit are turned away before anything else (limits.go)
+	rules = append(p.limitsFor(srv, nodes, subs, st), rules...)
+	xr.Base = xrayBase(srv, outs, rules, plan.balancers, plan.observe)
 	if srv.XrayCode != "" { // the operator's own configuration on top
 		if base, ins, err := mergeXray(xr.Base, xr.Inbounds, srv.XrayCode); err == nil {
 			xr.Base, xr.Inbounds = base, ins
@@ -440,9 +491,10 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 	for _, f := range fwds {
 		if f.Enabled {
 			st.Forwards = append(st.Forwards, proto.Forward{ID: f.ID, ListenPort: f.ListenPort, Network: f.Network,
-				Target: f.Target, Engine: f.Engine, ProxyProtocol: f.ProxyProtocol})
+				Target: p.forwardTo(ctx, srv, f), Engine: f.Engine, ProxyProtocol: f.ProxyProtocol})
 		}
 	}
+	st.Ping = p.pingTargetsFor(ctx, srv) // the addresses it measures the way to (pingmon.go)
 
 	if gr, err := p.geoRule(ctx, srv); err == nil {
 		st.Geo = gr
@@ -485,7 +537,9 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 		}
 	}
 	rows.Close()
+	p.relayState(ctx, srv, st) // the way to the panel, and whom it relays (relay.go)
 
+	st = p.plugins.filterCompile(ctx, st) // plugins with filter:compile (plugins_hooks.go)
 	st.Rev = revOf(st)
 	return st, nil
 }
@@ -602,6 +656,8 @@ func (p *Panel) endpointsFor(ctx context.Context, sub *Sub) ([]subgen.Endpoint, 
 			out = append(out, e)
 		}
 	}
+	capHysteria(out, sub.SpeedLimit)                   // Hysteria2 apps ask for no more than the user's speed limit (limits.go)
+	out = append(out, p.offeredEndpoints(ctx, sub)...) // providers' nodes given to this user (extsources.go)
 	uniqueNames(out)
 	return out, nil
 }

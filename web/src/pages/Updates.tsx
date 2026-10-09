@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'preact/hooks'
-import { Settings as PanelSettings, dateTime, get, post, put } from '../api'
+import { AgentsUpgraded, Settings as PanelSettings, dateTime, get, post, put } from '../api'
 import { Icon } from '../icons'
 import { loadSession } from '../session'
 import { Ago, Check, ErrorBox, Loading, ask, errText, toast, useAsync } from '../ui'
+import { upgradedText } from './agentUpgrades'
 
 // Updates: the panel's version, the newest release, and the agents that are older than the panel.
 // The panel downloads a release, checks its signature and installs it through the updater service;
@@ -23,6 +24,8 @@ interface UpdateView {
   state: 'idle' | 'downloading' | 'installing'
   error: string
   outdated_agents: { id: number; name: string; version: string; online: boolean }[]
+  /** The database the panel keeps its data in, e.g. PostgreSQL 18.6 or SQLite 3.53.4. */
+  database: string
 }
 
 export function Updates() {
@@ -98,8 +101,7 @@ export function Updates() {
     })
     if (ok)
       await act('agents', async () => {
-        const r = await post<{ servers: string[] }>('/api/agents/upgrade')
-        toast(r.servers.length ? `Upgrading ${r.servers.length} agent${r.servers.length === 1 ? '' : 's'}` : 'Every agent is being upgraded already')
+        toast(upgradedText(await post<AgentsUpgraded>('/api/agents/upgrade')))
         v.set(await get<UpdateView>('/api/update'))
       })
   }
@@ -128,6 +130,7 @@ export function Updates() {
         <div class="kv-list">
           <div>
             <span class="muted">This panel</span> <b>{u.current}</b>
+            {u.database && <span class="faint" title="meridian db to-postgres / to-sqlite on the panel's host move its data"> · data in {u.database}</span>}
           </div>
           <div>
             <span class="muted">Newest release</span>{' '}

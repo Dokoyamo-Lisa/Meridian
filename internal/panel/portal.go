@@ -33,6 +33,9 @@ func (p *Panel) portal(h portalFunc) http.HandlerFunc {
 			writeErr(w, errStatus(http.StatusForbidden, "missing "+csrfHeader+" header"))
 			return
 		}
+		if p.inMaintenance(w) { // users wait until the supervisor is done (guard.go)
+			return
+		}
 		s, err := p.sessionUser(r)
 		if err != nil {
 			writeErr(w, errStatus(http.StatusUnauthorized, "sign in required"))
@@ -73,7 +76,7 @@ func (p *Panel) sessionUser(r *http.Request) (*Sub, error) {
 
 // userLogin signs a user in. The caller has already rate-limited the attempt and found no
 // supervisor account with this name.
-func (p *Panel) userLogin(w http.ResponseWriter, r *http.Request, user, password, ip string) {
+func (p *Panel) userLogin(w http.ResponseWriter, r *http.Request, user, password, ip string, known bool) {
 	if denied, _ := p.siteDenied(r, "users"); denied {
 		writeErr(w, errStatus(http.StatusForbidden, "not available in your region"))
 		return
@@ -86,8 +89,7 @@ func (p *Panel) userLogin(w http.ResponseWriter, r *http.Request, user, password
 		hash = ""
 	}
 	if !checkPassword(hash, password) {
-		p.event(0, "warn", "login_failed", 0, 0, 0, fmt.Sprintf("Failed sign-in for %q from %s", truncate(user, 32), ip), nil)
-		writeErr(w, errStatus(http.StatusUnauthorized, "wrong username or password"))
+		p.signinFailed(w, ip, user, known, fmt.Sprintf("Failed sign-in for %q from %s", truncate(user, 32), ip))
 		return
 	}
 	s, err := p.subByID(r.Context(), id)
@@ -96,6 +98,7 @@ func (p *Panel) userLogin(w http.ResponseWriter, r *http.Request, user, password
 		return
 	}
 	p.limiter.reset("user:" + user)
+	p.signin.succeeded(ip)
 	tok := randToken(32)
 	t := now()
 	err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
@@ -154,6 +157,7 @@ type portalServer struct {
 
 // portalProtocol is the user's usage on one protocol.
 type portalProtocol struct {
+	ID      int64  `json:"id" doc:"The protocol's id, as in days[].protocols"`
 	Server  string `json:"server"`
 	Name    string `json:"name"`
 	Removed bool   `json:"removed" doc:"No longer there"`
@@ -177,10 +181,11 @@ type portalVia struct {
 }
 
 type portalDay struct {
-	Day     string           `json:"day"`
-	Up      int64            `json:"up"`
-	Down    int64            `json:"down"`
-	Servers map[string]int64 `json:"servers" doc:"Bytes per server id"`
+	Day       string           `json:"day"`
+	Up        int64            `json:"up"`
+	Down      int64            `json:"down"`
+	Servers   map[string]int64 `json:"servers" doc:"Bytes per server id"`
+	Protocols map[string]int64 `json:"protocols" doc:"Bytes per protocol id (see protocols[].id)"`
 }
 
 type portalMe struct {
@@ -195,6 +200,8 @@ type portalMe struct {
 	Clients    []subgen.Client  `json:"clients" doc:"One-tap import links"`
 	Quota      int64            `json:"quota" doc:"Bytes per cycle; 0 = unlimited"`
 	Used       usage            `json:"used" doc:"This cycle"`
+	Counted    int64            `json:"counted" doc:"What counts toward the quota this cycle (count_mode decides)"`
+	CountMode  string           `json:"count_mode" doc:"both, down (download only), up (upload only) or max (the larger)"`
 	CycleStart int64            `json:"cycle_start"`
 	NextReset  int64            `json:"next_reset" doc:"Unix seconds; 0 = never"`
 	ExpiresAt  int64            `json:"expires_at"`
@@ -205,6 +212,18 @@ type portalMe struct {
 	Total      usage            `json:"total" doc:"Since the user was created"`
 	Protocols  []portalProtocol `json:"protocols" doc:"Usage per protocol, this cycle and all time (the most used first)"`
 	WireGuard  []portalWG       `json:"wireguard" doc:"The WireGuard protocols the user may use: the WireGuard app takes a file or a QR code, not the link"`
+	Limits     []portalLimit    `json:"limits" doc:"Limits on single protocols: what is left of each this cycle"`
+}
+
+// portalLimit is what is left of a limit on one protocol, this cycle.
+type portalLimit struct {
+	ID      int64  `json:"id" doc:"The protocol's id, as in protocols[].id and days[].protocols"`
+	Server  string `json:"server"`
+	Name    string `json:"name"`
+	Quota   int64  `json:"quota" doc:"Bytes per cycle"`
+	Used    int64  `json:"used" doc:"What counts this cycle"`
+	Left    int64  `json:"left"`
+	Stopped bool   `json:"stopped" doc:"Used up: the protocol does not serve this user until the cycle starts over"`
 }
 
 type portalWG struct {
@@ -217,7 +236,7 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 	ctx := r.Context()
 	set := p.settings()
 	me := portalMe{SiteTitle: set.SiteTitle, Timezone: p.loc().String(), ID: s.ID, Name: s.Name, Username: s.Login, Status: "active",
-		Link: p.subBase(r) + "/s/" + s.Token, Quota: s.Quota, Used: usage{s.CycleUp, s.CycleDown},
+		Link: p.subBase(r) + "/s/" + s.Token, Quota: s.Quota, Used: usage{s.CycleUp, s.CycleDown}, Counted: s.Used(), CountMode: nz(s.CountMode, "both"),
 		CycleStart: s.CycleStart, ExpiresAt: s.ExpiresAt, IPLimit: s.IPLimit, Total: usage{s.TotalUp, s.TotalDown},
 		Devices: []portalDevice{}, Servers: []portalServer{}, Days: []portalDay{}, WireGuard: []portalWG{}}
 	if s.Paused {
@@ -230,10 +249,7 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 		}
 	}
 	me.Clients = clientLinks(me.Link, s.Name)
-	if s.ResetDay > 0 {
-		loc := p.loc()
-		me.NextReset = nextReset(s.ResetDay, time.Now().In(loc)).Unix()
-	}
+	me.NextReset = nextPeriod(s, p.localNow()) // monthly, every N days, or never
 
 	// devices online now - one per address, as the IP limit counts them - and the servers they are on
 	online := p.onlineBySub(ctx, s.AccountID)[s.ID]
@@ -306,16 +322,16 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 	since := p.dayKey(time.Now().AddDate(0, 0, -29))
 	cycleDay := p.dayKey(time.Unix(s.CycleStart, 0))
 	days := map[string]*portalDay{}
-	rows, err := p.db.QueryContext(ctx, `SELECT day, server_id, SUM(up), SUM(down) FROM traffic_daily
-		WHERE sub_id = ? AND day >= ? GROUP BY day, server_id`, s.ID, min(since, cycleDay))
+	rows, err := p.db.QueryContext(ctx, `SELECT day, server_id, node_id, SUM(up), SUM(down) FROM traffic_daily
+		WHERE sub_id = ? AND day >= ? GROUP BY day, server_id, node_id`, s.ID, min(since, cycleDay))
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var day string
-		var sid, up, down int64
-		if err := rows.Scan(&day, &sid, &up, &down); err != nil {
+		var sid, nid, up, down int64
+		if err := rows.Scan(&day, &sid, &nid, &up, &down); err != nil {
 			return err
 		}
 		ps := byID[sid]
@@ -348,12 +364,13 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 		if day >= since {
 			d := days[day]
 			if d == nil {
-				d = &portalDay{Day: day, Servers: map[string]int64{}}
+				d = &portalDay{Day: day, Servers: map[string]int64{}, Protocols: map[string]int64{}}
 				days[day] = d
 			}
 			d.Up += up
 			d.Down += down
 			d.Servers[fmt.Sprint(sid)] += up + down
+			d.Protocols[fmt.Sprint(nid)] += up + down
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -364,7 +381,7 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 		if d := days[k]; d != nil {
 			me.Days = append(me.Days, *d)
 		} else {
-			me.Days = append(me.Days, portalDay{Day: k, Servers: map[string]int64{}})
+			me.Days = append(me.Days, portalDay{Day: k, Servers: map[string]int64{}, Protocols: map[string]int64{}})
 		}
 	}
 	sort.SliceStable(me.Servers, func(i, j int) bool {
@@ -377,14 +394,32 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 		if !ok {
 			name = "Removed server"
 		}
-		me.Protocols = append(me.Protocols, portalProtocol{Server: name, Name: u.Protocol, Removed: u.Removed,
+		me.Protocols = append(me.Protocols, portalProtocol{ID: u.NodeID, Server: name, Name: u.Protocol, Removed: u.Removed,
 			Cycle: usage{u.CycleUp, u.CycleDown}, Total: usage{u.TotalUp, u.TotalDown}})
+	}
+	me.Limits = []portalLimit{}
+	for _, l := range p.nodeLimitsOf(ctx, s) {
+		if l.Removed {
+			continue
+		}
+		name, proto := l.Server, l.Protocol
+		if n, ok := names[l.ServerID]; ok {
+			name = n // the names users see
+		}
+		if lb, ok := labels[l.NodeID]; ok {
+			proto = lb
+		}
+		me.Limits = append(me.Limits, portalLimit{ID: l.NodeID, Server: name, Name: proto, Quota: l.Quota, Used: l.Used,
+			Left: l.Left, Stopped: l.Stopped})
 	}
 	writeJSON(w, http.StatusOK, me)
 	return nil
 }
 
 func (p *Panel) apiPortalPassword(w http.ResponseWriter, r *http.Request, s *Sub) error {
+	if p.portalVia(r) == viaTelegram { // tglink.go
+		return errStatus(http.StatusForbidden, "change your password in a browser, signed in with your password - a sign-in from Telegram cannot")
+	}
 	var req struct {
 		Current string `json:"current"`
 		New     string `json:"new"`
@@ -507,6 +542,16 @@ func (p *Panel) apiProtocolCheck(w http.ResponseWriter, r *http.Request, a *Acco
 	}
 	if err == nil {
 		err = p.checkOnServer(r.Context(), srv, kind, raw, old)
+	}
+	if err == nil { // a port hopping range must leave the server's other UDP ports alone
+		draft := &Node{Kind: kind, Settings: raw}
+		if n != nil {
+			draft.ID, draft.BindIP = n.ID, n.BindIP
+			if in.BindIP != nil {
+				draft.BindIP = strings.Trim(strings.TrimSpace(*in.BindIP), "[]")
+			}
+		}
+		err = p.checkHop(r.Context(), srv, draft)
 	}
 	v := supportOf(kind, raw, err)
 	if n != nil && err == nil {

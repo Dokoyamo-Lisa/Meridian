@@ -1,0 +1,22 @@
+/* Ember for the panel: the accent - links, buttons, the current page, charts - turns a warm orange in
+   every tone. The panel draws everything from these variables (web/src/app.css), so changing them
+   restyles it all; this file loads after the panel's own styles, so its rules win. */
+
+:root, :root[data-theme] {
+  --accent: #ff9a5c;
+  --accent-ink: #ffc49e;
+  --accent-soft: rgba(255, 154, 92, .14);
+  --on-accent: #1d0d02;
+  --pool: rgba(255, 140, 70, .05);
+}
+
+/* the light tones need a deeper orange to stay readable */
+:root[data-theme="paper"], :root[data-theme="mist"] {
+  --accent: #b4521a;
+  --accent-ink: #8e3f12;
+  --accent-soft: rgba(180, 82, 26, .1);
+  --on-accent: #ffffff;
+}
+
+/* a little more room around each panel */
+.panel { border-radius: 14px; }

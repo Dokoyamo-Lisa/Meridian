@@ -47,6 +47,11 @@ import {
 } from './fmt'
 import { C, FlowChart, Pt, Segment, TipRow, bsplit, dailyBars, dirtyAll, figure, hideTip, kick, motion, readColors, rsplit, segment, showTip, tween } from './chart'
 import type { Globe, GlobePlace, LivePayload, LoginResult, PortalMe, PortalServer, StatusPayload, StatusServer } from './types'
+import { pluginCard, pluginData, pluginMe, pluginState, pluginView } from './plugins' // window.MeridianStatus for plugins
+import { Check, startCheck } from '../turnstile'
+import { ServerHistory, serverHistory } from './details'
+import { osBadge, virtName } from './os'
+import { TgSession, call as tgCall, telegramPanel, tgLaunch } from './tg'
 
 // ================================================================ state
 
@@ -70,8 +75,10 @@ const S = {
   places: [] as GlobePlace[],
   loginStep: 'password' as 'password' | 'code',
   opening: false, // the sign-in transition is running: views swap without their own transition
+  tg: null as { initData: string; name: string } | null, // opened from the bot, not linked yet: signing in links it (tg.ts)
 }
 const LIVE_SPAN = 1800 // the panel keeps 30 minutes of live samples
+pluginState(() => S.pub, () => S.me, () => S.view)
 
 const media = matchMedia('(prefers-reduced-motion: reduce)')
 media.addEventListener?.('change', (e) => {
@@ -205,7 +212,10 @@ const todayOf = (sv: StatusServer) => {
 // the servers are shown to everyone on a public status page, and always to the supervisor
 const dataOn = () => !!S.pub
 const sup = () => !!S.pub?.supervisor // the supervisor is signed in
-const show = () => ({ bandwidth: dataOn(), throughput: dataOn(), resources: dataOn(), events: dataOn() })
+// what the supervisor keeps to themselves: visitors and users then get neither the overview nor the events
+const overviewOn = () => dataOn() && (sup() || S.pub?.show?.overview !== false)
+const eventsOn = () => dataOn() && (sup() || S.pub?.show?.events !== false)
+const show = () => ({ bandwidth: dataOn(), throughput: dataOn(), resources: dataOn(), events: eventsOn() })
 const mineOf = (sid: number): PortalServer | null => (S.me ? S.me.servers.find((x) => x.id === sid) || null : null)
 
 // ================================================================ issues and events
@@ -294,6 +304,18 @@ function applyShow() {
   const on = (sel: string, v: boolean) => $$(sel).forEach((el) => el.classList.toggle('hidden', !v))
   on('.need-data', dataOn())
   on('.need-user', !!S.me)
+  on('[data-view="overview"].need-data', overviewOn())
+  on('[data-view="events"].need-data', eventsOn())
+  $('#pEvents').classList.toggle('hidden', !eventsOn())
+  // the supervisor sees what visitors do not, and is told so
+  const note = (id: string, hidden: boolean, text: string) => {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.classList.toggle('hidden', !hidden)
+    setText(el, text)
+  }
+  note('ovPrivate', sup() && S.pub?.show?.overview === false, 'Only you see the overview - visitors and users start at the list of servers (Settings › Status page).')
+  note('evPrivate', sup() && S.pub?.show?.events === false, 'Only you see the events - they are not sent to visitors or users (Settings › Status page).')
   const anyBW = !!S.pub && S.pub.servers.some((x) => x.bandwidth)
   $('#pQuota').classList.toggle('hidden', !anyBW)
   // the fourth figure under the globe: the user's own use, or the fleet's bandwidth
@@ -555,7 +577,7 @@ function updateKpis() {
   const el = $('#kUsed')
   if (S.me) {
     const m = S.me
-    const used = m.used.up + m.used.down
+    const used = m.counted ?? m.used.up + m.used.down
     setText($('#kUsedLab'), 'You, this cycle')
     if (m.quota) tween(el, (used * 100) / m.quota, (x) => numUnit(el, x.toFixed(1), '%'), 1200)
     else figure(el, used, bsplit(), 1200)
@@ -710,13 +732,181 @@ const QRows = new Map<number, QRow>()
 const RING_R = 18
 const RING_C = 2 * Math.PI * RING_R
 
-function ring(): { svg: SVGElement; val: SVGElement } {
-  const val = s('circle', { class: 'r-val', cx: 22, cy: 22, r: RING_R, 'stroke-dasharray': `0 ${RING_C}` })
+// Rings show what is left: full when nothing is used, running down as data goes. A ring drawn for
+// the first time starts full and runs down to what is left; one drawn again (a refresh) moves on
+// from where it was - lastFrac remembers that, by the ring's key.
+const lastFrac = new Map<string, number>()
+const dash = (c: number, frac: number) => `${(c * clamp(frac, 0, 1)).toFixed(2)} ${c.toFixed(2)}`
+
+function ring(key = ''): { svg: SVGElement; val: SVGElement } {
+  const val = s('circle', { class: 'r-val', cx: 22, cy: 22, r: RING_R, 'stroke-dasharray': dash(RING_C, lastFrac.get(key) ?? 1) })
+  if (key) val.dataset.key = key
   const svg = s('svg', { viewBox: '0 0 44 44', 'aria-hidden': 'true' }, s('circle', { class: 'r-track', cx: 22, cy: 22, r: RING_R }), val)
   return { svg, val }
 }
 function setRing(val: SVGElement, frac: number) {
-  requestAnimationFrame(() => val.setAttribute('stroke-dasharray', `${(RING_C * clamp(frac, 0, 1)).toFixed(2)} ${RING_C.toFixed(2)}`))
+  const key = val.dataset.key
+  if (key) lastFrac.set(key, clamp(frac, 0, 1))
+  requestAnimationFrame(() => requestAnimationFrame(() => val.setAttribute('stroke-dasharray', dash(RING_C, frac))))
+}
+
+// arcTo draws an arc of circumference c from where its key last was (full, the first time) to frac.
+function arcTo(el: SVGElement, c: number, frac: number, key: string) {
+  el.setAttribute('stroke-dasharray', dash(c, lastFrac.get(key) ?? 1))
+  lastFrac.set(key, clamp(frac, 0, 1))
+  requestAnimationFrame(() => requestAnimationFrame(() => el.setAttribute('stroke-dasharray', dash(c, frac))))
+}
+
+const DAY_COLORS = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)', 'var(--c7)', 'var(--c8)']
+const OTHER_COLOR = 'var(--ink-3)'
+
+// protoColors gives each of the user's most used protocols its colour - the same in the circles and
+// in the daily bars; the rest share the grey of "other".
+function protoColors(m: PortalMe): Map<string, string> {
+  const sums = new Map<string, number>()
+  for (const p of m.protocols || []) sums.set(String(p.id), p.cycle.up + p.cycle.down)
+  for (const d of m.days) for (const [k, v] of Object.entries(d.protocols || {})) sums.set(k, (sums.get(k) || 0) + v)
+  // the protocols with a limit always get a colour of their own; then the most used
+  const limited = (m.limits || []).map((l) => String(l.id))
+  const order = [...limited, ...[...sums].filter(([k, v]) => v > 0 && !limited.includes(k)).sort((a, b) => b[1] - a[1]).map(([k]) => k)]
+  const top = order.slice(0, order.length > 8 ? 7 : 8)
+  return new Map(top.map((k, i) => [k, DAY_COLORS[i]]))
+}
+
+interface RingSeg {
+  size: number // its share of the ring
+  fill: number // the share of the ring it fills (what is left), at most size
+  color: string
+  title: string
+}
+
+// leftSegments is a usage circle's one ring as the whole allowance: a segment per protocol with a
+// limit - as long as its limit, filled in its colour of the daily bars by what is left of it - and a
+// segment for everything else, filled by what is left of the quota besides. Empty: no quota and no
+// limits (nothing to measure against).
+function leftSegments(m: PortalMe): RingSeg[] {
+  const colors = protoColors(m)
+  const lims = (m.limits || []).filter((l) => l.quota > 0)
+  const used = m.counted ?? m.used.up + m.used.down
+  const sumLim = lims.reduce((a, l) => a + l.quota, 0)
+  const whole = Math.max(m.quota || 0, sumLim)
+  if (!whole) return []
+  // what is left overall can go anywhere, a limited protocol only up to its limit: share it out
+  let budget = m.quota ? Math.max(0, m.quota - used) : Infinity
+  const segs: RingSeg[] = lims.map((l) => {
+    const fill = Math.min(Math.max(0, l.left), l.quota, budget)
+    budget -= fill
+    const title = `${l.server} · ${l.name}: ${bytes(l.left)} left of ${bytes(l.quota)}${l.stopped ? ' - used up until the cycle starts over' : ''}`
+    return { size: l.quota / whole, fill: fill / whole, color: colors.get(String(l.id)) || OTHER_COLOR, title }
+  })
+  if (m.quota && m.quota > sumLim) {
+    const rest = Math.min(budget, m.quota - sumLim)
+    const g: RingSeg = {
+      size: (m.quota - sumLim) / whole,
+      fill: rest / whole,
+      color: 'var(--accent)',
+      title: lims.length ? `Everything else: ${bytes(rest)} left` : `${bytes(rest)} left of ${bytes(m.quota)}`,
+    }
+    // a small limit still gets a segment one can see and point at: taken from everything else
+    const MIN = 0.06
+    for (const x of segs) {
+      if (x.size >= MIN || g.size - (MIN - x.size) < MIN) continue
+      const k = MIN / x.size
+      g.fill *= (g.size - (MIN - x.size)) / g.size
+      g.size -= MIN - x.size
+      x.fill *= k
+      x.size = MIN
+    }
+    segs.push(g)
+  }
+  return segs
+}
+
+// leftRing draws a usage circle's ring as leftSegments: the filled part of each segment in its colour,
+// a hair between segments. It returns false when there is nothing to draw that way.
+function leftRing(svg: SVGElement, val: SVGElement, segs: RingSeg[], key: string): boolean {
+  svg.querySelectorAll('.r-seg, .r-cut').forEach((e) => e.remove())
+  if (segs.length < 2 && !(segs.length === 1 && segs[0].color !== 'var(--accent)')) {
+    val.style.display = ''
+    return false // one plain segment: the ring as it always was
+  }
+  val.style.display = 'none'
+  let start = 0
+  segs.forEach((g, i) => {
+    const len = g.fill * RING_C
+    if (len >= 0.3) {
+      // each segment starts as long as its limit (full) and runs down to what is left of it
+      const k = `${key}:seg:${i}`
+      const from = Math.min(lastFrac.get(k) ?? g.size, g.size)
+      const arc = s('circle', { class: 'r-seg', cx: 22, cy: 22, r: RING_R, 'stroke-dasharray': `${(from * RING_C).toFixed(2)} ${RING_C.toFixed(2)}`,
+        'stroke-dashoffset': (-start).toFixed(2), style: `stroke:${g.color}` }, s('title', {}, g.title))
+      svg.append(arc)
+      lastFrac.set(k, g.fill)
+      requestAnimationFrame(() => requestAnimationFrame(() => arc.setAttribute('stroke-dasharray', `${Math.max(0.3, len).toFixed(2)} ${RING_C.toFixed(2)}`)))
+    }
+    start += g.size * RING_C
+    if (segs.length > 1 && start < RING_C - 0.5) // where one segment ends and the next begins
+      svg.append(s('circle', { class: 'r-cut', cx: 22, cy: 22, r: RING_R, 'stroke-dasharray': `0.9 ${RING_C.toFixed(2)}`, 'stroke-dashoffset': (-(start - 0.45)).toFixed(2) }))
+  })
+  return true
+}
+
+const RING_IN = [14.5, 11.8, 9.1] // inner rings: what is left of up to three limits per protocol
+
+// limitRings draws, inside a usage circle's ring, a thin ring per limit on a protocol (up to three):
+// what is left of it, in the protocol's colour of the daily bars.
+function limitRings(svg: SVGElement, m: PortalMe, key: string) {
+  const colors = protoColors(m)
+  ;(m.limits || []).slice(0, RING_IN.length).forEach((l, i) => {
+    const r = RING_IN[i]
+    const c = 2 * Math.PI * r
+    const frac = l.quota > 0 ? clamp(l.left / l.quota, 0, 1) : 0
+    svg.append(s('circle', { class: 'r-lim-t', cx: 22, cy: 22, r }))
+    const arc = s('circle', { class: 'r-lim', cx: 22, cy: 22, r, style: `stroke:${colors.get(String(l.id)) || OTHER_COLOR}` },
+      s('title', {}, `${l.server} · ${l.name}: ${bytes(l.left)} left of ${bytes(l.quota)}${l.stopped ? ' - used up until the cycle starts over' : ''}`))
+    svg.append(arc)
+    arcTo(arc, c, frac, `${key}:lim:${l.id}`)
+  })
+}
+
+// drawUsage draws a usage circle the way that reads best: up to three limits per protocol each get a
+// thin ring of their own inside the circle's ring (frac: what its ring shows); more than three share
+// the one ring, a segment each (leftSegments); none: the ring as it always was.
+function drawUsage(gauge: HTMLElement, svg: SVGElement, val: SVGElement, m: PortalMe, frac: number) {
+  svg.querySelectorAll('.r-seg, .r-cut, .r-lim, .r-lim-t').forEach((e) => e.remove())
+  gauge.classList.remove('rings1', 'rings2', 'rings3')
+  const key = val.dataset.key || ''
+  const n = (m.limits || []).length
+  if (n > RING_IN.length && leftRing(svg, val, leftSegments(m), key)) return
+  val.style.display = ''
+  setRing(val, frac)
+  if (n > 0 && n <= RING_IN.length) {
+    limitRings(svg, m, key)
+    gauge.classList.add('rings' + n)
+  }
+}
+
+// limitList lists what is left of each limit per protocol, under the circle.
+function limitList(m: PortalMe): HTMLElement | null {
+  const list = m.limits || []
+  if (!list.length) return null
+  const colors = protoColors(m)
+  return h(
+    'div.me-limits',
+    h('div.sub-h', 'Limits per protocol'),
+    list.map((l) => {
+      const frac = l.quota > 0 ? clamp(l.left / l.quota, 0, 1) : 0
+      const color = colors.get(String(l.id)) || OTHER_COLOR
+      return h(
+        'div.ml-row',
+        { cls: l.stopped ? 'out' : '' },
+        h('i.ml-dot', { style: { background: color } }),
+        h('div.ml-name', h('b', l.name), h('small', l.server)),
+        h('div.ml-bar', h('i', { style: { width: (frac * 100).toFixed(1) + '%', background: color } })),
+        h('div.ml-left', h('b', bytes(l.left)), h('small', l.stopped ? `used up - back ${m.next_reset ? inDays(daysUntil(m.next_reset)) : 'next cycle'}` : `left of ${bytes(l.quota)}`)),
+      )
+    }),
+  )
 }
 
 function updateQuota() {
@@ -730,7 +920,7 @@ function updateQuota() {
     keep.add(sv.id)
     let r = QRows.get(sv.id)
     if (!r) {
-      const { svg, val } = ring()
+      const { svg, val } = ring(`bw:${sv.id}`)
       const c = h('span.r-c')
       const name = h('b')
       const when = h('small')
@@ -746,10 +936,12 @@ function updateQuota() {
     r.el.className = 'q-row ' + severity(pct)
     setText(r.name, sv.name)
     setText(r.when, b.next_reset ? `resets ${inDays(daysUntil(b.next_reset))}` : 'no reset day')
-    setRing(r.val, pct / 100)
-    numUnit(r.c, pct >= 10 ? pct.toFixed(0) : pct.toFixed(1), '%')
-    setText(r.used, `${bytes(b.used, 0)} / ${bytes(b.limit, 0)}`)
-    setText(r.sub, `${bytes(Math.max(0, b.limit - b.used), 0)} left`)
+    // what is left of the month's bandwidth: full at the start, running down
+    const left = Math.max(0, 100 - pct)
+    setRing(r.val, left / 100)
+    numUnit(r.c, left >= 10 || left === 0 ? Math.floor(left).toFixed(0) : left.toFixed(1), '%')
+    setText(r.used, `${bytes(Math.max(0, b.limit - b.used), 0)} left`)
+    setText(r.sub, `${bytes(b.used, 0)} of ${bytes(b.limit, 0)} used`)
   })
   for (const [sid, r] of QRows) {
     if (!keep.has(sid)) {
@@ -769,11 +961,15 @@ function updateMine() {
     clear(host)
     return
   }
-  const used = m.used.up + m.used.down
+  const used = m.counted ?? m.used.up + m.used.down
   const pct = m.quota ? (used * 100) / m.quota : null
-  const { svg, val } = ring()
+  const { svg, val } = ring('mine')
   const c = h('span.r-c')
-  numUnit(c, pct == null ? '∞' : pct >= 10 ? pct.toFixed(0) : pct.toFixed(1), pct == null ? '' : '%')
+  // the circle shows what is left: full at the start of a cycle, running down - and so does the middle
+  const segs = leftSegments(m)
+  const leftPct = m.quota ? (Math.max(0, m.quota - used) * 100) / m.quota : segs.length ? segs.reduce((a, g) => a + g.fill, 0) * 100 : null
+  numUnit(c, leftPct == null ? '∞' : String(Math.floor(leftPct)), leftPct == null ? '' : '%')
+  let gauge: HTMLElement
   const lines: string[] = []
   if (m.next_reset) lines.push(`Resets ${isoDate(m.next_reset)} · ${inDays(daysUntil(m.next_reset))}`)
   if (m.expires_at) lines.push(m.expires_at > now() ? `Access until ${isoDate(m.expires_at)}` : `Access ended ${isoDate(m.expires_at)}`)
@@ -782,8 +978,10 @@ function updateMine() {
     h(
       'div.mine-top',
       { cls: pct == null ? '' : severity(pct) },
-      h('div.r-g.lg', svg, c),
-      h('div.mine-v', h('b', bytes(used)), h('small', m.quota ? `of ${bytes(m.quota)} this cycle` : 'used this cycle · no limit')),
+      (gauge = h('div.r-g.lg', svg, c) as HTMLElement),
+      m.quota
+        ? h('div.mine-v', h('b', `${bytes(Math.max(0, m.quota - used))} left`), h('small', `of ${bytes(m.quota)} · ${bytes(used)} used this cycle`))
+        : h('div.mine-v', h('b', bytes(used)), h('small', (m.limits || []).length ? 'used this cycle · limits on some protocols' : 'used this cycle · no limit')),
     ),
     h('div.mine-lines', lines.map((l) => h('span', l))),
     h(
@@ -792,7 +990,7 @@ function updateMine() {
       h('a.btn.ghost', { href: '#/me' }, 'Your usage', icon('chev', 'sm')),
     ),
   )
-  setRing(val, pct == null ? 0 : pct / 100)
+  drawUsage(gauge, svg, val, m, leftPct == null ? 1 : leftPct / 100)
 }
 
 // ================================================================ throughput
@@ -1138,7 +1336,10 @@ function makeCard(sv: StatusServer): Card {
   const sub = h('small')
   const state = h('span.chip')
   const ips = h('div.c-ips')
-  const host = h('div.c-host')
+  const hostOS = h('span.os-slot')
+  const hostTxt = h('span')
+  const host = h('div.c-host', hostOS, hostTxt)
+  let hostKey = '\u0000'
   const up = h('b')
   const down = h('b')
   const cv = h('canvas.c-spark', { 'aria-hidden': 'true' }) as HTMLCanvasElement
@@ -1171,7 +1372,11 @@ function makeCard(sv: StatusServer): Card {
     state.className = 'chip ' + level
     clear(ips).append(...ipChips(v.addrs))
     ips.classList.toggle('hidden', !v.addrs?.length)
-    setText(host, hostLine(v))
+    setText(hostTxt, hostLine(v))
+    if (hostKey !== (v.host?.os || '')) {
+      hostKey = v.host?.os || ''
+      clear(hostOS).append(osBadge(v.host?.os, 'sm', true))
+    }
     host.classList.toggle('hidden', !v.host)
     live.classList.toggle('hidden', !sh.throughput)
     setText(up, rate(v.speed?.up || 0))
@@ -1239,6 +1444,7 @@ function makeCard(sv: StatusServer): Card {
         m.devices ? h('span', m.devices === 1 ? '1 device now' : `${m.devices} devices now`) : null,
       ])
     }
+    pluginCard(el, v)
   }
   return { el, spark, update }
 }
@@ -1375,33 +1581,38 @@ function updateMe() {
   }
 
   // the data left this cycle, as the one big figure
-  const used = m.used.up + m.used.down
+  const used = m.counted ?? m.used.up + m.used.down
   const pct = m.quota ? (used * 100) / m.quota : null
   const left = m.quota ? Math.max(0, m.quota - used) : null
   const big = h('span.value')
   const [bv, bu] = left != null ? bparts(left) : ['No limit', '']
   big.textContent = bv
   if (bu) big.append(h('span.unit', bu))
-  const { svg, val } = ring()
+  const { svg, val } = ring('me')
   const c = h('span.r-c')
-  // rounded down, so a little use never reads as 100% left
-  numUnit(c, pct == null ? '∞' : String(Math.floor(100 - Math.min(100, pct))), pct == null ? '' : '%')
+  // rounded down, so a little use never reads as 100% left; without a quota, limits per protocol say it
+  const segs = leftSegments(m)
+  const limLeft = pct == null && segs.length ? Math.floor(segs.reduce((a, g) => a + g.fill, 0) * 100) : null
+  numUnit(c, limLeft != null ? String(limLeft) : pct == null ? '∞' : String(Math.floor(100 - Math.min(100, pct))), pct == null && limLeft == null ? '' : '%')
   const cyc = clear($('#meCycle'))
+  let gaugeXL: HTMLElement
   cyc.append(
     h(
       'div.left-hero',
       { cls: pct == null ? '' : severity(pct) },
-      h('div.r-g.xl', svg, c),
+      (gaugeXL = h('div.r-g.xl', svg, c) as HTMLElement),
       h('div.left-v', big, h('span.of', left != null ? `left of ${bytes(m.quota)} · ${bytes(used)} used this cycle` : `${bytes(used)} used this cycle`)),
     ),
   )
-  setRing(val, pct == null ? 1 : (100 - Math.min(100, pct)) / 100)
+  drawUsage(gaugeXL, svg, val, m, pct == null ? (limLeft != null ? limLeft / 100 : 1) : (100 - Math.min(100, pct)) / 100)
+  const lim = limitList(m)
+  if (lim) cyc.append(lim)
   const kv = (label: string, value: string, cls?: string) => h('div.kv', h('small', label), h('b', { cls }, value))
   cyc.append(
     h(
       'div.kv-grid',
-      kv('Uploaded', bytes(m.used.up)),
-      kv('Downloaded', bytes(m.used.down)),
+      kv(m.count_mode === 'down' ? 'Uploaded (not counted)' : 'Uploaded', bytes(m.used.up)),
+      kv(m.count_mode === 'up' ? 'Downloaded (not counted)' : 'Downloaded', bytes(m.used.down)),
       kv('Cycle started', m.cycle_start ? isoDate(m.cycle_start) : '—'),
       kv('Starts over', m.next_reset ? `${isoDate(m.next_reset)} · ${inDays(daysUntil(m.next_reset))}` : 'Never'),
       kv('Access until', m.expires_at ? isoDate(m.expires_at) : 'No end date', m.expires_at && m.expires_at - now() < 3 * 86400 ? 'warn' : undefined),
@@ -1543,25 +1754,73 @@ function renderMyServers(m: PortalMe) {
   }
 }
 
+// the protocols the chart of the last 30 days leaves out, by name (the legend hides and shows them)
+const meDaysHidden = new Set<string>()
+
 function renderMyDays(m: PortalMe) {
   const host = $('#meDays')
-  const names = new Map(m.servers.map((x) => [String(x.id), x.name]))
   const total = m.days.reduce((a, d) => a + d.up + d.down, 0)
   setText($('#meDaysMeta'), `${bytes(total)} in total`)
-  const draw = () =>
+  // one coloured layer per protocol, in the colours of the circles; the rest share a grey one
+  const names = new Map((m.protocols || []).map((x) => [String(x.id), `${x.server} · ${x.name}`]))
+  const colors = protoColors(m)
+  const sums = new Map<string, number>()
+  for (const d of m.days) for (const [k, v] of Object.entries(d.protocols || {})) sums.set(k, (sums.get(k) || 0) + v)
+  const keysOf = [...sums].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k]) => k)
+  const top = [...colors.keys()].filter((k) => (sums.get(k) || 0) > 0)
+  const rest = keysOf.filter((k) => !colors.has(k))
+  type Layer = { key: string; label: string; color: string; values: number[]; sum: number }
+  const layers: Layer[] = top.map((k) => ({
+    key: k,
+    label: names.get(k) || 'Removed protocol',
+    color: colors.get(k)!,
+    values: m.days.map((d) => (d.protocols || {})[k] || 0),
+    sum: sums.get(k) || 0,
+  }))
+  if (rest.length) {
+    const values = m.days.map((d) => rest.reduce((a, k) => a + ((d.protocols || {})[k] || 0), 0))
+    layers.push({ key: '__other', label: `Other protocols (${rest.length})`, color: OTHER_COLOR, values, sum: values.reduce((a, b) => a + b, 0) })
+  }
+  const draw = () => {
+    const shown = layers.filter((l) => !meDaysHidden.has(l.label))
+    const values = m.days.map((d, i) => (layers.length ? shown.reduce((a, l) => a + l.values[i], 0) : d.up + d.down))
     dailyBars(host, {
       days: m.days.map((d) => d.day),
-      values: m.days.map((d) => d.up + d.down),
+      values,
+      stacks: layers.length ? shown.map((l) => ({ color: l.color, values: l.values })) : undefined,
       animate: meDaysFirst,
       label: 'Your traffic per day, last 30 days',
       breakdown: (i) =>
-        Object.entries(m.days[i].servers)
-          .filter(([, v]) => v > 0)
-          .sort((a, b) => b[1] - a[1])
-          .map(([sid, v]): TipRow => [names.get(sid) || 'Removed server', bytes(v)]),
+        shown
+          .filter((l) => l.values[i] > 0)
+          .sort((a, b) => (a.key === '__other' ? 1 : b.key === '__other' ? -1 : b.values[i] - a.values[i]))
+          .map((l): TipRow => [l.label, bytes(l.values[i]), undefined, l.color]),
     })
+    meDaysFirst = false
+  }
+  // the legend: each protocol with its colour and total; a tap hides or shows it
+  let keys = host.parentElement!.querySelector('.bar-keys') as HTMLElement | null
+  if (!keys) {
+    keys = h('div.bar-keys') as HTMLElement
+    host.parentElement!.append(keys)
+  }
+  clear(keys)
+  if (layers.length > 1) {
+    for (const l of layers) {
+      const b = h('button.bar-key', { type: 'button', 'aria-pressed': String(!meDaysHidden.has(l.label)), title: 'Hide or show it' },
+        h('i', { style: { background: l.color } }), h('span', l.label), h('b', bytes(l.sum))) as HTMLButtonElement
+      b.classList.toggle('off', meDaysHidden.has(l.label))
+      b.addEventListener('click', () => {
+        if (meDaysHidden.has(l.label)) meDaysHidden.delete(l.label)
+        else if (meDaysHidden.size < layers.length - 1) meDaysHidden.add(l.label) // one stays shown
+        b.classList.toggle('off', meDaysHidden.has(l.label))
+        b.setAttribute('aria-pressed', String(!meDaysHidden.has(l.label)))
+        draw()
+      })
+      keys.append(b)
+    }
+  }
   requestAnimationFrame(draw)
-  meDaysFirst = false
 }
 
 function renderDevices(m: PortalMe) {
@@ -1647,6 +1906,8 @@ interface Drawer {
   up: HTMLElement
   down: HTMLElement
   secs: Record<string, HTMLElement>
+  hist: ServerHistory | null // the charts over time (details.ts)
+  os: string // the system the header's badge shows
 }
 let D: Drawer | null = null
 
@@ -1678,6 +1939,7 @@ function closeDrawer(immediate = false) {
   hideTip()
   const done = () => {
     old.charts.forEach((c) => c.destroy())
+    old.hist?.destroy()
     if (!D) clear($('#dBody'))
   }
   if (immediate || motion.reduced) done()
@@ -1686,7 +1948,7 @@ function closeDrawer(immediate = false) {
 
 function buildDrawer(sv: StatusServer): Drawer {
   const body = clear($('#dBody'))
-  const d: Drawer = { sid: sv.id, charts: [], up: h('span.v'), down: h('span.v'), secs: {} }
+  const d: Drawer = { sid: sv.id, charts: [], up: h('span.v'), down: h('span.v'), secs: {}, hist: null, os: '\u0000' }
   if (show().throughput) {
     const cv = h('canvas', { role: 'img', 'aria-label': `Throughput of ${sv.name}, last 30 minutes` }) as HTMLCanvasElement
     body.append(
@@ -1699,7 +1961,15 @@ function buildDrawer(sv: StatusServer): Drawer {
     )
     d.charts.push(new FlowChart(cv, { data: () => ({ pts: liveOf(sv.id), live: true, span: LIVE_SPAN }), minY: 8 * 1024, pad: [18, 6, 22, 2] }))
   }
-  ;['mine', 'addrs', 'res', 'host', 'bw', 'traffic', 'avail', 'events'].forEach((k, i) => {
+  ;['mine', 'addrs', 'res', 'hist', 'host', 'bw', 'traffic', 'avail', 'events'].forEach((k, i) => {
+    if (k === 'hist') {
+      // its charts over time: what the viewer may see of them, as they pick (details.ts)
+      if (show().resources) {
+        d.hist = serverHistory(sv.id, sv.name, i + 1)
+        body.append(d.hist.el)
+      }
+      return
+    }
     d.secs[k] = h('section.d-sec', { style: { '--i': String(i + 1) } })
     body.append(d.secs[k])
   })
@@ -1717,6 +1987,12 @@ function updateDrawer() {
   const sh = show()
   const R = D.secs
   setText($('#dTitle'), sv.name)
+  if (D.os !== (sv.host?.os || '')) {
+    D.os = sv.host?.os || ''
+    const slot = clear($('#dOS'))
+    if (sv.host) slot.append(osBadge(sv.host.os))
+    slot.classList.toggle('hidden', !sv.host)
+  }
   const where = sv.loc ? `${placeOf(sv.city, sv.cc)} (${Math.abs(sv.loc[0]).toFixed(1)}°${sv.loc[0] >= 0 ? 'N' : 'S'} ${Math.abs(sv.loc[1]).toFixed(1)}°${sv.loc[1] >= 0 ? 'E' : 'W'}${sv.approx ? ', approximate' : ''})` : placeOf(sv.city, sv.cc)
   setText($('#dSub'), [`${sv.online ? 'Online' : 'Offline'}${sv.since ? ' for ' + dur(now() - sv.since) : ''}`, where].filter(Boolean).join(' · '))
   if (sh.throughput) {
@@ -1772,7 +2048,8 @@ function updateDrawer() {
   if (x) {
     append(R.host, [
       h('h4', 'System'),
-      h('div.kv-grid', kv('Operating system', x.os || '—'), kv('Architecture', x.arch || '—'), kv('Cores', x.cores ? String(x.cores) : '—')),
+      h('div.kv-grid', kv('Operating system', h('b.os-line', osBadge(x.os, 'sm', true), h('span', x.os || '—'))), kv('Architecture', x.arch || '—'), kv('Cores', x.cores ? String(x.cores) : '—')),
+      h('div.kv-grid', kv('Runs in', virtName(x.virt) || '—'), kv('Kernel', x.kernel || '—'), kv('Running for', sv.sys ? dur(upSecs(sv.sys)) : '—')),
       x.cpu ? h('div.kv-grid.one', kv('Processor', x.cpu)) : null,
       h('div.kv-grid', kv('Memory', unitB(sv.sys?.mem_total || x.mem || 0)), kv('Disk', unitB(sv.sys?.disk_total || x.disk || 0)), kv('Paid until', sv.expires ? `${isoLong(sv.expires)} · ${expiryText(sv)}` : 'not set', expirySev(expiryDays(sv)))),
     ])
@@ -1903,7 +2180,14 @@ function setLoginStep(step: 'password' | 'code') {
   ;($('input[name=username]') as HTMLInputElement).required = !code
   ;($('input[name=password]') as HTMLInputElement).required = !code
   ;($('input[name=code]') as HTMLInputElement).required = code
-  setText($('#loginText'), code ? 'Enter the 6-digit code from your authenticator app.' : 'Sign in with the username and password you were given.')
+  setText(
+    $('#loginText'),
+    code
+      ? 'Enter the 6-digit code from your authenticator app.'
+      : S.tg
+        ? `Sign in once to link ${S.tg.name || 'this Telegram account'} - next time this opens by itself.`
+        : 'Sign in with the username and password you were given.',
+  )
   setText($('#loginSubmit span'), code ? 'Verify' : 'Sign in')
   $('#loginBack').classList.toggle('hidden', !code)
   if (code) setTimeout(() => ($('input[name=code]') as HTMLInputElement).focus(), 30)
@@ -1919,11 +2203,29 @@ function initAuth() {
     btn.disabled = true
     setText($('#loginErr'), '')
     try {
+      const turnstile = site.turnstile && human ? await human.token() : ''
+      if (S.tg) {
+        // in the bot's Mini App: signing in links this Telegram account, then its page opens
+        const t = await tgCall<TgSession>('/api/tg/link', 'POST', {
+          init_data: S.tg.initData,
+          username: String(fd.get('username') || '').trim(),
+          password: String(fd.get('password') || ''),
+          code: S.loginStep === 'code' ? String(fd.get('code') || '').replace(/\s/g, '') : '',
+        })
+        if (t.totp_required) {
+          setLoginStep('code')
+          return
+        }
+        location.replace(t.kind === 'admin' ? '/overview' : '/me')
+        return
+      }
       const r = await api<LoginResult>('/api/login', {
         username: String(fd.get('username') || '').trim(),
         password: String(fd.get('password') || ''),
         code: S.loginStep === 'code' ? String(fd.get('code') || '').replace(/\s/g, '') : '',
+        turnstile,
       })
+      human?.reset() // a token works once
       if (r.totp_required) {
         setLoginStep('code')
         return
@@ -1954,6 +2256,7 @@ function initAuth() {
       }
       toast(S.me ? `Signed in as ${S.me.name || S.me.username}` : 'Signed in')
     } catch (err) {
+      human?.reset()
       if (S.view === 'signin') renderGate(false) // the umbrella back in place; the step stays
       // try again where it went wrong: a fresh code, or the password
       const retry = (S.loginStep === 'code' ? $('input[name=code]') : $('input[name=password]')) as HTMLInputElement
@@ -2141,7 +2444,7 @@ function go(hash: string) {
 
 function defaultView(): View {
   if (S.me && onMePath()) return 'me'
-  if (S.pub) return 'overview'
+  if (S.pub) return overviewOn() ? 'overview' : 'servers'
   if (S.me) return 'me'
   return 'signin'
 }
@@ -2163,6 +2466,8 @@ function route() {
   if (v === 'signin' && (S.me || sup())) v = defaultView()
   // the servers, where the status page shows them (to everyone, or to the supervisor)
   if ((v === 'overview' || v === 'servers' || v === 'events') && !dataOn()) v = defaultView()
+  // the parts the supervisor keeps to themselves
+  if ((v === 'overview' && !overviewOn()) || (v === 'events' && !eventsOn())) v = defaultView()
   showView(v)
 }
 
@@ -2178,6 +2483,7 @@ function showView(v: View) {
     })
     $$('.nav a, .mnav a').forEach((a) => (a.dataset.view === v ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')))
     document.body.dataset.view = v
+    pluginView(v)
     if (changed) {
       renderView(v)
       if (v !== 'overview') scrollTo({ top: 0 })
@@ -2222,6 +2528,7 @@ function applyStatus(d: StatusPayload) {
   }
   S.pub = d
   S.pubState = 'ok'
+  showMaintenance(d.maintenance || '')
   setPanelZone(d.timezone)
   document.title = `${d.title} · Status`
   applyShow()
@@ -2238,6 +2545,7 @@ function applyStatus(d: StatusPayload) {
   renderView(S.view)
   updateDrawer()
   if (first) route()
+  pluginData(d)
 }
 
 function statusFailed(e: unknown) {
@@ -2338,7 +2646,11 @@ async function loadMe() {
 }
 
 // meShown brings every view up to date with the signed-in user (or with nobody).
+let tgPanel: { reload(): Promise<void> } | null = null
+
 function meShown() {
+  if (S.me && !tgPanel) tgPanel = telegramPanel($('#meTelegram'), (m, bad) => toast(m, bad), (q) => window.confirm(q))
+  pluginMe(S.me)
   renderAuth()
   updateMine()
   updateKpis()
@@ -2379,7 +2691,30 @@ function markEl(mode: 'once' | 'loop' | 'still'): Element {
   return el
 }
 
-const site = { title: '', about: '' }
+const site = { title: '', about: '', turnstile: '', maintenance: '' }
+// Cloudflare Turnstile on the sign-in form, while the panel has it on (../turnstile.ts)
+let human: Check | null = null
+
+function startHuman() {
+  if (!site.turnstile || human) return
+  const note = $('#humanNote')
+  startCheck($('#humanCheck'), site.turnstile, (st, why) => {
+    note.classList.toggle('hidden', st !== 'checking' && st !== 'needs-you')
+    setText(note, st === 'needs-you' ? 'Please confirm you are a person above.' : 'Checking that you are a person…')
+    if (why) setText($('#loginErr'), why)
+  })
+    .then((c) => (human = c))
+    .catch((e) => setText($('#loginErr'), e instanceof Error ? e.message : 'The check that you are a person could not start - reload the page'))
+}
+
+// showMaintenance puts the maintenance notice at the top of the page and on the sign-in.
+function showMaintenance(msg: string) {
+  site.maintenance = msg
+  const b = $('#maintBanner')
+  setText(b, msg)
+  b.classList.toggle('hidden', !msg)
+  if (msg) setText($('#gateText'), msg)
+}
 const gateNote = document.getElementById('gateText')?.textContent || ''
 
 // renderGate is the visitor's page: the mark assembling, the name, and the way in.
@@ -2397,15 +2732,19 @@ function renderGate(focus = true) {
     return
   }
   if ($('#gateText').textContent?.startsWith('The panel cannot be reached')) setText($('#gateText'), gateNote)
+  if (S.tg) setLoginStep(S.loginStep) // in the bot's Mini App: this sign-in links the Telegram account (tg.ts)
   // with a mouse and keyboard the cursor waits in the form; on phones the keyboard stays down
   if (focus && matchMedia('(pointer: fine)').matches) focusLogin()
 }
 
 async function loadMeta() {
   try {
-    const m = await api<{ site_title: string; about?: string; logo?: LogoInfo }>('/api/meta')
+    const m = await api<{ site_title: string; about?: string; logo?: LogoInfo; turnstile?: string; maintenance?: string }>('/api/meta')
     site.title = m.site_title || ''
     site.about = m.about || ''
+    site.turnstile = m.turnstile || ''
+    showMaintenance(m.maintenance || '')
+    startHuman()
     setBrand(m.logo)
     if (site.title && !S.pub) document.title = site.title
   } catch {
@@ -2421,7 +2760,28 @@ function ready() {
   if (boot) window.setTimeout(() => boot.remove(), 700)
 }
 
+// startTelegram: opened from the bot, a linked account goes straight to its page; another signs in
+// once on this page (tg.ts). It says whether this page goes on loading.
+async function startTelegram(): Promise<boolean> {
+  const tg = tgLaunch()
+  if (!tg) return true
+  history.replaceState(null, '', '/tg#/signin') // the launch data stays out of the address bar and history
+  if (!tg.initData) return true // opened some other way: an ordinary sign-in
+  try {
+    const r = await tgCall<TgSession>('/api/tg/session', 'POST', { init_data: tg.initData })
+    if (r.kind) {
+      location.replace(r.kind === 'admin' ? '/overview' : '/me')
+      return false
+    }
+    S.tg = { initData: tg.initData, name: r.name }
+  } catch (e) {
+    window.setTimeout(() => toast(e instanceof Error ? e.message : 'Telegram could not be checked', true), 800)
+  }
+  return true
+}
+
 async function init() {
+  if (!(await startTelegram())) return
   readColors()
   initTones()
   initClock()

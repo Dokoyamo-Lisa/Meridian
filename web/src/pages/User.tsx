@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { Client, DayTraffic, DestRow, Endpoint, PanelEvent, IPRow, Server, User, bytes, date, del, get, patch, pct, plural, post } from '../api'
+import { Client, DayTraffic, DestRow, Endpoint, PanelEvent, IPRow, Server, User, bytes, date, del, get, patch, pct, plural, post, NodeLimit } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
-import { Ago, BarChart, Code, CopyButton, Crumb, Empty, ErrorBox, Loading, Menu, Meter, Modal, PageHead, QR, Search, Seg, Tabs, ask, copyText, run, toast, toastError, useAsync, usePoll } from '../ui'
+import { Ago, Code, CopyButton, Crumb, Empty, ErrorBox, Loading, Menu, Meter, Modal, PageHead, QR, Search, Seg, StackChart, Tabs, ask, copyText, run, toast, toastError, topSeries, useAsync, usePoll } from '../ui'
 import { BlockIPModal, DestTable, EventList, IPTable, Where } from './Monitor'
 import { NewUsers, UserForm, UserStatus } from './Users'
+import { ApplyPlan, countName } from './Plans'
 import { userURL } from '../session'
 
 interface ProtocolUsage {
@@ -93,12 +94,13 @@ export function UserPage(props: { id: number }) {
   const tab = (loc.query.get('tab') as Tab) || 'online'
   const res = useAsync(() => get<UserDetail>(`/api/users/${props.id}`), [props.id])
   const [editing, setEditing] = useState(false)
+  const [applying, setApplying] = useState(false)
   const [shown, setShown] = useState<User | null>(null)
   usePoll(() => void res.reload(), 10000, [props.id])
 
   if (!res.data) return res.error ? <><Crumb href="/users" label="Users" /><ErrorBox error={res.error} retry={res.reload} /></> : <Loading />
   const sub = res.data.user
-  const used = sub.cycle_up + sub.cycle_down
+  const used = sub.used
 
   const act = async (action: string, done: string) => {
     if (await run(() => post(`/api/users/${sub.id}/${action}`), done)) void res.reload()
@@ -199,6 +201,10 @@ export function UserPage(props: { id: number }) {
                 <Icon name="refresh" size="sm" />
                 Reset usage…
               </button>
+              <button onClick={() => setApplying(true)}>
+                <Icon name="clock" size="sm" />
+                New period on a plan…
+              </button>
               <div class="sep" />
               <button onClick={remove}>
                 <Icon name="trash" size="sm" />
@@ -217,13 +223,23 @@ export function UserPage(props: { id: number }) {
         </div>
       )}
       {sub.note && <p class="muted" style="margin-top:-8px;white-space:pre-wrap">{sub.note}</p>}
+      {sub.turned_away && sub.turned_away.length > 0 && (
+        <div class="callout warn">
+          <Icon name="ban" size="sm" />
+          <div>
+            {plural(sub.turned_away.length, 'device')} over the limit of {sub.ip_limit} turned away now: <span class="mono">{sub.turned_away.join(', ')}</span>. They get in once one of the others has been
+            offline for two minutes.
+          </div>
+        </div>
+      )}
 
       <div class="kpis">
         <div class="kpi">
           <div class="v">{bytes(used)}</div>
           <div class="l">
             this cycle{sub.quota > 0 ? ` of ${bytes(sub.quota, 0)}` : ' · no quota'}
-            {sub.reset_day > 0 ? ` · resets day ${sub.reset_day}` : ''}
+            {sub.count_mode && sub.count_mode !== 'both' ? ` · ${countName(sub.count_mode).toLowerCase()}` : ''}
+            {sub.next_reset > 0 ? ` · resets ${date(sub.next_reset)}` : ''}
           </div>
           {sub.quota > 0 && <Meter pct={pct(used, sub.quota)} label="Quota used" />}
         </div>
@@ -232,7 +248,10 @@ export function UserPage(props: { id: number }) {
             {sub.online_ips}
             {sub.ip_limit > 0 && <span class="unit">/ {sub.ip_limit}</span>}
           </div>
-          <div class="l">IPs online now</div>
+          <div class="l">
+            IPs online now{sub.ip_limit > 0 && sub.device_mode === 'refuse' ? ' · extra devices turned away' : ''}
+            {sub.speed_limit > 0 ? ` · ${sub.speed_limit >= 1000 && sub.speed_limit % 1000 === 0 ? sub.speed_limit / 1000 + ' Gbps' : sub.speed_limit + ' Mbps'} max` : ''}
+          </div>
           <div class="s">{plural(sub.ips_24h, 'different IP')} in 24 h</div>
         </div>
         <div class="kpi">
@@ -252,6 +271,8 @@ export function UserPage(props: { id: number }) {
           </div>
         </div>
       </div>
+
+      {(sub.node_limits || []).length > 0 && <NodeLimits limits={sub.node_limits!} stop={sub.node_quota_mode === 'stop'} next={sub.next_reset} />}
 
       <UsageByProtocol usage={res.data.usage || []} cycle={used} />
 
@@ -312,6 +333,16 @@ export function UserPage(props: { id: number }) {
       {tab === 'preview' && <Preview sub={sub} />}
 
       {shown && <NewUsers users={[shown]} onClose={() => setShown(null)} />}
+      {applying && (
+        <ApplyPlan
+          user={sub}
+          onClose={() => setApplying(false)}
+          onSaved={() => {
+            setApplying(false)
+            void res.reload()
+          }}
+        />
+      )}
       {editing && (
         <UserForm
           user={sub}
@@ -445,72 +476,137 @@ function SubDests(props: { sub: User }) {
   )
 }
 
+type TrafficSplit = 'protocol' | 'server' | 'direction'
+
+interface TrafficTotals {
+  name: string
+  up: number
+  down: number
+  daily: number[]
+}
+
+// NodeLimits shows what is left of each limit on a single protocol, this cycle.
+function NodeLimits(props: { limits: NodeLimit[]; stop: boolean; next: number }) {
+  return (
+    <section class="panel" style="margin-top:6px">
+      <div class="ph">
+        <h2 class="h">Limits per protocol</h2>
+        <span class="pm">{props.stop ? 'a protocol used up stops serving them until the cycle starts over' : 'used up: an alert only'}</span>
+      </div>
+      <div class="nl-list">
+        {props.limits.map((l) => (
+          <div class={'nl-row' + (l.used >= l.quota ? ' out' : '')}>
+            <div class="nl-name">
+              <b class="ellipsis">{l.protocol}</b>
+              <span class="faint ellipsis">{l.server}{l.removed ? ' · removed' : ''}</span>
+            </div>
+            <Meter pct={pct(l.used, l.quota)} label={`${l.server} · ${l.protocol} used`} />
+            <div class="nl-left">
+              <b>{bytes(l.left)}</b> left of {bytes(l.quota, 0)}
+              {l.stopped ? <span class="badge crit" style="margin-left:8px">stopped{props.next ? ' until ' + date(props.next) : ''}</span> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function SubTraffic(props: { sub: User }) {
   const [days, setDays] = useState(30)
+  const [split, setSplit] = useState<TrafficSplit>(() => {
+    try {
+      return (localStorage.getItem('meridian.traffic.split') as TrafficSplit) || 'protocol'
+    } catch {
+      return 'protocol'
+    }
+  })
+  const chooseSplit = (v: TrafficSplit) => {
+    setSplit(v)
+    try {
+      localStorage.setItem('meridian.traffic.split', v)
+    } catch {
+      /* a convenience only */
+    }
+  }
   const t = useAsync(
     () =>
-      get<{ days: DayTraffic[]; nodes: { node_id: number; name: string; up: number; down: number }[] | null; servers: { server_id: number; name: string; up: number; down: number }[] | null }>(
-        `/api/users/${props.sub.id}/traffic?days=${days}`,
-      ),
+      get<{
+        days: DayTraffic[]
+        nodes: (TrafficTotals & { node_id: number; server_id: number })[] | null
+        servers: (TrafficTotals & { server_id: number })[] | null
+      }>(`/api/users/${props.sub.id}/traffic?days=${days}`),
     [days],
   )
   if (!t.data) return t.error ? <ErrorBox error={t.error} retry={t.reload} /> : <Loading />
-  const total = t.data.days.reduce((a, d) => a + d.up + d.down, 0)
+  const data = t.data
+  const total = data.days.reduce((a, d) => a + d.up + d.down, 0)
+  const nodes = data.nodes || []
+  const servers = data.servers || []
+  const series =
+    split === 'direction'
+      ? [
+          { key: 'down', label: 'Download', values: data.days.map((d) => d.down), color: 'var(--c1)' },
+          { key: 'up', label: 'Upload', values: data.days.map((d) => d.up), color: 'var(--c3)' },
+        ]
+      : split === 'server'
+        ? topSeries(servers.map((x) => ({ key: 's' + x.server_id, label: x.name, values: x.daily || [] })), 8, 'Other servers')
+        : topSeries(nodes.map((x) => ({ key: 'n' + x.node_id, label: x.name, values: x.daily || [] })), 8, 'Other protocols')
+  const colorOf = (key: string) => series.find((x) => x.key === key)?.color
+  const table = (rows: (TrafficTotals & { key: string; href?: string })[], head: string) => (
+    <div class="table-wrap" style="margin-top:18px">
+      <table class="t">
+        <thead>
+          <tr>
+            <th>{head}</th>
+            <th class="right">Download</th>
+            <th class="right">Upload</th>
+            <th class="right">Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((n) => {
+            // the colour of its layer in the chart; the smaller ones share the grey "other" layer
+            const c = colorOf(n.key) || (split !== 'direction' && n.up + n.down > 0 && series.some((x) => x.key === '__other') ? 'var(--ink-4)' : undefined)
+            return (
+              <tr>
+                <td>
+                  {c && <i class="dot-c" style={{ background: c }} />}
+                  {n.href ? <a href={n.href}>{n.name}</a> : n.name}
+                </td>
+                <td class="right">{bytes(n.down)}</td>
+                <td class="right">{bytes(n.up)}</td>
+                <td class="right muted">{total ? Math.round(((n.up + n.down) * 100) / total) : 0}%</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
   return (
     <>
-      <div class="row wrap" style="margin-bottom:12px">
+      <div class="row wrap" style="margin-bottom:12px;gap:10px">
         <Seg value={days} onChange={setDays} options={[[7, '7 days'], [30, '30 days'], [90, '90 days']]} label="Period" />
+        <Seg
+          value={split}
+          onChange={chooseSplit}
+          label="Split by"
+          options={[
+            ['protocol', 'By protocol'],
+            ['server', 'By server'],
+            ['direction', 'Download / upload'],
+          ]}
+        />
         <span class="muted">{bytes(total)} in this period</span>
       </div>
-      <BarChart days={t.data.days.map((d) => ({ day: d.day, a: d.down, b: d.up }))} labels={['Download', 'Upload']} height={160} />
-      {(t.data.servers || []).length > 0 && (
-        <div class="table-wrap" style="margin-top:18px">
-          <table class="t">
-            <thead>
-              <tr>
-                <th>Server</th>
-                <th class="right">Download</th>
-                <th class="right">Upload</th>
-                <th class="right">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(t.data.servers || []).map((n) => (
-                <tr>
-                  <td>{n.server_id > 0 ? <a href={`/servers/${n.server_id}`}>{n.name}</a> : n.name}</td>
-                  <td class="right">{bytes(n.down)}</td>
-                  <td class="right">{bytes(n.up)}</td>
-                  <td class="right muted">{total ? Math.round(((n.up + n.down) * 100) / total) : 0}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {(t.data.nodes || []).length > 0 && (
-        <div class="table-wrap" style="margin-top:18px">
-          <table class="t">
-            <thead>
-              <tr>
-                <th>Server · protocol</th>
-                <th class="right">Download</th>
-                <th class="right">Upload</th>
-                <th class="right">Share</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(t.data.nodes || []).map((n) => (
-                <tr>
-                  <td>{n.name}</td>
-                  <td class="right">{bytes(n.down)}</td>
-                  <td class="right">{bytes(n.up)}</td>
-                  <td class="right muted">{total ? Math.round(((n.up + n.down) * 100) / total) : 0}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <StackChart days={data.days.map((d) => d.day)} series={series} height={180} label={`${props.sub.name}'s traffic per day`} />
+      {split !== 'protocol' && servers.length > 0 &&
+        table(
+          servers.map((x) => ({ ...x, key: 's' + x.server_id, href: x.server_id > 0 ? `/servers/${x.server_id}` : undefined })),
+          'Server',
+        )}
+      {split !== 'server' && nodes.length > 0 && table(nodes.map((x) => ({ ...x, key: 'n' + x.node_id })), 'Server · protocol')}
     </>
   )
 }

@@ -30,6 +30,10 @@ type Settings struct {
 	RealmVersion    string `json:"realm_version" doc:"realm version new servers install"`
 	Mirror          bool   `json:"mirror" doc:"Agents may download cores through the panel"`
 	AutoUpdate      bool   `json:"auto_update" doc:"Install new Meridian releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts"`
+	AutoRelay       int64  `json:"auto_relay" doc:"A server that keeps losing the panel (see panel_trouble on servers) is switched to reach it through this server, once - by itself, with an event; switch it back on its page at any time. 0 = off: the panel only tells"`
+	Maintenance     bool   `json:"maintenance" doc:"Maintenance mode: only the supervisor can sign in; everyone else - users on their own pages, other accounts - sees \"Maintenance in progress\" and is signed out. Servers, protocols and subscriptions keep working"`
+	MaintenanceNote string `json:"maintenance_note" doc:"A line added to the maintenance message, e.g. when it ends"`
+	AgentTransport  string `json:"agent_transport" doc:"How agents talk to the panel: ws = each over one lasting WebSocket (the default; an agent makes HTTP requests by itself while its WebSocket cannot be opened, e.g. behind a proxy that does not pass WebSockets) | http = HTTP requests only. Agents follow within a minute; nothing restarts"`
 
 	StatusPage   string          `json:"status_page" doc:"off | home (the site's front page is the status page; the panel stays at /overview) | page (at /status)"`
 	StatusDomain string          `json:"status_domain" doc:"Optional domain that shows only the status page and the users' sign-in, e.g. status.example.com (point it at the panel)"`
@@ -37,6 +41,11 @@ type Settings struct {
 	StatusHub    *serverLocation `json:"status_hub" doc:"Where the panel is drawn on the status page's globe, with an arc from each server; null = not drawn"`
 	StatusPublic bool            `json:"status_public" doc:"Visitors see every server on the status page without signing in - where it is, up or down, load, bandwidth, traffic, expiry date - and sign in from its top-right button. Off: visitors see only the sign-in. Prices are never shown"`
 	StatusIPs    bool            `json:"status_ips" doc:"The status page shows each server's public IP addresses - to everyone who opens it, you included (the panel always shows them). Off by default"`
+	// what of the status page visitors and users get, while it shows the servers to everyone (the
+	// supervisor always sees all of it)
+	StatusOverview bool     `json:"status_overview" doc:"Visitors and users get the overview - the globe, the totals, resources, bandwidth, throughput and the latest events. Off: they start at the list of servers. On by default"`
+	StatusEvents   bool     `json:"status_events" doc:"Visitors and users see the servers' outages and recoveries of the last 30 days (the Events page, and on the overview). Off: only you see them. On by default"`
+	StatusCharts   []string `json:"status_charts" doc:"The charts of a server's details (opened from its card) that visitors and users get: cpu, memory, disk, diskio, network, load, connections, temperature, ping (the ping monitors marked public). You always see all of them. All by default"`
 
 	AgentPort int `json:"agent_port" doc:"Where new agents put their two loopback-only ports: the Xray API on this port, Hysteria's auth hook on the next (1024-65534, default 50000). Agents already installed keep theirs."`
 
@@ -57,8 +66,12 @@ func defaultSettings() Settings {
 		Mirror:          true,
 		StatusPage:      "off",
 		StatusPublic:    true,
+		StatusOverview:  true,
+		StatusEvents:    true,
+		StatusCharts:    slices.Clone(chartKinds),
 		LogoAnimation:   "assemble",
 		AgentPort:       50000,
+		AgentTransport:  "ws",
 	}
 }
 
@@ -70,6 +83,10 @@ func (s *Settings) normalize() {
 	}
 	if s.AgentPort < 1024 || s.AgentPort > 65534 {
 		s.AgentPort = d.AgentPort
+	}
+	s.AutoRelay = max(s.AutoRelay, 0)
+	if s.AgentTransport != "http" {
+		s.AgentTransport = d.AgentTransport
 	}
 	if !slices.Contains(logoAnimations, s.LogoAnimation) {
 		s.LogoAnimation = d.LogoAnimation
@@ -105,6 +122,17 @@ func (s *Settings) normalize() {
 		s.StatusPage = "off"
 	}
 	s.StatusAbout = cleanNote(s.StatusAbout, 200)
+	if s.StatusCharts == nil {
+		s.StatusCharts = d.StatusCharts
+	} else {
+		charts := []string{}
+		for _, c := range s.StatusCharts {
+			if slices.Contains(chartKinds, c) && !slices.Contains(charts, c) {
+				charts = append(charts, c)
+			}
+		}
+		s.StatusCharts = charts
+	}
 	s.StatusDomain = strings.ToLower(strings.TrimSpace(s.StatusDomain))
 	s.XrayVersion = strings.TrimPrefix(s.XrayVersion, "v")
 	s.RealmVersion = strings.TrimPrefix(s.RealmVersion, "v")
@@ -173,6 +201,7 @@ type Server struct {
 	Hostname        string   `json:"hostname"`
 	OS              string   `json:"os"`
 	Kernel          string   `json:"kernel"`
+	Virt            string   `json:"virt" doc:"What it runs in, as its agent sees it: kvm, xen, vmware, hyper-v, openvz, lxc, docker ...; none = no hypervisor shows; empty = unknown"`
 	Arch            string   `json:"arch"`
 	CPUModel        string   `json:"cpu_model"`
 	CPUCores        int      `json:"cpu_cores"`
@@ -216,6 +245,11 @@ type Server struct {
 	IPVersion       string   `json:"ip_version" doc:"'' = IPv4 and IPv6, ipv4 = IPv4 only, ipv6 = IPv6 only: how protocols reach sites, which address links use, and whether WireGuard may route IPv6"`
 	Addrs           []string `json:"addrs" doc:"The addresses on the server's own interfaces, as the agent reports them: what a protocol can be bound to"`
 	XrayCode        string   `json:"xray_code" doc:"Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates: outbounds (added, or replacing one with the same tag), routing.rules (before the panel's), inbounds by tag (merged into that protocol, or added as your own) and other sections (dns, ...). Only the syntax is checked; Xray decides the rest"`
+	PanelRelay      int64    `json:"panel_relay" doc:"The server whose agent this server's agent reaches the panel through (a relay, for a server with a poor route to the panel); 0 = directly"`
+	RelayPort       int      `json:"relay_port" doc:"The TCP port this server listens on for the servers it relays to the panel (0 = none picked yet); a firewall in front of it must let that port in"`
+	DDNS            bool     `json:"ddns" doc:"Its IP address changes (dynamic DNS): address is then its domain name, which every link to it uses - users' links and other servers' proxy passes and traffic rules - and the panel checks that the name points at the addresses the agent reports"`
+	DDNSCloudflare  bool     `json:"ddns_cloudflare" doc:"With ddns: the panel keeps the name's A and AAAA records in Cloudflare pointing at the addresses the agent reports (DNS only, a short TTL), and removes the name's A or AAAA record when the server has no address of that kind. Other names are never touched. Needs the Cloudflare token (Settings)"`
+	Guest           bool     `json:"guest" doc:"Another panel shares this server with you: your protocols, users and forwards run there, but its console, the agent's and the cores' upgrades, its country rule and relaying stay with its owner's panel (sharing.go)"`
 
 	ports    portMap // PublicPorts, parsed
 	addrList string  // Addrs as stored
@@ -226,7 +260,7 @@ agent_version, hostname, os, kernel, arch, cpu_model, cpu_cores, mem_total, disk
 lat, lon, caps, boot_time, agent_started_at, first_seen_at, last_seen_at, online, status_changed_at, applied_rev,
 apply_errors, pending_restart, xray_version, bw_limit, bw_mode, bw_reset_day, bw_offset, cycle_rx, cycle_tx,
 cycle_start, price, currency, billing_cycle, expires_on, country_mode, country_list, public_name, status_hidden, loc_manual, public_ports, ip_version, addrs, xray_code,
-pass_secret`
+pass_secret, panel_relay, relay_port, ddns, ddns_cloudflare, guest, virt`
 
 func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 	s := &Server{}
@@ -238,7 +272,7 @@ func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 		&s.ApplyErrors, &s.PendingRestart, &s.XrayVersion, &s.BwLimit, &s.BwMode, &s.BwResetDay, &s.BwOffset,
 		&s.CycleRX, &s.CycleTX, &s.CycleStart, &s.Price, &s.Currency, &s.BillingCycle, &s.ExpiresOn, &s.CountryMode,
 		&s.CountryList, &s.PublicName, &s.StatusHidden, &s.LocManual, &s.PublicPorts, &s.IPVersion, &s.addrList,
-		&s.XrayCode, &s.PassSecret)
+		&s.XrayCode, &s.PassSecret, &s.PanelRelay, &s.RelayPort, &s.DDNS, &s.DDNSCloudflare, &s.Guest, &s.Virt)
 	if err != nil {
 		return nil, err
 	}
@@ -337,6 +371,7 @@ type Node struct {
 	Settings  json.RawMessage `json:"settings"`
 	Host      string          `json:"host"`
 	PassNode  int64           `json:"pass_node"`
+	PassExt   int64           `json:"pass_ext" doc:"Proxy pass through an external node (its id); 0 = none. A protocol passes through a protocol (pass_node) or an external node, not both"`
 	PassOnly  bool            `json:"pass_only" doc:"Serves only proxy passes from other servers: users cannot connect to it directly and it is left out of their links"`
 	BindIP    string          `json:"bind_ip" doc:"The server address this protocol has to itself: it listens there, its traffic leaves from there and links use it (a public one). Empty = all of the server's addresses"`
 	Code      string          `json:"code" doc:"The protocol's own settings, merged on top of what the panel generates: JSON for Xray protocols (inbound fields, outbounds, rules for its traffic), YAML for Hysteria2. Only the syntax is checked"`
@@ -346,13 +381,13 @@ type Node struct {
 }
 
 const nodeCols = `id, server_id, kind, name, port, enabled, settings, host, pass_node, pass_only, bind_ip, code, sort,
-created_at, updated_at`
+created_at, updated_at, pass_ext`
 
 func scanNode(r interface{ Scan(...any) error }) (*Node, error) {
 	n := &Node{}
 	var settings string
 	err := r.Scan(&n.ID, &n.ServerID, &n.Kind, &n.Name, &n.Port, &n.Enabled, &settings, &n.Host, &n.PassNode, &n.PassOnly,
-		&n.BindIP, &n.Code, &n.Sort, &n.CreatedAt, &n.UpdatedAt)
+		&n.BindIP, &n.Code, &n.Sort, &n.CreatedAt, &n.UpdatedAt, &n.PassExt)
 	if err != nil {
 		return nil, err
 	}
@@ -377,6 +412,7 @@ type Forward struct {
 	CreatedAt     int64  `json:"created_at"`
 	UpdatedAt     int64  `json:"updated_at"`
 	PublicPort    int    `json:"public_port,omitempty" doc:"The port devices connect to, when the server's provider forwards the listen port under another number"`
+	TargetNow     string `json:"target_now,omitempty" doc:"Where the kernel forwards now when target names one of your servers: that server's address as its agent reports it"`
 }
 
 const forwardCols = `id, server_id, name, listen_port, network, target, engine, proxy_protocol, enabled, up_total,
@@ -424,6 +460,23 @@ type Sub struct {
 	LastFetchUA  string `json:"last_fetch_ua"`
 	CreatedAt    int64  `json:"created_at"`
 	UpdatedAt    int64  `json:"updated_at"`
+	CountMode    string `json:"count_mode" doc:"What counts toward the quota: both (upload and download), down (download only), up (upload only), max (whichever is larger)"`
+	StartsAt     int64  `json:"starts_at" doc:"When the user's period started (Unix seconds): resets every reset_every days count from it; 0 = when the user was created"`
+	ResetEvery   int    `json:"reset_every" doc:"Usage resets every this many days, counted from starts_at; 0 = on reset_day each month (or never when that is 0 too)"`
+	SpeedLimit   int    `json:"speed_limit" doc:"The most the user's devices get together on each server, in Mbps (1000 = 1 Gbps); 0 = no limit"`
+	DeviceMode   string `json:"device_mode" doc:"Devices over ip_limit: '' = an alert only; refuse = devices beyond the limit are turned away until one goes offline"`
+	PlanID       int64  `json:"plan_id" doc:"The preset plan last applied (0 = none). The user keeps their own values: changing the plan later changes nobody"`
+	// limits per protocol (nodequota.go)
+	NodeQuotas    NodeQuotas `json:"node_quotas" doc:"Limits per protocol: protocol id -> bytes per cycle, counted like the quota"`
+	NodeQuotaMode string     `json:"node_quota_mode" doc:"When a protocol's limit is used up: '' = an alert only; stop = that protocol stops serving the user until the cycle starts over"`
+}
+
+// start is when the user's period started: starts_at, or their creation.
+func (s *Sub) start() int64 {
+	if s.StartsAt > 0 {
+		return s.StartsAt
+	}
+	return s.CreatedAt
 }
 
 // Scope says what a subscription can connect to: whole servers (with the protocols added to them
@@ -482,18 +535,21 @@ func usersOf(subs []*Sub, n *Node) []*Sub {
 
 const subCols = `id, account_id, name, note, token, uuid, secret, paused, paused_at, quota, reset_day, expires_at,
 ip_limit, scope, cycle_up, cycle_down, cycle_start, total_up, total_down, last_online_at, last_fetch_at,
-last_fetch_ip, last_fetch_ua, created_at, updated_at, login, password_hash, last_login_at, last_login_ip`
+last_fetch_ip, last_fetch_ua, created_at, updated_at, login, password_hash, last_login_at, last_login_ip,
+count_mode, starts_at, reset_every, speed_limit, device_mode, plan_id, node_quotas, node_quota_mode`
 
 func scanSub(r interface{ Scan(...any) error }) (*Sub, error) {
 	s := &Sub{}
-	var scope string
+	var scope, nq string
 	err := r.Scan(&s.ID, &s.AccountID, &s.Name, &s.Note, &s.Token, &s.UUID, &s.Secret, &s.Paused, &s.PausedAt,
 		&s.Quota, &s.ResetDay, &s.ExpiresAt, &s.IPLimit, &scope, &s.CycleUp, &s.CycleDown,
 		&s.CycleStart, &s.TotalUp, &s.TotalDown, &s.LastOnlineAt, &s.LastFetchAt, &s.LastFetchIP, &s.LastFetchUA,
-		&s.CreatedAt, &s.UpdatedAt, &s.Login, &s.PasswordHash, &s.LastLoginAt, &s.LastLoginIP)
+		&s.CreatedAt, &s.UpdatedAt, &s.Login, &s.PasswordHash, &s.LastLoginAt, &s.LastLoginIP,
+		&s.CountMode, &s.StartsAt, &s.ResetEvery, &s.SpeedLimit, &s.DeviceMode, &s.PlanID, &nq, &s.NodeQuotaMode)
 	if err != nil {
 		return nil, err
 	}
+	s.NodeQuotas = parseNodeQuotas(nq)
 	s.CanSignIn = s.Login != "" && s.PasswordHash != ""
 	if scope != "" {
 		_ = json.Unmarshal([]byte(scope), &s.Scope)
@@ -501,4 +557,18 @@ func scanSub(r interface{ Scan(...any) error }) (*Sub, error) {
 	return s, nil
 }
 
-func (s *Sub) Used() int64 { return s.CycleUp + s.CycleDown }
+// Used is what counts toward the quota this cycle, as the user's count mode says.
+func (s *Sub) Used() int64 { return countedUsage(s.CountMode, s.CycleUp, s.CycleDown) }
+
+// countedUsage is what of up and down counts in a count mode.
+func countedUsage(mode string, up, down int64) int64 {
+	switch mode {
+	case "down":
+		return down
+	case "up":
+		return up
+	case "max":
+		return max(up, down)
+	}
+	return up + down
+}

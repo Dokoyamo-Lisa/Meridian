@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"meridian/internal/db"
 	"meridian/internal/proto"
 	"meridian/internal/seal"
 )
@@ -43,10 +42,7 @@ func newHarness(t *testing.T) *harness {
 			t.Fatal(err)
 		}
 	}
-	d, err := db.Open(filepath.Join(dir, "meridian.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := testDB(t, dir) // SQLite, or PostgreSQL with MERIDIAN_TEST_PG (testdb_test.go)
 	t.Cleanup(func() { d.Close() })
 	h, err := hashPassword("owner-password-1")
 	if err != nil {

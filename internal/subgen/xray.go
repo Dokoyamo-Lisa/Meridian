@@ -11,7 +11,7 @@ func XrayOutbound(e Endpoint, tag string) (map[string]any, error) {
 	out := map[string]any{"tag": tag}
 	switch e.Kind {
 	case KindVLESS:
-		u := map[string]any{"id": e.UUID, "encryption": "none"}
+		u := map[string]any{"id": e.UUID, "encryption": nz(e.Encryption, "none")}
 		if e.Flow != "" {
 			u["flow"] = e.Flow
 		}
@@ -29,9 +29,33 @@ func XrayOutbound(e Endpoint, tag string) (map[string]any, error) {
 		out["settings"] = map[string]any{"servers": []any{map[string]any{"address": e.Host, "port": e.Port,
 			"method": e.Method, "password": e.Password}}}
 	case KindSOCKS, KindHTTP:
+		srv := map[string]any{"address": e.Host, "port": e.Port}
+		if e.Username != "" || e.Password != "" {
+			srv["users"] = []any{map[string]any{"user": e.Username, "pass": e.Password}}
+		}
 		out["protocol"] = e.Kind
-		out["settings"] = map[string]any{"servers": []any{map[string]any{"address": e.Host, "port": e.Port,
-			"users": []any{map[string]any{"user": e.Username, "pass": e.Password}}}}}
+		out["settings"] = map[string]any{"servers": []any{srv}}
+	case KindWireGuard:
+		if e.WG == nil {
+			return nil, errors.New("the WireGuard endpoint has no keys")
+		}
+		var addrs []string
+		if e.WG.Address4 != "" {
+			addrs = append(addrs, e.WG.Address4+"/32")
+		}
+		if e.WG.Address6 != "" {
+			addrs = append(addrs, e.WG.Address6+"/128")
+		}
+		peer := map[string]any{"publicKey": e.WG.PeerPublicKey, "endpoint": hostPort(e.Host, e.Port),
+			"allowedIPs": []string{"0.0.0.0/0", "::/0"}, "keepAlive": nzInt(e.WG.Keepalive, 25)}
+		if e.WG.PresharedKey != "" {
+			peer["preSharedKey"] = e.WG.PresharedKey
+		}
+		// the userspace stack: Xray never needs the right to create network interfaces for it
+		out["protocol"] = "wireguard"
+		out["settings"] = map[string]any{"secretKey": e.WG.PrivateKey, "address": addrs, "peers": []any{peer},
+			"mtu": nzInt(e.WG.MTU, 1420), "noKernelTun": true}
+		return out, nil
 	case KindHysteria2:
 		tls := map[string]any{"serverName": e.SNI, "alpn": []string{"h3"}}
 		if e.PinSHA256 != "" {
@@ -98,4 +122,11 @@ func xrayStream(e Endpoint) map[string]any {
 		st["security"] = "none"
 	}
 	return st
+}
+
+func nzInt(v, d int) int {
+	if v == 0 {
+		return d
+	}
+	return v
 }

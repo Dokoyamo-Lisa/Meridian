@@ -11,5 +11,6 @@ import (
 func TestMain(m *testing.M) {
 	bcryptCost = bcrypt.MinCost
 	dummyHash, _ = bcrypt.GenerateFromPassword([]byte("meridian-dummy-password"), bcryptCost)
+	restartHook.Store(func() {}) // a restore in a test never stops the test binary (backups.go)
 	os.Exit(m.Run())
 }

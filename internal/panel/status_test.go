@@ -136,6 +136,28 @@ func TestStatusPage(t *testing.T) {
 			t.Errorf("addresses for %s with show IPs on: %s", who, raw)
 		}
 	}
+	// the overview and the events can be kept from visitors and users: not sent, and said so
+	if _, err := h.p.db.Exec1(`INSERT INTO events (ts, account_id, level, kind, server_id, sub_id, actor_id, message, data)
+		VALUES (?, 1, 'crit', 'server_offline', ?, 0, 0, 'Tokyo 1 went offline', '{}')`, now()-600, ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	h.p.status.forget()
+	if _, d, _ := anon.do("GET", "/api/status", nil); len(fmt.Sprint(d["events"])) < 5 || d["show"].(map[string]any)["events"] != true {
+		t.Errorf("events for a visitor by default: %v %v", d["events"], d["show"])
+	}
+	set["status_events"] = false
+	set["status_overview"] = false
+	owner.must("PUT", "/api/settings", set, 200)
+	_, d, _ := anon.do("GET", "/api/status", nil)
+	if d["events"] != nil || d["hub"] != nil || d["show"].(map[string]any)["events"] != false || d["show"].(map[string]any)["overview"] != false {
+		t.Errorf("a visitor with the events and overview kept back: events %v hub %v show %v", d["events"], d["hub"], d["show"])
+	}
+	if _, d, _ := owner.do("GET", "/api/status", nil); d["events"] == nil {
+		t.Error("the supervisor lost the events")
+	}
+	set["status_events"] = true
+	set["status_overview"] = true
+
 	// then hidden again, and the servers too
 	set["status_ips"] = false
 	set["status_public"] = false

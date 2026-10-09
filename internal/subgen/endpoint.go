@@ -2,7 +2,10 @@
 // sing-box, Stash, Surge, Quantumult X, Loon, Shadowrocket / v2rayN share links and WireGuard files.
 package subgen
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Kinds of endpoints.
 const (
@@ -62,6 +65,10 @@ type Endpoint struct {
 	PublicKey   string   `json:"public_key,omitempty"` // reality
 	ShortID     string   `json:"short_id,omitempty"`   // reality
 
+	// VLESS Encryption: the client's whole "encryption" value ("mlkem768x25519plus.native.0rtt.<key>").
+	// Empty means none. It is public: the server's private key never leaves the panel.
+	Encryption string `json:"encryption,omitempty"`
+
 	// Certificate trust for TLS and Hysteria2. PinSHA256 set means the server uses a self-signed
 	// certificate that clients must pin (CertPEM is that certificate); a format that cannot pin it
 	// leaves the protocol out - certificate checks are never turned off. Empty means the
@@ -74,6 +81,9 @@ type Endpoint struct {
 	ObfsPassword string `json:"obfs_password,omitempty"`
 	UpMbps       int    `json:"up_mbps,omitempty"`   // what the device may send (the server's download limit)
 	DownMbps     int    `json:"down_mbps,omitempty"` // what it may receive (the server's upload limit)
+	// HopPorts is the UDP port range devices may hop between ("20000-50000"); the server redirects it
+	// to Port. Apps that cannot hop use Port.
+	HopPorts string `json:"hop_ports,omitempty"`
 
 	// Shadowsocks
 	Method string `json:"method,omitempty"`
@@ -125,12 +135,26 @@ func (e Endpoint) selfSigned() bool { return e.PinSHA256 != "" }
 func skipOf(e Endpoint, reason string) string { return e.Name + " (" + reason + ")" }
 
 const (
-	whyNoPin     = "this app cannot check a self-signed certificate - use REALITY, a domain certificate or a CDN"
-	whyTransport = "this app does not support this transport"
-	whyProtocol  = "this app does not support this protocol"
-	whyObfs      = "this app does not support the obfuscation"
-	whyLineChars = "a setting holds a comma, a double quote or a line break, which this app's format cannot carry"
+	whyNoPin         = "this app cannot check a self-signed certificate - use REALITY, a domain certificate or a CDN"
+	whyTransport     = "this app does not support this transport"
+	whyProtocol      = "this app does not support this protocol"
+	whyObfs          = "this app does not support the obfuscation"
+	whyLineChars     = "a setting holds a comma, a double quote or a line break, which this app's format cannot carry"
+	whyReality       = "this app does not support REALITY"
+	whyEncryption    = "this app does not support VLESS Encryption"
+	whyTrojanReality = "this app does not support REALITY with Trojan - use VLESS with REALITY"
+	// Stash documents the Vision flow with VLESS Encryption over raw TCP and XHTTP only
+	whyVisionStash = "this app takes the Vision flow with VLESS Encryption only over raw TCP or XHTTP - turn the Vision flow off"
 )
+
+// encrypted says the endpoint uses VLESS Encryption.
+func (e Endpoint) encrypted() bool { return e.Kind == KindVLESS && e.Encryption != "" }
+
+// hop returns the port hopping range, empty when there is none.
+func (e Endpoint) hop() (from, to string, ok bool) {
+	from, to, ok = strings.Cut(e.HopPorts, "-")
+	return from, to, ok && e.Kind == KindHysteria2 && from != "" && to != ""
+}
 
 // routes are the tunnel's allowed IPs ("everything over IPv4" when none are given).
 func (w *WireGuard) routes() []string {

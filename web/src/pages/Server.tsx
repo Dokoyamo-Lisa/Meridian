@@ -26,10 +26,16 @@ import {
   usePoll,
 } from '../ui'
 import { EventList } from './Monitor'
+import { HealthCard } from './Health'
 import { ProtocolCard, waitAction } from './Protocols'
 import { StatusWord, portsHint } from './Servers'
 import { ScanButton, ServerSetup } from './Setup'
 import { CountryPicker, countryName } from './Access'
+import { RouteNotes } from './RouteNotes'
+import { PanelLinkCard } from './PanelLink'
+import { DynamicDNSCard, DynamicDNSFields, confirmCloudflare } from './DynamicDNS'
+import { openConsole } from './Console'
+import { ShareCodeBox, SharingPanel } from './Sharing'
 
 interface Metric {
   t: number
@@ -55,12 +61,13 @@ const disruptive = (what: string, who = 'Everyone connected through Xray on this
 
 export function ServerPage(props: { id: number }) {
   const loc = useLocation()
-  const res = useAsync(() => get<{ server: Server; install: string }>(`/api/servers/${props.id}`), [props.id])
+  const res = useAsync(() => get<{ server: Server; install: string; share_code?: string }>(`/api/servers/${props.id}`), [props.id])
   const metrics = useAsync(() => get<Metric[]>(`/api/servers/${props.id}/metrics?hours=24`), [props.id])
   const events = useAsync(() => get<PanelEvent[]>(`/api/events?server=${props.id}&limit=15`), [props.id])
   const [editing, setEditing] = useState(false)
   const [fwdModal, setFwdModal] = useState<{ fwd?: Forward } | null>(null)
   const [install, setInstall] = useState('')
+  const [shareCode, setShareCode] = useState('')
   usePoll(() => {
     void res.reload()
     void events.reload()
@@ -87,6 +94,20 @@ export function ServerPage(props: { id: number }) {
   }
 
   const rotate = async () => {
+    if (srv.guest) {
+      const ok = await ask({
+        title: 'Make a new share code?',
+        body: <p style="margin-top:0">The old code - and the share its owner made with it - stop working: they must share {srv.name} with you again, with the new code.</p>,
+        confirm: 'New share code',
+        danger: true,
+      })
+      if (!ok) return
+      await run(async () => {
+        const r = await post<{ share_code: string }>(`/api/servers/${srv.id}/rotate-token`)
+        setShareCode(r.share_code)
+      })
+      return
+    }
     const ok = await ask({
       title: 'Rotate the agent token?',
       body: (
@@ -106,6 +127,22 @@ export function ServerPage(props: { id: number }) {
   }
 
   const remove = async () => {
+    if (srv.guest) {
+      const ok = await ask({
+        title: `Leave ${srv.name}?`,
+        body: (
+          <p style="margin-top:0">
+            Everything this panel runs on {srv.name} - your protocols, users and forwards there - is removed, and your users on it are disconnected. The server stays its owner's; to use it again they
+            must share it with you again.
+          </p>
+        ),
+        confirm: 'Leave server',
+        danger: true,
+        typed: srv.name,
+      })
+      if (ok && (await run(() => del(`/api/servers/${srv.id}`), `You left ${srv.name}`))) navigate('/servers')
+      return
+    }
     const ok = await ask({
       title: `Delete ${srv.name}?`,
       body: (
@@ -138,10 +175,21 @@ export function ServerPage(props: { id: number }) {
               </span>
             )}
             <span class="mono">{srv.address || srv.ipv4 || srv.ipv6 || '—'}</span>
+            {srv.guest && (
+              <span class="badge accent" title="Its owner's panel keeps the console, the upgrades, the country rule and relaying">
+                shared with you
+              </span>
+            )}
           </span>
         }
         actions={
           <>
+            {srv.status === 'online' && srv.caps?.console && (
+              <button class="btn" onClick={() => openConsole({ id: srv.id, name: srv.name })} title="A root shell on this server, in the panel">
+                <Icon name="terminal" size="sm" />
+                Console
+              </button>
+            )}
             <button class="btn" onClick={() => setEditing(true)}>
               <Icon name="edit" size="sm" />
               Edit
@@ -153,11 +201,13 @@ export function ServerPage(props: { id: number }) {
                     <Icon name="refresh" size="sm" />
                     Restart Xray…
                   </button>
+                  {!srv.guest && (
                   <button onClick={() => action('upgrade_xray', 'Upgrade Xray?', disruptive(`${srv.name} switches to the Xray version set in Settings. Xray restarts once.`), 'Upgrade Xray', true)}>
                     <Icon name="download" size="sm" />
                     Upgrade Xray…
                   </button>
-                  {srv.nodes.some((n) => n.kind === 'hysteria2') && (
+                  )}
+                  {!srv.guest && srv.nodes.some((n) => n.kind === 'hysteria2') && (
                     <button
                       onClick={() =>
                         action(
@@ -173,7 +223,7 @@ export function ServerPage(props: { id: number }) {
                       Upgrade Hysteria…
                     </button>
                   )}
-                  {srv.forwards.some((f) => f.engine === 'realm') && (
+                  {!srv.guest && srv.forwards.some((f) => f.engine === 'realm') && (
                     <button
                       onClick={() =>
                         action(
@@ -189,6 +239,7 @@ export function ServerPage(props: { id: number }) {
                       Upgrade realm…
                     </button>
                   )}
+                  {!srv.guest && (
                   <button
                     onClick={() =>
                       action(
@@ -202,25 +253,26 @@ export function ServerPage(props: { id: number }) {
                     <Icon name="download" size="sm" />
                     Upgrade agent
                   </button>
+                  )}
                   <div class="sep" />
                 </>
               )}
               <button onClick={rotate}>
                 <Icon name="key" size="sm" />
-                Rotate agent token…
+                {srv.guest ? 'New share code…' : 'Rotate agent token…'}
               </button>
               <button onClick={remove} class="danger-item">
                 <Icon name="trash" size="sm" />
-                Delete server…
+                {srv.guest ? 'Leave server…' : 'Delete server…'}
               </button>
             </Menu>
           </>
         }
       />
 
-      {(srv.status === 'pending' || loc.query.get('setup') === '1') && (
-        <ServerSetup server={srv} install={install || res.data.install} onDone={() => setQuery('setup', null)} />
-      )}
+      {srv.guest
+        ? (srv.status === 'pending' || shareCode) && (res.data.share_code || shareCode) && <ShareCodeBox server={srv} code={shareCode || res.data.share_code!} />
+        : (srv.status === 'pending' || loc.query.get('setup') === '1') && <ServerSetup server={srv} install={install || res.data.install} onDone={() => setQuery('setup', null)} />}
       {install && srv.status !== 'pending' && (
         <div class="callout warn">
           <Icon name="key" size="sm" />
@@ -267,6 +319,8 @@ export function ServerPage(props: { id: number }) {
           <div class="grow">{l}</div>
         </div>
       ))}
+      <RouteNotes notes={srv.route_notes} />
+      <DynamicDNSCard server={srv} />
 
       {sys && (
         <div class="kpis">
@@ -304,13 +358,14 @@ export function ServerPage(props: { id: number }) {
           </div>
         </div>
       )}
+      <HealthCard server={srv} />
 
       <section class="panel">
         <div class="ph">
           <span class="pn">01</span>
           <h2 class="h">Protocols</h2>
           <span class="pm row" style="gap:8px">
-            {srv.status === 'online' && <ScanButton server={srv} />}
+            {srv.status === 'online' && !srv.guest && <ScanButton server={srv} />}
             <button class="btn sm" onClick={() => navigate(`/protocols?add=1&server=${srv.id}`)}>
               <Icon name="plus" size="sm" />
               Add protocol
@@ -349,6 +404,8 @@ export function ServerPage(props: { id: number }) {
           <ForwardTable server={srv} onEdit={(f) => setFwdModal({ fwd: f })} onChanged={res.reload} />
         )}
       </section>
+
+      {!srv.guest && srv.status !== 'pending' && (srv.caps?.share || (srv.shares || []).length > 0) && <SharingPanel server={srv} onChanged={res.reload} />}
 
       <div class="grid two">
         <section class="panel">
@@ -515,6 +572,7 @@ export function ServerPage(props: { id: number }) {
         </div>
         {events.data ? events.data.length ? <EventList events={events.data} /> : <Empty title="No activity yet" /> : <Loading />}
       </section>
+      <PanelLinkCard server={srv} onChanged={res.reload} n="11" />
 
       {editing && (
         <EditServer
@@ -710,6 +768,8 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
   const [address, setAddress] = useState(v.address)
   const [ports, setPorts] = useState(v.public_ports || '')
   const [ipv, setIpv] = useState<string>(v.ip_version || '')
+  const [ddns, setDdns] = useState(!!v.ddns)
+  const [cf, setCf] = useState(!!v.ddns_cloudflare)
   const [note, setNote] = useState(v.note)
   const [limit, setLimit] = useState(v.bw_limit ? String(Math.round(v.bw_limit / 1024 ** 3)) : '')
   const [mode, setMode] = useState(v.bw_mode || 'both')
@@ -737,6 +797,7 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
       })
       if (!ok) return
     }
+    if (ddns && cf && (!v.ddns_cloudflare || address.trim() !== v.address) && !(await confirmCloudflare(address.trim()))) return
     if (ports.trim() !== (v.public_ports || '') && (v.nodes.length > 0 || v.forwards.length > 0)) {
       const ok = await ask({
         title: 'Change the ports from the provider?',
@@ -753,6 +814,8 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
         address: address.trim(),
         public_ports: ports.trim(),
         ip_version: ipv,
+        ddns,
+        ddns_cloudflare: ddns && cf,
         note,
         bw_limit: Math.round((Number(limit) || 0) * 1024 ** 3),
         bw_mode: mode,
@@ -795,9 +858,10 @@ function EditServer(props: { server: Server; onClose: () => void; onSaved: () =>
             <input class="input" value={name} maxLength={64} onInput={(e) => setName(e.currentTarget.value)} required />
           </Field>
           <Field label="Address clients connect to" hint={`Empty = ${v.ipv4 || v.ipv6 || 'the IP the agent reports'}. An IP here also places the server on the map (DB-IP), unless you set its location by hand.`}>
-            <input class="input mono" value={address} onInput={(e) => setAddress(e.currentTarget.value)} autoComplete="off" spellcheck={false} />
+            <input class="input mono" value={address} onInput={(e) => setAddress(e.currentTarget.value)} autoComplete="off" spellcheck={false} required={ddns} />
           </Field>
         </div>
+        <DynamicDNSFields ddns={ddns} setDdns={setDdns} cloudflare={cf} setCloudflare={setCf} />
         <Field label="Ports from the provider" hint={<>Only for servers whose provider decides their ports (NAT servers, LXC and Incus containers) - empty = every port. {portsHint}</>}>
           <input class="input mono" value={ports} placeholder="every port" onInput={(e) => setPorts(e.currentTarget.value)} autoComplete="off" spellcheck={false} />
         </Field>

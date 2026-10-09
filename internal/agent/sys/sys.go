@@ -6,10 +6,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,7 +33,9 @@ func Hello(version string, started time.Time) *proto.Hello {
 	h.MemTotal = memInfo()["MemTotal"]
 	h.DiskTotal, _ = disk("/")
 	h.BootTime = bootTime()
-	h.IPv4, h.IPv6 = PublicIPs()
+	h.Virt = detectVirt(readFile, fileExists)
+	pub := LastPublic(context.Background())
+	h.IPv4, h.IPv6, h.IPv4Gone, h.IPv6Gone = pub.IPv4, pub.IPv6, pub.IPv4Gone, pub.IPv6Gone
 	h.Addrs = LocalAddrs()
 	return h
 }
@@ -132,6 +137,69 @@ func osName() string {
 	return runtime.GOOS
 }
 
+// detectVirt says what the host runs in - a container first (the machine under it does not show from
+// inside), then a virtual machine by its firmware's maker, then the processor's hypervisor flag.
+func detectVirt(read func(string) string, exists func(string) bool) string {
+	if exists("/proc/vz") && !exists("/proc/bc") {
+		return "openvz"
+	}
+	if c := virtWord(read("/run/systemd/container")); c != "" {
+		return c
+	}
+	for _, kv := range strings.Split(read("/proc/1/environ"), "\x00") {
+		if v, ok := strings.CutPrefix(kv, "container="); ok && virtWord(v) != "" {
+			return virtWord(v)
+		}
+	}
+	if exists("/.dockerenv") {
+		return "docker"
+	}
+	if strings.Contains(strings.ToLower(read("/proc/sys/kernel/osrelease")), "microsoft") {
+		return "wsl"
+	}
+	vendor := strings.ToLower(read("/sys/class/dmi/id/sys_vendor"))
+	product := strings.ToLower(read("/sys/class/dmi/id/product_name"))
+	dmi := vendor + " " + product + " " + strings.ToLower(read("/sys/class/dmi/id/bios_vendor"))
+	if strings.Contains(vendor, "microsoft") && strings.Contains(product, "virtual machine") {
+		return "hyper-v"
+	}
+	for _, m := range [][2]string{{"kvm", "kvm"}, {"qemu", "kvm"}, {"bochs", "kvm"}, {"openstack", "kvm"}, {"google compute", "kvm"},
+		{"amazon ec2", "kvm"}, {"digitalocean", "kvm"}, {"hetzner", "kvm"}, {"vultr", "kvm"}, {"linode", "kvm"}, {"alibaba cloud", "kvm"},
+		{"vmware", "vmware"}, {"virtualbox", "virtualbox"}, {"innotek", "virtualbox"}, {"xen", "xen"}, {"parallels", "parallels"},
+		{"apple virtualization", "apple"}} {
+		if strings.Contains(dmi, m[0]) {
+			return m[1]
+		}
+	}
+	if t := virtWord(read("/sys/hypervisor/type")); t != "" {
+		return t
+	}
+	cpu := read("/proc/cpuinfo")
+	for _, l := range strings.Split(cpu, "\n") {
+		if k, v, ok := strings.Cut(l, ":"); ok && strings.TrimSpace(k) == "flags" {
+			if slices.Contains(strings.Fields(v), "hypervisor") {
+				return "vm"
+			}
+			return "none"
+		}
+	}
+	return ""
+}
+
+// virtWord keeps a name from the system as a plain word (lxc, docker, systemd-nspawn ...).
+func virtWord(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	if v == "" || len(v) > 24 {
+		return ""
+	}
+	for _, r := range v {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' && r != '_' {
+			return ""
+		}
+	}
+	return v
+}
+
 func cpuInfo() (string, int) {
 	model := ""
 	for _, l := range strings.Split(readFile("/proc/cpuinfo"), "\n") {
@@ -191,44 +259,9 @@ func bootTime() int64 {
 	return 0
 }
 
-// PublicIPs finds the host's public addresses: first from interface addresses, then by asking
-// the routing table which source address reaches the internet.
-func PublicIPs() (v4, v6 string) {
-	if c, err := net.Dial("udp4", "1.1.1.1:53"); err == nil {
-		if a, ok := c.LocalAddr().(*net.UDPAddr); ok && isPublic(a.IP) {
-			v4 = a.IP.String()
-		}
-		c.Close()
-	}
-	if c, err := net.Dial("udp6", "[2606:4700:4700::1111]:53"); err == nil {
-		if a, ok := c.LocalAddr().(*net.UDPAddr); ok && isPublic(a.IP) {
-			v6 = a.IP.String()
-		}
-		c.Close()
-	}
-	if v4 == "" {
-		v4 = lookupPublic()
-	}
-	return v4, v6
-}
-
 func isPublic(ip net.IP) bool {
 	return ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLoopback() &&
 		!(ip.To4() != nil && ip.To4()[0] == 100 && ip.To4()[1]&0xc0 == 64) // CGNAT
-}
-
-// lookupPublic asks the echo services in turn; used behind NAT, where no interface holds the
-// public IP.
-func lookupPublic() string {
-	for _, s := range echoServices {
-		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-		ip := echoIP(ctx, s.url, s.parse)
-		cancel()
-		if ip != "" {
-			return ip
-		}
-	}
-	return ""
 }
 
 // ---------------------------------------------------------------- metrics
@@ -238,12 +271,90 @@ type Sampler struct {
 	mu        sync.Mutex
 	lastCPU   cpuTimes
 	lastNet   netTotals
+	lastDisk  diskTotals
 	lastAt    time.Time
 	rxRate    int64
 	txRate    int64
+	readRate  int64
+	writeRate int64
 	cpu       float64
 	nicDeltaR int64
 	nicDeltaT int64
+}
+
+type diskTotals struct{ read, write uint64 }
+
+// wholeDisk says whether a /proc/diskstats name is a whole physical (or virtual) disk: not a
+// partition, and not a loop, RAM, device-mapper or RAID device whose bytes the disks under it count.
+func wholeDisk(name string) bool {
+	for _, p := range []string{"loop", "ram", "zram", "dm-", "md", "sr", "fd", "nbd"} {
+		if strings.HasPrefix(name, p) {
+			return false
+		}
+	}
+	switch {
+	case strings.HasPrefix(name, "nvme"), strings.HasPrefix(name, "mmcblk"):
+		return !strings.Contains(name[4:], "p") // nvme0n1p1, mmcblk0p1 are partitions
+	case strings.HasPrefix(name, "sd"), strings.HasPrefix(name, "vd"), strings.HasPrefix(name, "xvd"), strings.HasPrefix(name, "hd"):
+		last := name[len(name)-1]
+		return last < '0' || last > '9' // sda1 is a partition
+	}
+	return false
+}
+
+// readDisk adds up the bytes the whole disks read and wrote (sectors of 512 bytes, as diskstats counts).
+func readDisk() diskTotals {
+	var t diskTotals
+	for _, l := range strings.Split(readFile("/proc/diskstats"), "\n") {
+		f := strings.Fields(l)
+		if len(f) < 10 || !wholeDisk(f[2]) {
+			continue
+		}
+		r, _ := strconv.ParseUint(f[5], 10, 64)
+		w, _ := strconv.ParseUint(f[9], 10, 64)
+		t.read += r * 512
+		t.write += w * 512
+	}
+	return t
+}
+
+// temps reads the host's temperature sensors (hwmon, then thermal zones): °C by name, at most 12.
+func temps() map[string]float64 {
+	out := map[string]float64{}
+	add := func(name string, milli string) {
+		v, err := strconv.ParseFloat(strings.TrimSpace(milli), 64)
+		if err != nil || v <= -50000 || v >= 200000 || len(out) >= 12 {
+			return
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		for n, k := name, 2; ; k++ {
+			if _, taken := out[n]; !taken {
+				out[n] = round1(v / 1000)
+				return
+			}
+			n = fmt.Sprintf("%s %d", name, k)
+		}
+	}
+	hw, _ := filepath.Glob("/sys/class/hwmon/hwmon*/temp*_input")
+	for _, p := range hw {
+		dir := filepath.Dir(p)
+		chip := strings.TrimSpace(readFile(filepath.Join(dir, "name")))
+		label := strings.TrimSpace(readFile(strings.TrimSuffix(p, "_input") + "_label"))
+		add(strings.TrimSpace(chip+" "+label), readFile(p))
+	}
+	if len(out) == 0 {
+		tz, _ := filepath.Glob("/sys/class/thermal/thermal_zone*/temp")
+		for _, p := range tz {
+			add(readFile(filepath.Join(filepath.Dir(p), "type")), readFile(p))
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 type cpuTimes struct{ idle, total uint64 }
@@ -310,9 +421,13 @@ func (s *Sampler) Sample() {
 	now := time.Now()
 	c := readCPU()
 	n := readNet()
+	d := readDisk()
 	if !s.lastAt.IsZero() {
 		dt := now.Sub(s.lastAt).Seconds()
 		if dt > 0 {
+			if d.read >= s.lastDisk.read && d.write >= s.lastDisk.write {
+				s.readRate, s.writeRate = int64(float64(d.read-s.lastDisk.read)/dt), int64(float64(d.write-s.lastDisk.write)/dt)
+			}
 			if dTot := c.total - s.lastCPU.total; dTot > 0 && c.total >= s.lastCPU.total {
 				s.cpu = 100 * (1 - float64(c.idle-s.lastCPU.idle)/float64(dTot))
 			}
@@ -324,7 +439,7 @@ func (s *Sampler) Sample() {
 			}
 		}
 	}
-	s.lastCPU, s.lastNet, s.lastAt = c, n, now
+	s.lastCPU, s.lastNet, s.lastDisk, s.lastAt = c, n, d, now
 }
 
 // TakeNIC returns NIC bytes since the last call.
@@ -339,10 +454,11 @@ func (s *Sampler) TakeNIC() (rx, tx int64) {
 // Sys returns the current metrics.
 func (s *Sampler) Sys() proto.Sys {
 	s.mu.Lock()
-	cpu, rx, tx := s.cpu, s.rxRate, s.txRate
+	cpu, rx, tx, dr, dw := s.cpu, s.rxRate, s.txRate, s.readRate, s.writeRate
 	s.mu.Unlock()
 	m := memInfo()
-	out := proto.Sys{CPU: round1(cpu), MemTotal: m["MemTotal"], SwapTotal: m["SwapTotal"], RXRate: rx, TXRate: tx}
+	out := proto.Sys{CPU: round1(cpu), MemTotal: m["MemTotal"], SwapTotal: m["SwapTotal"], RXRate: rx, TXRate: tx, DiskRead: dr, DiskWrite: dw,
+		Temps: temps()}
 	if avail, ok := m["MemAvailable"]; ok && out.MemTotal >= avail {
 		out.MemUsed = out.MemTotal - avail
 	}
@@ -428,6 +544,7 @@ func Caps() proto.Caps {
 	c.Iptables = lookPath("iptables")
 	c.NoIPv6 = IPv6Off()
 	c.WG6 = c.Nftables && !c.NoIPv6 // IPv6 through WireGuard needs NAT66 and forwarding
+	c.NAT64 = NAT64()
 	return c
 }
 

@@ -164,7 +164,7 @@ func (p *Panel) stageUpdate(agents bool, by int64, auto bool) error {
 		return err
 	}
 	file := filepath.Join(dir, fmt.Sprintf("before-%s-%s.db", rel.Version, time.Now().UTC().Format("20060102-150405")))
-	if _, err := p.db.ExecContext(ctx, `VACUUM INTO ?`, file); err != nil {
+	if err := p.db.Snapshot(ctx, file); err != nil {
 		return fmt.Errorf("backing up the database first: %w", err)
 	}
 	pruneBackups(dir, 3)
@@ -234,8 +234,12 @@ func (p *Panel) updateResult(ctx context.Context) {
 	}
 	p.event(0, "info", "panel_updated", 0, 0, 0, fmt.Sprintf("Meridian updated from %s to %s", res.From, res.To), nil)
 	if res.Agents {
-		if names, err := p.upgradeAgents(ctx, 0, 0); err == nil && len(names) > 0 {
-			p.event(0, "info", "agents_upgrading", 0, 0, 0, fmt.Sprintf("Upgrading the agent on %d server(s) - nobody is disconnected", len(names)), nil)
+		if names, skipped, err := p.upgradeAgents(ctx, 0, 0); err == nil && len(names)+len(skipped) > 0 {
+			msg := fmt.Sprintf("Upgrading the agent on %d server(s) - nobody is disconnected", len(names))
+			if len(skipped) > 0 {
+				msg += ". Not again: " + skippedText(skipped)
+			}
+			p.event(0, "info", "agents_upgrading", 0, 0, 0, msg, nil)
 		}
 	}
 }
@@ -278,34 +282,36 @@ func (p *Panel) outdatedAgents(ctx context.Context, accountID int64) ([]*Server,
 	return out, nil
 }
 
-// upgradeAgents queues an agent upgrade on every server whose agent is not the panel's. Agents
-// restart themselves; the proxies keep running. It returns the servers' names.
-func (p *Panel) upgradeAgents(ctx context.Context, accountID, by int64) ([]string, error) {
+// upgradeAgents queues an agent upgrade on every server whose agent is not the panel's, replacing
+// upgrades that wait with other binaries (see queueAgentUpgrade). Agents restart themselves; the
+// proxies keep running. It returns the servers' names, and those left out with why.
+func (p *Panel) upgradeAgents(ctx context.Context, accountID, by int64) ([]string, []agentSkipped, error) {
 	sums := p.agentSHA256()
 	if len(sums) == 0 {
-		return nil, errStatus(http.StatusConflict, "the panel has no agent binaries to upgrade to (see --agent-dir)")
+		return nil, nil, errStatus(http.StatusConflict, "the panel has no agent binaries to upgrade to (see --agent-dir)")
 	}
 	list, err := p.outdatedAgents(ctx, accountID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	args, _ := json.Marshal(map[string]any{"sha256": sums})
 	var names []string
+	var skipped []agentSkipped
 	for _, s := range list {
-		var pending int
-		_ = p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM actions WHERE server_id = ? AND kind = 'upgrade_agent' AND status = 'pending'`,
-			s.ID).Scan(&pending)
-		if pending > 0 {
+		if s.Guest { // its owner's panel upgrades its agent (sharing.go)
+			skipped = append(skipped, agentSkipped{Name: s.Name, Why: "shared with you: its owner's panel upgrades its agent"})
 			continue
 		}
-		if _, err := p.db.Exec1(`INSERT INTO actions (server_id, kind, args, created_at, created_by) VALUES (?, 'upgrade_agent', ?, ?, ?)`,
-			s.ID, string(args), now(), by); err != nil {
-			return names, err
+		_, skip, err := p.queueAgentUpgrade(ctx, s, sums, by, false)
+		switch {
+		case err != nil:
+			return names, skipped, err
+		case skip != "":
+			skipped = append(skipped, agentSkipped{Name: s.Name, Why: skip})
+		default:
+			names = append(names, s.Name)
 		}
-		names = append(names, s.Name)
-		p.touchServers(s.ID)
 	}
-	return names, nil
+	return names, skipped, nil
 }
 
 // ---------------------------------------------------------------- API
@@ -325,6 +331,7 @@ type updateView struct {
 	State      string          `json:"state" doc:"idle | downloading (the panel fetches and checks the release) | installing (the updater service has it; the panel restarts)"`
 	Error      string          `json:"error" doc:"Why the last update request failed"`
 	Outdated   []outdatedAgent `json:"outdated_agents" doc:"Servers whose agent is not this panel's version"`
+	Database   string          `json:"database" doc:"The database the panel keeps its data in, e.g. PostgreSQL 18.6 or SQLite 3.53.4 (meridian db to-postgres / to-sqlite on the panel's host move it)"`
 }
 
 type outdatedAgent struct {
@@ -336,7 +343,7 @@ type outdatedAgent struct {
 
 func (p *Panel) viewOfUpdate(ctx context.Context, accountID int64) (*updateView, error) {
 	st := p.updateState()
-	v := &updateView{Current: Version, Latest: st.Latest, Newer: update.Newer(st.Latest, Version), URL: st.URL,
+	v := &updateView{Database: p.db.ServerVersion(), Current: Version, Latest: st.Latest, Newer: update.Newer(st.Latest, Version), URL: st.URL,
 		Published: st.Published, Notes: st.Notes, CheckedAt: st.CheckedAt, CheckError: st.CheckErr,
 		Auto: p.settings().AutoUpdate, State: "idle", Outdated: []outdatedAgent{}}
 	v.Ready, v.NotReady = p.updaterReady()
@@ -420,21 +427,28 @@ func readOptionalJSON(r *http.Request, v any) error {
 }
 
 type agentsUpgraded struct {
-	Servers []string `json:"servers" doc:"The servers whose agent upgrades now"`
+	Servers []string       `json:"servers" doc:"The servers whose agent upgrades now"`
+	Skipped []agentSkipped `json:"skipped" doc:"Servers with an older agent that were left out, and why: an upgrade to these binaries already waits for them (offline) or is under way (sent in the last 15 minutes). An upgrade that waits with other binaries, or has shown no sign of life for longer, is replaced instead"`
 }
 
 func (p *Panel) apiUpgradeAgents(w http.ResponseWriter, r *http.Request, a *Account) error {
-	names, err := p.upgradeAgents(r.Context(), scopeAccount(r, a), a.ID)
+	names, skipped, err := p.upgradeAgents(r.Context(), scopeAccount(r, a), a.ID)
 	if err != nil {
 		return err
 	}
 	if names == nil {
 		names = []string{}
 	}
-	if len(names) > 0 {
-		p.event(a.ID, "info", "agents_upgrading", 0, 0, a.ID, fmt.Sprintf("%s upgraded the agent on %d server(s) - nobody is disconnected",
-			a.Username, len(names)), nil)
+	if skipped == nil {
+		skipped = []agentSkipped{}
 	}
-	writeJSON(w, http.StatusAccepted, agentsUpgraded{Servers: names})
+	if len(names)+len(skipped) > 0 {
+		msg := fmt.Sprintf("%s upgraded the agent on %d server(s) - nobody is disconnected", a.Username, len(names))
+		if len(skipped) > 0 {
+			msg += ". Not again: " + skippedText(skipped)
+		}
+		p.event(a.ID, "info", "agents_upgrading", 0, 0, a.ID, msg, nil)
+	}
+	writeJSON(w, http.StatusAccepted, agentsUpgraded{Servers: names, Skipped: skipped})
 	return nil
 }

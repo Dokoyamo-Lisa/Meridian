@@ -125,7 +125,7 @@ function CertCard(props: { cert: Cert; onEdit: () => void; onChanged: () => void
         </div>
       )}
       {c.uses.length > 0 && (
-        <table class="table" style="margin-top:8px">
+        <table class="t" style="margin-top:8px">
           <tbody>
             {c.uses.map((u) => {
               const [cls, text] = stateText[u.state] || ['', u.state]

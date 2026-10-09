@@ -52,6 +52,9 @@ func singboxOutbound(e Endpoint) (out omap, endpoint bool, why string) {
 	if e.selfSigned() && e.CertPEM == "" {
 		return nil, false, whyNoPin // the certificate to trust is not known
 	}
+	if e.encrypted() {
+		return nil, false, whyEncryption // sing-box's VLESS has no "encryption" (option/vless.go)
+	}
 	switch e.Kind {
 	case KindVLESS, KindVMess, KindTrojan:
 		m := omap{}.set("type", e.Kind).set("tag", e.Name).set("server", e.Host).set("server_port", e.Port)
@@ -83,8 +86,11 @@ func singboxOutbound(e Endpoint) (out omap, endpoint bool, why string) {
 		if e.selfSigned() {
 			tls = tls.set("certificate", strings.TrimSpace(e.CertPEM)) // trust exactly this certificate
 		}
-		m := omap{}.set("type", "hysteria2").set("tag", e.Name).set("server", e.Host).set("server_port", e.Port).
-			set("password", e.Password)
+		m := omap{}.set("type", "hysteria2").set("tag", e.Name).set("server", e.Host).set("server_port", e.Port)
+		if from, to, ok := e.hop(); ok { // sing-box 1.11+ hops over server_ports ("from:to") instead of server_port
+			m = m.set("server_ports", []string{from + ":" + to})
+		}
+		m = m.set("password", e.Password)
 		if e.UpMbps > 0 {
 			m = m.set("up_mbps", e.UpMbps)
 		}

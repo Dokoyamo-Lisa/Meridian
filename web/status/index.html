@@ -34,6 +34,7 @@
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 19.5c1-3.4 3.7-5.2 7-5.2s6 1.8 7 5.2"/></symbol>
   <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 4v3M14 4v3M10 17v3M14 17v3M4 10h3M4 14h3M17 10h3M17 14h3"/></symbol>
   <symbol id="i-mem" viewBox="0 0 24 24"><rect x="3.5" y="7" width="17" height="9.5" rx="1.8"/><path d="M7.5 10.5v2.5M11 10.5v2.5M14.5 10.5v2.5M7 16.5v2.5M17 16.5v2.5"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7.5h9M17.5 7.5H20M4 16.5h3M11.5 16.5H20"/><circle cx="15.2" cy="7.5" r="2.2"/><circle cx="9.2" cy="16.5" r="2.2"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></symbol>
   <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5.5 12h13"/></symbol>
   <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3.6a8.4 8.4 0 1 0 0 16.8c1.2 0 1.8-.9 1.4-1.9-.5-1.1.2-2.3 1.4-2.3h1.7a3.9 3.9 0 0 0 3.9-3.9C20.4 7 16.6 3.6 12 3.6Z"/><circle cx="7.9" cy="11.2" r="1.1" fill="currentColor" stroke="none"/><circle cx="10.6" cy="7.6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="7.9" r="1.1" fill="currentColor" stroke="none"/></symbol>
@@ -84,6 +85,7 @@
   <a href="#/me" data-view="me" class="need-user hidden">Your usage</a>
 </nav>
 
+<div class="maint-banner hidden" id="maintBanner" role="status"></div>
 <main id="main">
   <!-- ================================================================ the way in: the sign-in, on the page -->
   <section class="view page" id="v-signin" data-view="signin" aria-labelledby="hSignin" hidden>
@@ -97,6 +99,8 @@
         <label class="field" id="fPass">Password<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
         <label class="field hidden" id="fCode">Two-factor code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7"></label>
         <p class="err" id="loginErr" role="alert"></p>
+        <div class="human-check" id="humanCheck"></div>
+        <p class="gate-note hidden" id="humanNote">Checking that you are a person…</p>
         <button type="submit" class="btn primary lg" id="loginSubmit"><svg class="ic sm"><use href="#i-lock"/></svg><span>Sign in</span></button>
         <button type="button" class="btn ghost hidden" id="loginBack">Back</button>
       </form>
@@ -107,6 +111,7 @@
 
   <!-- ================================================================ overview -->
   <section class="view" id="v-overview" data-view="overview" aria-label="Overview" hidden>
+    <p class="sup-note hidden" id="ovPrivate" role="note"></p>
     <div class="dash">
       <div class="col col-l">
         <section class="panel p-status rv" id="pStatus" aria-labelledby="hStatus">
@@ -201,6 +206,7 @@
   <!-- ================================================================ events -->
   <section class="view page" id="v-events" data-view="events" aria-labelledby="hEventsPage" hidden>
     <header class="page-h"><h1 id="hEventsPage">Events</h1><p>Outages and recoveries of the last 30 days, and what comes next.</p></header>
+    <p class="sup-note hidden" id="evPrivate" role="note"></p>
     <div class="two">
       <section class="panel"><header class="ph"><h2>Last 30 days</h2><span class="pm" id="feedMeta"></span></header><div class="pb"><div class="feed" id="feed"></div></div></section>
       <section class="panel"><header class="ph"><h2>Coming up</h2></header><div class="pb"><div class="feed" id="upcoming"></div></div></section>
@@ -258,6 +264,10 @@
       <header class="ph"><h2>By server</h2><span class="pm" id="meSrvMeta"></span></header>
       <div class="pb"><div class="tbl-wrap" id="meServers"></div></div>
     </section>
+    <section class="panel hidden" id="meTelegram">
+      <header class="ph"><h2>Telegram</h2><span class="pm"></span></header>
+      <div class="pb"></div>
+    </section>
   </section>
 </main>
 
@@ -271,6 +281,7 @@
   <div class="panel-d" role="dialog" aria-modal="true" aria-labelledby="dTitle">
     <div class="d-head">
       <span class="flag" id="dFlag"></span>
+      <span class="os-slot hidden" id="dOS"></span>
       <div class="t"><h3 id="dTitle"></h3><p id="dSub"></p></div>
       <button class="icon-btn" type="button" data-close aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button>
     </div>

@@ -145,12 +145,14 @@ type statusServer struct {
 }
 
 type statusHost struct {
-	OS    string `json:"os,omitempty"`
-	Arch  string `json:"arch,omitempty"`
-	CPU   string `json:"cpu,omitempty" doc:"Processor model"`
-	Cores int    `json:"cores,omitempty"`
-	Mem   int64  `json:"mem,omitempty" doc:"Memory, bytes"`
-	Disk  int64  `json:"disk,omitempty" doc:"Disk, bytes"`
+	OS     string `json:"os,omitempty"`
+	Kernel string `json:"kernel,omitempty" doc:"Linux kernel version"`
+	Virt   string `json:"virt,omitempty" doc:"What it runs in: kvm, xen, vmware, hyper-v, openvz, lxc ...; none = no hypervisor shows"`
+	Arch   string `json:"arch,omitempty"`
+	CPU    string `json:"cpu,omitempty" doc:"Processor model"`
+	Cores  int    `json:"cores,omitempty"`
+	Mem    int64  `json:"mem,omitempty" doc:"Memory, bytes"`
+	Disk   int64  `json:"disk,omitempty" doc:"Disk, bytes"`
 }
 
 type statusCycle struct {
@@ -210,6 +212,15 @@ type statusPayload struct {
 	Hub       *statusHub         `json:"hub,omitempty" doc:"Where the panel is drawn on the globe"`
 	// Supervisor says the supervisor is signed in; everyone else sees what the status page shows them
 	Supervisor bool `json:"supervisor,omitempty" doc:"The supervisor is asking (else a visitor: the status page shows the servers to everyone)"`
+	// Maintenance is the notice shown while the panel is in maintenance mode
+	Maintenance string `json:"maintenance,omitempty" doc:"Maintenance in progress: the notice the page shows (servers keep working)"`
+	// Show says which parts visitors and users get (the supervisor always gets all of them)
+	Show statusShow `json:"show"`
+}
+
+type statusShow struct {
+	Overview bool `json:"overview" doc:"Visitors and users get the overview (else they start at the list of servers)"`
+	Events   bool `json:"events" doc:"Visitors and users see the outages of the last 30 days"`
 }
 
 type statusHub struct {
@@ -301,7 +312,7 @@ func (p *Panel) statusData(ctx context.Context) (*statusPayload, error) {
 			Online: s.Online, Since: s.StatusChangedAt, Availability: avail[s.ID], Addrs: publicAddrsOf(s, nodeAddrs[s.ID]),
 			Cycle: &statusCycle{Up: s.CycleTX, Down: s.CycleRX, Start: s.CycleStart}, Expires: s.ExpiresOn}
 		if s.OS != "" || s.CPUCores > 0 {
-			v.Host = &statusHost{OS: s.OS, Arch: s.Arch, CPU: s.CPUModel, Cores: s.CPUCores, Mem: s.MemTotal, Disk: s.DiskTotal}
+			v.Host = &statusHost{OS: s.OS, Kernel: s.Kernel, Virt: s.Virt, Arch: s.Arch, CPU: s.CPUModel, Cores: s.CPUCores, Mem: s.MemTotal, Disk: s.DiskTotal}
 		}
 		if s.Lat != nil && s.Lon != nil {
 			v.Loc = []float64{round1(*s.Lat), round1(*s.Lon)}
@@ -484,6 +495,17 @@ func (p *Panel) apiStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	out := *d
 	out.Supervisor = sup
+	out.Maintenance = p.maintenanceText() // guard.go
+	set := p.settings()
+	out.Show = statusShow{Overview: set.StatusOverview, Events: set.StatusEvents}
+	if !sup { // what the supervisor keeps to themselves is not sent at all
+		if !set.StatusEvents {
+			out.Events = nil
+		}
+		if !set.StatusOverview {
+			out.Hub = nil // the panel's place on the overview's globe
+		}
+	}
 	// the switch is for the page, not the person: off, nobody sees addresses there (the panel shows them)
 	if !p.settings().StatusIPs {
 		out.Servers = make([]statusServer, len(d.Servers))
@@ -493,7 +515,7 @@ func (p *Panel) apiStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, &out)
+	writeJSON(w, http.StatusOK, p.plugins.filterStatus(r.Context(), &out)) // plugins with filter:status
 }
 
 type statusLive struct {
@@ -664,8 +686,8 @@ func (l *serverLocation) clean() error {
 func (p *Panel) statusPageFor(r *http.Request, path string) bool {
 	set := p.settings()
 	switch {
-	case path == "/me" || strings.HasPrefix(path, "/me/"):
-		return true
+	case path == "/me" || strings.HasPrefix(path, "/me/"), path == "/tg":
+		return true // the users' own page, and the bot's Mini App (tglink.go)
 	case set.StatusDomain != "" && strings.EqualFold(hostOnly(r.Host), set.StatusDomain):
 		// the status page's own domain never serves the panel (with the page off it is the sign-in)
 		return true

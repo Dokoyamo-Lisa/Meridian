@@ -1,6 +1,7 @@
-import { useRef, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { Account, post } from '../api'
-import { LogoMark } from '../icons'
+import { Icon, LogoMark } from '../icons'
+import { Check, CheckState, startCheck } from '../turnstile'
 import { openInto } from '../mark'
 import { applySession, fetchSession, loadSession, useSession } from '../session'
 import { ErrorBox, errText } from '../ui'
@@ -14,17 +15,44 @@ export function Login() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const mark = useRef<SVGSVGElement>(null)
+  // Cloudflare Turnstile, when the panel has it on (turnstile.ts)
+  const box = useRef<HTMLDivElement>(null)
+  const check = useRef<Check | null>(null)
+  const [human, setHuman] = useState<CheckState | ''>('')
+  const sitekey = s.meta?.turnstile
+  useEffect(() => {
+    if (!sitekey || !box.current) return
+    let gone = false
+    startCheck(box.current, sitekey, (st, why) => {
+      if (gone) return
+      setHuman(st)
+      if (why) setErr(why)
+    })
+      .then((c) => {
+        if (gone) c.remove()
+        else check.current = c
+      })
+      .catch((e) => setErr(errText(e)))
+    return () => {
+      gone = true
+      check.current?.remove()
+      check.current = null
+    }
+  }, [sitekey])
 
   const submit = async (e: Event) => {
     e.preventDefault()
     setBusy(true)
     setErr('')
     try {
+      const turnstile = sitekey && check.current ? await check.current.token() : ''
       const r = await post<{ kind?: 'admin' | 'user'; account?: Account; totp_required?: boolean }>('/api/login', {
         username: user.trim(),
         password: pass,
         code: needCode ? code.trim() : '',
+        turnstile,
       })
+      check.current?.reset() // a token works once
       if (r.totp_required) {
         setNeedCode(true)
         setBusy(false)
@@ -42,6 +70,7 @@ export function Login() {
         await new Promise((ok) => setTimeout(ok, 0)) // let the panel render inside the transition
       }).catch(() => loadSession())
     } catch (e) {
+      check.current?.reset()
       setErr(errText(e))
       setBusy(false)
     }
@@ -55,6 +84,12 @@ export function Login() {
           <span>{s.meta?.site_title || 'Meridian'}</span>
         </div>
         <p class="lead">{needCode ? 'Two-factor sign-in' : 'Sign in to the panel'}</p>
+        {s.meta?.maintenance && (
+          <div class="callout warn" style="text-align:left">
+            <Icon name="clock" size="sm" />
+            <div>{s.meta.maintenance} Only the supervisor can sign in now.</div>
+          </div>
+        )}
         {err && <ErrorBox error={err} />}
         {!needCode ? (
           <>
@@ -84,6 +119,10 @@ export function Login() {
             />
             <div class="hint">The 6-digit code from your authenticator app.</div>
           </div>
+        )}
+        <div ref={box} class="human-check" />
+        {sitekey && (human === 'checking' || human === 'needs-you') && (
+          <div class="hint" style="text-align:center;margin:2px 0 6px">{human === 'checking' ? 'Checking that you are a person…' : 'Please confirm you are a person above.'}</div>
         )}
         <button class="btn primary" style="width:100%;height:36px;margin-top:6px" disabled={busy}>
           {busy ? <span class="spin" /> : needCode ? 'Verify' : 'Sign in'}

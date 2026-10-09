@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -26,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	bk "meridian/internal/backup"
 	"meridian/internal/db"
 	"meridian/internal/panel"
 	"meridian/internal/update"
@@ -51,10 +53,14 @@ func main() {
 		backup(os.Args[2:])
 	case "restore":
 		restoreBackup(os.Args[2:])
+	case "db":
+		dbCmd(os.Args[2:])
 	case "update-apply":
 		updateApply(os.Args[2:])
 	case "token":
 		createToken(os.Args[2:])
+	case "plugins":
+		pluginsCmd(os.Args[2:])
 	case "mcp":
 		mcpBridge(os.Args[2:])
 	case "openapi":
@@ -81,6 +87,7 @@ usage:
       --data DIR             data directory (default /var/lib/meridian)
       --agent-dir DIR        directory with meridian-agent-linux-{amd64,arm64} (default DATA/agent)
       --trusted-proxies CIDR,...  reverse proxies whose X-Forwarded-For is believed
+      --no-plugins           start without any plugin (when one keeps the panel from working)
   meridian reset-password [--data DIR] USERNAME
                                          print a new password for an account (turns off its 2FA)
   meridian reset-site-access [--data DIR]
@@ -89,21 +96,29 @@ usage:
   meridian backup [--data DIR] FILE      write a consistent copy of the database to FILE
   meridian restore [--data DIR] FILE     put a backup in place of the database (stop the panel
                                          first); the database it replaces is kept next to it
+  meridian db status [--data DIR]        which database the panel uses (SQLite or PostgreSQL)
+  meridian db to-postgres [--data DIR] URL
+                                         move the data into an empty PostgreSQL database
+                                         (postgres://...); stop the panel first
+  meridian db to-sqlite [--data DIR]     move the data back into SQLite; stop the panel first
   meridian update-apply [--data DIR]     install the release the panel downloaded (run as root by
                                          meridian-update.service - see Settings › Updates)
   meridian token [--data DIR] [--name NAME] [--scope full|read] [--days N]
                                          print a new API token for scripts and AI agents (default:
                                          full access for 1 day); revoke it in Settings › API & MCP
+  meridian plugins list|enable|disable|remove [--data DIR] [--yes] [ID]
+                                         list the plugins, or turn one on (--yes agrees to what it
+                                         asks for) or off, or remove it; a running panel follows
   meridian mcp --url PANEL_URL           MCP stdio bridge for local AI clients; the API token is
                                          read from MERIDIAN_TOKEN
   meridian openapi                       print the API's OpenAPI document
   meridian version
 
-Commands that open the database (reset-password, reset-site-access, backup, token) run as the
+Commands that open the database (reset-password, reset-site-access, backup, token, plugins) run as the
 panel's user: sudo -u meridian meridian ... (restore may also run as root).
 
 Every flag can also be set as an environment variable: MERIDIAN_LISTEN, MERIDIAN_DOMAIN,
-MERIDIAN_EMAIL, MERIDIAN_DATA, MERIDIAN_AGENT_DIR, MERIDIAN_TRUSTED_PROXIES.`)
+MERIDIAN_EMAIL, MERIDIAN_DATA, MERIDIAN_AGENT_DIR, MERIDIAN_TRUSTED_PROXIES, MERIDIAN_NO_PLUGINS=1.`)
 }
 
 func env(key, def string) string {
@@ -121,6 +136,7 @@ func serve(args []string) {
 	data := fs.String("data", env("MERIDIAN_DATA", "/var/lib/meridian"), "data directory")
 	agentDir := fs.String("agent-dir", env("MERIDIAN_AGENT_DIR", ""), "directory with meridian-agent-linux-{amd64,arm64}")
 	trusted := fs.String("trusted-proxies", env("MERIDIAN_TRUSTED_PROXIES", ""), "comma-separated CIDRs of reverse proxies")
+	noPlugins := fs.Bool("no-plugins", envOn("MERIDIAN_NO_PLUGINS"), "start without any plugin")
 	fs.Parse(args)
 	if u := os.Getenv("MERIDIAN_UPDATE_API"); strings.HasPrefix(u, "https://") { // a test's stand-in for GitHub
 		update.API = u
@@ -154,16 +170,30 @@ func serve(args []string) {
 		fatal("data dir", err)
 	}
 	defer release()
-	d, err := db.Open(filepath.Join(*data, "meridian.db"))
+	// a restore staged in the panel goes in place before the database is opened (internal/backup)
+	restored, didRestore, err := bk.ApplyPending(*data)
+	if err != nil {
+		slog.Error("the staged restore was not applied - the panel starts with its own data", "err", err)
+	} else if didRestore {
+		slog.Info("restored a backup", "made", time.Unix(restored.CreatedAt, 0).UTC().Format(time.RFC3339), "by", restored.Version)
+	}
+	d, err := db.OpenData(*data) // PostgreSQL when the data directory names one (database.url), else SQLite
 	if err != nil {
 		fatal("database", err)
 	}
-	_ = os.Chmod(filepath.Join(*data, "meridian.db"), 0o600)
+	if d.Dialect == db.SQLite {
+		_ = os.Chmod(filepath.Join(*data, db.FileName), 0o600)
+	} else if didRestore {
+		// the backup's database goes into PostgreSQL
+		if err := importRestored(d, *data); err != nil {
+			fatal("restore", fmt.Errorf("putting the restored backup into PostgreSQL: %w", err))
+		}
+	}
 	if err := bootstrapOwner(d, *data); err != nil {
 		fatal("bootstrap", err)
 	}
 	p, err := panel.New(panel.Config{Listen: *listen, DataDir: *data, TrustedProxies: proxies, WebFS: web.FS(),
-		AgentDir: *agentDir}, d)
+		AgentDir: *agentDir, NoPlugins: *noPlugins}, d)
 	if err != nil {
 		fatal("panel", err)
 	}
@@ -171,6 +201,9 @@ func serve(args []string) {
 		if err := p.DefaultPublicURL("https://" + *domain); err != nil {
 			fatal("settings", err)
 		}
+	}
+	if didRestore {
+		p.NoteRestore(restored)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -232,7 +265,9 @@ func serve(args []string) {
 	stop()
 	// a clean stop leaves no write-ahead log behind, so a database put in place later (a restore)
 	// is never mixed with pages of this one
-	_, _ = d.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+	if d.Dialect == db.SQLite {
+		_, _ = d.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+	}
 	if err := d.Close(); err != nil {
 		slog.Warn("closing the database", "err", err)
 	}
@@ -304,7 +339,16 @@ func resetPassword(args []string) {
 // to the panel's own user: files SQLite created now would be root's, and the panel could no longer
 // open them.
 func openDB(data string) *db.DB {
-	path := filepath.Join(data, "meridian.db")
+	if u, err := db.DataURL(data); err != nil {
+		fatal("database", err)
+	} else if u != "" {
+		d, err := db.OpenPostgres(u)
+		if err != nil {
+			fatal("database", err)
+		}
+		return d
+	}
+	path := filepath.Join(data, db.FileName)
 	st, err := os.Stat(path)
 	if err != nil {
 		fatal("database", fmt.Errorf("%s not found - is --data right? (the default is /var/lib/meridian)", path))
@@ -397,7 +441,7 @@ func backup(args []string) {
 	}
 	d := openDB(*data)
 	restore := privateUmask() // the copy holds keys and tokens: owner only
-	_, err = d.Exec(`VACUUM INTO ?`, out)
+	err = d.Snapshot(context.Background(), out)
 	restore()
 	if err != nil {
 		fatal("backup", err)
@@ -432,8 +476,54 @@ func restoreBackup(args []string) {
 		fatal("restore", err)
 	}
 	defer release()
+	// a backup made in the panel (a ZIP, or encrypted): staged and put in place at once
+	if head := fileHead(src, 32); bytes.HasPrefix(head, []byte("PK\x03\x04")) || bk.IsEncrypted(head) {
+		pass := os.Getenv("MERIDIAN_BACKUP_PASSPHRASE")
+		if bk.IsEncrypted(head) && pass == "" {
+			fmt.Fprint(os.Stderr, "Passphrase of the backup: ")
+			line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+			pass = strings.TrimRight(line, "\r\n")
+		}
+		info, err := bk.Stage(*data, src, pass, checkBackup)
+		if err != nil {
+			fatal("restore", fmt.Errorf("%s: %w", src, err))
+		}
+		if _, ok, err := bk.ApplyPending(*data); err != nil || !ok {
+			fatal("restore", fmt.Errorf("putting the backup in place: %v", err))
+		}
+		_ = chownTree(*data)
+		if u, _ := db.DataURL(*data); u != "" { // a panel on PostgreSQL: the backup's database goes in there
+			d, err := db.OpenPostgres(u)
+			if err != nil {
+				fatal("restore", err)
+			}
+			err = importRestored(d, *data)
+			d.Close()
+			if err != nil {
+				fatal("restore", fmt.Errorf("putting the backup into PostgreSQL: %w", err))
+			}
+		}
+		fmt.Printf("Restored the backup made %s by Meridian %s.\n", time.Unix(info.CreatedAt, 0).UTC().Format("2006-01-02 15:04 UTC"), info.Version)
+		fmt.Println("What it replaced is kept in before-restore-* in the data directory (delete it once all is well - it holds keys too).")
+		fmt.Println("Start the panel: sudo systemctl start meridian - the servers reconnect by themselves.")
+		return
+	}
 	if err := checkBackup(src); err != nil {
 		fatal("restore", fmt.Errorf("%s: %w", src, err))
+	}
+	if u, _ := db.DataURL(*data); u != "" { // a panel on PostgreSQL: the backup's data replaces its own
+		d, err := db.OpenPostgres(u)
+		if err != nil {
+			fatal("restore", err)
+		}
+		err = d.ImportSQLite(context.Background(), src, nil)
+		d.Close()
+		if err != nil {
+			fatal("restore", err)
+		}
+		fmt.Printf("Restored %s into %s.\n", src, db.Describe(u))
+		fmt.Println("Start the panel: sudo systemctl start meridian - the servers reconnect by themselves.")
+		return
 	}
 	dbPath := filepath.Join(*data, "meridian.db")
 	tmp := dbPath + ".restoring"
@@ -468,41 +558,39 @@ func restoreBackup(args []string) {
 	fmt.Println("Start the panel: sudo systemctl start meridian - the servers reconnect by themselves.")
 }
 
-// checkBackup makes sure a file is a sound Meridian database this version can run.
-func checkBackup(path string) error {
+// fileHead is the start of a file (empty when it cannot be read).
+func fileHead(path string, n int) []byte {
 	f, err := os.Open(path)
 	if err != nil {
-		return err
+		return nil
 	}
-	head := make([]byte, 16)
-	_, err = io.ReadFull(f, head)
-	f.Close()
-	if err != nil || string(head) != "SQLite format 3\x00" {
-		return errors.New("this is not a Meridian backup (not an SQLite database)")
-	}
-	// read-only and immutable: nothing is written next to the backup
-	d, err := sql.Open("sqlite", "file:"+path+"?mode=ro&immutable=1")
+	defer f.Close()
+	b := make([]byte, n)
+	m, _ := io.ReadFull(f, b)
+	return b[:m]
+}
+
+// chownTree gives everything in the data directory to the directory's owner (a restore run as root
+// for a panel that runs as its own user).
+func chownTree(dir string) error {
+	st, err := os.Stat(dir)
 	if err != nil {
 		return err
 	}
-	defer d.Close()
-	var ok string
-	if err := d.QueryRow(`PRAGMA integrity_check`).Scan(&ok); err != nil || ok != "ok" {
-		return fmt.Errorf("the database is damaged (%s)", nz(ok, fmt.Sprint(err)))
+	s, ok := st.Sys().(*syscall.Stat_t)
+	if !ok || os.Geteuid() != 0 {
+		return nil
 	}
-	var version int
-	if err := d.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&version); err != nil {
-		return errors.New("this is not a Meridian backup")
-	}
-	var servers int
-	if err := d.QueryRow(`SELECT COUNT(*) FROM servers`).Scan(&servers); err != nil {
-		return errors.New("this is not a Meridian backup")
-	}
-	if version > db.Version() {
-		return errors.New("the backup comes from a newer Meridian - upgrade the panel first")
-	}
-	return nil
+	return filepath.WalkDir(dir, func(p string, e fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		return os.Lchown(p, int(s.Uid), int(s.Gid)) // never through a link
+	})
 }
+
+// checkBackup makes sure a file is a sound Meridian database this version can run.
+func checkBackup(path string) error { return db.CheckFile(path) }
 
 // copyPrivate copies src to a new file dst that only its owner can read, flushed to disk.
 func copyPrivate(src, dst string) error {
@@ -524,13 +612,6 @@ func copyPrivate(src, dst string) error {
 		return err
 	}
 	return out.Close()
-}
-
-func nz(s, d string) string {
-	if s == "" {
-		return d
-	}
-	return s
 }
 
 // updateApply is the updater service's command (root): it installs the release the panel left in its

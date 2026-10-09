@@ -84,13 +84,13 @@ var kindList = []kindInfo{
 		Securities: []string{secTLS, secNone}, CDN: true,
 		Blurb: "Encrypts by itself, so it also works without TLS. Supported by almost every app."},
 	{Kind: subgen.KindTrojan, Label: "Trojan", Short: "Trojan", Engine: "xray", Transports: allTransports,
-		Securities: []string{secTLS}, CDN: true,
-		Blurb: "Looks like an ordinary HTTPS server. Needs TLS: a domain certificate, a pinned self-signed one, or a CDN."},
+		Securities: []string{secTLS, secReality}, CDN: true,
+		Blurb: "Looks like an ordinary HTTPS server. Needs TLS (a domain certificate, a pinned self-signed one, or a CDN) or REALITY."},
 	{Kind: subgen.KindShadowsocks, Label: "Shadowsocks", Short: "SS", Engine: "xray", Transports: []string{tRaw},
 		Securities: []string{secNone}, Methods: ssMethods,
 		Blurb: "Simple, fast and supported by every app, including Surge and Quantumult X. TCP and UDP."},
 	{Kind: subgen.KindHysteria2, Label: "Hysteria2", Short: "Hy2", Engine: "hysteria",
-		Blurb: "UDP (QUIC). Fast on long or lossy routes. Self-signed certificate pinned in client configs, or a domain certificate."},
+		Blurb: "UDP (QUIC). Fast on long or lossy routes. Self-signed certificate pinned in client configs, or a domain certificate. Can hop between ports."},
 	{Kind: subgen.KindWireGuard, Label: "WireGuard", Short: "WG", Engine: "wireguard",
 		Blurb: "A full VPN for laptops and phones - the official WireGuard apps work. Destinations are logged per device."},
 	{Kind: subgen.KindSOCKS, Label: "SOCKS5", Short: "SOCKS5", Engine: "xray", Transports: []string{tRaw},
@@ -143,6 +143,13 @@ type xraySettings struct {
 	PublicKey  string   `json:"public_key,omitempty"`
 	ShortIDs   []string `json:"short_ids,omitempty"`
 
+	// VLESS Encryption (vlessenc.go): how the traffic looks ("" = off), how the server proves itself,
+	// the server's key (never shown) and the key clients get
+	Encryption string `json:"encryption,omitempty"`
+	EncAuth    string `json:"enc_auth,omitempty"`
+	EncKey     string `json:"enc_key,omitempty"`
+	EncClient  string `json:"enc_client,omitempty"`
+
 	certSettings
 
 	// A CDN in front: the server speaks the plain transport and the CDN adds TLS. Clients connect to
@@ -167,6 +174,9 @@ type hy2Settings struct {
 	ObfsPassword string `json:"obfs_password"`
 	UpMbps       int    `json:"up_mbps"`
 	DownMbps     int    `json:"down_mbps"`
+	// HopPorts is a UDP port range ("20000-50000") the agent redirects to the port: apps that can hop
+	// between ports do (porthop.go)
+	HopPorts string `json:"hop_ports,omitempty"`
 }
 
 type wgSettings struct {
@@ -192,10 +202,12 @@ type protoInput struct {
 	ServiceName *string `json:"service_name" doc:"grpc: service name"`
 	XHTTPMode   *string `json:"xhttp_mode" doc:"xhttp: auto | packet-up | stream-up | stream-one"`
 	Security    *string `json:"security" doc:"none | tls | reality"`
-	Flow        *string `json:"flow" doc:"VLESS over raw with TLS or REALITY: xtls-rprx-vision, or empty"`
+	Flow        *string `json:"flow" doc:"VLESS over raw with TLS or REALITY, or VLESS with VLESS Encryption: xtls-rprx-vision, or empty"`
 	SNI         *string `json:"sni" doc:"TLS: certificate name. REALITY: the camouflage site. Hysteria2: certificate name"`
 	Fingerprint *string `json:"fingerprint" doc:"Browser fingerprint clients present: chrome, firefox, safari, ..."`
 	Target      *string `json:"target" doc:"REALITY: where unauthenticated visitors go, host:port"`
+	Encryption  *string `json:"encryption" doc:"VLESS: VLESS Encryption (post-quantum) - none, native, xorpub or random: how the traffic looks (native with TLS or REALITY, random without)"`
+	EncAuth     *string `json:"enc_auth" doc:"VLESS Encryption: how the server proves itself - x25519 (default, short links) or mlkem768 (post-quantum too, links about 1.6 KB longer)"`
 	OwnSite     *bool   `json:"own_site" doc:"REALITY: the target is your own website on this server (127.0.0.1:port)"`
 	CertMode    *string `json:"cert_mode" doc:"TLS and Hysteria2: self | acme | custom | shared"`
 	CertID      *int64  `json:"cert_id" doc:"With cert_mode shared: the shared certificate (GET /api/certs)"`
@@ -209,6 +221,7 @@ type protoInput struct {
 	Obfs        *bool   `json:"obfs" doc:"Hysteria2: salamander obfuscation"`
 	UpMbps      *int    `json:"up_mbps" doc:"Hysteria2: server upload limit, 0 = none"`
 	DownMbps    *int    `json:"down_mbps" doc:"Hysteria2: server download limit, 0 = none"`
+	HopPorts    *string `json:"hop_ports" doc:"Hysteria2: port hopping - a UDP port range such as 20000-50000 that apps hop between (the agent redirects it to the protocol's port; needs nftables); empty = off"`
 	MTU         *int    `json:"mtu" doc:"WireGuard"`
 	DNSLogging  *bool   `json:"dns_logging" doc:"WireGuard: clients use the server's logging resolver"`
 	FullTunnel  *bool   `json:"full_tunnel" doc:"WireGuard: send all traffic through the VPN"`
@@ -226,8 +239,9 @@ func (in *protoInput) unknownFor(kind string) []string {
 	}
 	xrayOnly := in.Transport != nil || in.Path != nil || in.HostHeader != nil || in.ServiceName != nil ||
 		in.XHTTPMode != nil || in.Security != nil || in.Flow != nil || in.Fingerprint != nil || in.Target != nil ||
-		in.OwnSite != nil || in.CDN != nil || in.CDNHost != nil || in.CDNPort != nil || in.Method != nil || in.UDP != nil
-	hyOnly := in.Obfs != nil || in.UpMbps != nil || in.DownMbps != nil
+		in.OwnSite != nil || in.CDN != nil || in.CDNHost != nil || in.CDNPort != nil || in.Method != nil || in.UDP != nil ||
+		in.Encryption != nil || in.EncAuth != nil
+	hyOnly := in.Obfs != nil || in.UpMbps != nil || in.DownMbps != nil || in.HopPorts != nil
 	wgOnly := in.MTU != nil || in.DNSLogging != nil || in.FullTunnel != nil || in.Keepalive != nil || in.IPv6 != nil
 	certish := in.SNI != nil || in.CertMode != nil || in.CertPEM != nil || in.KeyPEM != nil
 	switch kind {
@@ -245,6 +259,9 @@ func (in *protoInput) unknownFor(kind string) []string {
 		}
 		if kind != subgen.KindSOCKS {
 			note(in.UDP != nil, "udp")
+		}
+		if kind != subgen.KindVLESS {
+			note(in.Encryption != nil || in.EncAuth != nil, "VLESS Encryption")
 		}
 	}
 	return bad
@@ -317,6 +334,9 @@ func defaultXray(kind string, in *protoInput) *xraySettings {
 		}
 	case subgen.KindTrojan:
 		s.Security = secTLS
+		if sec := want(in.Security); sec != "" {
+			s.Security = sec
+		}
 	case subgen.KindShadowsocks:
 		s.Security, s.Method = secNone, ss2022Methods[0]
 	case subgen.KindSOCKS:
@@ -463,6 +483,9 @@ func (s *xraySettings) apply(kind string, in *protoInput, fresh bool) error {
 	if in.UDP != nil {
 		s.UDP = *in.UDP
 	}
+	if err := s.applyEncryption(kind, in); err != nil {
+		return err
+	}
 
 	// fill what the combination needs
 	switch s.Transport {
@@ -484,9 +507,11 @@ func (s *xraySettings) apply(kind string, in *protoInput, fresh bool) error {
 	if s.CDN && s.CDNPort == 0 {
 		s.CDNPort = 443
 	}
-	vision := kind == subgen.KindVLESS && s.Transport == tRaw && (s.Security == secReality || s.Security == secTLS) && !s.CDN
+	// Vision works over raw TCP with TLS or REALITY, and over anything with VLESS Encryption
+	vision := kind == subgen.KindVLESS && (s.Transport == tRaw && (s.Security == secReality || s.Security == secTLS) && !s.CDN ||
+		s.Encryption != "")
 	switch {
-	case vision && in.Flow == nil && (fresh || in.Security != nil || in.Transport != nil):
+	case vision && in.Flow == nil && (fresh || in.Security != nil || in.Transport != nil || in.Encryption != nil):
 		s.Flow = flowVision // the recommended flow wherever it works
 	case !vision && in.Flow == nil:
 		s.Flow = "" // a change that leaves no room for it takes the flow along, unless one was asked for
@@ -582,19 +607,16 @@ func (s *xraySettings) check(kind string) error {
 	}
 	switch kind {
 	case subgen.KindVLESS:
-		if s.Security == secNone && !s.CDN {
-			return errors.New("VLESS does not encrypt by itself: use REALITY or TLS, or put it behind a CDN that adds TLS")
+		if s.Security == secNone && !s.CDN && s.Encryption == "" {
+			return errors.New("VLESS does not encrypt by itself: use REALITY or TLS, turn on VLESS Encryption, or put it behind a CDN that adds TLS")
 		}
 	case subgen.KindVMess:
 		if s.Security == secReality {
-			return errors.New("REALITY works with VLESS only - use TLS for VMess, or no TLS (VMess encrypts by itself)")
+			return errors.New("REALITY works with VLESS and Trojan - use TLS for VMess, or no TLS (VMess encrypts by itself)")
 		}
 	case subgen.KindTrojan:
-		if s.Security == secReality {
-			return errors.New("REALITY works with VLESS only - Trojan uses TLS")
-		}
 		if s.Security == secNone && !s.CDN {
-			return errors.New("a Trojan protocol needs TLS: choose a certificate, or put it behind a CDN that adds TLS")
+			return errors.New("a Trojan protocol needs TLS or REALITY: choose a certificate or REALITY, or put it behind a CDN that adds TLS")
 		}
 	case subgen.KindShadowsocks:
 		if s.Security != secNone {
@@ -606,8 +628,11 @@ func (s *xraySettings) check(kind string) error {
 		}
 	case subgen.KindHTTP:
 		if s.Security == secReality {
-			return errors.New("REALITY works with VLESS only - an HTTP proxy can use TLS")
+			return errors.New("REALITY works with VLESS and Trojan - an HTTP proxy can use TLS")
 		}
+	}
+	if err := s.checkEncryption(kind); err != nil {
+		return err
 	}
 
 	if s.Security == secReality {
@@ -644,8 +669,9 @@ func (s *xraySettings) check(kind string) error {
 		if s.Flow != flowVision {
 			return errors.New("flow must be xtls-rprx-vision or empty")
 		}
-		if kind != subgen.KindVLESS || s.Transport != tRaw || (s.Security != secTLS && s.Security != secReality) || s.CDN {
-			return errors.New("the Vision flow works only with VLESS over raw TCP with TLS or REALITY")
+		raw := s.Transport == tRaw && (s.Security == secTLS || s.Security == secReality) && !s.CDN
+		if kind != subgen.KindVLESS || !raw && s.Encryption == "" {
+			return errors.New("the Vision flow works only with VLESS over raw TCP with TLS or REALITY, or with VLESS Encryption")
 		}
 	}
 
@@ -668,6 +694,10 @@ func (s *xraySettings) check(kind string) error {
 	if s.Security == secTLS {
 		if err := s.certSettings.check(s.SNI); err != nil {
 			return err
+		}
+		// only the Xray-based apps take VMess and Trojan over XHTTP, and their links cannot pin a certificate
+		if s.Transport == tXHTTP && kind != subgen.KindVLESS && s.CertMode == certSelf {
+			return fmt.Errorf("%s over XHTTP works only in the Xray-based apps, which cannot check a self-signed certificate - use a Let's Encrypt or your own certificate, or VLESS over XHTTP", label)
 		}
 	}
 	if kind == subgen.KindShadowsocks {
@@ -872,6 +902,9 @@ func (s *hy2Settings) apply(in *protoInput) error {
 	if in.DownMbps != nil {
 		s.DownMbps = clamp(*in.DownMbps, 0, 100000)
 	}
+	if err := s.applyHop(in); err != nil {
+		return err
+	}
 	if err := s.certSettings.settle(in, s.SNI, oldSNI, oldMode); err != nil {
 		return err
 	}
@@ -909,6 +942,9 @@ func wg6(srv *Server, s wgSettings) bool {
 // it has now (nil for a new protocol).
 func (p *Panel) checkOnServer(ctx context.Context, srv *Server, kind string, raw, old json.RawMessage) error {
 	if err := checkWG6(srv, kind, raw, old); err != nil {
+		return err
+	}
+	if err := checkHopOnServer(srv, kind, raw, old); err != nil {
 		return err
 	}
 	if err := checkOwnSite(srv, kind, raw, p.settings().AgentPort); err != nil {
@@ -1017,6 +1053,7 @@ func publicSettings(kind string, raw json.RawMessage) map[string]any {
 	_ = json.Unmarshal(raw, &m)
 	delete(m, "private_key")
 	delete(m, "key_pem")
+	delete(m, "enc_key")
 	if kind != subgen.KindWireGuard {
 		delete(m, "server_key")
 	}
@@ -1239,12 +1276,12 @@ func xrayInbound(n *Node, subs []*Sub, pass []passClient, over map[int64]creds) 
 		users = append(users, user{proto.Email(sub.ID, n.ID), credsFor(n, sub, s, over)})
 	}
 	for _, pc := range pass {
-		users = append(users, user{passEmail(pc.Entry.ID), pc.credsAt(n, s)})
+		users = append(users, user{pc.email(), pc.credsAt(n, s)})
 	}
 	switch n.Kind {
 	case subgen.KindVLESS:
 		in["protocol"] = "vless"
-		in["settings"] = map[string]any{"decryption": "none"}
+		in["settings"] = map[string]any{"decryption": s.decryption()}
 		for _, u := range users {
 			obj := map[string]any{"id": u.c.ID}
 			if s.Flow != "" {
@@ -1329,8 +1366,17 @@ func acmeNeeded(s *xraySettings) bool { return s.Security == secTLS && s.CertMod
 // through this node ("proxy pass").
 type passClient struct {
 	Entry    *Node
+	Email    string // the identity at the exit; empty = the entry node's (see passEmail)
 	UUID     string
 	Password string
+}
+
+// email is the pass client's identity at the exit (also its SOCKS5 / HTTP user name).
+func (pc passClient) email() string {
+	if pc.Email != "" {
+		return pc.Email
+	}
+	return passEmail(pc.Entry.ID)
 }
 
 // credsAt is the pass credential in the form the exit protocol needs.
@@ -1344,7 +1390,7 @@ func (pc passClient) credsAt(exit *Node, s *xraySettings) creds {
 		}
 		return creds{Password: pc.Password}
 	case subgen.KindSOCKS, subgen.KindHTTP:
-		return creds{Username: passEmail(pc.Entry.ID), Password: pc.Password}
+		return creds{Username: pc.email(), Password: pc.Password}
 	}
 	return creds{Password: pc.Password}
 }
@@ -1440,6 +1486,12 @@ func (p *Panel) passExit(ctx context.Context, srv *Server, n *Node) (*Node, *Ser
 	case hopOff:
 		return nil, nil, fmt.Sprintf("its exit (%s · %s) is turned off", xs.Name, protocolLabel(exit.Kind, exit.Settings))
 	}
+	if exit.PassExt != 0 { // a relay to an external node: that leaves the internet itself
+		if _, why := p.extExit(ctx, xs.AccountID, exit.PassExt); why != "" {
+			return nil, nil, fmt.Sprintf("its exit (%s · %s) passes on, but %s", xs.Name, protocolLabel(exit.Kind, exit.Settings), why)
+		}
+		return exit, xs, ""
+	}
 	if exit.PassNode == 0 {
 		return exit, xs, ""
 	}
@@ -1456,7 +1508,7 @@ func (p *Panel) passExit(ctx context.Context, srv *Server, n *Node) (*Node, *Ser
 		return nil, nil, fmt.Sprintf("its exit (%s) passes on to %s · %s, which is turned off", relay, ns.Name, protocolLabel(next.Kind, next.Settings))
 	case ns.ID == srv.ID:
 		return nil, nil, fmt.Sprintf("its exit (%s) passes on back to %s - every pass goes to another server", relay, srv.Name)
-	case next.PassNode != 0:
+	case next.PassNode != 0 || next.PassExt != 0:
 		return nil, nil, fmt.Sprintf("its exit (%s) passes on twice - a chain has two passes at most", relay)
 	}
 	return exit, xs, ""
@@ -1479,6 +1531,7 @@ func passOutbound(entryServer *Server, entry *Node, exitServer *Server, exit *No
 	if err != nil {
 		return nil, err
 	}
+	e.Host = reachHost(entryServer, exit, exitServer, e.Host) // the exit's address of a kind the entry has
 	return subgen.XrayOutbound(e, passTag(entry.ID))
 }
 
@@ -1505,7 +1558,7 @@ func nz(s, d string) string {
 // applied live by the agent, so a proxy pass or binding change never restarts Xray. A server set
 // to one IP version sends what no other rule takes through an outbound of that version; "direct"
 // itself never changes (re-adding the default outbound live could make another one the default).
-func xrayBase(srv *Server, extraOut []map[string]any, extraRules []map[string]any) json.RawMessage {
+func xrayBase(srv *Server, extraOut []map[string]any, extraRules []map[string]any, balancers []map[string]any, observe bool) json.RawMessage {
 	outbounds := []map[string]any{{"tag": "direct", "protocol": "freedom"}, {"tag": "block", "protocol": "blackhole"}}
 	outbounds = append(outbounds, extraOut...)
 	rules := []map[string]any{{"ruleTag": "no-private", "ip": []string{"geoip:private"}, "outboundTag": "block"}}
@@ -1515,8 +1568,15 @@ func xrayBase(srv *Server, extraOut []map[string]any, extraRules []map[string]an
 			"settings": map[string]any{"domainStrategy": ds}})
 		rules = append(rules, map[string]any{"ruleTag": "ipver", "network": "tcp,udp", "outboundTag": "direct-ipver"})
 	}
-	b, _ := json.Marshal(map[string]any{"outbounds": outbounds,
-		"routing": map[string]any{"domainStrategy": "AsIs", "rules": rules}})
+	routing := map[string]any{"domainStrategy": "AsIs", "rules": rules}
+	if len(balancers) > 0 { // left out when there are none: a server without them keeps the same configuration
+		routing["balancers"] = balancers
+	}
+	cfg := map[string]any{"outbounds": outbounds, "routing": routing}
+	if observe {
+		cfg["observatory"] = observatory
+	}
+	b, _ := json.Marshal(cfg)
 	return b
 }
 
@@ -1541,7 +1601,8 @@ var linkFields = []struct{ key, what string }{
 	{"cert_sha256", "certificate"}, {"path", "path"}, {"host_header", "host header"}, {"service_name", "service name"},
 	{"xhttp_mode", "XHTTP mode"}, {"cdn", "CDN"}, {"cdn_host", "CDN domain"}, {"cdn_port", "CDN port"},
 	{"method", "cipher"}, {"server_key", "keys"}, {"flow", "flow"}, {"public_key", "keys"}, {"short_ids", "keys"},
-	{"obfs", "obfuscation"}, {"obfs_password", "obfuscation"},
+	{"obfs", "obfuscation"}, {"obfs_password", "obfuscation"}, {"encryption", "VLESS Encryption"},
+	{"enc_auth", "keys"}, {"enc_client", "keys"}, {"hop_ports", "port hopping"},
 }
 
 // changeImpact says what saving next (its settings, port, own address, address override, own
@@ -1572,6 +1633,9 @@ func changeImpact(srv *Server, n, next *Node) (refresh []string, restarts bool) 
 	}
 	for _, f := range linkFields {
 		if norm(a[f.key]) != norm(b[f.key]) {
+			if f.key == "hop_ports" && norm(a[f.key]) == "" {
+				continue // devices without the new range keep using the port itself
+			}
 			add(f.what)
 		}
 	}
@@ -1589,6 +1653,8 @@ func changeImpact(srv *Server, n, next *Node) (refresh []string, restarts bool) 
 		add("port")
 	}
 	if n.Kind == subgen.KindHysteria2 { // users come and go live; the rest of its configuration by a restart
+		delete(a, "hop_ports") // except port hopping: the firewall redirects the range live
+		delete(b, "hop_ports")
 		restarts = norm(a) != norm(b) || n.Port != next.Port || n.BindIP != next.BindIP || n.Code != next.Code
 	}
 	return refresh, restarts
@@ -1623,6 +1689,9 @@ func clientEndpoint(n *Node, srv *Server, c creds, peer *wgPeer, name string) (s
 		// apps say what they send and receive: a device sends what the server downloads, and receives
 		// what the server uploads
 		e.UpMbps, e.DownMbps = s.DownMbps, s.UpMbps
+		if srv.ports == nil { // where the provider decides the ports, it forwards the port alone
+			e.HopPorts = s.HopPorts
+		}
 		return e, nil
 	case subgen.KindWireGuard:
 		var s wgSettings
@@ -1670,6 +1739,7 @@ func clientEndpoint(n *Node, srv *Server, c creds, peer *wgPeer, name string) (s
 	e.Transport, e.Path, e.HostHeader, e.ServiceName, e.XHTTPMode = s.Transport, s.Path, s.HostHeader, s.ServiceName, s.XHTTPMode
 	e.Security, e.Flow, e.SNI, e.Fingerprint = s.Security, s.Flow, s.SNI, s.Fingerprint
 	e.Method = s.Method
+	e.Encryption = s.encryption()
 	if n.Kind == subgen.KindShadowsocks && strings.HasPrefix(s.Method, "2022-") {
 		e.Password = s.ServerKey + ":" + c.Password
 	}
@@ -1735,8 +1805,12 @@ func protocolLabel(kind string, raw json.RawMessage) string {
 		return "HTTP"
 	}
 	tr := map[string]string{tWS: "WS", tGRPC: "gRPC", tHTTPUpgrade: "HTTPUpgrade", tXHTTP: "XHTTP"}[s.Transport]
+	enc := ""
+	if s.Encryption != "" {
+		enc = " ENC"
+	}
 	if kind == subgen.KindVLESS && s.Security == secReality {
-		return strings.TrimSpace("REALITY " + tr)
+		return strings.TrimSpace("REALITY "+tr) + enc
 	}
 	parts := []string{labelOf(kind)}
 	if tr != "" {
@@ -1747,8 +1821,10 @@ func protocolLabel(kind string, raw json.RawMessage) string {
 		parts = append(parts, "CDN")
 	case s.Security == secTLS:
 		parts = append(parts, "TLS")
+	case s.Security == secReality:
+		parts = append(parts, "REALITY")
 	}
-	return strings.Join(parts, " ")
+	return strings.Join(parts, " ") + enc
 }
 
 // ---------------------------------------------------------------- what works where
@@ -1824,6 +1900,7 @@ func protocolNotes(kind string, raw json.RawMessage, acmePort int) []string {
 		var s hy2Settings
 		_ = json.Unmarshal(raw, &s)
 		notes = append(notes, "Uses UDP: open the port for UDP in the server provider's firewall.")
+		notes = append(notes, hopNotes(s)...)
 		if s.CertMode == certACME {
 			notes = append(notes, fmt.Sprintf("Point %s at this server and %s: the agent gets and renews the certificate there.", s.SNI, port80))
 		}
@@ -1867,7 +1944,7 @@ func protocolNotes(kind string, raw json.RawMessage, acmePort int) []string {
 	if kind == subgen.KindVMess && s.Security == secNone {
 		notes = append(notes, "Without TLS, VMess traffic is encrypted but recognizable as a proxy. Prefer TLS or a CDN where it may be blocked.")
 	}
-	return notes
+	return append(notes, encryptionNotes(s)...)
 }
 
 // ---------------------------------------------------------------- helpers
@@ -1920,6 +1997,11 @@ func regenKeys(kind string, raw json.RawMessage) (json.RawMessage, error) {
 	if s.Security == secReality {
 		s.PrivateKey, s.PublicKey = x25519Pair(base64.RawURLEncoding)
 		s.ShortIDs = []string{randHex(8)}
+	}
+	if s.Encryption != "" {
+		if s.EncKey, s.EncClient, err = vlessEncKeys(s.EncAuth); err != nil {
+			return nil, err
+		}
 	}
 	if s.Security == secTLS && s.CertMode == certSelf {
 		if err := s.certSettings.settle(nil, s.SNI, "", ""); err != nil {

@@ -1,5 +1,6 @@
 # build output (web/dist keeps an empty .gitkeep so the Go build works before the UI is built)
 /dist/
+/meridian
 /web/node_modules/
 /web/dist/*
 !/web/dist/.gitkeep
@@ -7,6 +8,7 @@
 # local data and secrets
 /.dev/
 *.db
+!/internal/panel/testdata/**/*.db
 *.db-wal
 *.db-shm
 *.token

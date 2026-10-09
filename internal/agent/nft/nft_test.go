@@ -122,6 +122,7 @@ func TestDumpRulesets(t *testing.T) {
 		UDPPorts:  []int{443, 51820},
 		LocalOnly: []int{50000, 50001},
 		Geo:       &GeoSpec{V4: []string{"1.0.1.0-1.0.3.255", "36.0.0.0/8"}, V6: []string{"2400:da00::/32"}, Except: []string{"5.5.5.5"}},
+		Speed:     []proto.SpeedLimit{{Sub: 7, Mbps: 200}, {Sub: 12, Mbps: 1000}},
 	}
 	for name, spec := range map[string]Spec{
 		"report-only": {LocalOnly: []int{50000, 50001}}, // a server without protocols

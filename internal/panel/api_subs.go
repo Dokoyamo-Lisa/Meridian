@@ -135,27 +135,35 @@ func subFlags(s *Sub, online int, t int64) []string {
 
 type subView struct {
 	*Sub
-	Link      string     `json:"link" doc:"The subscription link - give it to the user"`
-	Status    string     `json:"status" doc:"active | paused"`
-	Flags     []string   `json:"flags" doc:"Soft limits reached: over_quota, near_quota, expired, expiring, over_ip_limit"`
-	OnlineIPs int        `json:"online_ips"`
-	Online    []onlineIP `json:"online,omitempty"`
-	IPs24h    int        `json:"ips_24h"`
-	Password  string     `json:"password,omitempty" doc:"Only right after the panel generated a password: show it to the user once"`
+	NodeLimits []nodeLimit `json:"node_limits,omitempty" doc:"(One user) each limit per protocol with what was used of it this cycle"`
+	Used       int64       `json:"used" doc:"What counts toward the quota this cycle (count_mode decides: upload and download, one of them, or the larger)"`
+	NextReset  int64       `json:"next_reset" doc:"When usage next resets (Unix seconds); 0 = never"`
+	Link       string      `json:"link" doc:"The subscription link - give it to the user"`
+	Status     string      `json:"status" doc:"active | paused"`
+	Flags      []string    `json:"flags" doc:"Soft limits reached: over_quota, near_quota, expired, expiring, over_ip_limit"`
+	OnlineIPs  int         `json:"online_ips"`
+	Away       []string    `json:"turned_away,omitempty" doc:"Devices (addresses) over the device limit that are turned away now (device_mode refuse)"`
+	Online     []onlineIP  `json:"online,omitempty"`
+	IPs24h     int         `json:"ips_24h"`
+	Password   string      `json:"password,omitempty" doc:"Only right after the panel generated a password: show it to the user once"`
 }
 
 func (p *Panel) subView(r *http.Request, s *Sub, online []onlineIP, detail bool) *subView {
-	v := &subView{Sub: s, Link: p.subBase(r) + "/s/" + s.Token, OnlineIPs: distinctIPs(online)}
+	v := &subView{Sub: s, Used: s.Used(), NextReset: nextPeriod(s, p.localNow()), Link: p.subBase(r) + "/s/" + s.Token, OnlineIPs: distinctIPs(online)}
 	v.Status = "active"
 	if s.Paused {
 		v.Status = "paused"
 	}
 	v.Flags = subFlags(s, v.OnlineIPs, now())
+	if s.enforced() {
+		v.Away = p.devices.awayOf(s.ID) // limits.go
+	}
 	if detail {
 		v.Online = online
 		if v.Online == nil {
 			v.Online = []onlineIP{}
 		}
+		v.NodeLimits = p.nodeLimitsOf(r.Context(), s)
 	}
 	return v
 }
@@ -253,10 +261,12 @@ type subDetail struct {
 }
 
 type nodeTotal struct {
-	NodeID int64  `json:"node_id"`
-	Name   string `json:"name" doc:"server · protocol"`
-	Up     int64  `json:"up"`
-	Down   int64  `json:"down"`
+	NodeID   int64   `json:"node_id"`
+	ServerID int64   `json:"server_id"`
+	Name     string  `json:"name" doc:"server · protocol"`
+	Up       int64   `json:"up"`
+	Down     int64   `json:"down"`
+	Daily    []int64 `json:"daily" doc:"Bytes (up and down) per day, in the order of days"`
 }
 
 type subTraffic struct {
@@ -266,10 +276,11 @@ type subTraffic struct {
 }
 
 type serverTotal struct {
-	ServerID int64  `json:"server_id"`
-	Name     string `json:"name"`
-	Up       int64  `json:"up"`
-	Down     int64  `json:"down"`
+	ServerID int64   `json:"server_id"`
+	Name     string  `json:"name"`
+	Up       int64   `json:"up"`
+	Down     int64   `json:"down"`
+	Daily    []int64 `json:"daily" doc:"Bytes (up and down) per day, in the order of days"`
 }
 
 type subPreview struct {
@@ -281,29 +292,56 @@ type subPreview struct {
 // ---------------------------------------------------------------- create / update
 
 type subInput struct {
-	Name      *string  `json:"name" doc:"Required on create"`
-	Note      *string  `json:"note"`
-	Username  *string  `json:"username" doc:"Sign-in name for the user's own page (3-32 of a-z 0-9 . _ -); empty = no sign-in. On create with count > 1 it is the prefix of generated names"`
-	Password  *string  `json:"password" doc:"Sets the sign-in password (10-72 characters). On create, leave it out to have one generated and returned once"`
-	SignIn    *bool    `json:"sign_in" doc:"On create: give the user a sign-in (default true)"`
-	Quota     *int64   `json:"quota" doc:"Bytes per cycle; 0 = unlimited (alerts only)"`
-	ResetDay  *int     `json:"reset_day" doc:"Day of the month usage resets (1-31); 0 = never"`
-	ExpiresAt *int64   `json:"expires_at" doc:"Unix seconds; 0 = never (alerts only)"`
-	IPLimit   *int     `json:"ip_limit" doc:"Alert when more IPs are online at once; 0 = no limit"`
-	Servers   *[]int64 `json:"servers" doc:"Whole servers the user can use (with protocols added to them later). Empty servers and empty protocols = everything, including servers added later"`
-	Nodes     *[]int64 `json:"protocols" doc:"Single protocols (ids) the user can use, besides whole servers"`
-	Count     int      `json:"count" doc:"On create: how many users (1-500)"`
+	Name       *string  `json:"name" doc:"Required on create"`
+	Note       *string  `json:"note"`
+	Username   *string  `json:"username" doc:"Sign-in name for the user's own page (3-32 of a-z 0-9 . _ -); empty = no sign-in. On create with count > 1 it is the prefix of generated names"`
+	Password   *string  `json:"password" doc:"Sets the sign-in password (10-72 characters). On create, leave it out to have one generated and returned once"`
+	SignIn     *bool    `json:"sign_in" doc:"On create: give the user a sign-in (default true)"`
+	Quota      *int64   `json:"quota" doc:"Bytes per cycle; 0 = unlimited (alerts only)"`
+	CountMode  *string  `json:"count_mode" doc:"What counts toward the quota: both (default), down (download only), up (upload only), max (whichever is larger)"`
+	StartsAt   *int64   `json:"starts_at" doc:"When the user's period starts (Unix seconds); 0 = when they were created. Resets every reset_every days count from it"`
+	ResetDay   *int     `json:"reset_day" doc:"Day of the month usage resets (1-31); 0 = never (unless reset_every)"`
+	ResetEvery *int     `json:"reset_every" doc:"Usage resets every this many days from starts_at (1-3650); 0 = on reset_day"`
+	ExpiresAt  *int64   `json:"expires_at" doc:"Unix seconds; 0 = never (alerts only)"`
+	IPLimit    *int     `json:"ip_limit" doc:"Devices (IPs) online at once: an alert when there are more, or with device_mode refuse the extra ones are turned away; 0 = no limit"`
+	DeviceMode *string  `json:"device_mode" doc:"alert (default: only an alert) or refuse (devices beyond ip_limit are turned away until one goes offline)"`
+	SpeedLimit *int     `json:"speed_limit" doc:"The most the user's devices get together on each server, in Mbps (1000 = 1 Gbps); 0 = no limit"`
+	PlanID     *int64   `json:"plan_id" doc:"On create: fill in what is left out from this preset plan (its quota, counting, reset, limits, access, and the end date from its duration). To start a new period on a plan later, use POST /api/users/{id}/plan"`
+	Servers    *[]int64 `json:"servers" doc:"Whole servers the user can use (with protocols added to them later). Empty servers and empty protocols = everything, including servers added later"`
+	Nodes      *[]int64 `json:"protocols" doc:"Single protocols (ids) the user can use, besides whole servers"`
+	Count      int      `json:"count" doc:"On create: how many users (1-500)"`
+	// limits per protocol (nodequota.go)
+	NodeQuotas    *map[string]int64 `json:"node_quotas" doc:"Limits per protocol: protocol id -> bytes per cycle, counted like the quota (0 takes one away); the whole set is replaced"`
+	NodeQuotaMode *string           `json:"node_quota_mode" doc:"alert (default: an alert only when one is used up) or stop (that protocol stops serving the user until the cycle starts over; their other protocols keep working)"`
 }
 
 func (in *subInput) validate() error {
-	if in.Quota != nil && *in.Quota < 0 {
-		return errStatus(http.StatusBadRequest, "quota cannot be negative")
+	if err := checkLimits(in.Quota, in.ResetDay, in.ResetEvery, in.IPLimit, in.SpeedLimit); err != nil {
+		return err
 	}
-	if in.ResetDay != nil && (*in.ResetDay < 0 || *in.ResetDay > 31) {
-		return errStatus(http.StatusBadRequest, "reset day must be 0 (never) or 1-31")
+	if in.CountMode != nil {
+		m, err := checkCountMode(*in.CountMode)
+		if err != nil {
+			return err
+		}
+		in.CountMode = &m
 	}
-	if in.IPLimit != nil && (*in.IPLimit < 0 || *in.IPLimit > 10000) {
-		return errStatus(http.StatusBadRequest, "IP limit must be between 0 (none) and 10000")
+	if in.DeviceMode != nil {
+		m, err := checkDeviceMode(*in.DeviceMode)
+		if err != nil {
+			return err
+		}
+		in.DeviceMode = &m
+	}
+	if in.StartsAt != nil && *in.StartsAt < 0 {
+		return errStatus(http.StatusBadRequest, "starts_at cannot be negative")
+	}
+	if in.NodeQuotaMode != nil {
+		m, err := checkNodeQuotaMode(*in.NodeQuotaMode)
+		if err != nil {
+			return err
+		}
+		in.NodeQuotaMode = &m
 	}
 	return nil
 }
@@ -399,7 +437,47 @@ func pruneScopes(tx *sql.Tx, accountID, serverID int64, nodeIDs []int64) ([]stri
 			return nil, err
 		}
 	}
-	return lost, nil
+	return lost, prunePlanScopes(tx, accountID, serverID, nodeIDs)
+}
+
+// prunePlanScopes drops a removed server and protocols from the plans' access, as pruneScopes does
+// for users: a plan left with nothing gives no access until it is changed.
+func prunePlanScopes(tx *sql.Tx, accountID, serverID int64, nodeIDs []int64) error {
+	rows, err := tx.Query(`SELECT id, scope FROM plans WHERE account_id = ? AND scope != ''`, accountID)
+	if err != nil {
+		return err
+	}
+	type change struct {
+		id    int64
+		scope string
+	}
+	var changes []change
+	for rows.Next() {
+		var id int64
+		var raw string
+		if err := rows.Scan(&id, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+		var sc Scope
+		if json.Unmarshal([]byte(raw), &sc) != nil || sc.All() || sc.None {
+			continue
+		}
+		next := Scope{Servers: slices.DeleteFunc(slices.Clone(sc.Servers), func(x int64) bool { return x == serverID }),
+			Nodes: slices.DeleteFunc(slices.Clone(sc.Nodes), func(x int64) bool { return slices.Contains(nodeIDs, x) })}
+		if len(next.Servers) == len(sc.Servers) && len(next.Nodes) == len(sc.Nodes) {
+			continue
+		}
+		next.None = len(next.Servers) == 0 && len(next.Nodes) == 0
+		changes = append(changes, change{id, next.String()})
+	}
+	rows.Close()
+	for _, c := range changes {
+		if _, err := tx.Exec(`UPDATE plans SET scope = ? WHERE id = ?`, c.scope, c.id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 var loginRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{1,30}[a-z0-9]$`)
@@ -523,11 +601,36 @@ func (p *Panel) apiCreateSub(w http.ResponseWriter, r *http.Request, a *Account)
 			made[i] = newLogin{login: login, password: pw, hash: h}
 		}
 	}
+	t := now()
+	if in.PlanID != nil && *in.PlanID > 0 {
+		pl, err := p.ownPlan(r.Context(), &Account{ID: owner}, *in.PlanID)
+		if err != nil {
+			return err
+		}
+		start := t
+		if in.StartsAt != nil && *in.StartsAt > 0 {
+			start = *in.StartsAt
+		}
+		pl.fill(&in, start)
+		if err := in.validate(); err != nil {
+			return err
+		}
+	}
 	scope, err := p.scopeFrom(r.Context(), owner, &in, Scope{})
 	if err != nil {
 		return err
 	}
-	t := now()
+	var nodeQuotas NodeQuotas
+	if in.NodeQuotas != nil {
+		if nodeQuotas, err = p.nodeQuotasFrom(r.Context(), owner, *in.NodeQuotas, nil); err != nil {
+			return err
+		}
+	}
+	newSub := &Sub{CreatedAt: t, StartsAt: deref(in.StartsAt, 0), ResetDay: deref(in.ResetDay, 0), ResetEvery: deref(in.ResetEvery, 0)}
+	cycle := periodStart(newSub, p.localNow())
+	if cycle == 0 || cycle > t {
+		cycle = t
+	}
 	var ids []int64
 	err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
 		for i := 1; i <= count; i++ {
@@ -536,11 +639,14 @@ func (p *Panel) apiCreateSub(w http.ResponseWriter, r *http.Request, a *Account)
 				nm = fmt.Sprintf("%s-%0*d", name, len(strconv.Itoa(count)), i)
 			}
 			res, err := tx.Exec(`INSERT INTO subs (id, account_id, name, note, token, uuid, secret, quota, reset_day, expires_at,
-				ip_limit, scope, cycle_start, created_at, updated_at, login, password_hash)
-				VALUES (`+db.NextID("subs")+`, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				ip_limit, scope, cycle_start, created_at, updated_at, login, password_hash, count_mode, starts_at, reset_every,
+				speed_limit, device_mode, plan_id, node_quotas, node_quota_mode)
+				VALUES (`+db.NextID("subs")+`, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				owner, nm, cleanNote(deref(in.Note, ""), 2000), randB64URL(18), newUUID(), randB64URL(24), deref(in.Quota, 0),
 				deref(in.ResetDay, 0), deref(in.ExpiresAt, 0), deref(in.IPLimit, 0), scope.String(),
-				t, t, t, made[i-1].login, made[i-1].hash)
+				cycle, t, t, made[i-1].login, made[i-1].hash, deref(in.CountMode, "both"), deref(in.StartsAt, 0),
+				deref(in.ResetEvery, 0), deref(in.SpeedLimit, 0), deref(in.DeviceMode, ""), deref(in.PlanID, 0),
+				nodeQuotas.String(), deref(in.NodeQuotaMode, ""))
 			if err != nil {
 				return err
 			}
@@ -634,11 +740,25 @@ func (p *Panel) apiUpdateSub(w http.ResponseWriter, r *http.Request, a *Account)
 	if in.Note != nil {
 		s.Note = cleanNote(*in.Note, 2000)
 	}
+	if in.PlanID != nil && *in.PlanID != s.PlanID {
+		return errStatus(http.StatusBadRequest, "to put a user on a plan, apply it: POST /api/users/{id}/plan (it starts a new period)")
+	}
 	if in.Quota != nil {
 		s.Quota = *in.Quota
 	}
+	schedule := s.ResetDay != deref(in.ResetDay, s.ResetDay) || s.ResetEvery != deref(in.ResetEvery, s.ResetEvery) ||
+		s.StartsAt != deref(in.StartsAt, s.StartsAt)
 	if in.ResetDay != nil {
 		s.ResetDay = *in.ResetDay
+	}
+	if in.ResetEvery != nil {
+		s.ResetEvery = *in.ResetEvery
+	}
+	if in.StartsAt != nil {
+		s.StartsAt = *in.StartsAt
+	}
+	if in.CountMode != nil {
+		s.CountMode = *in.CountMode
 	}
 	if in.ExpiresAt != nil {
 		s.ExpiresAt = max(*in.ExpiresAt, 0)
@@ -646,17 +766,48 @@ func (p *Panel) apiUpdateSub(w http.ResponseWriter, r *http.Request, a *Account)
 	if in.IPLimit != nil {
 		s.IPLimit = *in.IPLimit
 	}
+	limits := (in.SpeedLimit != nil && *in.SpeedLimit != s.SpeedLimit) || (in.DeviceMode != nil && *in.DeviceMode != s.DeviceMode) ||
+		(in.IPLimit != nil && s.DeviceMode == "refuse")
+	if in.SpeedLimit != nil {
+		s.SpeedLimit = *in.SpeedLimit
+	}
+	if in.DeviceMode != nil {
+		s.DeviceMode = *in.DeviceMode
+	}
+	if limits {
+		touch = true // the servers enforce them
+	}
+	if schedule { // the next reset follows the new schedule; what was counted so far stays
+		if cs := periodStart(s, p.localNow()); cs > s.CycleStart {
+			s.CycleStart = cs
+		}
+	}
 	if in.Servers != nil || in.Nodes != nil {
 		if s.Scope, err = p.scopeFrom(r.Context(), s.AccountID, &in, s.Scope); err != nil {
 			return err
 		}
 		touch = true
 	}
+	if in.NodeQuotas != nil {
+		q, err := p.nodeQuotasFrom(r.Context(), s.AccountID, *in.NodeQuotas, s.NodeQuotas)
+		if err != nil {
+			return err
+		}
+		s.NodeQuotas, touch = q, true // a protocol that stops at its limit may start or stop serving them
+	}
+	if in.NodeQuotaMode != nil && *in.NodeQuotaMode != s.NodeQuotaMode {
+		s.NodeQuotaMode, touch = *in.NodeQuotaMode, true
+	}
+	if schedule || in.CountMode != nil {
+		touch = touch || s.NodeQuotaMode == "stop" // what counts against a protocol's limit changed
+	}
 	s.UpdatedAt = now()
 	err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`UPDATE subs SET name = ?, note = ?, quota = ?, reset_day = ?, expires_at = ?, ip_limit = ?,
-			scope = ?, login = ?, password_hash = ?, updated_at = ? WHERE id = ?`, s.Name, s.Note, s.Quota, s.ResetDay,
-			s.ExpiresAt, s.IPLimit, s.Scope.String(), s.Login, s.PasswordHash, s.UpdatedAt, s.ID); err != nil {
+			scope = ?, login = ?, password_hash = ?, updated_at = ?, count_mode = ?, starts_at = ?, reset_every = ?, speed_limit = ?,
+			device_mode = ?, cycle_start = ?, node_quotas = ?, node_quota_mode = ? WHERE id = ?`, s.Name, s.Note, s.Quota, s.ResetDay,
+			s.ExpiresAt, s.IPLimit, s.Scope.String(), s.Login, s.PasswordHash, s.UpdatedAt, s.CountMode, s.StartsAt, s.ResetEvery,
+			s.SpeedLimit, s.DeviceMode, s.CycleStart, s.NodeQuotas.String(), s.NodeQuotaMode, s.ID); err != nil {
 			return err
 		}
 		if signOut { // a new name or password signs the user out everywhere
@@ -998,35 +1149,74 @@ func (p *Panel) apiSubTraffic(w http.ResponseWriter, r *http.Request, a *Account
 		d.Day = k
 		out = append(out, d)
 	}
+	at := map[string]int{} // a day's place in out
+	for i, d := range out {
+		at[d.Day] = i
+	}
 	nodes := []nodeTotal{}
-	rows, err = p.db.QueryContext(r.Context(), `SELECT t.node_id, COALESCE(s.name, 'Removed server'), COALESCE(n.kind, ''),
-		COALESCE(n.settings, '{}'), SUM(t.up), SUM(t.down) FROM traffic_daily t LEFT JOIN nodes n ON n.id = t.node_id
+	rows, err = p.db.QueryContext(r.Context(), `SELECT t.node_id, MAX(t.server_id), COALESCE(MAX(s.name), 'Removed server'), COALESCE(MAX(n.kind), ''),
+		COALESCE(MAX(n.name), ''), COALESCE(MAX(n.settings), '{}'), SUM(t.up), SUM(t.down) FROM traffic_daily t LEFT JOIN nodes n ON n.id = t.node_id
 		LEFT JOIN servers s ON s.id = t.server_id WHERE t.sub_id = ? AND t.day >= ? GROUP BY t.node_id
 		ORDER BY SUM(t.up + t.down) DESC`, s.ID, since)
 	if err == nil {
 		for rows.Next() {
 			var x nodeTotal
-			var server, kind, settings string
-			if rows.Scan(&x.NodeID, &server, &kind, &settings, &x.Up, &x.Down) == nil {
+			var server, kind, name, settings string
+			if rows.Scan(&x.NodeID, &x.ServerID, &server, &kind, &name, &settings, &x.Up, &x.Down) == nil {
 				label := "removed protocol"
-				if kind != "" {
+				switch {
+				case name != "":
+					label = name
+				case kind != "":
 					label = protocolLabel(kind, json.RawMessage(settings))
 				}
 				x.Name = server + " · " + label
+				x.Daily = make([]int64, len(out))
 				nodes = append(nodes, x)
 			}
 		}
 		rows.Close()
 	}
 	servers := []serverTotal{}
-	rows, err = p.db.QueryContext(r.Context(), `SELECT t.server_id, COALESCE(s.name, 'Removed server'), SUM(t.up), SUM(t.down)
+	rows, err = p.db.QueryContext(r.Context(), `SELECT t.server_id, COALESCE(MAX(s.name), 'Removed server'), SUM(t.up), SUM(t.down)
 		FROM traffic_daily t LEFT JOIN servers s ON s.id = t.server_id WHERE t.sub_id = ? AND t.day >= ?
 		GROUP BY t.server_id ORDER BY SUM(t.up + t.down) DESC`, s.ID, since)
 	if err == nil {
 		for rows.Next() {
 			var x serverTotal
 			if rows.Scan(&x.ServerID, &x.Name, &x.Up, &x.Down) == nil {
+				x.Daily = make([]int64, len(out))
 				servers = append(servers, x)
+			}
+		}
+		rows.Close()
+	}
+	// each protocol's and each server's bytes per day, for the chart
+	nodeAt, serverAt := map[int64]int{}, map[int64]int{}
+	for i, x := range nodes {
+		nodeAt[x.NodeID] = i
+	}
+	for i, x := range servers {
+		serverAt[x.ServerID] = i
+	}
+	rows, err = p.db.QueryContext(r.Context(), `SELECT day, node_id, server_id, SUM(up + down) FROM traffic_daily
+		WHERE sub_id = ? AND day >= ? GROUP BY day, node_id, server_id`, s.ID, since)
+	if err == nil {
+		for rows.Next() {
+			var day string
+			var node, server, n int64
+			if rows.Scan(&day, &node, &server, &n) != nil {
+				continue
+			}
+			d, ok := at[day]
+			if !ok {
+				continue
+			}
+			if i, ok := nodeAt[node]; ok {
+				nodes[i].Daily[d] += n
+			}
+			if i, ok := serverAt[server]; ok {
+				servers[i].Daily[d] += n
 			}
 		}
 		rows.Close()

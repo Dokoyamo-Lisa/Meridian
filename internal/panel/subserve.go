@@ -24,8 +24,26 @@ func clientLinks(link, name string) []subgen.Client {
 }
 
 func (p *Panel) subInfo(s *Sub) subgen.Info {
-	return subgen.Info{Title: s.Name, Upload: s.CycleUp, Download: s.CycleDown, Total: s.Quota, Expire: s.ExpiresAt,
+	up, down := infoUsage(s)
+	return subgen.Info{Title: s.Name, Upload: up, Download: down, Total: s.Quota, Expire: s.ExpiresAt,
 		UpdateHrs: 12, Zone: p.loc()}
+}
+
+// infoUsage is the upload and download apps are told: they add the two up and compare them with the
+// quota, so what does not count (the user's count mode) is left out.
+func infoUsage(s *Sub) (up, down int64) {
+	switch s.CountMode {
+	case "down":
+		return 0, s.CycleDown
+	case "up":
+		return s.CycleUp, 0
+	case "max":
+		if s.CycleUp > s.CycleDown {
+			return s.CycleUp, 0
+		}
+		return 0, s.CycleDown
+	}
+	return s.CycleUp, s.CycleDown
 }
 
 // renderSub builds the body a client receives. client is a format name; empty means detect.
@@ -43,6 +61,7 @@ func (p *Panel) renderSub(r *http.Request, s *Sub, client string) ([]byte, strin
 	}
 	link := p.subBase(r) + "/s/" + s.Token + "?client=" + format
 	body, ctype, skipped := subgen.Render(format, eps, p.subInfo(s), link)
+	body = p.plugins.filterSubscription(r.Context(), format, s.ID, ctype, body) // plugins with filter:subscription
 	return body, ctype, skipped, nil
 }
 

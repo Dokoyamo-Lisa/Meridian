@@ -186,14 +186,20 @@ func TestOwnCertExpiring(t *testing.T) {
 		"settings": map[string]any{"security": "tls", "cert_mode": "custom", "sni": "proxy.example.com", "cert_pem": certPEM, "key_pem": keyPEM}}, 201)
 	count := func() int {
 		var c int
-		_ = h.p.db.QueryRow(`SELECT COUNT(*) FROM events WHERE kind = 'cert_expiring' AND json_extract(data, '$.node') = ?`, id(n["id"])).Scan(&c)
+		_ = h.p.db.QueryRow(`SELECT COUNT(*) FROM events WHERE kind = 'cert_expiring' AND CAST(json_extract(data, '$.node') AS INTEGER) = ?`, id(n["id"])).Scan(&c)
 		return c
 	}
 	h.p.limitEvents(context.Background())
 	if c := count(); c != 0 {
 		t.Fatalf("three months left: %d events", c)
 	}
-	if _, err := h.p.db.Exec1(`UPDATE nodes SET settings = json_set(settings, '$.cert_expires', ?) WHERE id = ?`, now()+5*86400, id(n["id"])); err != nil {
+	var raw string
+	h.p.db.QueryRow(`SELECT settings FROM nodes WHERE id = ?`, id(n["id"])).Scan(&raw)
+	var ns map[string]any
+	_ = json.Unmarshal([]byte(raw), &ns)
+	ns["cert_expires"] = now() + 5*86400
+	nb, _ := json.Marshal(ns)
+	if _, err := h.p.db.Exec1(`UPDATE nodes SET settings = ? WHERE id = ?`, string(nb), id(n["id"])); err != nil {
 		t.Fatal(err)
 	}
 	h.p.limitEvents(context.Background())

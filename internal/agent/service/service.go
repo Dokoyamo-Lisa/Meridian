@@ -137,6 +137,12 @@ func EnableNow(name string) error {
 			return err
 		}
 		refreshDeps()
+		// started, but its process died without supervise-daemon starting it again: "start" would do
+		// nothing, so it starts afresh (it was down anyway - nobody is disconnected by this)
+		if _, err := os.Lstat(filepath.Join("/run/openrc/started", name)); err == nil && !IsActive(name) {
+			_, err := run("rc-service", name, "restart")
+			return err
+		}
 		_, err := run("rc-service", name, "start")
 		return err
 	}
@@ -208,7 +214,7 @@ func Status(name string) (pid int, since int64) {
 			return 0, 0
 		}
 		pid, _ = strconv.Atoi(strings.TrimSpace(string(b)))
-		if pid <= 0 || syscall.Kill(pid, 0) != nil {
+		if !alive(pid) {
 			return 0, 0
 		}
 		return pid, processStart(pid)
@@ -387,6 +393,29 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// alive says whether a process runs: it exists and is not a zombie - a dead child its supervisor
+// has not reaped (OpenRC's supervise-daemon can keep one around without starting a new process, and
+// signal 0 still reaches a zombie).
+func alive(pid int) bool {
+	if pid <= 0 || syscall.Kill(pid, 0) != nil {
+		return false
+	}
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	}
+	s := string(b)
+	i := strings.LastIndexByte(s, ')') // the command can contain spaces and parentheses
+	if i < 0 || i+2 >= len(s) {
+		return true
+	}
+	switch s[i+2] {
+	case 'Z', 'X', 'x':
+		return false
+	}
+	return true
 }
 
 // processStart is when a process started (Unix seconds), from /proc.

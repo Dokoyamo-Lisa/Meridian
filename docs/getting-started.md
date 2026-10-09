@@ -32,8 +32,11 @@ get links and their own page, never the panel. Sign in, then right away:
 2. **Settings › Panel**: check the public URL (servers use it to reach the panel) and the timezone
    (days and monthly resets follow it).
 
-The panel runs as the unprivileged user `meridian`. Its database is `/var/lib/meridian/meridian.db`,
-its settings `/etc/meridian/meridian.env`.
+The panel runs as the unprivileged user `meridian`. Its data is in PostgreSQL (the database
+`meridian`, which the installer sets up from the distribution's packages and the panel reaches over
+the local socket without a password) - or in SQLite, `/var/lib/meridian/meridian.db`, with
+`--database sqlite` or where PostgreSQL could not be installed. `meridian db status` says which. Its
+settings are in `/etc/meridian/meridian.env`.
 
 ## 2. Add a server
 
@@ -90,6 +93,15 @@ The address clients use is the provider's public IP (the agent reports it), not 
 sees the provider's address instead of the devices': device counts, country rules and IP blocks
 cannot tell devices apart there.
 
+### Servers whose IP address changes, and servers with IPv6 only
+
+A server on a home connection, or one whose provider hands out new addresses, is reached by a
+dynamic DNS name: write the name as its address and tick **Its IP address changes (dynamic DNS)**.
+Every link to it then uses the name; the panel checks that the name points at the server and, with a
+Cloudflare token in **Settings › Dynamic DNS**, can keep it up to date itself. A server with IPv6
+only needs a panel address with IPv6 (an AAAA record) - the dialog says so when it has none. Details:
+[IPv6-only servers and dynamic DNS](ipv6-and-dynamic-dns.md).
+
 ## 3. Add protocols
 
 **Protocols › Add protocol**, pick the server and a starting point:
@@ -118,6 +130,24 @@ do instead. Below the form you see which apps can use the protocol as configured
   apps that cannot are left out - links are never made insecure), a **Let's
   Encrypt** certificate the agent obtains and renews (needs a domain pointing at the server and
   port 80 free), or a certificate you paste.
+- **Trojan with REALITY**: Trojan can use REALITY instead of TLS - no domain or certificate. The
+  Clash Meta apps (Clash Verge Rev, FlClash, Mihomo Party), sing-box, Stash, Loon, Quantumult X and
+  the Xray-based apps (v2rayN, v2rayNG, v2Box...) can use it; Shadowrocket, Hiddify and Surge
+  cannot, so VLESS with REALITY stays the better default.
+- **VLESS Encryption** (VLESS): VLESS encrypts by itself with a post-quantum key exchange (ML-KEM-768
+  with X25519; the panel makes the keys). It works without TLS - then choose the *random* look, which
+  looks like random data - and behind a CDN the CDN cannot read the traffic. Only the Xray-based
+  apps, the Clash Meta apps and Stash can use it; the protocol page lists the others as not
+  supported. *How the server proves itself*: X25519 keeps links short; ML-KEM-768 is post-quantum
+  too but makes every link and QR code about 1.6 KB longer. Turning it on or off, or changing it,
+  means its devices must refresh their subscription.
+- **Port hopping** (Hysteria2): apps change the UDP port they send to every half minute, within a
+  range such as `20000-30000` that the server redirects to the protocol's port. It gets past networks
+  that slow down one long UDP flow. The agent redirects the range with nftables, live - Hysteria2
+  does not restart. Open the range for UDP in the provider's firewall, keep it free of other
+  programs and below 32768 (the server's own connections use the ports above). The Clash Meta apps,
+  sing-box, Stash, Surge, Loon, v2rayN, v2rayNG and NekoBox hop; other apps use the port itself.
+  It needs nftables and agent 1.0, and is not offered where the provider decides the ports.
 - Ports are chosen for you (443 first for TLS, REALITY and Hysteria2 where it is free; 8388 for
   Shadowsocks, 51820 for WireGuard) and can be changed. On a server whose provider decides the
   ports, only those ports are used (see above).
@@ -138,7 +168,8 @@ do instead. Below the form you see which apps can use the protocol as configured
   accepts only the pass. The exit may pass on once more - a relay - so a chain has two passes at
   most (entry › relay › exit), each to another server; the list of exits shows a relay with where it
   leads (`Tokyo · REALITY → Frankfurt · REALITY`). While something passes through a protocol, its
-  own exit must leave the internet itself.
+  own exit must leave the internet itself. A protocol can also pass through an **external node** - a
+  provider's proxy you imported (see [Routing](routing.md)).
 
 **Already running Xray, V2Ray, x-ui, 3x-ui, sing-box or Hysteria2 on the server?** Use **Import
 existing setup** on the server page. The agent reads their configuration (it changes nothing), you
@@ -227,9 +258,40 @@ Options:
 
 - **Access**: everything (including servers you add later), or only some - whole servers (with the
   protocols added to them later) and single protocols, in any mix.
-- **Data per cycle, reset day, valid until, device limit**: these only raise alerts. Nothing is ever
-  paused or cut off automatically - pausing is always your click.
+- **Quota per cycle** and **what counts** toward it: upload and download together, download only
+  (what the user's devices receive), upload only, or whichever of the two is larger. Apps that show
+  usage are told the same.
+- **Usage resets**: never, monthly on a day, or every N days counted from the user's **start** date
+  (every 30 days, every 7 days...). Changing when it resets keeps what was counted so far; the next
+  reset follows the new schedule.
+- **Starts** and **valid until**: the user's period.
+- **Devices online at once** (counted by IP address, on all servers together) and a **speed limit**
+  in Mbps or Gbps for the user's devices together on each server. Over the device limit you get an
+  alert - or, if you choose **Turn the extra devices away**, the devices that connected first keep
+  working and any more cannot connect until one of them goes offline (a device counts as gone two
+  minutes after its last connection; one that reconnects sooner keeps its place). Only that user's
+  devices are turned away: others behind the same address are not touched.
+
+  Both are enforced by the servers' agents (1.0 and later) with almost no cost: a speed limit is a
+  kernel rate limit (nftables) on the addresses the user's devices are connected from, each way, and
+  the extra devices get a routing rule in Xray and are refused at Hysteria2's sign-in - nothing
+  restarts. A new device is under the speed limit within one report interval (10 seconds by
+  default). Hysteria2 apps of a limited user also ask for no more than the limit when the protocol
+  declares a bandwidth. WireGuard devices are limited by speed; a WireGuard configuration is one
+  device anyway.
 - **How many**: create `team-01` … `team-20` in one go, each with their own password.
+
+The quota and the end date only raise alerts. Nothing is ever paused automatically - pausing is
+always your click. Everything above can be changed later with **Edit**.
+
+### Plans
+
+**Users › Plans** keeps presets - for example *Monthly 100 GB*: 100 GB of download a month, 3
+devices, 200 Mbps, the Tokyo and Frankfurt servers. Choose a plan when creating users and it fills in
+the form (everything stays editable). On a user's page, **More › New period on a plan** starts a new
+period: the plan's settings replace the user's, the period starts today (or the day you pick) and ends
+after the plan's duration, and usage starts at zero (unless you untick it). Changing a plan changes
+nobody unless you tick **Change its users too**; removing one leaves its users as they are.
 
 On the user's page in the panel you see their link with a QR code and import buttons, who is
 connected right now, IP history, destinations and daily traffic.
@@ -284,13 +346,18 @@ office).
   countries at once is probably shared; open the user and look at their IP history.
 - **Monitor › Destinations**: where traffic goes (domains for Xray and Hysteria, exact bytes for
   WireGuard with DNS logging on).
+- **Monitor › Health**: what the servers' health checks found - crypto-miners, ports nobody opened,
+  new accounts and SSH keys, SSH sign-ins and more ([health checks](health.md)). Mark each as yours
+  (expected) or seen (acknowledged); nothing is stopped on its own.
 - **Block** an abusive IP from any of these lists; **Pause** a user to stop them.
 - **Notifications** (Settings › Notifications): problems that need you, sent as they happen to a
   Telegram chat and/or an HTTPS webhook (Slack, Discord and Mattermost work as they are) - servers
   going offline or coming back, a machine that restarted, a configuration a server refused, a core
   that crashed, users who used up their data or whose access ended, expiring shared certificates,
-  and (if you want) sign-ins. Create a bot with @BotFather, send it a message, paste its token and
-  press **Find chats**. Turning notifications on never sends the past, and they never pause anyone.
+  and (if you want) sign-ins, and high and critical health risks. Create a bot with @BotFather, send
+  it a message, paste its token and press **Find chats**. Turning notifications on never sends the
+  past, and they never pause anyone. The same bot can answer commands and send a daily report
+  ([the Telegram bot](telegram.md)).
 
 ## 8. Country rules (optional)
 
@@ -312,9 +379,33 @@ The country lists come from DB-IP's free database, downloaded by the panel once 
 128 KB) and how it moves - the umbrella assembling, Rise, Pulse, Spin or None. The preview shows it
 as users will see it; **Use the umbrella** brings the built-in logo back.
 
+### Your own styles
+
+**Settings › Panel › Your own styles (CSS)** adds your CSS after Meridian's, for the panel and for
+the status page and users' pages separately - e.g. `:root { --accent: #e0673a; }`. A style sheet
+cannot load images or fonts from other sites (use `data:` addresses), so it changes looks only.
+For whole themes, see [plugins](plugins.md).
+
+## 10. Traffic rules and external nodes (optional)
+
+**Routing** sends some traffic elsewhere than the server users connect to:
+
+1. **Import nodes** (optional): paste a provider's share links, its subscription's content or a Clash
+   file, or give its subscription address. Nodes that would turn certificate checks off or travel
+   unencrypted are left out, each with the reason; passwords and keys are never shown again.
+2. **Add rule**: what it matches (site lists such as `openai` or `netflix`, domains, countries,
+   addresses, ports, BitTorrent, or everything), where it applies (every server, some servers, some
+   protocols) and where the traffic goes - directly, through a protocol on another server or an
+   external node, to a load balancer, or nowhere. The first rule that matches wins.
+
+Rules apply within seconds and restart nothing; they split the traffic of the Xray protocols, not
+Hysteria2 or WireGuard. If an exit cannot be used somewhere, that traffic is blocked there - never
+sent out directly instead - and the page says so. Details and examples: [Routing](routing.md).
+
 ## Next steps
 
 - [Proxy pass](architecture.md#proxy-pass): users connect to a nearby server and exit elsewhere.
+- [Routing](routing.md): traffic rules, load balancers and external nodes.
 - **Port forwards** (server page): relay a port to another host with exact byte counts.
 - [API tokens and MCP](mcp.md): let scripts or an AI assistant use the panel.
 - [Operations](operations.md): backups, upgrades, troubleshooting.

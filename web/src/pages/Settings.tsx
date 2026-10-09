@@ -8,9 +8,28 @@ import { Ago, Check, Code, Empty, ErrorBox, Field, Loading, Modal, PageHead, QR,
 import { ApiReference } from './ApiDocs'
 import { Certificates } from './Certificates'
 import { Notifications } from './Notifications'
+import { PanelLinkSettings } from './PanelLink'
+import { Plugins } from './Plugins'
 import { Updates } from './Updates'
+import { DynamicDNSSettings } from './DynamicDNS'
+import { MaintenanceSettings, TurnstileSettings } from './SignInGuard'
+import { CustomCSSSettings } from './CustomCSS'
+import { Backups } from './Backups'
 
-type Tab = 'general' | 'certs' | 'notify' | 'updates' | 'security' | 'api'
+type Tab = 'general' | 'certs' | 'notify' | 'dns' | 'backups' | 'updates' | 'security' | 'api' | 'plugins'
+
+// the charts of a server's details on the status page, in the order they appear there
+const STATUS_CHARTS: [string, string][] = [
+  ['cpu', 'CPU'],
+  ['memory', 'Memory'],
+  ['disk', 'Disk'],
+  ['diskio', 'Disk activity'],
+  ['network', 'Network'],
+  ['load', 'Load'],
+  ['connections', 'Connections'],
+  ['temperature', 'Temperature'],
+  ['ping', 'Ping'],
+]
 
 export function Settings() {
   const s = useSession()
@@ -26,17 +45,28 @@ export function Settings() {
           ['general', 'Panel'],
           ['certs', 'Certificates'],
           ['notify', 'Notifications'],
+          ['dns', 'Dynamic DNS'],
+          ['backups', 'Backups'],
           ['updates', 'Updates'],
           ['security', 'Security'],
           ['api', 'API & MCP'],
+          ['plugins', 'Plugins'],
         ]}
       />
-      {tab === 'general' && <General />}
+      {tab === 'general' && (
+        <>
+          <General />
+          <CustomCSSSettings />
+        </>
+      )}
       {tab === 'certs' && <Certificates />}
       {tab === 'notify' && <Notifications />}
+      {tab === 'dns' && <DynamicDNSSettings />}
+      {tab === 'backups' && <Backups />}
       {tab === 'updates' && <Updates />}
       {tab === 'security' && <Security />}
       {tab === 'api' && <ApiTab />}
+      {tab === 'plugins' && <Plugins />}
     </>
   )
 }
@@ -239,6 +269,7 @@ function General() {
             <input class="input" inputMode="numeric" value={String(v.report_interval)} onInput={(e) => set('report_interval', Number(e.currentTarget.value.replace(/[^0-9]/g, '')) || 0)} />
           </Field>
         </div>
+        <PanelLinkSettings v={v} set={set} />
       </section>
 
       <section class="panel">
@@ -295,6 +326,43 @@ function General() {
               label="Show the servers to everyone"
               hint="Where each server is, whether it is up, its load, bandwidth, traffic and the day its paid period ends - like a probe page. Prices are never shown. Off: visitors see only the sign-in."
             />
+            {v.status_public && (
+              <div class="sub-checks">
+                <Check
+                  checked={v.status_overview}
+                  onChange={(x) => set('status_overview', x)}
+                  label="Show the overview"
+                  hint="The globe, the totals, resources, bandwidth, throughput and the latest events. Off: visitors and users start at the list of servers; you still see the overview."
+                />
+                <Check
+                  checked={v.status_events}
+                  onChange={(x) => set('status_events', x)}
+                  label="Show the events"
+                  hint="When servers went offline and came back, over the last 30 days. Off: only you see them - they are not sent to anyone else."
+                />
+                <Field
+                  label="Charts in a server's details"
+                  hint="What visitors and users see over time when they open a server (from 1 hour to 30 days); each picks which of these to show. Ping shows the ping monitors marked public (Monitor › Ping), never their addresses. You always see all of them."
+                >
+                  <div class="chips-pick">
+                    {STATUS_CHARTS.map(([k, label]) => {
+                      const on = (v.status_charts || []).includes(k)
+                      return (
+                        <button
+                          type="button"
+                          class={'chip-pick' + (on ? ' on' : '')}
+                          aria-pressed={on}
+                          onClick={() => set('status_charts', on ? v.status_charts.filter((x) => x !== k) : STATUS_CHARTS.map((c) => c[0]).filter((x) => x === k || v.status_charts.includes(x)))}
+                        >
+                          {on && <Icon name="check" size="sm" />}
+                          {label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </Field>
+              </div>
+            )}
             <Check
               checked={v.status_ips}
               onChange={(x) => set('status_ips', x)}
@@ -492,6 +560,10 @@ function Security() {
           </div>
         )}
       </section>
+      <div class="grid two">
+        <TurnstileSettings />
+        <MaintenanceSettings />
+      </div>
       {totp && <TotpSetup data={totp} onClose={() => setTotp(null)} />}
       {disabling && <Disable2FA onClose={() => setDisabling(false)} />}
     </>

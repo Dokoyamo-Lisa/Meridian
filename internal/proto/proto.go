@@ -35,6 +35,62 @@ type State struct {
 	Certs        []SharedCert  `json:"certs,omitempty"`       // shared certificates the inbounds refer to
 	Geo          *GeoRule      `json:"geo,omitempty"`         // who may connect, by country
 	Actions      []Action      `json:"actions,omitempty"`
+	// PanelVia: this server's agent reaches the panel through another server the operator chose -
+	// its addresses, "ip:port", best first. Empty = directly. Relay: this server passes other servers'
+	// agents through to the panel. Both need agents 1.0 or later (Caps.Relay); older ones ignore them.
+	PanelVia []string `json:"panel_via,omitempty"`
+	Relay    *Relay   `json:"relay,omitempty"`
+	// Speed: users whose devices together get at most Mbps on this server, each way - the agent
+	// limits the traffic to and from the addresses they are connected from (Caps.Limits).
+	Speed []SpeedLimit `json:"speed,omitempty"`
+	// Refuse: devices (addresses) of users who are over their device limit, turned away until one
+	// of their allowed devices goes offline - Hysteria2 sign-ins from them are refused here (Xray
+	// gets a routing rule in its configuration).
+	Refuse []Refusal `json:"refuse,omitempty"`
+	// Ping: addresses this server measures the way to, at fixed intervals (1.0 and later); the
+	// results come back in the batches, so a link that was down loses none of them.
+	Ping []PingTarget `json:"ping,omitempty"`
+}
+
+// PingTarget is one address a server pings: ICMP echo, or the time a TCP connection takes.
+type PingTarget struct {
+	ID       int64  `json:"id"`
+	Target   string `json:"target"` // a host name or an IP address
+	Kind     string `json:"kind"`   // icmp | tcp
+	Port     int    `json:"port,omitempty"`
+	Interval int    `json:"interval"` // seconds between rounds
+}
+
+// PingResult is one round of probes to a PingTarget: Sent probes, Lost of them, and the round
+// trips of the others in milliseconds.
+type PingResult struct {
+	ID   int64   `json:"id"`
+	TS   int64   `json:"ts"`
+	Sent int     `json:"sent"`
+	Lost int     `json:"lost"`
+	Min  float64 `json:"min,omitempty"`
+	Avg  float64 `json:"avg,omitempty"`
+	Max  float64 `json:"max,omitempty"`
+}
+
+// SpeedLimit is one user's speed limit.
+type SpeedLimit struct {
+	Sub  int64 `json:"s"`
+	Mbps int   `json:"mbps"`
+}
+
+// Refusal is one user's devices turned away.
+type Refusal struct {
+	Sub int64    `json:"s"`
+	IPs []string `json:"ips"`
+}
+
+// Relay is a server's part in passing other servers' agents through to the panel: it listens on
+// Port (TCP, every address) and joins each connection from one of the Allow addresses - the relayed
+// servers' - to the panel, unread. TLS and the sealed bodies stay end to end.
+type Relay struct {
+	Port  int      `json:"port"`
+	Allow []string `json:"allow"`
 }
 
 // GeoRule limits who may connect to the server's protocols and forwards, by country. The address
@@ -63,6 +119,9 @@ type AgentSettings struct {
 	// ACMEPort is where Let's Encrypt's check arrives on a server whose provider forwards TCP port 80
 	// to another port (NAT servers, containers); 0 = port 80 itself.
 	ACMEPort int `json:"acme_port,omitempty"`
+	// Transport is how the agent talks to the panel: "" = over its WebSocket (WSPath, falling back to
+	// HTTP by itself while that cannot be opened), "http" = HTTP requests only (1.0 and later).
+	Transport string `json:"transport,omitempty"`
 }
 
 // Cores pins the versions the agent runs. Upgrades happen only through an explicit action.
@@ -166,6 +225,9 @@ type HyNode struct {
 	// Custom is the operator's own configuration (a JSON object, from their YAML), merged on top of
 	// what the agent writes; auth and trafficStats stay the agent's.
 	Custom json.RawMessage `json:"custom,omitempty"`
+	// HopPorts is a UDP port range ("20000-30000") the agent's firewall redirects to Port, for apps
+	// that hop between ports (Caps.PortHop). Hysteria itself never sees it: changing it restarts nothing.
+	HopPorts string `json:"hop_ports,omitempty"`
 }
 
 type HyUser struct {
@@ -225,7 +287,54 @@ const (
 	ActionCheckTarget     = "check_target" // probe a REALITY target from the server
 	ActionScan            = "scan"         // find proxy software already running on the server (read only)
 	ActionStopService     = "stop_service" // take over: stop and disable a unit the last scan found
+	ActionCheckExit       = "check_exit"   // reach an external node from the server (ExitCheck; agents 1.0 and later)
+	ActionConsole         = "console"      // open the supervisor's console: a shell joined to the panel (Caps.Console)
+	// ActionShareAdd / ActionShareRemove: the server's own panel shares it with another panel, or stops
+	// (ShareAdd / ShareRemove; Caps.Share). Only the server's own panel can; a panel it is shared with
+	// leaves by removing the server on its side.
+	ActionShareAdd    = "share_add"
+	ActionShareRemove = "share_remove"
 )
+
+// ShareAdd shares the server with another panel: the agent reports to it too and runs what it sets
+// up - everything but the console; the host itself stays the server's own panel's.
+type ShareAdd struct {
+	Panel string `json:"panel"` // how the agent reaches that panel: https://host[:port]
+	Token string `json:"token"` // the agent token that panel made for its record of this server
+	Name  string `json:"name,omitempty"`
+}
+
+// ShareRemove stops sharing the server with a panel.
+type ShareRemove struct {
+	Panel string `json:"panel"`
+}
+
+// ShareStatus is one panel a server is shared with, as its own panel sees it in the hello.
+type ShareStatus struct {
+	Panel     string `json:"panel"` // that panel's address (scheme and host)
+	Name      string `json:"name,omitempty"`
+	Connected bool   `json:"connected"` // it answered in the last two minutes
+	LastAt    int64  `json:"last_at,omitempty"`
+	Error     string `json:"error,omitempty"` // why the agent cannot reach it, or what of it does not run
+}
+
+// ExitCheck asks the agent to reach an external node from the server (ActionCheckExit): a TCP
+// connection, then a TLS handshake checked against SNI when the node uses TLS or REALITY.
+type ExitCheck struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+	TLS  bool   `json:"tls,omitempty"`
+	SNI  string `json:"sni,omitempty"`
+}
+
+// ExitResult is what an ExitCheck found.
+type ExitResult struct {
+	OK    bool   `json:"ok"`
+	Addr  string `json:"addr,omitempty"` // the address it connected to
+	MS    int64  `json:"ms,omitempty"`   // the connection, and the TLS handshake when there was one
+	TLS   bool   `json:"tls,omitempty"`  // a TLS handshake with a valid certificate for SNI succeeded
+	Error string `json:"error,omitempty"`
+}
 
 // TargetCheck asks the agent to test REALITY camouflage sites from the server (ActionCheckTarget).
 type TargetCheck struct {
@@ -260,6 +369,7 @@ type Report struct {
 	Live          *Live          `json:"live,omitempty"`
 	Applied       *Applied       `json:"applied,omitempty"`
 	ActionResults []ActionResult `json:"action_results,omitempty"`
+	Health        *Health        `json:"health,omitempty"` // what the health check found (agents 1.0 and later)
 }
 
 type ReportAck struct {
@@ -286,6 +396,18 @@ type Hello struct {
 	// Addrs are the addresses on the server's own interfaces (not loopback, link-local or Meridian's
 	// WireGuard): what a protocol can be bound to. Agents before 0.6 leave it out.
 	Addrs []string `json:"addrs,omitempty"`
+	// IPv4Gone, IPv6Gone: the host has no public address of that kind any more (no route to the
+	// internet of that kind in two checks in a row). An empty IPv4 or IPv6 alone is a lookup that
+	// failed this time: the panel keeps the address it knew. Agents before 1.0 leave them out.
+	IPv4Gone bool `json:"ipv4_gone,omitempty"`
+	IPv6Gone bool `json:"ipv6_gone,omitempty"`
+	// Guest: to a panel the server is shared with, that it is (the console, the agent's and the
+	// cores' upgrades, the country rule and relaying stay with the server's own panel).
+	Guest bool `json:"guest,omitempty"`
+	// Virt is what the host runs in: kvm, xen, vmware, hyper-v, virtualbox, apple, vm (a machine of
+	// unknown kind), openvz, lxc, docker, podman, wsl ...; "none" when no hypervisor shows, "" unknown.
+	// Agents before 1.0 leave it out.
+	Virt string `json:"virt,omitempty"`
 }
 
 type Caps struct {
@@ -305,7 +427,34 @@ type Caps struct {
 	APIPort int `json:"api_port,omitempty"`
 	// RestartPending: the agent understands ActionRestartPending (0.6.3 and later).
 	RestartPending bool `json:"restart_pending,omitempty"`
+	// Relay: the agent reaches the panel through a relay (State.PanelVia) and relays other servers'
+	// agents (State.Relay) - 1.0 and later.
+	Relay bool `json:"relay,omitempty"`
+	// PortHop: the agent redirects Hysteria2's HyNode.HopPorts with nftables (1.0 and later).
+	PortHop bool `json:"port_hop,omitempty"`
+	// NAT64: the host's resolver gives names with only IPv4 addresses an IPv6 address (DNS64) that
+	// the provider's NAT64 carries on to IPv4 - an IPv6-only server then reaches them by name.
+	NAT64 bool `json:"nat64,omitempty"`
+	// Limits: the agent enforces users' speed limits and turns away devices over a limit
+	// (State.Speed, State.Refuse) - 1.0 and later.
+	Limits bool `json:"limits,omitempty"`
+	// Console: the agent opens the supervisor's console (ActionConsole); false when this server
+	// turned it off (/etc/meridian-agent/no-console, MERIDIAN_NO_CONSOLE=1) or the agent is older.
+	Console bool `json:"console,omitempty"`
+	// Share: the agent can be shared with up to two more panels (ActionShareAdd; 1.0 and later).
+	Share bool `json:"share,omitempty"`
 }
+
+// The console's WebSocket: the agent dials ConsolePath + the session's id; every message starts with
+// its kind - what the shell prints or what is typed, the window's size (cols, rows: two big-endian
+// uint16 each), the end ({"exit": code}), and from the panel to the browser that the shell is there.
+const (
+	ConsolePath  = "/agent/v1/console/"
+	ConsoleData  = 0x00
+	ConsoleSize  = 0x01
+	ConsoleEnd   = 0x03
+	ConsoleReady = 0x04
+)
 
 // Batch holds everything that accumulates. It carries a sequence number so a retried batch is
 // counted exactly once.
@@ -320,6 +469,7 @@ type Batch struct {
 	NIC      NICDelta      `json:"nic"`
 	Events   []AgentEvent  `json:"events,omitempty"`
 	GeoDrops int64         `json:"geo_drops,omitempty"` // packets the country rule dropped
+	Pings    []PingResult  `json:"pings,omitempty"`     // rounds of the State's Ping targets
 }
 
 type UserTraffic struct {
@@ -375,6 +525,20 @@ type Live struct {
 	Cores  map[string]CoreStatus `json:"cores,omitempty"`
 	Ports  []int                 `json:"ports,omitempty"` // TCP+UDP ports in use on the host
 	Certs  []CertState           `json:"certs,omitempty"` // the shared certificates held and served
+	// PanelPath is how the agent reached the panel last: "relay" or "direct" (1.0 and later);
+	// RelayError says why the relay failed when it went directly instead. RelayConns are the other
+	// servers' connections this one passes through to the panel now. PanelConn is what it talks to
+	// the panel over: "websocket" or "http"; ConnError says why not its WebSocket, when it wants one.
+	PanelPath  string `json:"panel_path,omitempty"`
+	RelayError string `json:"relay_error,omitempty"`
+	RelayConns int    `json:"relay_conns,omitempty"`
+	PanelConn  string `json:"panel_conn,omitempty"`
+	ConnError  string `json:"conn_error,omitempty"`
+	// Shares: to the server's own panel, the other panels it shares the server with (1.0 and later).
+	// Taken: to every panel, the ports the other panels' protocols and forwards use on this server,
+	// as ranges (first, last).
+	Shares []ShareStatus `json:"shares,omitempty"`
+	Taken  [][2]int      `json:"taken,omitempty"`
 }
 
 type Sys struct {
@@ -393,6 +557,11 @@ type Sys struct {
 	UDP       int     `json:"udp"`
 	RXRate    int64   `json:"rx_rate"` // bytes per second
 	TXRate    int64   `json:"tx_rate"`
+	// DiskRead and DiskWrite are the whole disks' bytes per second (1.0 and later). Temps are the
+	// temperature sensors the host has, in °C by name - none in most virtual machines.
+	DiskRead  int64              `json:"disk_read,omitempty"`
+	DiskWrite int64              `json:"disk_write,omitempty"`
+	Temps     map[string]float64 `json:"temps,omitempty"`
 }
 
 type OnlineUser struct {
@@ -428,6 +597,62 @@ type ActionResult struct {
 	OK     bool   `json:"ok"`
 	Output string `json:"output,omitempty"`
 }
+
+// ---------------------------------------------------------------- health (agent -> panel)
+
+// Health is what the agent's health check found: signs that the server was broken into or is
+// abused. The first scan only records what is normal on the server (the baseline); findings are
+// about what changed since, plus things that are bad in themselves (a crypto-miner,
+// /etc/ld.so.preload, a program whose file was deleted). Panels before 1.0 ignore it.
+type Health struct {
+	ID         string    `json:"id"` // random id of the baseline; a new one starts Seq over
+	BaselineAt int64     `json:"baseline_at"`
+	ScannedAt  int64     `json:"scanned_at"`
+	Findings   []Finding `json:"findings,omitempty"` // new since the panel last had them, oldest first; sent until a report is acknowledged
+	Active     []string  `json:"active,omitempty"`   // keys of the lasting findings that still hold
+	Agent      string    `json:"agent,omitempty"`    // SHA-256 of the running agent program
+}
+
+// Finding is one thing the health check noticed. The same thing found again has the same key, so
+// the panel recognises it - and the operator can say it is expected.
+type Finding struct {
+	Seq      int64  `json:"seq"`
+	Key      string `json:"key"`
+	Kind     string `json:"kind"`
+	Severity string `json:"severity"` // info | warning | high | critical
+	Title    string `json:"title"`
+	Detail   string `json:"detail,omitempty"`
+	At       int64  `json:"at"`
+	// Lasting: a condition that holds until it stops (a process, an open port), listed in Active
+	// while it does; otherwise a one-off event (a changed file, a sign-in)
+	Lasting bool `json:"lasting,omitempty"`
+}
+
+// Severities of findings, least serious first.
+const (
+	SevInfo     = "info"
+	SevWarning  = "warning"
+	SevHigh     = "high"
+	SevCritical = "critical"
+)
+
+// Kinds of findings.
+const (
+	FindMiner   = "miner"    // a known crypto-miner, or a process talking to a mining pool
+	FindProcess = "process"  // a program run from a temporary folder, deleted, or posing as a kernel thread
+	FindCPU     = "cpu"      // a program that kept a processor busy for a long time
+	FindPort    = "port"     // a port opened after the baseline that is not Meridian's or a system service's
+	FindAccount = "account"  // accounts added, a second uid 0, passwords and administrator rights changed
+	FindSSHKeys = "ssh_keys" // authorized_keys changed
+	FindPreload = "preload"  // /etc/ld.so.preload
+	FindCron    = "cron"     // scheduled tasks
+	FindService = "service"  // services set to start at boot
+	FindModule  = "module"   // kernel modules loaded
+	FindSSH     = "ssh"      // sign-ins over SSH and bursts of failed ones
+	FindTraffic = "traffic"  // far more sent than Meridian carries
+	FindLoad    = "load"     // load average above twice the cores
+	FindBinary  = "binary"   // Meridian's own programs changed
+)
 
 // ---------------------------------------------------------------- identities
 

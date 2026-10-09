@@ -117,8 +117,11 @@ Behind the human's own TLS reverse proxy instead (no domain on this host):
 sudo bash scripts/install-panel.sh --listen 127.0.0.1:8080
 ```
 
-**You should see** `Checksum OK`, then `Installing Meridian ...`, then `Sign in with:` followed by a
-username and a password, then `Open https://panel.example.com`.
+**You should see** `Checksum OK`, then `Installing Meridian ...`, then `The panel keeps its data in
+PostgreSQL (database meridian)` (the installer installs PostgreSQL with apt or dnf; where it cannot,
+it says the panel keeps its data in SQLite - that works too), then `Sign in with:` followed by a
+username and a password, then `Open https://panel.example.com`. Add `--database sqlite` only if the
+human asks for SQLite. `sudo -u meridian meridian db status` shows which database the panel uses.
 
 - Copy the username and password **only into your reply to the human**, and tell them to sign in,
   change the password (Settings › Security) and turn on two-factor sign-in. The installer shows them
@@ -374,9 +377,16 @@ sudo -u meridian meridian backup /var/lib/meridian/backup-$(date +%F).db
 
 **Restore**: `sudo systemctl stop meridian`, then
 `sudo meridian restore --data /var/lib/meridian backup.db` (it refuses while the panel runs, checks
-the file and keeps the replaced database as `meridian.db.before-restore-...`), then
+the file and keeps the replaced database as `meridian.db.before-restore-...` - on PostgreSQL it puts
+the backup into PostgreSQL and keeps the replaced data as that SQLite file), then
 `sudo systemctl start meridian`. Never copy a backup over `meridian.db` by hand: the old database's
 write-ahead log would be laid over it.
+
+**Move the data between SQLite and PostgreSQL** (only when the human asks): stop the panel, then
+`sudo -u meridian meridian db to-postgres --data /var/lib/meridian 'postgres://meridian@/meridian?host=/var/run/postgresql'`
+(an empty database the `meridian` user owns: `sudo -u postgres createuser meridian` and
+`sudo -u postgres createdb -O meridian meridian`) or `sudo -u meridian meridian db to-sqlite --data /var/lib/meridian`;
+**you should see** a line per table and `Done`; start the panel. On failure nothing changed.
 
 **Move the panel to another host**: back up; install on the new host (steps 1-2); stop it; restore
 the backup there; start it; point the domain at the new host. Servers reconnect by themselves.
@@ -393,7 +403,8 @@ set up (everyone on it is disconnected: ask first).
 **Settings file** `/etc/meridian/meridian.env` (restart with `sudo systemctl restart meridian`
 after a change - servers keep running): `MERIDIAN_DOMAIN`, `MERIDIAN_EMAIL`, `MERIDIAN_LISTEN`,
 `MERIDIAN_TRUSTED_PROXIES` (comma-separated CIDRs of reverse proxies, e.g. Cloudflare's ranges),
-`MERIDIAN_NO_GEO_DOWNLOAD`. Nothing else belongs there.
+`MERIDIAN_NO_GEO_DOWNLOAD`, and - only while recovering from a plugin that keeps the panel from
+working - `MERIDIAN_NO_PLUGINS=1` (remove it again afterwards). Nothing else belongs there.
 
 ## Troubleshooting
 
@@ -409,5 +420,6 @@ after a change - servers keep running): `MERIDIAN_DOMAIN`, `MERIDIAN_EMAIL`, `ME
 | a request answered `400` with "needs nftables" | the server (often Alpine) has no nftables | `apk add nftables iproute2` on it, or leave that feature out - never edit firewall files yourself |
 | clients cannot connect, server READY | the server's firewall or cloud security group blocks the ports | step 5d with `ports.sh` |
 | `run this as the panel's user` | you ran a `meridian` command as root | prefix it with `sudo -u meridian` |
+| the panel's pages break or the panel stops answering right after a plugin was turned on | the plugin | `sudo -u meridian meridian plugins disable ID --data /var/lib/meridian` (`plugins list` shows the ids); if the panel does not answer at all, `MERIDIAN_NO_PLUGINS=1` in the settings file and restart - see docs/plugins.md |
 
 More: `docs/operations.md` (backups, reverse proxies, lost access, logs) and `docs/api.md`.

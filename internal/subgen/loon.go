@@ -6,9 +6,10 @@ import (
 	"strings"
 )
 
-// Loon reads proxies in its own line format ("name=protocol,host,port,..."), the way its manual and
-// Sub-Store's Loon output write them. It does not read wireguard:// share links, and its own format
-// has no gRPC, HTTPUpgrade or XHTTP.
+// Loon reads proxies in its own line format ("name=protocol,host,port,..."), as its manual writes
+// them (Loon documentation, Node › Single-Node Configuration): protocol names as written there, the
+// TLS server name in "sni", a self-signed certificate pinned by "tls-cert-sha256". It does not read
+// wireguard:// share links, and its own format has no gRPC, HTTPUpgrade, XHTTP or VLESS Encryption.
 
 // loonTLS returns the TLS options of a Loon VMess / VLESS / Trojan line: a self-signed certificate
 // is pinned (tls-cert-sha256), never left unchecked.
@@ -16,9 +17,9 @@ func loonTLS(e Endpoint) string {
 	var b strings.Builder
 	switch {
 	case e.reality():
-		fmt.Fprintf(&b, ",sni=%s,public-key=\"%s\",short-id=%s", e.SNI, e.PublicKey, e.ShortID)
+		fmt.Fprintf(&b, ",public-key=\"%s\",short-id=%s,sni=%s", e.PublicKey, e.ShortID, e.SNI)
 	case e.tls():
-		b.WriteString(",tls-name=" + e.SNI)
+		b.WriteString(",sni=" + e.SNI)
 		if e.pinned() {
 			b.WriteString(",tls-cert-sha256=" + e.PinSHA256)
 		}
@@ -31,7 +32,7 @@ func loonTLS(e Endpoint) string {
 	case "safari", "ios":
 		b.WriteString(",tls-profile=safari-ios18")
 	}
-	if len(e.ALPN) > 0 {
+	if len(e.ALPN) > 0 && e.Kind == KindTrojan { // the manual has alpn for Trojan only
 		b.WriteString(`,alpn="` + strings.Join(e.ALPN, ",") + `"`)
 	}
 	return b.String()
@@ -41,9 +42,6 @@ func loonTLS(e Endpoint) string {
 func loonTransport(e Endpoint) (string, string) {
 	switch e.transport() {
 	case TransportRaw:
-		if e.Kind == KindTrojan {
-			return "", ""
-		}
 		return ",transport=tcp", ""
 	case TransportWS:
 		s := ",transport=ws,path=" + nz(e.Path, "/")
@@ -63,6 +61,9 @@ func loonLine(e Endpoint) (string, string) {
 	}
 	switch e.Kind {
 	case KindVLESS, KindVMess, KindTrojan:
+		if e.encrypted() {
+			return "", whyEncryption
+		}
 		tr, why := loonTransport(e)
 		if why != "" {
 			return "", why
@@ -73,14 +74,14 @@ func loonLine(e Endpoint) (string, string) {
 		var line string
 		switch e.Kind {
 		case KindVLESS:
-			line = fmt.Sprintf(`%s=vless,%s,%d,"%s"%s`, name, e.Host, e.Port, e.UUID, tr)
+			line = fmt.Sprintf(`%s=VLESS,%s,%d,"%s"%s`, name, e.Host, e.Port, e.UUID, tr)
 		case KindVMess:
-			line = fmt.Sprintf(`%s=vmess,%s,%d,auto,"%s"%s,alterId=0`, name, e.Host, e.Port, e.UUID, tr)
-		default: // Trojan always runs over TLS
-			if !e.tls() {
+			line = fmt.Sprintf(`%s=VMess,%s,%d,auto,"%s"%s,alterId=0`, name, e.Host, e.Port, e.UUID, tr)
+		default: // Trojan always runs over TLS (or REALITY)
+			if !e.tls() && !e.reality() {
 				return "", whyProtocol
 			}
-			line = fmt.Sprintf(`%s=trojan,%s,%d,"%s"%s`, name, e.Host, e.Port, e.Password, tr)
+			line = fmt.Sprintf(`%s=Trojan,%s,%d,"%s"%s`, name, e.Host, e.Port, e.Password, tr)
 		}
 		if e.Kind != KindTrojan {
 			line += ",over-tls=" + strconv.FormatBool(e.tls() || e.reality())
@@ -93,9 +94,9 @@ func loonLine(e Endpoint) (string, string) {
 		}
 		return line + loonTLS(e) + ",udp=true", ""
 	case KindShadowsocks:
-		return fmt.Sprintf(`%s=shadowsocks,%s,%d,%s,"%s",udp=true`, name, e.Host, e.Port, e.Method, e.Password), ""
+		return fmt.Sprintf(`%s=Shadowsocks,%s,%d,%s,"%s",udp=true`, name, e.Host, e.Port, e.Method, e.Password), ""
 	case KindHysteria2:
-		line := fmt.Sprintf(`%s=Hysteria2,%s,%d,"%s",tls-name=%s`, name, e.Host, e.Port, e.Password, e.SNI)
+		line := fmt.Sprintf(`%s=Hysteria2,%s,%d,"%s",sni=%s`, name, e.Host, e.Port, e.Password, e.SNI)
 		if e.PinSHA256 != "" {
 			line += ",tls-cert-sha256=" + e.PinSHA256
 		}
@@ -105,6 +106,9 @@ func loonLine(e Endpoint) (string, string) {
 			line += ",salamander-password=" + e.ObfsPassword
 		default:
 			return "", whyObfs
+		}
+		if from, to, ok := e.hop(); ok { // Loon writes a range with a colon
+			line += `,server-ports="` + from + ":" + to + `"`
 		}
 		if e.DownMbps > 0 {
 			line += fmt.Sprintf(",download-bandwidth=%d", e.DownMbps)
@@ -116,16 +120,17 @@ func loonLine(e Endpoint) (string, string) {
 		if !e.tls() {
 			return fmt.Sprintf(`%s=http,%s,%d,%s,"%s"`, name, e.Host, e.Port, e.Username, e.Password), ""
 		}
-		if e.pinned() { // Loon pins certificates only for VMess, VLESS, Trojan and Hysteria2
-			return "", whyNoPin
+		line := fmt.Sprintf(`%s=https,%s,%d,%s,"%s",sni=%s`, name, e.Host, e.Port, e.Username, e.Password, e.SNI)
+		if e.pinned() {
+			line += ",tls-cert-sha256=" + e.PinSHA256
 		}
-		return fmt.Sprintf(`%s=https,%s,%d,%s,"%s",sni=%s`, name, e.Host, e.Port, e.Username, e.Password, e.SNI), ""
+		return line, ""
 	case KindWireGuard:
 		if e.WG == nil {
 			return "", whyProtocol
 		}
 		var b strings.Builder
-		fmt.Fprintf(&b, "%s=wireguard,interface-ip=%s", name, e.WG.Address4)
+		fmt.Fprintf(&b, "%s=WireGuard,interface-ip=%s", name, e.WG.Address4)
 		if e.WG.Address6 != "" {
 			b.WriteString(",interface-ipv6=" + e.WG.Address6)
 		}

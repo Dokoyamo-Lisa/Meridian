@@ -47,7 +47,9 @@ func (p *Panel) alerts(ctx context.Context, accountID int64, servers []*Server, 
 			out = append(out, alert{Level: "warn", Kind: "bandwidth", ServerID: s.ID,
 				Message: fmt.Sprintf("%s has used %s of its %s monthly bandwidth", s.Name, fmtBytes(s.BwUsed()), fmtBytes(s.BwLimit))})
 		}
+		out = append(out, p.dnsAlerts(s)...) // a dynamic DNS name that points elsewhere (ddns.go)
 	}
+	out = append(out, p.riskAlerts(ctx, accountID)...) // open high and critical health risks (health.go)
 	for _, s := range subs {
 		if s.Paused {
 			continue
@@ -67,7 +69,18 @@ func (p *Panel) alerts(ctx context.Context, accountID int64, servers []*Server, 
 			}
 			out = append(out, a)
 		}
+		for _, l := range p.nodeLimitsOf(ctx, s) { // limits per protocol used up (nodequota.go)
+			if l.Used < l.Quota {
+				continue
+			}
+			msg := fmt.Sprintf("%s used all of their %s on %s · %s", s.Name, fmtBytes(l.Quota), l.Server, l.Protocol)
+			if l.Stopped {
+				msg += " - it does not serve them until their cycle starts over"
+			}
+			out = append(out, alert{Level: "warn", Kind: "over_node_quota", SubID: s.ID, ServerID: l.ServerID, Message: msg})
+		}
 	}
+	out = append(out, p.relayAlerts(ctx, servers)...) // servers that keep losing the panel (relay.go)
 	rank := map[string]int{"crit": 0, "warn": 1, "info": 2}
 	sort.SliceStable(out, func(i, j int) bool { return rank[out[i].Level] < rank[out[j].Level] })
 	return out
@@ -402,6 +415,12 @@ func (p *Panel) apiEvents(w http.ResponseWriter, r *http.Request, a *Account) er
 // callers also get the version, the protocol catalogue and the panel's public address.
 func (p *Panel) apiMeta(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"site_title": p.settings().SiteTitle, "about": p.settings().StatusAbout, "logo": p.logoInfo()}
+	if key := p.turnstileOn(); key != "" { // the sign-in pages show the widget (guard.go)
+		out["turnstile"] = key
+	}
+	if msg := p.maintenanceText(); msg != "" {
+		out["maintenance"] = msg
+	}
 	if _, _, err := p.resolve(w, r, authOpts{}); err == nil {
 		out["version"] = Version
 		out["kinds"] = kindList
@@ -499,9 +518,22 @@ func (p *Panel) apiPutSettings(w http.ResponseWriter, r *http.Request, a *Accoun
 			return err
 		}
 	}
+	if s.AutoRelay != p.settings().AutoRelay {
+		if err := p.checkAutoRelay(r.Context(), a, s.AutoRelay); err != nil {
+			return err
+		}
+	}
+	s.MaintenanceNote = cleanNote(s.MaintenanceNote, 300)
 	old := p.settings()
 	if err := p.saveSettings(s); err != nil {
 		return err
+	}
+	switch { // maintenance mode (guard.go)
+	case s.Maintenance && !old.Maintenance:
+		p.maintenanceSessions(r.Context())
+		p.event(a.ID, "warn", "maintenance", 0, 0, a.ID, a.Username+" started maintenance: only the supervisor can sign in; users were signed out (their connections keep working)", nil)
+	case !s.Maintenance && old.Maintenance:
+		p.event(a.ID, "info", "maintenance", 0, 0, a.ID, a.Username+" ended maintenance: users can sign in again", nil)
 	}
 	p.digests.kick()
 	if old.XrayVersion != p.settings().XrayVersion {

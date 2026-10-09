@@ -3,6 +3,8 @@ import { DestRow, PanelEvent, IPRow, OnlineIP, Server, User, bytes, dateTime, de
 import { Icon } from '../icons'
 import { setQuery, useLocation } from '../router'
 import { Ago, Empty, ErrorBox, Field, Loading, Modal, PageHead, Search, Seg, Tabs, ask, errText, run, toast, useAsync, usePoll } from '../ui'
+import { HealthTab } from './Health'
+import { PingTab } from './Ping'
 
 // ---------------------------------------------------------------- shared pieces
 
@@ -110,7 +112,7 @@ export function BlockIPModal(props: { ip?: string; onClose: () => void; onSaved?
 
 // ---------------------------------------------------------------- page
 
-type Tab = 'live' | 'ips' | 'dests' | 'events' | 'blocks'
+type Tab = 'live' | 'ips' | 'dests' | 'events' | 'blocks' | 'health' | 'ping'
 
 export function Monitor() {
   const loc = useLocation()
@@ -131,6 +133,8 @@ export function Monitor() {
           ['dests', 'Destinations'],
           ['events', 'Events'],
           ['blocks', 'Blocked IPs'],
+          ['health', 'Health'],
+          ['ping', 'Ping'],
         ]}
       />
       {tab === 'live' && <LiveTab />}
@@ -138,6 +142,8 @@ export function Monitor() {
       {tab === 'dests' && <DestsTab subName={subName} subs={subs.data || []} servers={servers.data || []} />}
       {tab === 'events' && <EventsTab servers={servers.data || []} />}
       {tab === 'blocks' && <BlocksTab />}
+      {tab === 'health' && <HealthTab servers={servers.data || []} />}
+      {tab === 'ping' && <PingTab servers={servers.data || []} />}
     </>
   )
 }

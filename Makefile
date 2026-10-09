@@ -57,6 +57,13 @@ audit:
 
 check: test vet lint vuln audit
 
+# the subscription formats checked by the real clients' own parsers (test/formats/README.md); the
+# first run downloads the pinned clients
+.PHONY: formats
+formats:
+	eval "$$(bash test/formats/fetch-clients.sh --env)" && MERIDIAN_NO_GEO_DOWNLOAD=1 $(GO) test -count=1 \
+		-run 'TestFormatsInRealClients|TestShareLinksRoundTrip' -v ./internal/panel
+
 # docs/openapi.json is generated from the code - never edit it by hand
 docs:
 	$(GO) run -ldflags "-X meridian/internal/panel.Version=$(VERSION)" ./cmd/meridian openapi > docs/openapi.json

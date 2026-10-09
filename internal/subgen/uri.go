@@ -69,14 +69,16 @@ func securityQuery(q url.Values, e Endpoint) {
 	}
 }
 
-// URI renders one endpoint as a share link (v2rayN / Shadowrocket / Hiddify / NekoBox style).
-// It returns "" with a reason for endpoints that have no safe link form.
+// URI renders one endpoint as a share link (v2rayN / Shadowrocket / Hiddify / NekoBox style) for the
+// Xray-core apps. It returns "" for endpoints that have no safe link form.
 func URI(e Endpoint) string {
-	u, _ := uri(e)
+	u, _ := uri(e, profileFull)
 	return u
 }
 
-func uri(e Endpoint) (string, string) {
+// uri renders a share link for the apps of a profile, or says why there is none. The link is the
+// same for every profile but for options only some apps read (Hysteria2's "mport").
+func uri(e Endpoint, p linkProfile) (string, string) {
 	frag := "#" + url.PathEscape(e.Name)
 	switch e.Kind {
 	case KindVLESS, KindTrojan:
@@ -85,7 +87,7 @@ func uri(e Endpoint) (string, string) {
 		}
 		q := url.Values{}
 		if e.Kind == KindVLESS {
-			q.Set("encryption", "none")
+			q.Set("encryption", nz(e.Encryption, "none")) // the share link standard (XTLS/Xray-core#716)
 			if e.Flow != "" {
 				q.Set("flow", e.Flow)
 			}
@@ -137,6 +139,11 @@ func uri(e Endpoint) (string, string) {
 			q.Set("obfs", e.Obfs)
 			q.Set("obfs-password", e.ObfsPassword)
 		}
+		// port hopping: v2rayN, v2rayNG and NekoBox read the range from "mport"; apps that do not read
+		// it use the port of the link. Shadowrocket documents nothing, so its links leave it out.
+		if from, to, ok := e.hop(); ok && p != profileRocket {
+			q.Set("mport", from+"-"+to)
+		}
 		return "hysteria2://" + url.PathEscape(e.Password) + "@" + hostPort(e.Host, e.Port) + "/?" + q.Encode() + frag, ""
 	case KindShadowsocks:
 		user := base64.RawURLEncoding.EncodeToString([]byte(e.Method + ":" + e.Password))
@@ -181,7 +188,7 @@ func URIList(eps []Endpoint, p linkProfile) (string, []string) {
 			skipped = append(skipped, skipOf(e, why))
 			continue
 		}
-		u, _ := uri(e)
+		u, _ := uri(e, p)
 		b.WriteString(u)
 		b.WriteByte('\n')
 	}

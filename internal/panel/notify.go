@@ -28,13 +28,15 @@ import (
 // notifyGroups are the kinds of events each group sends.
 var notifyGroups = map[string][]string{
 	"servers": {"server_offline", "server_online", "server_rebooted", "apply_failed", "core_restarted",
-		"update_available", "panel_updated", "update_failed"},
-	"users":        {"quota_reached", "user_expired", "user_expiring", "over_ip_limit", "user_no_access"},
+		"update_available", "panel_updated", "update_failed", "panel_trouble", "panel_relay_auto", "panel_relay_gone", "panel_relay_port",
+		"backup_failed", "backup_restored", "ext_source_failed"},
+	"users":        {"quota_reached", "node_quota_reached", "user_expired", "user_expiring", "over_ip_limit", "user_no_access"},
 	"certificates": {"cert_expiring"},
-	"security":     {"login_failed", "login", "password_changed", "totp_disabled", "token_created"},
+	"security":     {"login_failed", "login", "password_changed", "totp_disabled", "token_created", "console_opened", "telegram_panel_linked"},
+	"health":       {"risk_critical", "risk_high"}, // health checks' high and critical findings (health.go)
 }
 
-var defaultNotifyGroups = []string{"servers", "users", "certificates"}
+var defaultNotifyGroups = []string{"servers", "users", "certificates", "health"}
 
 // notifyConfig is stored on its own (settings key "notify"), never in the panel settings that
 // read-only tokens can fetch: the bot token and a webhook URL are secrets.
@@ -43,6 +45,7 @@ type notifyConfig struct {
 	TelegramChat  string   `json:"telegram_chat,omitempty"`
 	WebhookURL    string   `json:"webhook_url,omitempty"`
 	Groups        []string `json:"groups"`
+	botConfig              // the Telegram bot: commands, buttons, the daily report (telegram.go)
 }
 
 func (c notifyConfig) active() bool {
@@ -63,17 +66,19 @@ type notifyView struct {
 	TelegramToken string   `json:"telegram_token" doc:"The bot token, masked (its bot id and last characters); empty when none is set"`
 	TelegramChat  string   `json:"telegram_chat" doc:"The Telegram chat notifications go to"`
 	WebhookURL    string   `json:"webhook_url" doc:"The webhook, masked (scheme and host); empty when none is set"`
-	Groups        []string `json:"groups" doc:"What is sent: servers (offline, back online, rebooted, failed to apply, crashed cores), users (quota used up, access ended or ending, over the device limit), certificates (shared certificates, and those pasted into a protocol, expiring), security (sign-ins, failed sign-ins, password and two-factor changes, new API tokens)"`
+	Groups        []string `json:"groups" doc:"What is sent: servers (offline, back online, rebooted, failed to apply, crashed cores, keeps losing the panel, moved to a relay, backups failed or restored, a subscription link that cannot be read), users (quota used up, a protocol's limit used up, access ended or ending, over the device limit), certificates (shared certificates, and those pasted into a protocol, expiring), security (sign-ins, failed sign-ins, password and two-factor changes, new API tokens), health (high and critical health risks)"`
 	Active        bool     `json:"active" doc:"Whether a channel is set up"`
 	LastSentAt    int64    `json:"last_sent_at" doc:"When a notification was last delivered (Unix seconds)"`
 	LastError     string   `json:"last_error" doc:"Why the last attempt failed, if it did"`
+	botView
 }
 
 type notifyInput struct {
 	TelegramToken *string   `json:"telegram_token" doc:"The bot's token from @BotFather; omit to keep the current one, empty to remove it"`
 	TelegramChat  *string   `json:"telegram_chat" doc:"The chat to write to: a numeric id (a group's is negative) or @channelname"`
 	WebhookURL    *string   `json:"webhook_url" doc:"An HTTPS address that receives a JSON POST ({text, content, events}) per batch; omit to keep the current one, empty to remove it"`
-	Groups        *[]string `json:"groups" doc:"What to send: servers, users, certificates, security"`
+	Groups        *[]string `json:"groups" doc:"What to send: servers, users, certificates, security, health"`
+	botInput
 }
 
 type notifyTestResult struct {
@@ -121,6 +126,7 @@ func (p *Panel) notifyConfig() notifyConfig {
 	if p.db.QueryRow(`SELECT value FROM settings WHERE key = 'notify'`).Scan(&raw) == nil {
 		_ = json.Unmarshal([]byte(raw), &c)
 	}
+	c.fill()
 	p.notify.mu.Lock()
 	p.notify.cfg = &c
 	p.notify.mu.Unlock()
@@ -168,7 +174,7 @@ func (p *Panel) viewOfNotify() notifyView {
 		groups = []string{}
 	}
 	return notifyView{TelegramToken: maskToken(c.TelegramToken), TelegramChat: c.TelegramChat, WebhookURL: maskURL(c.WebhookURL),
-		Groups: groups, Active: c.active(), LastSentAt: p.notify.lastSent, LastError: p.notify.lastErr}
+		Groups: groups, Active: c.active(), LastSentAt: p.notify.lastSent, LastError: p.notify.lastErr, botView: p.botView(c)}
 }
 
 // checkWebhook allows HTTPS addresses only, and none on this machine or a link-local network (a
@@ -202,6 +208,7 @@ func (p *Panel) apiPutNotify(w http.ResponseWriter, r *http.Request, a *Account)
 		return err
 	}
 	c := p.notifyConfig()
+	old := c
 	if in.TelegramToken != nil {
 		c.TelegramToken = strings.TrimSpace(*in.TelegramToken)
 		if c.TelegramToken != "" && !telegramTokenRE.MatchString(c.TelegramToken) {
@@ -229,7 +236,7 @@ func (p *Panel) apiPutNotify(w http.ResponseWriter, r *http.Request, a *Account)
 		groups := []string{}
 		for _, g := range *in.Groups {
 			if _, ok := notifyGroups[g]; !ok {
-				return errStatus(http.StatusBadRequest, "groups are servers, users, certificates and security")
+				return errStatus(http.StatusBadRequest, "groups are servers, users, certificates, security and health")
 			}
 			if !slices.Contains(groups, g) {
 				groups = append(groups, g)
@@ -237,9 +244,13 @@ func (p *Panel) apiPutNotify(w http.ResponseWriter, r *http.Request, a *Account)
 		}
 		c.Groups = groups
 	}
+	if err := c.applyBot(in.botInput, old, !authOf(r).Token); err != nil {
+		return err
+	}
 	if err := p.saveNotifyConfig(c); err != nil {
 		return err
 	}
+	p.botSettingsChanged(old, c)
 	p.event(a.ID, "info", "settings", 0, 0, a.ID, "Notifications changed", nil)
 	writeJSON(w, http.StatusOK, p.viewOfNotify())
 	return nil
@@ -285,6 +296,10 @@ func (p *Panel) apiTelegramChats(w http.ResponseWriter, r *http.Request, a *Acco
 	}
 	if !telegramTokenRE.MatchString(token) {
 		return errStatus(http.StatusBadRequest, "paste the bot token from @BotFather first")
+	}
+	if list, ok := p.botChats(token); ok { // the bot reads its messages itself (telegram.go)
+		writeJSON(w, http.StatusOK, list)
+		return nil
 	}
 	body, err := p.telegramCall(r.Context(), token, "getUpdates", url.Values{"limit": {"50"}})
 	if err != nil {
@@ -487,7 +502,7 @@ func (p *Panel) notifyTick(ctx context.Context) {
 		var e notifyEvent
 		if rows.Scan(&e.ID, &e.TS, &e.Level, &e.Kind, &e.Message) == nil {
 			last = e.ID
-			if kinds[e.Kind] {
+			if kinds[e.Kind] || e.Kind == "plugin_message" { // a plugin's own message is always sent
 				evs = append(evs, e)
 			}
 		}
@@ -497,11 +512,16 @@ func (p *Panel) notifyTick(ctx context.Context) {
 		p.setNotifyCursor(last)
 		return
 	}
-	text := p.notifyText(evs)
+	// plugins with filter:notify may change the text; an empty one holds this batch back
+	text := p.plugins.filterNotify(ctx, evs, p.notifyText(evs))
+	if text == "" {
+		p.setNotifyCursor(last)
+		return
+	}
 	var errs []string
 	sent := false
 	if c.TelegramToken != "" {
-		if err := p.sendTelegram(ctx, c, text); err != nil {
+		if err := p.telegramNotify(ctx, c, evs, text); err != nil { // health risks with their buttons (telegram.go)
 			errs = append(errs, err.Error())
 		} else {
 			sent = true
@@ -612,6 +632,7 @@ func (p *Panel) limitEvents(ctx context.Context) {
 			p.event(s.AccountID, "info", "user_expiring", 0, s.ID, 0, fmt.Sprintf("%s's access ends on %s", s.Name, p.dateText(s.ExpiresAt)), nil)
 		}
 	}
+	p.nodeQuotaEvents(ctx, subs) // limits per protocol used up (nodequota.go)
 	certs, err := p.db.QueryContext(ctx, `SELECT id, account_id, name, not_after FROM certs WHERE not_after > 0`)
 	if err != nil {
 		return
@@ -633,7 +654,7 @@ func (p *Panel) limitEvents(ctx context.Context) {
 			continue
 		}
 		var n int
-		_ = p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE kind = 'cert_expiring' AND ts >= ? AND json_extract(data, '$.cert') = ?`,
+		_ = p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE kind = 'cert_expiring' AND ts >= ? AND CAST(json_extract(data, '$.cert') AS INTEGER) = ?`,
 			c.notAfter-14*86400, c.id).Scan(&n)
 		if n > 0 {
 			continue
@@ -654,7 +675,7 @@ func (p *Panel) ownCertEvents(ctx context.Context, t int64) {
 	rows, err := p.db.QueryContext(ctx, `SELECT n.id, n.kind, n.settings, n.name, s.id, s.account_id, s.name,
 		CAST(json_extract(n.settings, '$.cert_expires') AS INTEGER) FROM nodes n JOIN servers s ON s.id = n.server_id
 		WHERE s.deleted_at = 0 AND n.enabled = 1 AND json_extract(n.settings, '$.cert_mode') = 'custom'
-		AND json_extract(n.settings, '$.cert_expires') > 0`)
+		AND CAST(json_extract(n.settings, '$.cert_expires') AS INTEGER) > 0`)
 	if err != nil {
 		return
 	}
@@ -677,7 +698,7 @@ func (p *Panel) ownCertEvents(ctx context.Context, t int64) {
 			continue
 		}
 		var n int
-		_ = p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE kind = 'cert_expiring' AND ts >= ? AND json_extract(data, '$.node') = ?`,
+		_ = p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE kind = 'cert_expiring' AND ts >= ? AND CAST(json_extract(data, '$.node') AS INTEGER) = ?`,
 			o.notAfter-14*86400, o.node).Scan(&n)
 		if n > 0 {
 			continue

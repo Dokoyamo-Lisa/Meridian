@@ -14,12 +14,15 @@ const (
 var privateCIDRs = []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10",
 	"169.254.0.0/16", "224.0.0.0/4", "fc00::/7", "fe80::/10", "::1/128"}
 
-// clashTransport adds the transport options of VLESS, VMess and Trojan.
+// clashTransport adds the transport options of VLESS, VMess and Trojan. Both read XHTTP for VLESS
+// only: mihomo's VMess and Trojan know ws and grpc (adapter/outbound), and take any other network as
+// plain TCP without a word, so they must never get it. Stash has no HTTPUpgrade (its documentation,
+// Proxy Types).
 func clashTransport(m omap, e Endpoint, stash bool) (omap, bool) {
 	t := e.transport()
 	switch t {
 	case TransportXHTTP:
-		if stash {
+		if e.Kind != KindVLESS {
 			return m, false
 		}
 		opts := omap{}.set("path", nz(e.Path, "/"))
@@ -47,41 +50,81 @@ func clashTransport(m omap, e Endpoint, stash bool) (omap, bool) {
 	case TransportGRPC:
 		return m.set("network", "grpc").set("grpc-opts", omap{}.set("grpc-service-name", e.ServiceName)), true
 	}
+	if stash && e.Kind != KindVLESS { // Stash lists tcp as a network of VLESS only: the others run over it without one
+		return m, true
+	}
 	return m.set("network", "tcp"), true
 }
 
-// clashTLS adds the TLS fields. Pinned certificates are checked by fingerprint (mihomo); Stash
-// cannot pin, so it gets those endpoints only when the protocol encrypts by itself.
-func clashTLS(m omap, e Endpoint, stash bool, sniKey string) (omap, string) {
+// clashTLS adds the TLS fields. A pinned self-signed certificate is checked by its SHA-256: mihomo
+// names it "fingerprint", Stash "server-cert-fingerprint". Stash documents the uTLS fingerprint
+// ("client-fingerprint") for VLESS only. Trojan always runs over TLS: neither has a "tls" option for it.
+func clashTLS(m omap, e Endpoint, stash bool, sniKey string) omap {
+	utls := !stash || e.Kind == KindVLESS
+	tls := func(on bool) omap {
+		if e.Kind == KindTrojan {
+			return m
+		}
+		return m.set("tls", on)
+	}
 	switch e.Security {
 	case SecurityReality:
-		return m.set("tls", true).set(sniKey, e.SNI).set("client-fingerprint", nz(e.Fingerprint, "chrome")).
-			set("reality-opts", omap{}.set("public-key", e.PublicKey).set("short-id", e.ShortID)), ""
+		m = tls(true).set(sniKey, e.SNI)
+		if utls {
+			m = m.set("client-fingerprint", nz(e.Fingerprint, "chrome"))
+		}
+		return m.set("reality-opts", omap{}.set("public-key", e.PublicKey).set("short-id", e.ShortID))
 	case SecurityTLS:
-		m = m.set("tls", true).set(sniKey, e.SNI).set("client-fingerprint", nz(e.Fingerprint, "chrome"))
+		m = tls(true).set(sniKey, e.SNI)
+		if utls {
+			m = m.set("client-fingerprint", nz(e.Fingerprint, "chrome"))
+		}
 		if len(e.ALPN) > 0 {
 			m = m.set("alpn", e.ALPN)
 		}
 		if e.pinned() {
-			if stash {
-				return nil, whyNoPin
-			}
-			m = m.set("fingerprint", e.PinSHA256) // pins the self-signed certificate
+			m = m.set(pinKey(stash), e.PinSHA256) // pins the self-signed certificate
 		}
-		return m, ""
+		return m
 	}
-	return m.set("tls", false), ""
+	return tls(false)
 }
 
-// clashProxy renders one endpoint for mihomo (Clash Meta). stash limits it to what Stash reads.
-// It returns a reason instead when the endpoint cannot be expressed.
+// pinKey is the option that pins a certificate by its SHA-256.
+func pinKey(stash bool) string {
+	if stash {
+		return "server-cert-fingerprint"
+	}
+	return "fingerprint"
+}
+
+// clashSNIKey is the option that carries the TLS server name: mihomo reads "servername" for VLESS and
+// VMess and "sni" for Trojan; Stash documents "sni" for VLESS and Trojan and "servername" for VMess.
+func clashSNIKey(e Endpoint, stash bool) string {
+	switch {
+	case e.Kind == KindTrojan, stash && e.Kind == KindVLESS:
+		return "sni"
+	}
+	return "servername"
+}
+
+// clashProxy renders one endpoint for mihomo (Clash Meta). stash renders it for Stash instead, which
+// reads the same format with its own names for some options. It returns a reason instead when the
+// endpoint cannot be expressed.
 func clashProxy(e Endpoint, stash bool) (omap, string) {
 	m := omap{}.set("name", e.Name)
 	switch e.Kind {
 	case KindVLESS, KindVMess, KindTrojan:
 		switch e.Kind {
 		case KindVLESS:
-			m = m.set("type", "vless").set("server", e.Host).set("port", e.Port).set("uuid", e.UUID).set("udp", true)
+			if stash && e.encrypted() && e.Flow != "" && e.transport() != TransportRaw && e.transport() != TransportXHTTP {
+				return nil, whyVisionStash
+			}
+			m = m.set("type", "vless").set("server", e.Host).set("port", e.Port).set("uuid", e.UUID)
+			if e.encrypted() {
+				m = m.set("encryption", e.Encryption)
+			}
+			m = m.set("udp", true)
 			if e.Flow != "" {
 				m = m.set("flow", e.Flow)
 			}
@@ -96,34 +139,9 @@ func clashProxy(e Endpoint, stash bool) (omap, string) {
 		if m, ok = clashTransport(m, e, stash); !ok {
 			return nil, whyTransport
 		}
-		sniKey := "servername"
-		if e.Kind == KindTrojan {
-			sniKey = "sni"
-		}
-		var why string
-		if m, why = clashTLS(m, e, stash, sniKey); why != "" {
-			return nil, why
-		}
-		return m, ""
+		return clashTLS(m, e, stash, clashSNIKey(e, stash)), ""
 	case KindHysteria2:
-		m = m.set("type", "hysteria2").set("server", e.Host).set("port", e.Port).set("password", e.Password).
-			set("sni", e.SNI).set("alpn", []string{"h3"})
-		if e.selfSigned() {
-			if stash {
-				return nil, whyNoPin
-			}
-			m = m.set("fingerprint", e.PinSHA256) // pins the self-signed certificate
-		}
-		if e.Obfs != "" {
-			m = m.set("obfs", e.Obfs).set("obfs-password", e.ObfsPassword)
-		}
-		if e.UpMbps > 0 {
-			m = m.set("up", fmt.Sprintf("%d Mbps", e.UpMbps))
-		}
-		if e.DownMbps > 0 {
-			m = m.set("down", fmt.Sprintf("%d Mbps", e.DownMbps))
-		}
-		return m, ""
+		return clashHysteria2(m, e, stash), ""
 	case KindShadowsocks:
 		return m.set("type", "ss").set("server", e.Host).set("port", e.Port).set("cipher", e.Method).
 			set("password", e.Password).set("udp", true), ""
@@ -136,10 +154,7 @@ func clashProxy(e Endpoint, stash bool) (omap, string) {
 		if e.tls() {
 			m = m.set("tls", true).set("sni", e.SNI)
 			if e.pinned() {
-				if stash {
-					return nil, whyNoPin
-				}
-				m = m.set("fingerprint", e.PinSHA256)
+				m = m.set(pinKey(stash), e.PinSHA256)
 			}
 		}
 		return m, ""
@@ -173,6 +188,48 @@ func clashProxy(e Endpoint, stash bool) (omap, string) {
 		return m, ""
 	}
 	return nil, whyProtocol
+}
+
+// clashHysteria2 renders a Hysteria2 endpoint. mihomo names the password "password" and the bandwidth
+// "up"/"down" with a unit; Stash names them "auth" and "up-speed"/"down-speed" in Mbps. Both hop
+// between the ports in "ports" and pin a self-signed certificate.
+func clashHysteria2(m omap, e Endpoint, stash bool) omap {
+	m = m.set("type", "hysteria2").set("server", e.Host).set("port", e.Port)
+	if from, to, ok := e.hop(); ok {
+		m = m.set("ports", from+"-"+to)
+	}
+	if stash {
+		m = m.set("auth", e.Password)
+	} else {
+		m = m.set("password", e.Password)
+	}
+	m = m.set("sni", e.SNI)
+	if !stash {
+		m = m.set("alpn", []string{"h3"})
+	}
+	if e.selfSigned() {
+		m = m.set(pinKey(stash), e.PinSHA256) // pins the self-signed certificate
+	}
+	if e.Obfs != "" {
+		m = m.set("obfs", e.Obfs).set("obfs-password", e.ObfsPassword)
+	}
+	switch {
+	case stash:
+		if e.UpMbps > 0 {
+			m = m.set("up-speed", e.UpMbps)
+		}
+		if e.DownMbps > 0 {
+			m = m.set("down-speed", e.DownMbps)
+		}
+	default:
+		if e.UpMbps > 0 {
+			m = m.set("up", fmt.Sprintf("%d Mbps", e.UpMbps))
+		}
+		if e.DownMbps > 0 {
+			m = m.set("down", fmt.Sprintf("%d Mbps", e.DownMbps))
+		}
+	}
+	return m
 }
 
 // Clash renders a complete mihomo profile (stash=true: Stash).

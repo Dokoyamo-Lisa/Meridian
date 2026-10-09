@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -71,6 +72,12 @@ type Spec struct {
 	LocalOnly []int
 	// Geo is the country rule; nil = none
 	Geo *GeoSpec
+	// Hysteria are the Hysteria2 nodes: their port hopping ranges are redirected to their ports
+	// (hop.go); hops are those ranges once checked
+	Hysteria []proto.HyNode
+	hops     []Hop
+	// Speed are users' speed limits (speed.go): their devices' addresses come with SetSpeedIPs
+	Speed []proto.SpeedLimit
 }
 
 // GeoSpec limits who may reach the services, by address list: Allow = only these networks,
@@ -140,12 +147,17 @@ type Counter struct {
 type Engine struct {
 	mu         sync.Mutex
 	applied    string
+	hopFailed  string // a table with port hopping the host refused, and why (it applies without them)
+	hopErr     error
 	last       map[string][2]uint64 // comment -> bytes, packets at last read
 	pending    map[int64]*Counter   // deltas not yet collected
 	resolved   map[string][]netip.Addr
 	resolvedAt time.Time
-	geoDrops   int64 // packets the country rule dropped, not yet collected
-	adopt      bool  // no saved baselines: counters met at the first read were counted already
+	geoDrops   int64               // packets the country rule dropped, not yet collected
+	adopt      bool                // no saved baselines: counters met at the first read were counted already
+	speed      []proto.SpeedLimit  // the limits in the table now
+	speedWant  map[string][]string // speed set -> the addresses it should hold
+	speedHave  map[string][]string // ... and holds (nil: not known, filled again)
 }
 
 // Baseline is where each counter stood at the last read.
@@ -199,7 +211,42 @@ func Available() bool {
 func (e *Engine) Apply(spec Spec) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	essential := len(spec.Forwards) > 0 || len(spec.WG) > 0 || len(spec.Blocked) > 0 || spec.Geo != nil
+	hops, bad := Hops(spec.Hysteria)
+	spec.hops, bad = cleanHops(spec, hops, bad)
+	err := e.apply(spec)
+	if len(bad) > 0 {
+		err = errors.Join(err, errors.New(strings.Join(bad, "; ")))
+	}
+	return err
+}
+
+// apply installs a spec whose hopping ranges were checked. A host that refuses the table with port
+// hopping in it (a kernel without the fib expression) gets everything else, and the reason.
+func (e *Engine) apply(spec Spec) error {
+	if len(spec.hops) > 0 {
+		with := e.render(spec)
+		if with == e.hopFailed {
+			spec.hops = nil
+			return errors.Join(e.applyOnce(spec), e.hopErr)
+		}
+		err := e.applyOnce(spec)
+		if err == nil || !Available() {
+			return err
+		}
+		spec.hops = nil
+		if err := e.applyOnce(spec); err != nil {
+			return err // nftables itself fails, not port hopping
+		}
+		e.hopFailed, e.hopErr = with, fmt.Errorf("port hopping does not work on this server: %w", err)
+		return e.hopErr
+	}
+	return e.applyOnce(spec)
+}
+
+func (e *Engine) applyOnce(spec Spec) error {
+	spec.Speed = speedOK(spec.Speed)
+	essential := len(spec.Forwards) > 0 || len(spec.WG) > 0 || len(spec.Blocked) > 0 || spec.Geo != nil || len(spec.hops) > 0 ||
+		len(spec.Speed) > 0
 	if !essential && !Available() {
 		return nil // the loopback guard alone is a hardening extra, not worth an error without nft
 	}
@@ -208,7 +255,7 @@ func (e *Engine) Apply(spec Spec) error {
 		if e.applied != "" || tableExists() {
 			e.readCounters()
 			run("delete table inet " + Table + "\n")
-			e.applied = ""
+			e.applied, e.speed = "", nil
 			e.last, e.adopt = map[string][2]uint64{}, false // the next table counts from zero
 		}
 		return nil
@@ -218,7 +265,7 @@ func (e *Engine) Apply(spec Spec) error {
 	}
 	text := e.render(spec)
 	if text == e.applied && tableExists() {
-		return nil
+		return e.syncSpeed()
 	}
 	if needsForwarding(spec) {
 		enableForwarding(needsForwarding6(spec))
@@ -231,7 +278,16 @@ func (e *Engine) Apply(spec Spec) error {
 	e.applied = text
 	e.last, e.adopt = map[string][2]uint64{}, false // a new table counts from zero
 	ensureForwardAccept(spec)
-	return nil
+	// a new table starts with empty speed sets: the devices known now go back in
+	e.speed, e.speedHave = spec.Speed, nil
+	keep := map[string][]string{}
+	for _, l := range spec.Speed {
+		for _, v6 := range []bool{false, true} {
+			keep[speedSet(l.Sub, v6)] = e.speedWant[speedSet(l.Sub, v6)]
+		}
+	}
+	e.speedWant = keep
+	return e.syncSpeed()
 }
 
 func needsForwarding(spec Spec) bool {
@@ -370,11 +426,17 @@ func (e *Engine) render(spec Spec) string {
 	w("  set block4 { type ipv4_addr; flags interval; auto-merge;%s }", elems(blk4))
 	w("  set block6 { type ipv6_addr; flags interval; auto-merge;%s }", elems(blk6))
 	w("  set svc_tcp { type inet_service;%s }", elemsInt(tcp))
-	w("  set svc_udp { type inet_service;%s }", elemsInt(udp))
+	if len(spec.hops) > 0 { // ranges: an interval set, a range may hold the protocol's own port
+		w("  set svc_udp { type inet_service; flags interval; auto-merge;%s }", udpElems(udp, spec.hops))
+	} else {
+		w("  set svc_udp { type inet_service;%s }", elemsInt(udp))
+	}
 	w("  set own_tcp { type inet_service;%s }", elemsInt(ownTCP))
 	w("  set own_udp { type inet_service;%s }", elemsInt(ownUDP))
 	w("  set noreach4 { type ipv4_addr; flags interval;%s }", elems(append([]string{}, noReach4...)))
 	w("  set noreach6 { type ipv6_addr; flags interval;%s }", elems(append([]string{}, noReach6...)))
+	speed := speedOK(spec.Speed)
+	renderSpeed(w, speed)
 	if spec.Geo != nil {
 		v4, v6, ex4, ex6 := spec.Geo.clean()
 		w("  set geo4 { type ipv4_addr; flags interval; auto-merge;%s }", bigElems(v4))
@@ -417,6 +479,7 @@ func (e *Engine) render(spec Spec) string {
 		w("    tcp dport @svc_tcp jump geo_in")
 		w("    udp dport @svc_udp jump geo_in")
 	}
+	speedRulesIn(w, speed) // users' speed limits, what their devices send (speed.go)
 	w("  }")
 	// ...and nothing flows back to them either, so open sessions (QUIC especially, whose large
 	// windows would let a server keep sending until its idle timeout) stop at once
@@ -430,6 +493,7 @@ func (e *Engine) render(spec Spec) string {
 		w("    tcp sport @own_tcp jump geo_out")
 		w("    udp sport @own_udp jump geo_out")
 	}
+	speedRulesOut(w, speed) // ...and what they receive
 	w("  }")
 	w("  chain guard_fwd {")
 	w("    type filter hook forward priority -150; policy accept;")
@@ -470,6 +534,9 @@ func (e *Engine) render(spec Spec) string {
 					f.ListenPort, mark, l3, to, comment(f.ID, "conn"))
 			}
 		}
+	}
+	for _, h := range spec.hops {
+		w("    %s", hopRule(h))
 	}
 	w("  }")
 
@@ -728,7 +795,10 @@ func tableExists() bool {
 	return exec.Command("nft", "list", "table", "inet", Table).Run() == nil
 }
 
-func run(script string) error {
+// run hands nft a script (tests replace it).
+var run = runNft
+
+func runNft(script string) error {
 	cmd := exec.Command("nft", "-f", "-")
 	cmd.Stdin = strings.NewReader(script)
 	var stderr bytes.Buffer

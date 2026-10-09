@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { AppSupport, Cert, NodeView, ProtocolCatalog, ProtocolCheck, Server, del, get, patch, post } from '../api'
+import { AppSupport, Cert, ExtNode, NodeView, ProtocolCatalog, ProtocolCheck, Server, User, del, get, patch, plural, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
-import { Check, Code, Empty, ErrorBox, Field, Loading, Menu, Modal, PageHead, Seg, Toggle, ask, errText, run, toast, useAsync, usePoll } from '../ui'
+import { Check, Code, Empty, ErrorBox, Field, Loading, Menu, Modal, PageHead, Search, Seg, Toggle, ask, errText, run, toast, useAsync, usePoll } from '../ui'
+import { AccessDialog, accessOf, accessText, setNodeUsers } from './ProtoAccess'
 
 // waitAction polls a queued server action until the agent reports back.
 export async function waitAction(id: number, timeoutMs = 90000): Promise<{ status: string; output: string }> {
@@ -34,19 +35,85 @@ const transportNames: Record<string, string> = {
 
 const securityNames: Record<string, string> = { none: 'None', tls: 'TLS', reality: 'REALITY' }
 
+// how VLESS Encryption makes the traffic look, and how the server proves itself
+const encLooks: [string, string][] = [
+  ['native', 'Native - with TLS or REALITY'],
+  ['xorpub', 'Native with the key disguised'],
+  ['random', 'Random - looks like random data, the choice without TLS'],
+]
+const encAuthNames: [string, string][] = [
+  ['x25519', 'X25519 - short links'],
+  ['mlkem768', 'ML-KEM-768 - post-quantum too, links about 1.6 KB longer'],
+]
+
 // ---------------------------------------------------------------- the page
+
+const kindNames: Record<string, string> = {
+  vless: 'VLESS',
+  vmess: 'VMess',
+  trojan: 'Trojan',
+  shadowsocks: 'Shadowsocks',
+  hysteria2: 'Hysteria2',
+  wireguard: 'WireGuard',
+  socks: 'SOCKS5',
+  http: 'HTTP',
+}
+
+function savedView(): 'cards' | 'list' {
+  try {
+    return localStorage.getItem('meridian.protocols.view') === 'list' ? 'list' : 'cards'
+  } catch {
+    return 'cards'
+  }
+}
 
 export function Protocols() {
   const loc = useLocation()
   const list = useAsync(() => get<Server[]>('/api/servers'))
+  const users = useAsync(() => get<User[]>('/api/users'))
   usePoll(() => void list.reload(), 15000)
   const only = Number(loc.query.get('server') || 0)
+  const forUser = Number(loc.query.get('user') || 0)
   const adding = loc.query.get('add') === '1'
   const editId = Number(loc.query.get('edit') || 0)
+  const [q, setQ] = useState('')
+  const [kind, setKind] = useState('')
+  const [has, setHas] = useState<'all' | 'yes' | 'no'>('all')
+  const [view, setViewState] = useState<'cards' | 'list'>(savedView)
+  const [access, setAccess] = useState<{ n: NodeView; s: Server } | null>(null)
+  const setView = (v: 'cards' | 'list') => {
+    setViewState(v)
+    try {
+      localStorage.setItem('meridian.protocols.view', v)
+    } catch {
+      /* a convenience only */
+    }
+  }
   const servers = list.data || []
-  const shown = only ? servers.filter((s) => s.id === only) : servers
+  const people = users.data || []
+  const user = forUser ? people.find((u) => u.id === forUser) : undefined
   const editing = editId ? servers.flatMap((s) => s.nodes.map((n) => ({ s, n }))).find((x) => x.n.id === editId) : undefined
   const count = servers.reduce((a, s) => a + s.nodes.length, 0)
+  const kinds = [...new Set(servers.flatMap((s) => s.nodes.map((n) => n.kind)))]
+  const w = q.trim().toLowerCase()
+  const shows = (s: Server, n: NodeView) =>
+    (!kind || n.kind === kind) &&
+    (!w || [n.name, n.label, String(n.port), String(n.public_port || ''), s.name].some((x) => x.toLowerCase().includes(w))) &&
+    (!user || has === 'all' || (has === 'yes') === (accessOf(user, n) !== 'none' && !n.pass_only))
+  const shown = servers.filter((s) => !only || s.id === only).map((s) => ({ s, nodes: s.nodes.filter((n) => shows(s, n)) }))
+  const total = shown.reduce((a, x) => a + x.nodes.length, 0)
+  const filtered = !!(w || kind || (user && has !== 'all'))
+  const reload = () => {
+    void list.reload()
+    void users.reload()
+  }
+  const toggleFor = async (s: Server, n: NodeView, on: boolean): Promise<boolean> => {
+    if (!user) return false
+    const ok = await setNodeUsers(n, s, on ? [user] : [], on ? [] : [user])
+    if (ok) reload()
+    return ok
+  }
+  const userCan = user ? servers.reduce((a, s) => a + s.nodes.filter((n) => !n.pass_only && accessOf(user, n) !== 'none').length, 0) : 0
 
   return (
     <>
@@ -54,20 +121,10 @@ export function Protocols() {
         title="Protocols"
         sub={list.data ? `${count} protocol${count === 1 ? '' : 's'} on ${servers.length} server${servers.length === 1 ? '' : 's'}` : ' '}
         actions={
-          <>
-            {servers.length > 1 && (
-              <select class="input" style="width:auto" value={only} onChange={(e) => setQuery('server', Number(e.currentTarget.value) ? e.currentTarget.value : null)} aria-label="Server">
-                <option value={0}>All servers</option>
-                {servers.map((s) => (
-                  <option value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            )}
-            <button class="btn primary" disabled={servers.length === 0} onClick={() => setQuery('add', '1')}>
-              <Icon name="plus" size="sm" />
-              Add protocol
-            </button>
-          </>
+          <button class="btn primary" disabled={servers.length === 0} onClick={() => setQuery('add', '1')}>
+            <Icon name="plus" size="sm" />
+            Add protocol
+          </button>
         }
       />
       {list.error && !list.data && <ErrorBox error={list.error} retry={list.reload} />}
@@ -77,31 +134,135 @@ export function Protocols() {
           Protocols run on your servers. Add one, then come back here.
         </Empty>
       )}
-      {shown.map((s) => (
-        <section class="panel">
-          <div class="ph">
-            <h2 class="h">
-              <a href={`/servers/${s.id}`}>{s.name}</a>
-            </h2>
-            <span class="pm">
-              {s.status === 'pending' ? 'waiting for its agent - protocols start once it connects' : s.status === 'offline' ? 'offline' : `${s.nodes.length} protocol${s.nodes.length === 1 ? '' : 's'}`}
-              <button class="btn sm" style="margin-left:10px" onClick={() => navigate(`/protocols?add=1&server=${s.id}`)}>
-                <Icon name="plus" size="sm" />
-                Add
-              </button>
-            </span>
-          </div>
-          {s.nodes.length === 0 ? (
-            <p class="muted" style="margin:0 0 8px">No protocols yet. VLESS with REALITY is the best start - it needs no domain and looks like a visit to a big website.</p>
-          ) : (
-            <div class="protos">
-              {s.nodes.map((n) => (
-                <ProtocolCard key={n.id} node={n} server={s} onEdit={() => setQuery('edit', String(n.id))} onChanged={list.reload} />
+      {list.data && count > 0 && (
+        <div class="proto-tools">
+          <Search value={q} onInput={setQ} placeholder="Find by name, port or server" />
+          {kinds.length > 1 && (
+            <select class="input" value={kind} onChange={(e) => setKind(e.currentTarget.value)} aria-label="Protocol">
+              <option value="">Every protocol</option>
+              {kinds.map((k) => (
+                <option value={k}>{kindNames[k] || k}</option>
               ))}
-            </div>
+            </select>
           )}
-        </section>
-      ))}
+          {servers.length > 1 && (
+            <select class="input" value={only} onChange={(e) => setQuery('server', Number(e.currentTarget.value) ? e.currentTarget.value : null)} aria-label="Server">
+              <option value={0}>Every server</option>
+              {servers.map((s) => (
+                <option value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          )}
+          {people.length > 0 && (
+            <select
+              class="input"
+              value={forUser}
+              onChange={(e) => {
+                setHas('all')
+                setQuery('user', Number(e.currentTarget.value) ? e.currentTarget.value : null)
+              }}
+              aria-label="Users"
+            >
+              <option value={0}>For every user</option>
+              {people.map((u) => (
+                <option value={u.id}>What {u.name} can use</option>
+              ))}
+            </select>
+          )}
+          <span class="grow" />
+          <Seg
+            value={view}
+            onChange={setView}
+            label="View"
+            options={[
+              ['cards', 'Cards'],
+              ['list', 'List'],
+            ]}
+          />
+        </div>
+      )}
+      {user && (
+        <div class="proto-user">
+          <div class="grow">
+            <b>{user.name}</b> can use {userCan} of {plural(count, 'protocol')}
+            {!user.scope?.none && !user.scope?.servers?.length && !user.scope?.protocols?.length ? ' - everything, new servers included' : ''}. Tick a protocol to give it to {user.name}, untick it to take it - applied live.
+          </div>
+          <Seg
+            value={has}
+            onChange={setHas}
+            options={[
+              ['all', 'Every protocol'],
+              ['yes', 'Can use'],
+              ['no', 'Cannot use'],
+            ]}
+          />
+          <button class="btn sm ghost" onClick={() => setQuery('user', null)}>
+            Done
+          </button>
+        </div>
+      )}
+      {filtered && list.data && (
+        <p class="muted" style="margin:-6px 0 14px">
+          {total === 0 ? 'No protocol matches.' : `${plural(total, 'protocol')} shown.`}{' '}
+          <button
+            class="linkish"
+            onClick={() => {
+              setQ('')
+              setKind('')
+              setHas('all')
+            }}
+          >
+            Show all
+          </button>
+        </p>
+      )}
+      {shown.map(({ s, nodes }) =>
+        filtered && nodes.length === 0 ? null : (
+          <section class="panel">
+            <div class="ph">
+              <h2 class="h">
+                <a href={`/servers/${s.id}`}>{s.name}</a>
+              </h2>
+              <span class="pm">
+                {s.status === 'pending' ? 'waiting for its agent - protocols start once it connects' : s.status === 'offline' ? 'offline' : `${s.nodes.length} protocol${s.nodes.length === 1 ? '' : 's'}`}
+                <button class="btn sm" style="margin-left:10px" onClick={() => navigate(`/protocols?add=1&server=${s.id}`)}>
+                  <Icon name="plus" size="sm" />
+                  Add
+                </button>
+              </span>
+            </div>
+            {s.nodes.length === 0 ? (
+              <p class="muted" style="margin:0 0 8px">No protocols yet. VLESS with REALITY is the best start - it needs no domain and looks like a visit to a big website.</p>
+            ) : view === 'list' ? (
+              <ProtoTable
+                server={s}
+                nodes={nodes}
+                users={people}
+                user={user}
+                onToggleFor={(n, on) => toggleFor(s, n, on)}
+                onEdit={(n) => setQuery('edit', String(n.id))}
+                onAccess={(n) => setAccess({ n, s })}
+                onChanged={reload}
+              />
+            ) : (
+              <div class="protos">
+                {nodes.map((n) => (
+                  <ProtocolCard
+                    key={n.id}
+                    node={n}
+                    server={s}
+                    users={users.data}
+                    forUser={user ? { user, onToggle: (on) => toggleFor(s, n, on) } : undefined}
+                    onAccess={() => setAccess({ n, s })}
+                    onEdit={() => setQuery('edit', String(n.id))}
+                    onChanged={reload}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        ),
+      )}
       {(adding || editing) && list.data && (
         <ProtocolEditor
           servers={servers}
@@ -114,7 +275,106 @@ export function Protocols() {
           }}
         />
       )}
+      {access && (
+        <AccessDialog
+          node={access.n}
+          server={access.s}
+          users={people}
+          onClose={() => setAccess(null)}
+          onSaved={() => {
+            setAccess(null)
+            reload()
+          }}
+        />
+      )}
     </>
+  )
+}
+
+// ProtoTable is the list view: one row per protocol.
+function ProtoTable(props: {
+  server: Server
+  nodes: NodeView[]
+  users: User[]
+  user?: User
+  onToggleFor: (n: NodeView, on: boolean) => Promise<boolean>
+  onEdit: (n: NodeView) => void
+  onAccess: (n: NodeView) => void
+  onChanged: () => void
+}) {
+  const toggle = async (n: NodeView, on: boolean) => {
+    if (
+      !on &&
+      !(await ask({
+        title: `Turn off ${n.label}?`,
+        body: <p style="margin-top:0">Everyone connected through this protocol on {props.server.name} is disconnected and it stops accepting connections until you turn it back on.</p>,
+        confirm: 'Turn off',
+        danger: true,
+      }))
+    )
+      return
+    await run(async () => {
+      await patch(`/api/nodes/${n.id}`, { enabled: on })
+      props.onChanged()
+    }, on ? `${n.label} turned on` : `${n.label} turned off`)
+  }
+  return (
+    <div class="table-wrap">
+      <table class="t proto-table">
+        <tbody>
+          {props.nodes.map((n) => {
+            const can = props.users.filter((u) => accessOf(u, n) !== 'none').length
+            const a = props.user ? accessOf(props.user, n) : 'none'
+            return (
+              <tr class={n.enabled ? '' : 'faint'}>
+                {props.user && (
+                  <td style="width:28px">
+                    <input
+                      type="checkbox"
+                      class="check-box"
+                      checked={a !== 'none'}
+                      disabled={n.pass_only}
+                      title={n.pass_only ? 'It serves only proxy passes' : accessText[a]}
+                      aria-label={`${props.user.name} can use ${n.name || n.label}`}
+                      onChange={(e) => {
+                        const el = e.currentTarget
+                        const want = el.checked
+                        void props.onToggleFor(n, want).then((ok) => {
+                          if (!ok) el.checked = !want // asked and cancelled, or refused: as it was
+                        })
+                      }}
+                    />
+                  </td>
+                )}
+                <td>
+                  <span class="badge accent">{n.label}</span> <b>{n.name}</b>
+                  <div class="cell-sub">
+                    port <span class="mono">{n.public_port || n.port}</span> {n.net === 'both' ? 'tcp+udp' : n.net}
+                    {n.pass_broken ? <span class="crit-ink"> · proxy pass blocked</span> : n.pass_name ? ` · through ${n.pass_name}` : ''}
+                  </div>
+                </td>
+                <td class="hide-sm">
+                  {n.pass_only ? (
+                    <span class="faint">only proxy passes</span>
+                  ) : (
+                    <button class="linkish" onClick={() => props.onAccess(n)} title="Who can use it">
+                      {can === props.users.length && props.users.length ? 'every user' : `${can} of ${plural(props.users.length, 'user')}`}
+                    </button>
+                  )}
+                </td>
+                <td class="faint hide-sm nowrap">{n.online} online</td>
+                <td class="actions">
+                  <Toggle on={n.enabled} onChange={(v) => void toggle(n, v)} label={`${n.label} enabled`} />
+                  <button class="btn sm" onClick={() => props.onEdit(n)}>
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -129,7 +389,15 @@ export function AppDots(props: { apps: AppSupport[] }) {
   )
 }
 
-export function ProtocolCard(props: { node: NodeView; server: Server; onEdit: () => void; onChanged: () => void }) {
+export function ProtocolCard(props: {
+  node: NodeView
+  server: Server
+  onEdit: () => void
+  onChanged: () => void
+  users?: User[]
+  onAccess?: () => void
+  forUser?: { user: User; onToggle: (on: boolean) => Promise<boolean> }
+}) {
   const n = props.node
   const st = n.settings || {}
   const [testing, setTesting] = useState(false)
@@ -137,13 +405,22 @@ export function ProtocolCard(props: { node: NodeView; server: Server; onEdit: ()
   const host = n.host || n.bind_ip || props.server.address || props.server.ipv4 || props.server.ipv6
 
   const entries = n.pass_entries || []
-  // protocols on other servers that leave the internet through this one
-  const passedThrough = (what: string) =>
-    entries.length > 0 && (
-      <p>
-        {entries.length === 1 ? 'One protocol passes' : `${entries.length} protocols pass`} through it: <b>{entries.join(', ')}</b>. {what}
-      </p>
-    )
+  const rules = n.route_uses || []
+  // protocols on other servers that leave the internet through this one, and traffic rules that send traffic there
+  const passedThrough = (what: string, forRules = what) => (
+    <>
+      {entries.length > 0 && (
+        <p>
+          {entries.length === 1 ? 'One protocol passes' : `${entries.length} protocols pass`} through it: <b>{entries.join(', ')}</b>. {what}
+        </p>
+      )}
+      {rules.length > 0 && (
+        <p>
+          {rules.length === 1 ? 'A traffic rule sends' : `${rules.length} traffic rules send`} traffic through it: <b>{rules.join(', ')}</b>. {forRules}
+        </p>
+      )}
+    </>
+  )
 
   const toggle = async (on: boolean) => {
     // ask first: a cancelled question changes nothing and says nothing
@@ -154,7 +431,10 @@ export function ProtocolCard(props: { node: NodeView; server: Server; onEdit: ()
         body: (
           <>
             <p style="margin-top:0">Everyone connected through this protocol on {props.server.name} is disconnected and it stops accepting connections until you turn it back on.</p>
-            {passedThrough('Their traffic is blocked while this one is off - nobody leaves from their own servers instead.')}
+            {passedThrough(
+              'Their traffic is blocked while this one is off - nobody leaves from their own servers instead.',
+              'That traffic is blocked while this one is off - it never leaves directly instead.',
+            )}
           </>
         ),
         confirm: 'Turn off',
@@ -184,7 +464,10 @@ export function ProtocolCard(props: { node: NodeView; server: Server; onEdit: ()
       body: (
         <>
           <p style="margin-top:0">Everyone connected through it is disconnected, and it disappears from every user's link the next time their apps refresh.</p>
-          {passedThrough('Their traffic is blocked until you choose another exit (or Off) for them - nobody leaves from their own servers instead.')}
+          {passedThrough(
+            'Their traffic is blocked until you choose another exit (or Off) for them - nobody leaves from their own servers instead.',
+            'That traffic is blocked until you send those rules elsewhere - it never leaves directly instead.',
+          )}
         </>
       ),
       confirm: 'Remove protocol',
@@ -228,22 +511,58 @@ export function ProtocolCard(props: { node: NodeView; server: Server; onEdit: ()
     facts.push(['Certificate', <span class="ellipsis">{st.sni} <span class="faint">· {({ self: 'self-signed, pinned', acme: "Let's Encrypt", custom: 'your own', shared: 'shared' } as Record<string, string>)[st.cert_mode] || st.cert_mode}</span></span>])
   if (st.path) facts.push(['Path', <span class="mono ellipsis">{st.path}</span>])
   if (st.service_name) facts.push(['Service', <span class="mono ellipsis">{st.service_name}</span>])
+  if (st.encryption)
+    facts.push([
+      'Encryption',
+      <span class="ellipsis">
+        VLESS Encryption · {st.encryption}
+        {st.enc_auth === 'mlkem768' ? ' · ML-KEM-768' : ''}
+      </span>,
+    ])
+  if (st.hop_ports) facts.push(['Port hopping', <span class="mono ellipsis">UDP {st.hop_ports}</span>])
   if (n.kind === 'shadowsocks') facts.push(['Cipher', <span class="ellipsis">{st.method}</span>])
   if (n.kind === 'wireguard') facts.push(['Network', <span class="mono ellipsis">{st.subnet4}</span>])
-  if (n.pass_node > 0)
+  if (n.pass_node > 0 || n.pass_ext > 0)
     facts.push([
       'Proxy pass',
       <span class={'ellipsis' + (n.pass_broken ? ' crit-ink' : '')}>
-        {n.pass_name || `protocol #${n.pass_node}`}
+        {n.pass_name || (n.pass_ext ? `external node #${n.pass_ext}` : `protocol #${n.pass_node}`)}
         {n.pass_broken ? ' · blocked' : ''}
       </span>,
     ])
   if (n.pass_only) facts.push(['Users', <span class="ellipsis">only through proxy passes</span>])
+  else if (props.users && props.onAccess) {
+    const can = props.users.filter((u) => accessOf(u, n) !== 'none').length
+    facts.push([
+      'Users',
+      <button class="linkish ellipsis" style="font-size:12px;text-align:left" onClick={props.onAccess} title="Who can use it">
+        {props.users.length === 0 ? 'no users yet' : can === props.users.length ? `every user (${can})` : `${can} of ${props.users.length}`}
+      </button>,
+    ])
+  }
   if (n.code) facts.push(['Settings', <span class="ellipsis">advanced, as code{n.kind !== 'hysteria2' ? <span class="faint"> · tag n{n.id}</span> : null}</span>])
   facts.push(['Online', <span>{n.online} IPs</span>])
 
   return (
-    <div class={'proto' + (n.enabled ? '' : ' off')}>
+    <div class={'proto' + (n.enabled ? '' : ' off') + (props.forUser && accessOf(props.forUser.user, n) !== 'none' && !n.pass_only ? ' chosen' : '')}>
+      {props.forUser && (
+        <label class="proto-for" title={n.pass_only ? 'It serves only proxy passes' : accessText[accessOf(props.forUser.user, n)]}>
+          <input
+            type="checkbox"
+            class="check-box"
+            checked={accessOf(props.forUser.user, n) !== 'none' && !n.pass_only}
+            disabled={n.pass_only}
+            onChange={(e) => {
+              const el = e.currentTarget
+              const want = el.checked
+              void props.forUser!.onToggle(want).then((ok) => {
+                if (!ok) el.checked = !want // asked and cancelled, or refused: as it was
+              })
+            }}
+          />
+          {n.pass_only ? 'only proxy passes' : `${props.forUser.user.name} ${accessOf(props.forUser.user, n) === 'none' ? 'cannot use it' : accessOf(props.forUser.user, n) === 'protocol' ? 'can use it' : 'can use it (' + (accessOf(props.forUser.user, n) === 'all' ? 'everything' : 'whole server') + ')'}`}
+        </label>
+      )}
       <div class="head">
         <span class="badge accent">{n.label}</span>
         <b class="grow ellipsis">{n.name || ''}</b>
@@ -336,6 +655,10 @@ interface Draft {
   full_tunnel: boolean
   keepalive: string
   ipv6: boolean
+  encryption: string // VLESS Encryption's look, '' = off
+  enc_auth: string
+  hop: boolean
+  hop_ports: string
 }
 
 function draftFrom(kind: string, st: Record<string, any> | undefined): Draft {
@@ -370,14 +693,30 @@ function draftFrom(kind: string, st: Record<string, any> | undefined): Draft {
     full_tunnel: s.full_tunnel ?? true,
     keepalive: s.keepalive !== undefined ? String(s.keepalive) : '25',
     ipv6: !!s.ipv6,
+    encryption: s.encryption || '',
+    enc_auth: s.enc_auth || 'x25519',
+    hop: !!s.hop_ports,
+    hop_ports: s.hop_ports || '20000-30000',
   }
+}
+
+// vision says whether the Vision flow can work: VLESS over raw TCP with TLS or REALITY, or VLESS Encryption
+function vision(kind: string, d: Draft) {
+  return kind === 'vless' && (!!d.encryption || (d.transport === 'raw' && !d.cdn && d.security !== 'none'))
 }
 
 // settingsFor is what the API gets for a draft - only the fields this protocol uses.
 function settingsFor(kind: string, d: Draft, editing: boolean): Record<string, unknown> {
   if (kind === 'wireguard') return { mtu: Number(d.mtu) || 1420, dns_logging: d.dns_logging, full_tunnel: d.full_tunnel, keepalive: Number(d.keepalive) || 0, ipv6: d.ipv6 }
   if (kind === 'hysteria2') {
-    const o: Record<string, unknown> = { sni: d.sni.trim(), cert_mode: d.cert_mode, obfs: d.obfs, up_mbps: Number(d.up_mbps) || 0, down_mbps: Number(d.down_mbps) || 0 }
+    const o: Record<string, unknown> = {
+      sni: d.sni.trim(),
+      cert_mode: d.cert_mode,
+      obfs: d.obfs,
+      up_mbps: Number(d.up_mbps) || 0,
+      down_mbps: Number(d.down_mbps) || 0,
+      hop_ports: d.hop ? d.hop_ports.trim() : '',
+    }
     if (d.cert_mode === 'custom' && (d.cert_pem || !editing)) o.cert_pem = d.cert_pem
     if (d.cert_mode === 'custom' && d.key_pem) o.key_pem = d.key_pem
     if (d.cert_mode === 'shared') o.cert_id = d.cert_id
@@ -391,7 +730,11 @@ function settingsFor(kind: string, d: Draft, editing: boolean): Record<string, u
   if (d.transport === 'grpc' && d.service_name.trim()) o.service_name = d.service_name.trim()
   if (d.transport === 'xhttp') o.xhttp_mode = d.xhttp_mode
   // the flow only where it can work (the box is shown only there)
-  if (kind === 'vless') o.flow = d.transport === 'raw' && !d.cdn && d.security !== 'none' ? d.flow : ''
+  if (kind === 'vless') o.flow = vision(kind, d) ? d.flow : ''
+  if (kind === 'vless') {
+    o.encryption = d.encryption || 'none'
+    if (d.encryption) o.enc_auth = d.enc_auth
+  }
   if (d.security === 'reality' && !d.cdn) {
     if (d.sni.trim()) o.sni = d.sni.trim()
     o.own_site = d.own_site
@@ -445,6 +788,8 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
   const [adv, setAdv] = useState(!!n?.code?.trim())
   const codeBox = useRef<HTMLTextAreaElement>(null)
   const [passNode, setPassNode] = useState(n?.pass_node || 0)
+  const [passExt, setPassExt] = useState(n?.pass_ext || 0)
+  const extNodes = useAsync(() => get<ExtNode[]>('/api/external-nodes'))
   const [passOnly, setPassOnly] = useState(!!n?.pass_only)
   // whether users may also connect to the chosen exit directly (a setting of the exit)
   const exitOf = (id: number) => props.servers.flatMap((x) => x.nodes).find((e) => e.id === id)
@@ -592,7 +937,10 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
     try {
       const req: Record<string, unknown> = { name: name.trim(), host: host.trim(), settings: body, bind_ip: bindIP }
       if (port.trim()) req.port = Number(port)
-      if (k?.engine === 'xray') req.pass_node = passNode
+      if (k?.engine === 'xray') {
+        req.pass_node = passNode
+        req.pass_ext = passExt
+      }
       if (kind !== 'wireguard') req.pass_only = passOnly
       if (kind !== 'wireguard') req.code = adv ? code : ''
       if (editing && n) await patch(`/api/nodes/${n.id}`, req)
@@ -735,7 +1083,16 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                     />
                   )}
                   {!d.cdn && securities.length > 1 && (
-                    <Field label="Security" hint={kind === 'vless' ? 'REALITY needs no domain. TLS needs a certificate. VLESS cannot run without one of them.' : undefined}>
+                    <Field
+                      label="Security"
+                      hint={
+                        kind === 'vless'
+                          ? 'REALITY needs no domain. TLS needs a certificate. Without either, VLESS needs VLESS Encryption (below).'
+                          : kind === 'trojan'
+                            ? 'TLS looks like an ordinary HTTPS server; REALITY needs no domain and borrows a well-known site.'
+                            : undefined
+                      }
+                    >
                       <Seg value={d.security} onChange={(v) => set({ security: v, sni: '' })} options={securities.map((s) => [s, securityNames[s] || s] as [string, string])} />
                     </Field>
                   )}
@@ -783,8 +1140,47 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                   <input class="input mono" value={d.service_name} placeholder="random" onInput={(e) => set({ service_name: e.currentTarget.value })} autoComplete="off" spellcheck={false} />
                 </Field>
               )}
-              {kind === 'vless' && d.transport === 'raw' && !d.cdn && d.security !== 'none' && (
-                <Check checked={d.flow === 'xtls-rprx-vision'} onChange={(v) => set({ flow: v ? 'xtls-rprx-vision' : '' })} label="Vision flow" hint="Recommended: faster and harder to fingerprint. Every common app supports it." />
+              {kind === 'vless' && (
+                <>
+                  <Check
+                    checked={!!d.encryption}
+                    onChange={(v) =>
+                      set({ encryption: v ? (d.security === 'none' && !d.cdn ? 'random' : 'native') : '', flow: v || vision(kind, { ...d, encryption: '' }) ? 'xtls-rprx-vision' : '' })
+                    }
+                    label="VLESS Encryption (post-quantum)"
+                    hint="VLESS encrypts by itself, with a key exchange quantum computers cannot break: it works without TLS, and behind a CDN the CDN cannot read the traffic. Only the Xray-based apps, Clash Meta apps (Clash Verge Rev, FlClash, Mihomo Party) and Stash support it."
+                  />
+                  {d.encryption && (
+                    <div class="inline-fields">
+                      <Field label="How the traffic looks">
+                        <select class="input" value={d.encryption} onChange={(e) => set({ encryption: e.currentTarget.value })}>
+                          {encLooks.map(([v, l]) => (
+                            <option value={v}>{l}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="How the server proves itself">
+                        <select class="input" value={d.enc_auth} onChange={(e) => set({ enc_auth: e.currentTarget.value })}>
+                          {encAuthNames.map(([v, l]) => (
+                            <option value={v}>{l}</option>
+                          ))}
+                        </select>
+                      </Field>
+                    </div>
+                  )}
+                </>
+              )}
+              {vision(kind, d) && (
+                <Check
+                  checked={d.flow === 'xtls-rprx-vision'}
+                  onChange={(v) => set({ flow: v ? 'xtls-rprx-vision' : '' })}
+                  label="Vision flow"
+                  hint={
+                    d.encryption && !['raw', 'xhttp'].includes(d.transport)
+                      ? 'Harder to fingerprint. With VLESS Encryption over this transport, Stash cannot use it - turn it off for Stash users.'
+                      : 'Recommended: faster and harder to fingerprint. Every common app supports it.'
+                  }
+                />
               )}
               {kind === 'shadowsocks' && (
                 <Field label="Cipher" hint="2022 ciphers are faster and safer; the others are for old apps.">
@@ -799,6 +1195,17 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
               {kind === 'hysteria2' && (
                 <>
                   <Check checked={d.obfs} onChange={(v) => set({ obfs: v })} label="Obfuscate (Salamander)" hint="Hides that the traffic is QUIC, where QUIC is throttled. Surge cannot use it." />
+                  <Check
+                    checked={d.hop}
+                    onChange={(v) => set({ hop: v })}
+                    label="Port hopping"
+                    hint="Apps change the UDP port they send to every half minute, within a range the server redirects to this protocol's port - it gets past networks that slow down one long UDP flow. Apps that cannot hop use the port itself. Needs nftables on the server."
+                  />
+                  {d.hop && (
+                    <Field label="Port range" hint="UDP ports from 1024 that no other program on the server uses; best below 32768. Open them in the provider's firewall too.">
+                      <input class="input mono" value={d.hop_ports} placeholder="20000-30000" onInput={(e) => set({ hop_ports: e.currentTarget.value.replace(/[^0-9-]/g, '') })} />
+                    </Field>
+                  )}
                   <div class="inline-fields">
                     <Field label="Server upload limit (Mbps)" hint="0 = let apps decide.">
                       <input class="input" inputMode="numeric" value={d.up_mbps} placeholder="0" onInput={(e) => set({ up_mbps: e.currentTarget.value.replace(/[^0-9]/g, '') })} />
@@ -912,25 +1319,45 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                   >
                     <select
                       class="input"
-                      disabled={passNode === 0 && tooDeep}
-                      value={passNode}
+                      disabled={passNode === 0 && passExt === 0 && tooDeep}
+                      value={passExt ? `x${passExt}` : `n${passNode}`}
                       onChange={(e) => {
-                        const id = Number(e.currentTarget.value)
-                        setPassNode(id)
-                        setExitDirect(!exitOf(id)?.pass_only)
+                        const v = e.currentTarget.value
+                        const id = Number(v.slice(1))
+                        if (v[0] === 'x') {
+                          setPassExt(id)
+                          setPassNode(0)
+                        } else {
+                          setPassExt(0)
+                          setPassNode(id)
+                          setExitDirect(!exitOf(id)?.pass_only)
+                        }
                       }}
                     >
-                      <option value={0}>Off - leave directly from {server?.name || 'this server'}</option>
+                      <option value="n0">Off - leave directly from {server?.name || 'this server'}</option>
                       {passNode > 0 && !exitOf(passNode) && (
                         // its exit was removed: the traffic is blocked until another exit (or Off) is chosen
-                        <option value={passNode}>{n?.pass_name || 'A removed protocol'} - cannot be used, traffic blocked</option>
+                        <option value={`n${passNode}`}>{n?.pass_name || 'A removed protocol'} - cannot be used, traffic blocked</option>
                       )}
                       {exits.map((x) => (
-                        <option value={x.node.id}>
+                        <option value={`n${x.node.id}`}>
                           {x.srv.name} · {x.node.label} :{x.node.port}
                           {x.then && ` → ${x.then}`}
                         </option>
                       ))}
+                      {!tooDeep && (extNodes.data || []).length > 0 && (
+                        <optgroup label="External nodes">
+                          {(extNodes.data || []).map((x) => (
+                            <option value={`x${x.id}`}>
+                              {x.name} · {x.label}
+                              {x.enabled ? '' : ' (turned off - traffic blocked)'}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {passExt > 0 && extNodes.data && !extNodes.data.some((x) => x.id === passExt) && (
+                        <option value={`x${passExt}`}>{n?.pass_name || 'A removed external node'} - cannot be used, traffic blocked</option>
+                      )}
                     </select>
                   </Field>
                 )}

@@ -44,7 +44,7 @@ and the supervisor's session is not a user session.
 - Errors are `{"error": "plain English"}` with `400` (invalid input - the message says what to do),
   `401` (not signed in / bad token), `403` (not allowed, or not from your country), `404` (not
   found), `409` (conflict, e.g. a port in use), `429` (slow down).
-- Changes to servers, protocols, users, country rules and blocks reach the servers within seconds.
+- Changes to servers, protocols, users, country rules, traffic rules and blocks reach the servers within seconds.
   Nothing restarts a core unless the endpoint says so, and nothing pauses a user unless you ask.
 
 ## Examples
@@ -135,6 +135,35 @@ curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   https://panel.example.com/api/servers/3/forwards
 ```
 
+Import a provider's proxies as external nodes from its subscription address (fetched once, over
+HTTPS, from a public address only). The answer lists what was added and, for every entry left out,
+why - nodes that turn certificate checks off or travel unencrypted never get in:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"url":"https://provider.example.com/sub/abc123"}' \
+  https://panel.example.com/api/external-nodes
+```
+
+Send AI sites from every server through protocol 12 (on your Tokyo server), applied live. The answer
+is the whole routing view: read its `problems` - what cannot be used somewhere is blocked there,
+never sent out directly instead:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"AI sites","match":{"sites":["openai","anthropic"]},"target":"node:12"}' \
+  https://panel.example.com/api/routing/rules
+```
+
+Check from server 3 that it can reach external node 5 (a connection, and a TLS handshake for TLS
+and REALITY nodes); the answer is an action whose output says how it went:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"server_id":3}' https://panel.example.com/api/external-nodes/5/check
+curl -H "Authorization: Bearer $TOKEN" https://panel.example.com/api/actions/41
+```
+
 ## Endpoint overview
 
 | Area | Endpoints |
@@ -146,6 +175,8 @@ curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
 | Protocols | `GET /api/protocols` (what can be built, the apps), `POST /api/protocols/check`, `POST /api/servers/{id}/nodes`, `PATCH/DELETE /api/nodes/{id}`, `regenerate`, `test-target` |
 | Import | `POST/GET /api/servers/{id}/scan`, `POST /api/servers/{id}/import` |
 | Forwards | `POST /api/servers/{id}/forwards`, `PATCH/DELETE /api/forwards/{id}` |
+| External nodes | `GET/POST /api/external-nodes` (list, import), `PATCH/DELETE /api/external-nodes/{id}`, `POST /api/external-nodes/{id}/check` - see [routing.md](routing.md) |
+| Traffic rules | `GET /api/routing` (rules, load balancers, exits, problems), `POST /api/routing/rules`, `PATCH/DELETE /api/routing/rules/{id}`, `PUT /api/routing/order`, `POST /api/routing/balancers`, `PATCH/DELETE /api/routing/balancers/{id}` |
 | Users | `GET/POST /api/users`, `GET/PATCH/DELETE /api/users/{id}`, `POST /api/users/{id}/{pause,resume,rotate-link,reset-keys,reset-usage,sign-out,new-password}`, `ips`, `dests`, `traffic`, `preview` |
 | A user's own page | `GET /api/portal/me`, `POST /api/portal/password`, `POST /api/portal/logout` (user session) |
 | Status page | `GET /api/status`, `GET /api/status/live` (the live dashboard of every server - public while the status page shows the servers to everyone, otherwise the supervisor's), `GET /api/places` |

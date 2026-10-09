@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"meridian/internal/db"
@@ -31,6 +32,7 @@ type Config struct {
 	TrustedProxies []netip.Prefix // reverse proxies whose X-Forwarded-For / X-Real-IP we believe
 	WebFS          fs.FS          // built UI (nil = API only)
 	AgentDir       string         // directory with meridian-agent-linux-{amd64,arm64}
+	NoPlugins      bool           // start without any plugin (--no-plugins): the way back when one breaks the panel
 }
 
 type Panel struct {
@@ -57,6 +59,23 @@ type Panel struct {
 	acc       accessState
 	status    statusCache // the public status page's data, for a few seconds
 	brand     brandStore  // an uploaded logo, if any
+
+	routeMu    sync.Mutex
+	routeNotes map[int64][]string // per server: traffic rules that cannot be used there as they stand
+
+	relays  relayCache  // servers that keep losing the panel (relay.go)
+	bot     botState    // the Telegram bot (telegram.go)
+	plugins *pluginHost // the operator's plugins (plugins.go)
+	devices deviceState // devices turned away over a device limit (limits.go)
+	signin  signinGuard // addresses and usernames that keep failing to sign in (guard.go)
+	css     cssCache    // the operator's own style sheets (customcss.go)
+
+	backupMu    sync.Mutex  // one backup at a time (backups.go)
+	console     consoleHub  // the supervisor's consoles (console.go)
+	sourceMu    sync.Mutex  // one subscription link refresh at a time (extsources.go)
+	sourcesBusy atomic.Bool // the scheduled refreshes are running
+	dyn         dynState    // dynamic DNS names, Cloudflare and the panel's own address (ddns.go)
+	tg          tgState     // codes that link Telegram accounts (tglink.go)
 }
 
 func New(cfg Config, d *db.DB) (*Panel, error) {
@@ -72,12 +91,15 @@ func New(cfg Config, d *db.DB) (*Panel, error) {
 	}
 	p.geo = geo.Open(cfg.DataDir)
 	p.geo.OnLoad = p.touchAll // country rules held back for want of the database go out now
+	p.plugins = newPluginHost(p, d, cfg.DataDir, cfg.NoPlugins)
 	return p, nil
 }
 
 // Run starts background work and blocks until ctx ends.
 func (p *Panel) Run(ctx context.Context) {
 	p.updateResult(ctx) // a new version: say so, and upgrade the agents when that was asked for
+	go p.plugins.run(ctx)
+	p.plugins.ready(ctx) // plugins that filter what servers run come first (plugins_hooks.go)
 	if err := p.compileAll(ctx); err != nil {
 		slog.Error("initial compile", "err", err)
 	}
@@ -85,6 +107,9 @@ func (p *Panel) Run(ctx context.Context) {
 	go p.jobs(ctx)
 	go p.maintainDigests(ctx)
 	go p.geo.Maintain(ctx)
+	go p.telegramBot(ctx)
+	go p.dynLoop(ctx)
+	go p.backupLoop(ctx)
 	<-ctx.Done()
 }
 

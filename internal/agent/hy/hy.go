@@ -57,8 +57,11 @@ type Engine struct {
 	srv     *http.Server
 	lastPID map[int64]int
 	logOff  map[int64]int64
-	logID   map[int64]uint64 // the request log each offset is in (its inode)
-	pending map[int64]bool   // nodes whose new configuration waits for a restart (see inputKey)
+	logID   map[int64]uint64          // the request log each offset is in (its inode)
+	pending map[int64]bool            // nodes whose new configuration waits for a restart (see inputKey)
+	refused map[int64]map[string]bool // user -> devices turned away (limits.go)
+	tries   map[string]tryHit         // their attempts still going on
+	first   map[string]int64          // user's device -> when it was first seen
 	// no record of where the last agent stopped reading: the logs as they are were read already
 	adoptLogs bool
 }
@@ -165,15 +168,21 @@ func (e *Engine) startAuth() error {
 		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req)
 		e.mu.Lock()
 		id, ok := e.users[node][req.Auth]
+		ip := req.Addr
+		if h, _, err := net.SplitHostPort(req.Addr); err == nil {
+			ip = h
+		}
+		if a, err := netip.ParseAddr(ip); err == nil {
+			ip = a.Unmap().String()
+		}
+		now := time.Now().Unix()
+		if ok && e.refuse(node, id, ip, now) { // a device over the user's limit (limits.go)
+			ok = false
+		}
 		if ok {
-			ip := req.Addr
-			if h, _, err := net.SplitHostPort(req.Addr); err == nil {
-				ip = h
+			if sub, _, isSub := proto.ParseEmail(id); isSub {
+				e.seen(sub, ip, now)
 			}
-			if a, err := netip.ParseAddr(ip); err == nil {
-				ip = a.Unmap().String()
-			}
-			now := time.Now().Unix()
 			e.auths = append(e.auths, authHit{node: node, id: id, ip: ip, ts: now})
 			if len(e.auths) > 10000 {
 				e.auths = e.auths[len(e.auths)-10000:]
@@ -898,6 +907,7 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 
 	out := Collected{Status: map[int64]proto.CoreStatus{}}
 	now := time.Now().Unix()
+	keep := map[string]bool{} // devices connected now, whose first-seen time stays (limits.go)
 	if connLog {
 		agg := map[string]*proto.IPSeen{}
 		for _, h := range hits {
@@ -974,7 +984,6 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 					for ip, t := range devs {
 						list = append(list, ipT{ip, t})
 					}
-					e.mu.Unlock()
 					// the most recent authentications are the devices still connected
 					sort.Slice(list, func(i, j int) bool { return list[i].t > list[j].t })
 					if len(list) > count {
@@ -982,8 +991,15 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 					}
 					u := proto.OnlineUser{Sub: sub, Node: node}
 					for _, x := range list {
-						u.IPs = append(u.IPs, proto.OnlineIP{IP: x.ip, Since: x.t, Last: now})
+						// since the device was first seen, not its last sign-in: one that reconnects keeps its place
+						since := x.t
+						if f, ok := e.first[firstKey(sub, x.ip)]; ok && f < since {
+							since = f
+						}
+						keep[firstKey(sub, x.ip)] = true
+						u.IPs = append(u.IPs, proto.OnlineIP{IP: x.ip, Since: since, Last: now})
 					}
+					e.mu.Unlock()
 					if len(u.IPs) > 0 {
 						out.Online = append(out.Online, u)
 					}
@@ -996,6 +1012,7 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 	}
 	e.mu.Lock()
 	e.adoptLogs = false // logs met from now on are new
+	out.Online = append(out.Online, e.refusedOnline(now, keep)...)
 	e.mu.Unlock()
 	return out
 }

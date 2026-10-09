@@ -20,9 +20,11 @@ Report vulnerabilities privately - through the repository's private security adv
 | Connection logs (IPs, destinations) | disclosure | panel DB 0600 under a dedicated user, root-only log files on servers, configurable retention |
 | The status page | revealing users, keys or more than you chose to show | the server dashboard is built from a fixed set of fields that never includes users, ports, protocols, keys or prices; visitors get it only while the page shows the servers to everyone, otherwise only a sign-in; IP addresses only while the page is set to show them (off by default), and then to everyone alike; users only their own page; its own domain never serves the panel |
 | Client certificate checks | a man in the middle on TLS / Hysteria2 | real certificates are verified by name; self-signed ones are pinned (SHA-256 / the certificate itself) and left out of formats that cannot pin - no format ever turns checks off (a test renders every format to make sure) |
-| Server hosts | the panel turning a server into an open proxy to its own network | REALITY targets must be public (or your own site on loopback, with sensitive ports refused), forwards cannot reach loopback / link-local / cloud metadata |
+| Server hosts | the panel turning a server into an open proxy to its own network | REALITY targets must be public (or your own site on loopback, with sensitive ports refused), forwards and external nodes cannot reach loopback / link-local / cloud metadata |
+| External nodes and traffic rules | a provider's subscription with nodes that weaken encryption or point servers at internal services; the nodes' credentials leaking; traffic leaving somewhere nobody chose | nodes that turn certificate checks off or travel unencrypted are refused; subscriptions are fetched over HTTPS only, from public addresses checked when connecting; credentials are never shown again; each server has its own identity at an exit; traffic whose exit cannot be used is blocked, never sent out directly |
 | Access by country | being locked out; abuse from some regions | the panel refuses site rules that would refuse their author, `meridian reset-site-access` to recover; server rules never touch SSH or the agent's own connection |
 | AI assistants (MCP) | an assistant taking disruptive action unasked | token scopes, `confirm=true` on every disruptive tool, origin check, no MCP access to the site rule |
+| Plugins | code from someone else running with the panel's rights, in your browser or in visitors' | installed, updated and turned on only from a signed-in browser (or the panel's host), off until you agree to exactly what each asks for, warnings that say what that lets it do, `meridian plugins disable` and `MERIDIAN_NO_PLUGINS=1` to recover - see below |
 
 ## How it is protected
 
@@ -31,8 +33,29 @@ Report vulnerabilities privately - through the repository's private security adv
 - Serve the panel over HTTPS: `--domain` gets a Let's Encrypt certificate automatically (also for
   the status page's own domain, if you set one). With HTTPS the panel sends HSTS and marks session
   cookies `Secure`. The UI warns while it is on plain HTTP.
-- Passwords: 10-72 bytes, bcrypt cost 12. Failed sign-ins are rate limited per IP and per name and
-  take the same time whether or not the name exists.
+- Passwords: 10-72 bytes, bcrypt cost 12. Failed sign-ins take the same time whether or not the
+  name exists, and are limited three ways: attempts per address and per name (15 minutes); an
+  address that fails 10 times in 15 minutes is shut out of signing in for 15 minutes, then an hour,
+  four hours and a day if it comes back; a name that 10 addresses fail at takes one try a minute from
+  addresses it does not know - but never from an address that signed in to it in the last 30 days,
+  so failing on purpose cannot lock the supervisor out. Every failure is in the timeline and the
+  *security* notifications.
+- Cloudflare Turnstile (optional, Settings › Security): every sign-in to the panel and to users'
+  pages must carry a token Cloudflare accepts for this site's hostname; the panel checks it with
+  Cloudflare (HTTPS, no redirects followed) before it looks at the password. The secret is never
+  returned. Turnstile is turned on only after Cloudflare accepted a token made on the settings page
+  with the same keys, so wrong keys cannot lock the sign-in; `MERIDIAN_NO_TURNSTILE=1` on the host
+  turns it off. Cloudflare's script is allowed by the page's Content-Security-Policy only while
+  Turnstile is on (and for the supervisor's own session, to set it up).
+- Maintenance mode signs every user out and keeps them out (503) until it ends; the supervisor's
+  sessions and every proxy, subscription and agent keep working.
+- The console (a root shell on a server in the browser) opens only from the supervisor's signed-in
+  browser session, after the password is confirmed (again after 30 minutes); never with an API
+  token, MCP, plugins or a user's session. Its WebSocket must come from the panel's own page
+  (Origin) and carry a one-time ticket bound to that browser session; the agent dials back signed
+  with its server's key for that session only; the panel passes on only typing and window sizes.
+  Nothing typed or shown is stored; opening is notified. A server can refuse consoles altogether
+  (`/etc/meridian-agent/no-console`).
 - Two-factor sign-in for the supervisor (TOTP, RFC 6238); each code is accepted once.
 - Sessions: random 256-bit tokens stored as SHA-256, 30 days sliding. Changing a password signs out
   every other session; Settings › Security lists sessions and signs others out. The supervisor can
@@ -91,6 +114,64 @@ Report vulnerabilities privately - through the repository's private security adv
   read-only tokens.
 - The MCP endpoint requires a token, refuses foreign browser origins (DNS rebinding), offers
   read-only tokens only read tools, and every tool that disconnects people demands `confirm=true`.
+
+### External nodes and traffic rules
+
+- Importing proxies from elsewhere (share links, a subscription's content, Clash files) refuses every
+  node that turns certificate checks off (`allowInsecure`, `insecure`, `skip-cert-verify`) or sends
+  traffic unencrypted (VLESS or Trojan without TLS or REALITY, SOCKS5, plain HTTP proxies,
+  Shadowsocks `none` or its broken stream ciphers), with the reason. A Hysteria2 node with a
+  self-signed certificate gets in only with that certificate's SHA-256, which the servers then pin.
+  Nothing in a server's configuration ever turns a certificate check off.
+- A node's address cannot be a loopback, link-local (cloud metadata) or multicast address, or a name
+  that only means something inside a network (`.local`, `.internal`, `.lan`, ...). Private addresses
+  are allowed, as for port forwards: a node can sit in the provider's private network.
+- A subscription address is fetched once, over HTTPS only (a redirect to plain HTTP is refused, two
+  redirects at most), without any proxy from the environment, and only from public addresses: the
+  panel resolves the name itself and checks every address it connects to, so a name that points into
+  the panel's own network - or changes its answer between two lookups - gets nowhere. The answer is
+  capped at 4 MB (pasted text too), an import at 2000 nodes, an account at 2000 nodes; the reasons an
+  answer lists are capped as well.
+- A node's passwords and keys are stored like the panel's other secrets and never returned: the API,
+  the UI and MCP show its name, kind, address and port only. The servers that use it get them in
+  their configuration (and `GET /api/servers/{id}/config` needs a full-access token).
+- A server reaches a protocol its traffic rules send traffic to with its own identity there
+  (`r<server id>`), derived from its secret with HMAC - never as one of the exit's users - and it
+  changes when the server's token is rotated, once the agent has the new token.
+- Traffic whose exit cannot be used - a node or protocol turned off or removed, a chain that would be
+  too long or come back - is blocked, never sent out directly instead, so nobody shows up somewhere
+  they did not choose; the panel says where and why.
+- Rules are checked where they enter: site list names, domains, regular expressions (compiled, at
+  most 512 characters), country codes, addresses and ports; at most 2000 entries per rule and 10000
+  in all, 500 rules, 100 load balancers of 100 members. Private addresses stay blocked before every
+  rule.
+- **Check** on a node: the agent checks the address again, refuses loopback, link-local and multicast
+  addresses on the address it actually connects to, verifies the certificate of a TLS or REALITY
+  node against its server name with the system's authorities (never skipping the check), and sends
+  nothing through the node.
+
+### Plugins
+
+A plugin that is on is trusted with what it asks for - a server plugin's program runs on the panel's
+host as the panel's user and can read the database. What Meridian guarantees is that nothing runs
+without the supervisor's informed yes, and that a plugin cannot stall the panel or grant itself more:
+
+- Installing, updating, removing and turning plugins on or off need a signed-in browser session with
+  the CSRF header, or the panel's host (`meridian plugins`); API tokens, MCP and plugins' own API
+  calls are refused. A new plugin is off; turning it on records exactly what it asks for, and a new
+  version that asks for more is turned off until the supervisor agrees again.
+- Uploads are checked before anything is written: size and file-count limits (also while
+  unpacking), no absolute paths, `..`, backslashes, links or special files, a strict manifest; files
+  are written through `os.Root` into a fresh folder, readable only by the panel's user.
+- A program gets a minimal environment without the panel's secrets, its own process group, time
+  limits on every call and bounded queues; its calls to the API pass the same checks as a token of
+  its scope and never reach the plugins' management or what needs a browser. The contract, agent
+  settings, cores and actions of a server's configuration stay the panel's whatever a filter
+  answers, and agents check every configuration as always.
+- Only the style sheets and scripts a manifest names are served; the panel script only to the
+  signed-in supervisor. Answers of a plugin's API are sent sandboxed (they never run as a page of the
+  panel), its public pages run sandboxed in an origin of their own, and requests reach plugins
+  without cookies or credentials.
 
 ### Panel <-> agent
 
@@ -177,6 +258,8 @@ ignored.
 - **Mind the law on connection logs.** Client IPs and destinations are personal data in many places.
   Set a retention period you can justify, or turn logging off in Settings.
 - **Keep the panel host patched** and expose only ports 80/443 (or your proxy's).
+- **Install only plugins you trust**, and read what turning one on lets it do: a plugin is code you
+  let into the panel, your browser and possibly your visitors' browsers.
 
 ## Accepted limitations
 

@@ -34,6 +34,7 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 	}
 	var ack int64
 	var events []func(tx *sql.Tx)
+	var counted []proto.UserTraffic // the traffic this report added
 	recompile, ipMoved, sites := false, false, false
 
 	err := p.db.Write(ctx, func(tx *sql.Tx) error {
@@ -55,10 +56,11 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 		if h := rep.Hello; h != nil {
 			sanitizeHello(h)
 			// a lookup of the public address that failed this time is no new address: keep the known one
-			if h.IPv4 == "" {
+			// (unless the agent says the host has no address of that kind any more)
+			if h.IPv4 == "" && !h.IPv4Gone {
 				h.IPv4 = srv.IPv4
 			}
-			if h.IPv6 == "" {
+			if h.IPv6 == "" && !h.IPv6Gone {
 				h.IPv6 = srv.IPv6
 			}
 			caps, _ := json.Marshal(h.Caps)
@@ -73,12 +75,10 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 					eventTx(tx, srv.AccountID, "info", "server_connected", srv.ID, 0,
 						fmt.Sprintf("%s connected for the first time (%s, %s)", srv.Name, h.OS, h.IPv4))
 				})
-			} else if h.IPv4 != srv.IPv4 && srv.IPv4 != "" {
-				recompile, ipMoved = true, srv.Address == "" // links and passes use the reported IP
-				events = append(events, func(tx *sql.Tx) {
-					eventTx(tx, srv.AccountID, "warn", "ip_changed", srv.ID, 0,
-						fmt.Sprintf("Public IPv4 of %s changed from %s to %s", srv.Name, srv.IPv4, h.IPv4))
-				})
+			} else if moved := addrMoves(srv, h); len(moved) > 0 {
+				// a new, new kind of or lost public IPv4 or IPv6 (see addresses.go)
+				recompile, ipMoved = true, true
+				events = append(events, moved...)
 			}
 			if _, err := tx.Exec(`UPDATE servers SET agent_version = ?, hostname = ?, os = ?, kernel = ?, arch = ?,
 				cpu_model = ?, cpu_cores = ?, mem_total = ?, disk_total = ?, ipv4 = ?, ipv6 = ?, caps = ?, boot_time = ?,
@@ -88,12 +88,20 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 				first, srv.ID); err != nil {
 				return err
 			}
+			if h.Virt != "" { // agents before 1.0 do not say
+				if _, err := tx.Exec(`UPDATE servers SET virt = ? WHERE id = ?`, h.Virt, srv.ID); err != nil {
+					return err
+				}
+			}
 			// agents before 0.6 do not list their addresses: keep what is known
 			if h.Addrs != nil {
 				addrs, _ := json.Marshal(h.Addrs)
 				if _, err := tx.Exec(`UPDATE servers SET addrs = ? WHERE id = ?`, string(addrs), srv.ID); err != nil {
 					return err
 				}
+			}
+			if settleAgentUpgrades(tx, srv, h) { // an upgrade whose report was lost (agentupgrades.go)
+				recompile = true
 			}
 			switch {
 			case srv.BootTime != 0 && h.BootTime-srv.BootTime > 120: // (the boot time drifts a little with clock corrections)
@@ -131,6 +139,7 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 				if err := p.applyBatch(tx, srv, b, set); err != nil {
 					return err
 				}
+				counted = b.Traffic
 				if _, err := tx.Exec(`UPDATE servers SET last_seq = ? WHERE id = ?`, b.Seq, srv.ID); err != nil {
 					return err
 				}
@@ -202,16 +211,23 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 				}
 			}
 			metricsMu.Lock()
-			due := t-metricsSaved[srv.ID] >= 60
+			due := t/60 != metricsSaved[srv.ID]/60 // the first report of each minute: one row a minute, none skipped
 			if due {
 				metricsSaved[srv.ID] = t
 			}
 			metricsMu.Unlock()
 			if due {
 				online := liveIPs(lv.Online)
-				if _, err := tx.Exec(`INSERT OR REPLACE INTO server_metrics (server_id, ts, cpu, mem_used, disk_used, load1,
-					rx_rate, tx_rate, tcp, online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, srv.ID, t/60*60, lv.Sys.CPU,
-					int64(lv.Sys.MemUsed), int64(lv.Sys.DiskUsed), lv.Sys.Load1, lv.Sys.RXRate, lv.Sys.TXRate, lv.Sys.TCP, online); err != nil {
+				sy := lv.Sys
+				if _, err := tx.Exec(`INSERT INTO server_metrics (server_id, ts, cpu, mem_used, swap_used, disk_used, load1,
+					load5, load15, rx_rate, tx_rate, disk_read, disk_write, tcp, udp, online, temp)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					ON CONFLICT(server_id, ts) DO UPDATE SET cpu = excluded.cpu, mem_used = excluded.mem_used, swap_used = excluded.swap_used,
+					disk_used = excluded.disk_used, load1 = excluded.load1, load5 = excluded.load5, load15 = excluded.load15,
+					rx_rate = excluded.rx_rate, tx_rate = excluded.tx_rate, disk_read = excluded.disk_read, disk_write = excluded.disk_write,
+					tcp = excluded.tcp, udp = excluded.udp, online = excluded.online, temp = excluded.temp`, srv.ID, t/60*60, sy.CPU, int64(sy.MemUsed), int64(sy.SwapUsed),
+					int64(sy.DiskUsed), sy.Load1, sy.Load5, sy.Load15, sy.RXRate, sy.TXRate, max(sy.DiskRead, 0), max(sy.DiskWrite, 0), sy.TCP, sy.UDP,
+					online, hottest(sy.Temps)); err != nil {
 					return err
 				}
 			}
@@ -224,17 +240,29 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 	if err != nil {
 		return 0, err
 	}
+	p.ingestHealth(ctx, srv, rep.Health) // health checks (health.go)
 	if rep.Live != nil {
 		p.live.put(srv.ID, *rep.Live)
 		p.checkIPLimits(ctx, srv.AccountID)
 	}
+	p.relayAddrsChanged(ctx, srv, rep.Hello) // its relay and the servers it relays follow its addresses (relay.go)
+	if len(counted) > 0 {                    // a user past a protocol's limit that stops it: this server stops serving them (nodequota.go)
+		if stop := p.stopModeSubs(ctx, srv.AccountID); len(stop) > 0 {
+			for _, u := range counted {
+				if stop[u.Sub] && p.nodeQuotaCrossed(ctx, u.Sub, u.Node, u.Up, u.Down) {
+					recompile = true
+				}
+			}
+		}
+	}
 	if recompile {
 		p.touchServers(srv.ID)
 	}
-	if ipMoved { // proxy passes on other servers connect to this one's IP; country rules let it in
-		p.touchAccount(srv.AccountID)
+	if ipMoved { // passes, rules and forwards on other servers connect to this one's IP; country rules let it in
+		p.addressMoved(srv)
 	} else if sites { // an exit's camouflage may have changed: the protocols passing through it follow
 		p.touchServers(p.passEntriesOf(ctx, srv.ID)...)
+		p.touchRoutes(ctx, srv.AccountID)
 	}
 	return ack, nil
 }
@@ -284,6 +312,7 @@ func sanitizeLive(lv *proto.Live) {
 	if len(lv.Online) > batchLimit {
 		lv.Online = lv.Online[:batchLimit]
 	}
+	sanitizeRelayLive(lv)
 	// what the server holds and serves of the shared certificates: a few entries, short texts
 	if len(lv.Certs) > 256 {
 		lv.Certs = lv.Certs[:256]
@@ -324,10 +353,16 @@ func sanitizeLive(lv *proto.Live) {
 }
 
 // applyBatch writes one batch of accumulated data.
+// virtRe is what a host's kind of machine may be called (proto.Hello.Virt).
+var virtRe = regexp.MustCompile(`^[a-z0-9_-]{1,24}$`)
+
 // sanitizeHello bounds what an agent says about its host before it is stored and shown.
 func sanitizeHello(h *proto.Hello) {
 	for _, s := range []*string{&h.AgentVersion, &h.Hostname, &h.OS, &h.Kernel, &h.Arch, &h.CPUModel} {
 		*s = cleanName(*s, 128)
+	}
+	if !virtRe.MatchString(h.Virt) {
+		h.Virt = ""
 	}
 	for _, s := range []*string{&h.IPv4, &h.IPv6} {
 		if a, err := netip.ParseAddr(*s); err == nil {
@@ -356,8 +391,12 @@ func (p *Panel) applyBatch(tx *sql.Tx, srv *Server, b *proto.Batch, set Settings
 	if ts <= 0 || ts > now()+3600 {
 		ts = now()
 	}
-	if len(b.Traffic) > batchLimit || len(b.IPs) > batchLimit || len(b.Dests) > batchLimit || len(b.Forwards) > batchLimit {
+	if len(b.Traffic) > batchLimit || len(b.IPs) > batchLimit || len(b.Dests) > batchLimit || len(b.Forwards) > batchLimit ||
+		len(b.Pings) > batchLimit {
 		return fmt.Errorf("report from %s is too large", srv.Name)
+	}
+	if err := storePings(tx, srv, b.Pings); err != nil { // pingmon.go
+		return err
 	}
 	day := p.dayKey(time.Unix(ts, 0))
 
@@ -519,6 +558,10 @@ func (p *Panel) checkIPLimits(ctx context.Context, accountID int64) {
 		if s.IPLimit > 0 && !s.Paused {
 			limited = append(limited, s)
 		}
+	}
+	// devices turned away over an enforced limit (limits.go) - and given back when a limit goes
+	if slices.ContainsFunc(subs, (*Sub).enforced) || p.devices.any() {
+		p.countDevices(accountID, subs, p.onlineBySub(ctx, accountID))
 	}
 	if len(limited) == 0 {
 		return

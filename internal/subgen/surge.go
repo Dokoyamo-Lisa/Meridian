@@ -51,7 +51,7 @@ func lineFieldsWhy(e Endpoint) string {
 func surgeTLS(e Endpoint) (string, string) {
 	switch e.Security {
 	case SecurityReality:
-		return "", whyProtocol
+		return "", whyReality
 	case SecurityTLS:
 		s := ", tls=true, sni=" + e.SNI
 		if e.pinned() {
@@ -70,7 +70,7 @@ func surgeWS(e Endpoint) (string, string) {
 	case TransportWS:
 		s := ", ws=true, ws-path=" + nz(e.Path, "/")
 		if e.HostHeader != "" {
-			s += `, ws-headers=Host:"` + e.HostHeader + `"`
+			s += ", ws-headers=Host:" + e.HostHeader // Header:Value pairs, as the manual writes them
 		}
 		return s, ""
 	}
@@ -111,6 +111,9 @@ func surgeLine(e Endpoint, i int) (line, section, why string) {
 		if e.DownMbps > 0 {
 			line += fmt.Sprintf(", download-bandwidth=%d", e.DownMbps)
 		}
+		if from, to, ok := e.hop(); ok { // Surge rotates among these instead of the main port
+			line += ", port-hopping=" + from + "-" + to
+		}
 		return line, "", ""
 	case KindShadowsocks:
 		return fmt.Sprintf("%s = ss, %s, %d, encrypt-method=%s, password=%s, udp-relay=true", name, e.Host, e.Port,
@@ -140,7 +143,7 @@ func surgeLine(e Endpoint, i int) (line, section, why string) {
 		if len(e.WG.DNS) > 0 {
 			fmt.Fprintf(&b, "dns-server = %s\n", strings.Join(e.WG.DNS, ", "))
 		}
-		fmt.Fprintf(&b, "mtu = %d\n", e.WG.MTU)
+		fmt.Fprintf(&b, "mtu = %d\n", min(e.WG.MTU, 1420)) // Surge takes 576 to 1420
 		peer := fmt.Sprintf("public-key = %s, allowed-ips = \"%s\", endpoint = %s",
 			e.WG.PeerPublicKey, strings.Join(e.WG.routes(), ", "), hostPort(e.Host, e.Port))
 		if e.WG.Keepalive > 0 {
@@ -187,8 +190,8 @@ func Surge(eps []Endpoint, info Info, subURL string) ([]byte, []string) {
 	b.WriteString("\n[Proxy Group]\n")
 	if len(names) > 0 {
 		fmt.Fprintf(&b, "%s = select, %s, %s, DIRECT\n", groupProxy, groupAuto, strings.Join(names, ", "))
-		fmt.Fprintf(&b, "%s = url-test, %s, url=https://www.gstatic.com/generate_204, interval=600, tolerance=50\n",
-			groupAuto, strings.Join(names, ", "))
+		// the test URL is proxy-test-url above: Surge ignores a group's own url= now
+		fmt.Fprintf(&b, "%s = url-test, %s, interval=600, tolerance=50\n", groupAuto, strings.Join(names, ", "))
 	} else {
 		// nothing this app can use: refuse traffic rather than send it out unprotected
 		fmt.Fprintf(&b, "%s = select, REJECT\n", groupProxy)
@@ -208,6 +211,10 @@ func Surge(eps []Endpoint, info Info, subURL string) ([]byte, []string) {
 	return []byte(b.String()), skipped
 }
 
+// Quantumult X documents its server lines in the sample configuration of its repository
+// (crossutility/Quantumult-X, sample.conf): no Hysteria2 or VLESS Encryption, REALITY through
+// reality-base64-pubkey on lines that use TLS.
+
 // quanxObfs returns the obfs part of a Quantumult X VLESS / VMess / Trojan line.
 func quanxObfs(e Endpoint) (string, string) {
 	host := nz(e.SNI, e.HostHeader)
@@ -225,6 +232,14 @@ func quanxObfs(e Endpoint) (string, string) {
 		return ", obfs=" + mode + ", obfs-host=" + nz(e.HostHeader, host) + ", obfs-uri=" + nz(e.Path, "/"), ""
 	}
 	return "", whyTransport
+}
+
+// quanxReality returns the REALITY keys of a Quantumult X line: with them, its TLS is REALITY.
+func quanxReality(e Endpoint) string {
+	if !e.reality() {
+		return ""
+	}
+	return fmt.Sprintf(", reality-base64-pubkey=%s, reality-hex-shortid=%s", e.PublicKey, e.ShortID)
 }
 
 // quanxTLS returns the certificate checks of a Quantumult X line.
@@ -247,32 +262,32 @@ func quanxLine(e Endpoint) (string, string) {
 	}
 	switch e.Kind {
 	case KindVLESS:
+		if e.encrypted() {
+			return "", whyEncryption // "The method field for vless should be none"
+		}
 		obfs, why := quanxObfs(e)
 		if why != "" {
 			return "", why
 		}
-		line := fmt.Sprintf("vless=%s, method=none, password=%s%s", hostPort(e.Host, e.Port), e.UUID, obfs)
-		if e.reality() {
-			line += fmt.Sprintf(", reality-base64-pubkey=%s, reality-hex-shortid=%s", e.PublicKey, e.ShortID)
-		}
+		line := fmt.Sprintf("vless=%s, method=none, password=%s%s%s", hostPort(e.Host, e.Port), e.UUID, obfs, quanxReality(e))
 		if e.Flow != "" {
 			line += ", vless-flow=" + e.Flow
 		}
-		return fmt.Sprintf("%s%s, tag=%s", line, quanxTLS(e), tag), ""
+		return fmt.Sprintf("%s%s, udp-relay=true, tag=%s", line, quanxTLS(e), tag), ""
 	case KindVMess:
 		obfs, why := quanxObfs(e)
 		if why != "" {
 			return "", why
 		}
-		return fmt.Sprintf("vmess=%s, method=aes-128-gcm, password=%s%s%s, aead=true, tag=%s", hostPort(e.Host, e.Port),
-			e.UUID, obfs, quanxTLS(e), tag), ""
+		return fmt.Sprintf("vmess=%s, method=aes-128-gcm, password=%s%s%s, aead=true, udp-relay=true, tag=%s",
+			hostPort(e.Host, e.Port), e.UUID, obfs, quanxTLS(e), tag), ""
 	case KindTrojan:
 		switch e.transport() {
 		case TransportRaw:
-			return fmt.Sprintf("trojan=%s, password=%s, over-tls=true, tls-host=%s%s, tag=%s", hostPort(e.Host, e.Port),
-				e.Password, e.SNI, quanxTLS(e), tag), ""
+			return fmt.Sprintf("trojan=%s, password=%s, over-tls=true, tls-host=%s%s%s, udp-relay=true, tag=%s",
+				hostPort(e.Host, e.Port), e.Password, e.SNI, quanxReality(e), quanxTLS(e), tag), ""
 		case TransportWS:
-			return fmt.Sprintf("trojan=%s, password=%s, obfs=wss, obfs-host=%s, obfs-uri=%s%s, tag=%s",
+			return fmt.Sprintf("trojan=%s, password=%s, obfs=wss, obfs-host=%s, obfs-uri=%s%s, udp-relay=true, tag=%s",
 				hostPort(e.Host, e.Port), e.Password, nz(e.HostHeader, e.SNI), nz(e.Path, "/"), quanxTLS(e), tag), ""
 		}
 		return "", whyTransport

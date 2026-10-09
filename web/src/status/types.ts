@@ -39,7 +39,18 @@ export interface StatusServer {
   }
   /** Public IP addresses (to visitors only where the status page shows them). */
   addrs?: string[]
-  host?: { os?: string; arch?: string; cpu?: string; cores?: number; mem?: number; disk?: number }
+  host?: {
+    os?: string
+    /** Linux kernel version. */
+    kernel?: string
+    /** What it runs in: kvm, xen, vmware, hyper-v, openvz, lxc ...; none = no hypervisor shows. */
+    virt?: string
+    arch?: string
+    cpu?: string
+    cores?: number
+    mem?: number
+    disk?: number
+  }
   /** The server's own traffic since its monthly reset. */
   cycle?: { up: number; down: number; start: number }
   /** The day its paid period ends, YYYY-MM-DD. */
@@ -54,6 +65,8 @@ export interface StatusEvent {
 }
 
 export interface StatusPayload {
+  /** The notice while the panel is in maintenance mode (servers keep working). */
+  maintenance?: string
   title: string
   about: string
   timezone: string
@@ -66,7 +79,8 @@ export interface StatusPayload {
   hub?: { city: string; cc: string; loc: [number, number]; tz?: string }
   /** The supervisor is signed in (otherwise a visitor of a public status page). */
   supervisor?: boolean
-  show: { bandwidth: boolean; throughput: boolean; resources: boolean; events: boolean }
+  /** Which parts visitors and users get; the supervisor always gets all of them. */
+  show?: { overview: boolean; events: boolean }
 }
 
 export interface LivePayload {
@@ -94,6 +108,8 @@ export interface PortalServer {
 }
 
 export interface PortalProtocol {
+  /** The protocol's id, as in PortalDay.protocols. */
+  id: number
   server: string
   name: string
   removed: boolean
@@ -116,6 +132,8 @@ export interface PortalDay {
   up: number
   down: number
   servers: Record<string, number>
+  /** Bytes per protocol id (see PortalProtocol.id). */
+  protocols?: Record<string, number>
 }
 
 export interface AppClient {
@@ -138,6 +156,9 @@ export interface PortalMe {
   clients: AppClient[]
   quota: number
   used: Usage
+  /** What counts toward the quota this cycle (the count mode decides). */
+  counted: number
+  count_mode: 'both' | 'down' | 'up' | 'max'
   cycle_start: number
   next_reset: number
   expires_at: number
@@ -149,6 +170,19 @@ export interface PortalMe {
   protocols: PortalProtocol[]
   /** WireGuard protocols: the WireGuard app takes a file or a QR code, not the link. */
   wireguard?: { name: string; url: string; conf: string }[]
+  /** Limits on single protocols: what is left of each this cycle. */
+  limits?: PortalLimit[]
+}
+
+export interface PortalLimit {
+  id: number
+  server: string
+  name: string
+  quota: number
+  used: number
+  left: number
+  /** Used up: the protocol does not serve the user until the cycle starts over. */
+  stopped: boolean
 }
 
 export interface LoginResult {

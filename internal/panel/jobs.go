@@ -14,7 +14,8 @@ import (
 func (p *Panel) jobs(ctx context.Context) {
 	tick := time.NewTicker(15 * time.Second)
 	defer tick.Stop()
-	lastHourly, lastMinute, lastLimits := time.Time{}, time.Time{}, time.Time{}
+	lastHourly, lastMinute, lastLimits, lastRollup := time.Time{}, time.Time{}, time.Time{}, time.Time{}
+	lastSources := time.Now() // subscription links are first read again a few minutes after a start
 	nextUpdateCheck := time.Now().Add(time.Minute)
 	for {
 		select {
@@ -29,11 +30,17 @@ func (p *Panel) jobs(ctx context.Context) {
 			lastLimits = time.Now()
 			p.limitEvents(ctx)
 		}
+		if time.Since(lastSources) >= 5*time.Minute {
+			lastSources = time.Now()
+			go p.sourcesJob(ctx) // slow providers never hold up the rest
+		}
 		p.notifyTick(ctx)
+		p.pingJob(ctx, &lastRollup) // the charts' five-minute steps (pingmon.go)
 		if time.Since(lastMinute) >= 59*time.Second {
 			lastMinute = time.Now()
 			p.sampleUptime(ctx)
 			p.autoUpdate(ctx) // a night-time install, when automatic updates are on
+			p.relayJob(ctx)   // servers that keep losing the panel (relay.go)
 		}
 		if time.Now().After(nextUpdateCheck) {
 			nextUpdateCheck = time.Now().Add(6 * time.Hour)
@@ -151,8 +158,10 @@ func (p *Panel) resetCycles(ctx context.Context) {
 		loc = time.UTC
 	}
 	t := time.Now().In(loc)
+	restarted := map[int64]bool{} // accounts whose users started a new cycle
 	err = p.db.Write(ctx, func(tx *sql.Tx) error {
-		rows, err := tx.Query(`SELECT id, account_id, name, reset_day, cycle_start FROM subs WHERE reset_day > 0`)
+		rows, err := tx.Query(`SELECT id, account_id, name, reset_day, reset_every, starts_at, created_at, cycle_start FROM subs
+			WHERE reset_day > 0 OR reset_every > 0`)
 		if err != nil {
 			return err
 		}
@@ -164,9 +173,12 @@ func (p *Panel) resetCycles(ctx context.Context) {
 		var due, moved []item
 		for rows.Next() {
 			var x item
-			if rows.Scan(&x.id, &x.account, &x.name, &x.day, &x.start) == nil {
-				if cs := cycleStart(x.day, t).Unix(); x.start < cs {
-					if shifted(x.start, cs) {
+			var s Sub
+			if rows.Scan(&x.id, &x.account, &x.name, &s.ResetDay, &s.ResetEvery, &s.StartsAt, &s.CreatedAt, &x.start) == nil {
+				x.day = s.ResetDay
+				if cs := periodStart(&s, t); cs > 0 && x.start < cs {
+					// a monthly boundary that only moved with the time zone; every-N-days cycles keep their instant
+					if s.ResetEvery == 0 && shifted(x.start, cs) {
 						x.start = cs
 						moved = append(moved, x)
 						continue
@@ -189,7 +201,8 @@ func (p *Panel) resetCycles(ctx context.Context) {
 			if err := resetNodeUsage(tx, x.id); err != nil {
 				return err
 			}
-			eventTx(tx, x.account, "info", "cycle_reset", 0, x.id, fmt.Sprintf("%s: monthly usage reset", x.name))
+			restarted[x.account] = true
+			eventTx(tx, x.account, "info", "cycle_reset", 0, x.id, fmt.Sprintf("%s: usage reset - a new cycle started", x.name))
 		}
 
 		rows, err = tx.Query(`SELECT id, account_id, name, bw_reset_day, cycle_start FROM servers WHERE deleted_at = 0`)
@@ -226,6 +239,13 @@ func (p *Panel) resetCycles(ctx context.Context) {
 		return nil
 	})
 	logErr("reset cycles", err)
+	if err == nil {
+		for acct := range restarted { // protocols a limit stopped serve their users again (nodequota.go)
+			if len(p.stopModeSubs(ctx, acct)) > 0 {
+				p.touchAccount(acct)
+			}
+		}
+	}
 }
 
 // retention deletes log rows older than the configured window.

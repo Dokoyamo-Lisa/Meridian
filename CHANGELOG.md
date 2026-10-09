@@ -1,5 +1,80 @@
 # Changelog
 
+## 1.0.0 - 2026-10-09
+
+**Upgrading keeps everything as it is**: an existing panel keeps its SQLite database (move it to
+PostgreSQL whenever you like: `meridian db to-postgres`), and agents from 0.7 keep working - upgrade
+them for the new features (Settings › Updates › Upgrade all agents - nobody is disconnected).
+**One change of behaviour**: changes from Telegram (pausing users, deciding about health risks) now
+need a listed Telegram user or your own linked Telegram account - an empty list no longer lets
+everyone in the chat make changes.
+
+### New
+
+- **PostgreSQL**: a new panel keeps its data in PostgreSQL, installed from the distribution's
+  packages and reached over its local socket without a password (`--database sqlite` keeps SQLite).
+  `meridian db status`, `meridian db to-postgres URL` and `meridian db to-sqlite` move the data either
+  way, with the counts checked and the old database kept. Backups are SQLite files either way and
+  restore into either. Settings › Updates shows the database.
+- **A server's history on the status page**: a server's details have charts of processor, memory,
+  disk, disk activity, network, load, connections and temperature (where the host has sensors), from
+  an hour to 30 days, as areas, lines or bars, smoothed or as measured, with the time a server did
+  not report hatched; hovering one chart shows the same moment on all of them. Each viewer picks the
+  charts they want; you decide which visitors get (Settings › Panel › Status page). An icon for each
+  operating system, what the host runs in (KVM, Xen, OpenVZ, LXC ...) and its kernel.
+- **Ping monitors** (Monitor › Ping): the servers measure the way to addresses you choose, every 10
+  seconds to an hour - three ICMP echoes or three TCP connections a round. Rounds measured while a
+  server cannot reach the panel arrive later, so no gap is left that the server did not have. Their
+  charts are in each server's details (visitors see public monitors by name, never their address);
+  `/ping` in the Telegram bot.
+- **Telegram for users**: users link up to two Telegram accounts - signing in once in the bot's Mini
+  App (the password goes to the panel, never through the chat) or with a code from their page - and
+  ask the bot for their data left (`/usage`) and devices (`/devices`), or open their page in
+  Telegram. They can unlink one a month; you can unlink any at any time (Settings › Notifications).
+- **The panel in Telegram**: your own linked Telegram accounts open the panel in the Mini App and use
+  the bot's commands in a private chat (allowed only from a signed-in browser). A sign-in from
+  Telegram cannot change passwords, two-factor, API tokens, sessions, the console, plugins or the
+  site rule. Sign-ins from Telegram are guarded like the sign-in page.
+- **Shared servers**: a server can report to up to two more panels. The other panel adds it as
+  shared and gives a code; with it the agent runs that panel's protocols, users, forwards and rules
+  too - everything but the console, upgrades, the country rule and relaying, which stay with the
+  server's own panel. Ports and networks in use are refused to the other panel.
+- **Limits per protocol**: at most so much data through one protocol each cycle, for a user or in a
+  plan, with alerts when one is used up - or the protocol stops serving them until the cycle starts
+  over. The users' circles show what is left: full at the start of a cycle, running down.
+- **Traffic in colour**: users' charts show what each protocol (or server) carried.
+- **Subscription links**: a provider's subscription read on a schedule; its nodes work as exits, in
+  load balancers and for users.
+- **The console**: a root shell on each server, in the panel, for the supervisor only (with the
+  password asked again).
+- **Backups**: download, or WebDAV and S3 on a schedule (encrypted), and restore from the panel.
+- **Users**: what counts toward the quota, a start date, resets every N days, speed and device limits
+  enforced by the servers, preset plans.
+- **Sign-in protection**: escalating shut-outs, no lockout of the owner, Cloudflare Turnstile on the
+  panel's own pages, and maintenance mode.
+- **Your own styles**: CSS for the panel and for the status page and users' pages.
+- **Status page switches**: whether visitors and users get the overview and the events.
+- **Protocols page**: search, filters, and choosing who gets each protocol in a few clicks.
+- Also in 1.0 (merged earlier): agent relays and a WebSocket link to the panel, health checks and the
+  Telegram bot, plugins, traffic splitting with external nodes, dynamic DNS and IPv6-only servers,
+  VLESS Encryption, Hysteria2 port hopping and Trojan with REALITY.
+
+### Security
+
+- Changes from Telegram need an explicitly allowed account (see above).
+- The health check reads only regular files, opened without blocking: an `authorized_keys` turned
+  into a FIFO can no longer hang it, and a linked one is followed only to another `authorized_keys`.
+- A server shared with the panel cannot be set to use or to be a relay (its agent ignored it).
+
+### API and MCP
+
+New endpoints: ping monitors (`/api/ping-monitors`), a server's charts (`/api/servers/{id}/series`,
+and for the status page `/api/status/servers/{id}/series`), Telegram links (`/api/telegram/*`,
+`/api/portal/telegram*`, the Mini App's `/api/tg/*`); `status_charts`, `telegram_user_link` and
+`telegram_panel` in the settings; `database` in `GET /api/update`. MCP tools: `list_ping_monitors`,
+`set_ping_monitor`, `remove_ping_monitor`, `server_charts`, `list_telegram_links`,
+`unlink_telegram`; `set_status_page` takes `charts`, `set_notifications` takes `user_link`.
+
 ## 0.7.4 - 2026-10-08
 
 **Security: upgrade the panel and the agents** (Settings › Updates › Upgrade all agents - nobody is

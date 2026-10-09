@@ -105,7 +105,7 @@ export function rgba(hex: string, a: number) {
 
 // ---------------------------------------------------------------- tooltip
 
-export type TipRow = [string, string, string?]
+export type TipRow = [string, string, string?, string?] // label, value, class, colour of its dot
 
 export function showTip(x: number, y: number, value: string, sub?: string, rows?: TipRow[] | null) {
   const t = $('#tip')
@@ -113,7 +113,12 @@ export function showTip(x: number, y: number, value: string, sub?: string, rows?
   append(t, [
     h('div.t-val', value),
     sub ? h('div.t-sub', sub) : null,
-    rows && rows.length ? h('div.t-rows', rows.map(([k, v, cls]) => h('div.t-row', { cls }, h('span', h('i'), k), h('b', v)))) : null,
+    rows && rows.length
+      ? h(
+          'div.t-rows',
+          rows.map(([k, v, cls, color]) => h('div.t-row', { cls }, h('span', h('i', color ? { style: { background: color } } : {}), k), h('b', v))),
+        )
+      : null,
   ])
   t.classList.add('on')
   const w = t.offsetWidth
@@ -163,7 +168,7 @@ function tickStep(span: number) {
 
 // ---------------------------------------------------------------- monotone cubic (Fritsch-Carlson)
 
-function tangents(xs: number[], ys: number[]) {
+export function tangents(xs: number[], ys: number[]) {
   const n = xs.length
   const m = new Array<number>(n - 1)
   const t = new Array<number>(n)
@@ -189,7 +194,7 @@ function tangents(xs: number[], ys: number[]) {
   return t
 }
 
-function monoPath(path: Path2D, xs: number[], ys: number[], t: number[]) {
+export function monoPath(path: Path2D, xs: number[], ys: number[], t: number[]) {
   path.moveTo(xs[0], ys[0])
   for (let i = 0; i < xs.length - 1; i++) {
     const d = (xs[i + 1] - xs[i]) / 3
@@ -512,6 +517,8 @@ export interface BarOpts {
   animate?: boolean
   label: string
   ticks?: number
+  /** Coloured layers, bottom first: each bar is split into them (their sum per day is values). */
+  stacks?: { color: string; values: number[] }[]
 }
 
 let barTipTimer = 0
@@ -546,7 +553,24 @@ export function dailyBars(host: HTMLElement, o: BarOpts) {
     const g = s('g', { class: 'col' })
     const x = pl + i * band + (band - bw) / 2
     const hgt = v > 0 ? Math.max(1.5, Y(0) - Y(v)) : 0
-    if (hgt) {
+    if (hgt && o.stacks) {
+      // the day's layers, bottom up; the top one gets the rounded corners
+      let acc = 0
+      const layers = o.stacks.map((st) => ({ color: st.color, v: st.values[i] || 0 })).filter((l) => l.v > 0)
+      layers.forEach((l, k) => {
+        const top = Y(acc + l.v)
+        const bottom = Y(acc)
+        acc += l.v
+        const lh = Math.max(k === layers.length - 1 ? 1.5 : 0.6, bottom - top)
+        g.append(
+          s('path', {
+            class: ['seg-bar', anim ? 'grow' : ''].join(' ').trim(),
+            d: k === layers.length - 1 ? roundTop(x, bottom - lh, bw, lh, 3) : `M${x},${bottom}L${x},${bottom - lh}L${x + bw},${bottom - lh}L${x + bw},${bottom}Z`,
+            style: `fill:${l.color}` + (anim ? `;--d:${i * 16}ms` : ''),
+          }),
+        )
+      })
+    } else if (hgt) {
       g.append(
         s('path', {
           class: ['bar', i === vals.length - 1 ? 'today' : '', anim ? 'grow' : ''].join(' ').trim(),

@@ -752,3 +752,152 @@ export function BarChart(props: { days: { day: string; a: number; b: number }[];
     </div>
   )
 }
+
+// ---------------------------------------------------------------- stacked daily chart
+
+/** One coloured layer of a StackChart: a value per day, in the order of the chart's days. */
+export interface StackSeries {
+  key: string
+  label: string
+  values: number[]
+  color: string
+}
+
+/** The chart colours, theme by theme (app.css --c1 ... --c8); more series than that share "other". */
+export const chartColors = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)', 'var(--c7)', 'var(--c8)']
+
+/** Keeps the largest `keep` series (by total) and folds the rest into one grey "other" layer. */
+export function topSeries(list: { key: string; label: string; values: number[] }[], keep: number, other: string): StackSeries[] {
+  const sum = (v: number[]) => v.reduce((a, b) => a + b, 0)
+  const sorted = [...list].filter((s) => sum(s.values) > 0).sort((a, b) => sum(b.values) - sum(a.values))
+  const top = sorted.slice(0, sorted.length > keep ? keep - 1 : keep)
+  const rest = sorted.slice(top.length)
+  const out: StackSeries[] = top.map((s, i) => ({ ...s, color: chartColors[i % chartColors.length] }))
+  if (rest.length) {
+    const n = rest[0].values.length
+    const v = Array.from({ length: n }, (_, d) => rest.reduce((a, s) => a + (s.values[d] || 0), 0))
+    out.push({ key: '__other', label: `${other} (${rest.length})`, values: v, color: 'var(--ink-4)' })
+  }
+  return out
+}
+
+function shortDay(d: string) {
+  const p = d.split('-')
+  return p.length === 3 ? new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : d
+}
+
+// StackChart shows daily totals as bars made of coloured layers (a protocol, a server, a direction):
+// pointing at a day lists its layers; the legend hides or shows each layer.
+export function StackChart(props: { days: string[]; series: StackSeries[]; height?: number; label: string; fmt?: (v: number) => string }) {
+  const [ref, w] = useWidth<HTMLDivElement>()
+  const [hover, setHover] = useState<number | null>(null)
+  const [hidden, setHidden] = useState<string[]>([])
+  const fmt = props.fmt || ((v: number) => bytes(v))
+  const h = props.height || 180
+  const pad = { l: 46, r: 4, t: 10, b: 20 }
+  const shown = props.series.filter((s) => !hidden.includes(s.key))
+  const n = Math.max(1, props.days.length)
+  const totals = props.days.map((_, d) => shown.reduce((a, s) => a + (s.values[d] || 0), 0))
+  const max = niceMax(Math.max(1, ...totals))
+  const band = (w - pad.l - pad.r) / n
+  const bw = Math.max(2, Math.min(22, band * 0.68))
+  const y = (v: number) => pad.t + (1 - v / max) * (h - pad.t - pad.b)
+  const sel = hover !== null ? hover : props.days.length - 1
+  const sum = (v: number[]) => v.reduce((a, b) => a + b, 0)
+  const all = props.series.reduce((a, s) => a + sum(s.values), 0)
+  const rows = shown
+    .map((s) => ({ s, v: s.values[sel] || 0 }))
+    .filter((x) => x.v > 0)
+    .sort((a, b) => (a.s.key === '__other' ? 1 : b.s.key === '__other' ? -1 : b.v - a.v)) // "other" last
+  const toggle = (k: string) => setHidden(hidden.includes(k) ? hidden.filter((x) => x !== k) : [...hidden, k])
+  const ticks = [0.25, 0.5, 0.75, 1]
+  const labelsAt = n > 1 ? [0, Math.floor((n - 1) / 2), n - 1] : [0]
+  return (
+    <div ref={ref} class="chart-wrap stack-chart">
+      <div class="stack-read" aria-live="polite">
+        <div class="stack-day">
+          <span class="faint">{props.days[sel] ? shortDay(props.days[sel]) : ''}{hover === null && sel === props.days.length - 1 ? ' · today so far' : ''}</span>
+          <b>{fmt(totals[sel] || 0)}</b>
+        </div>
+        <div class="stack-rows">
+          {rows.length === 0 && <span class="faint">Nothing that day</span>}
+          {rows.slice(0, 6).map((x) => (
+            <span class="stack-row">
+              <i style={{ background: x.s.color }} />
+              <span class="ellipsis">{x.s.label}</span>
+              <b>{fmt(x.v)}</b>
+              <span class="faint">{totals[sel] ? Math.round((x.v * 100) / totals[sel]) : 0}%</span>
+            </span>
+          ))}
+          {rows.length > 6 && <span class="faint">and {rows.length - 6} more</span>}
+        </div>
+      </div>
+      <svg class="chart" style={{ height: h + 'px' }} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={props.label} onMouseLeave={() => setHover(null)}>
+        {ticks.map((f) => (
+          <>
+            <line class="grid-l" x1={pad.l} x2={w - pad.r} y1={y(max * f)} y2={y(max * f)} />
+            <text x={pad.l - 6} y={y(max * f) + 3.5} text-anchor="end">
+              {bytes(max * f, 0)}
+            </text>
+          </>
+        ))}
+        <line class="base-l" x1={pad.l} x2={w - pad.r} y1={y(0)} y2={y(0)} />
+        {props.days.map((d, i) => {
+          const x0 = pad.l + i * band + (band - bw) / 2
+          let acc = 0
+          const layers = shown.map((s) => {
+            const v = s.values[i] || 0
+            const top = y(acc + v)
+            const bottom = y(acc)
+            acc += v
+            return { s, v, top, hgt: Math.max(0, bottom - top) }
+          })
+          const last = [...layers].reverse().find((l) => l.v > 0)
+          return (
+            <g key={d} class={'stack-col' + (hover !== null && hover !== i ? ' dim' : '')} onMouseEnter={() => setHover(i)} onPointerDown={() => setHover(i)}>
+              <rect x={pad.l + i * band} y={pad.t} width={band} height={h - pad.t - pad.b} fill="transparent" />
+              {layers.map((l) =>
+                l.v > 0 ? (
+                  <rect
+                    class="stack-seg"
+                    x={x0}
+                    y={l.top}
+                    width={bw}
+                    height={Math.max(l === last ? 1.5 : 0.5, l.hgt)}
+                    rx={l === last ? Math.min(3, bw / 3) : 0}
+                    style={{ fill: l.s.color, animationDelay: `${Math.min(i * 12, 400)}ms` }}
+                  />
+                ) : null,
+              )}
+            </g>
+          )
+        })}
+        {props.days.length > 0 &&
+          labelsAt.map((i) => (
+            <text x={pad.l + i * band + band / 2} y={h - 5} text-anchor={i === 0 && n > 1 ? 'start' : i === n - 1 && n > 1 ? 'end' : 'middle'}>
+              {shortDay(props.days[i])}
+            </text>
+          ))}
+      </svg>
+      <div class="stack-legend">
+        {props.series.map((s) => {
+          const off = hidden.includes(s.key)
+          const t = sum(s.values)
+          return (
+            <button class={'stack-key' + (off ? ' off' : '')} aria-pressed={!off} onClick={() => toggle(s.key)} title={off ? 'Show it' : 'Hide it'}>
+              <i style={{ background: s.color }} />
+              <span class="ellipsis">{s.label}</span>
+              <b>{fmt(t)}</b>
+              <span class="faint">{all ? Math.round((t * 100) / all) : 0}%</span>
+            </button>
+          )
+        })}
+        {hidden.length > 0 && (
+          <button class="linkish" onClick={() => setHidden([])}>
+            Show all
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}

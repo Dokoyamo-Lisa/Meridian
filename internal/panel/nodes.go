@@ -31,7 +31,7 @@ func hyNode(n *Node, subs []*Sub, pass []passClient, over map[int64]creds) (prot
 	if err := json.Unmarshal(n.Settings, &s); err != nil {
 		return proto.HyNode{}, err
 	}
-	out := proto.HyNode{NodeID: n.ID, Port: n.Port, UpMbps: s.UpMbps, DownMbps: s.DownMbps}
+	out := proto.HyNode{NodeID: n.ID, Port: n.Port, UpMbps: s.UpMbps, DownMbps: s.DownMbps, HopPorts: s.HopPorts}
 	if s.CertMode == certACME {
 		out.ACME = s.SNI
 	} else {
@@ -44,7 +44,7 @@ func hyNode(n *Node, subs []*Sub, pass []passClient, over map[int64]creds) (prot
 		out.Users = append(out.Users, proto.HyUser{ID: proto.Email(sub.ID, n.ID), Password: credsFor(n, sub, nil, over).Password})
 	}
 	for _, pc := range pass {
-		out.Users = append(out.Users, proto.HyUser{ID: passEmail(pc.Entry.ID), Password: pc.Password})
+		out.Users = append(out.Users, proto.HyUser{ID: pc.email(), Password: pc.Password})
 	}
 	return out, nil
 }

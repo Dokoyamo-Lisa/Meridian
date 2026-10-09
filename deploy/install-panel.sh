@@ -6,24 +6,30 @@
 #   sudo ./install-panel.sh --listen 127.0.0.1:8080   # plain HTTP behind your own TLS proxy (or :8080)
 #   sudo ./install-panel.sh --upgrade                 # replace the binaries, keep everything else
 #   sudo ./install-panel.sh --uninstall               # remove the service (the data stays)
+#   ... --database sqlite                             # a new panel on SQLite instead of PostgreSQL
 #
 # With --domain the panel gets a Let's Encrypt certificate by itself (ports 80 and 443 must be
 # reachable; using it accepts Let's Encrypt's terms). The panel runs as the unprivileged user
-# "meridian" in a hardened systemd unit; its data lives in /var/lib/meridian.
+# "meridian" in a hardened systemd unit; its data lives in /var/lib/meridian. A new panel keeps its
+# data in PostgreSQL (installed from the distribution's packages, reached over its local socket
+# without a password); an existing panel keeps the database it has - meridian db to-postgres moves
+# a SQLite panel's data later.
 set -euo pipefail
 
 DOMAIN=""
 EMAIL=""
 LISTEN=""
 ACTION="install"
+DATABASE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --domain) DOMAIN="${2:-}"; shift 2 ;;
     --email) EMAIL="${2:-}"; shift 2 ;;
     --listen) LISTEN="${2:-}"; shift 2 ;;
+    --database) DATABASE="${2:-}"; shift 2 ;;
     --upgrade) ACTION="upgrade"; shift ;;
     --uninstall) ACTION="uninstall"; shift ;;
-    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -47,7 +53,7 @@ if [ "$ACTION" = "uninstall" ]; then
   rm -f "$UNIT" "$UPDATER.path" "$UPDATER.service" "$BIN"
   rm -rf "$LIB"
   systemctl daemon-reload
-  say "Meridian panel removed. Its data is still in $DATA and $ETC - delete them yourself if you no longer need them."
+  say "Meridian panel removed. Its data is still in $DATA and $ETC (and, if it used PostgreSQL, in the database meridian) - delete them yourself if you no longer need them."
   exit 0
 fi
 
@@ -61,6 +67,7 @@ if [ -n "$DOMAIN" ]; then
 fi
 [ -n "$EMAIL" ] && [ -z "$DOMAIN" ] && die "--email only matters with --domain (it is the Let's Encrypt contact)"
 [ -n "$LISTEN" ] && [ -n "$DOMAIN" ] && die "use either --domain (HTTPS on 443) or --listen (plain HTTP), not both"
+case "$DATABASE" in ""|postgres|sqlite) ;; *) die "--database is postgres or sqlite" ;; esac
 
 # checks before anything changes: the ports are free (or ours), and the domain points here
 port_user() { ss -Hltnp "sport = :$1" 2>/dev/null | head -n1; }
@@ -90,6 +97,47 @@ install -d -m 0755 "$LIB/agent" "$ETC"
 install -m 0755 "$HERE/meridian" "$BIN.new" && mv -f "$BIN.new" "$BIN"
 install -m 0644 "$HERE/agent/meridian-agent-linux-amd64" "$HERE/agent/meridian-agent-linux-arm64" "$LIB/agent/"
 
+# The database: a new panel gets PostgreSQL (unless --database sqlite); one that has data keeps its own.
+setup_postgres() {
+  if ! command -v psql >/dev/null 2>&1; then
+    say "Installing PostgreSQL"
+    if command -v apt-get >/dev/null 2>&1; then
+      DEBIAN_FRONTEND=noninteractive apt-get install -y -q postgresql >/dev/null || return 1
+    elif command -v dnf >/dev/null 2>&1; then
+      dnf install -y -q postgresql-server >/dev/null || return 1
+      [ -d /var/lib/pgsql/data/base ] || postgresql-setup --initdb >/dev/null || return 1
+    else
+      return 1
+    fi
+  fi
+  systemctl enable --now postgresql >/dev/null 2>&1 || return 1
+  for _ in $(seq 1 30); do
+    runuser -u postgres -- psql -Atqc 'SELECT 1' >/dev/null 2>&1 && break
+    sleep 1
+  done
+  # the role and the database: the panel's own system user signs in over the local socket (peer)
+  runuser -u postgres -- psql -Atqc "SELECT 1 FROM pg_roles WHERE rolname = 'meridian'" | grep -q 1 \
+    || runuser -u postgres -- psql -qc "CREATE ROLE meridian LOGIN" >/dev/null || return 1
+  runuser -u postgres -- psql -Atqc "SELECT 1 FROM pg_database WHERE datname = 'meridian'" | grep -q 1 \
+    || runuser -u postgres -- psql -qc "CREATE DATABASE meridian OWNER meridian ENCODING 'UTF8' TEMPLATE template0" >/dev/null || return 1
+  umask 077
+  echo "postgres://meridian@/meridian?host=/var/run/postgresql" > "$DATA/database.url"
+  umask 022
+  chown meridian:meridian "$DATA/database.url"
+}
+if [ "$ACTION" = "install" ] && [ ! -e "$DATA/meridian.db" ] && [ ! -e "$DATA/database.url" ]; then
+  if [ "$DATABASE" != "sqlite" ]; then
+    if setup_postgres; then
+      say "The panel keeps its data in PostgreSQL (database meridian)"
+    else
+      [ "$DATABASE" = "postgres" ] && die "PostgreSQL could not be set up (this installer knows apt and dnf) - install it yourself, or run again with --database sqlite"
+      say "PostgreSQL could not be set up here - the panel keeps its data in SQLite ($DATA/meridian.db); meridian db to-postgres moves it later"
+    fi
+  fi
+elif [ -n "$DATABASE" ] && [ "$ACTION" = "install" ]; then
+  echo "This panel has its data already: it keeps its database (meridian db status shows which; meridian db to-postgres / to-sqlite move it)."
+fi
+
 if [ "$ACTION" = "install" ] || [ ! -f "$ETC/meridian.env" ]; then
   umask 077
   {
@@ -111,7 +159,7 @@ fi
 cat > "$UNIT" <<'EOF'
 [Unit]
 Description=Meridian panel
-After=network-online.target
+After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]

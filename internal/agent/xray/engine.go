@@ -141,6 +141,7 @@ type rendered struct {
 	outbounds map[string]any
 	outOrder  []string
 	rules     any
+	balancers any            // routing balancers: applied live together with the rules
 	rest      map[string]any // everything else; changes here need a restart
 	aliases   map[string]string
 	missing   []string // inbounds left out: they listen on an address the host does not have
@@ -231,7 +232,7 @@ func (e *Engine) render(d *proto.Xray, accessLog bool) (*rendered, error) {
 	}
 	e.guard(base)
 	if rt, ok := base["routing"].(map[string]any); ok {
-		r.rules = rt["rules"]
+		r.rules, r.balancers = rt["rules"], rt["balancers"]
 	}
 	r.rest = map[string]any{}
 	for k, v := range base {
@@ -239,15 +240,7 @@ func (e *Engine) render(d *proto.Xray, accessLog bool) (*rendered, error) {
 		case "inbounds", "outbounds":
 			continue
 		case "routing":
-			if rt, ok := v.(map[string]any); ok {
-				cp := map[string]any{}
-				for k2, v2 := range rt {
-					if k2 != "rules" {
-						cp[k2] = v2
-					}
-				}
-				r.rest[k] = cp
-			}
+			r.rest[k] = restRouting(v)
 			continue
 		}
 		r.rest[k] = v
@@ -499,7 +492,9 @@ func (e *Engine) apply(ctx context.Context, d *proto.Xray, version, mirror strin
 			outbounds: map[string]any{}, rest: next.rest}
 	}
 
-	restPending := !same(prev.rest, next.rest)
+	// latency checks that no load balancer needs any more simply stop with the next restart, whenever
+	// that comes: they ask for none (the file loses them now)
+	restPending := !same(prev.rest, next.rest) && !checksGone(prev.rest, next.rest)
 	e.waiting = restPending && !allowRestart
 	if restPending {
 		if allowRestart {
@@ -514,14 +509,16 @@ func (e *Engine) apply(ctx context.Context, d *proto.Xray, version, mirror strin
 			res.Changed = true
 			return res, nil
 		}
-		res.Pending = append(res.Pending, "global Xray settings changed")
+		res.Pending = append(res.Pending, restChange(prev.rest, next.rest))
 	}
-	// the routing settings Xray runs with until a restart: rules applied live go with its balancers
+	// what Xray runs with until a restart: load balancers that pick the fastest member wait for its
+	// latency checks (a restart-only section) and pick at random until then
 	runs := next.rest
 	if restPending {
 		runs = prev.rest
 	}
-	balancers := balancersIn(runs)
+	balancers := runningBalancers(next.balancers, runs)
+	desired := withBalancers(next.full, balancers)
 
 	var errs []string
 	note := func(err error) {
@@ -547,23 +544,16 @@ func (e *Engine) apply(ctx context.Context, d *proto.Xray, version, mirror strin
 		}
 		res.Changed = true
 	}
-	if !same(prev.rules, next.rules) {
-		// Xray replaces its rules and balancers together and stops at the first rule it cannot
-		// build, so the running balancers always go along; a rule for a balancer that runs only after
-		// the restart waits for it (the old rules keep running)
-		if tag := missingBalancer(next.rules, balancers); tag != "" {
-			res.Pending = append(res.Pending, fmt.Sprintf("routing rules that use the new balancer %q", tag))
-			e.waiting = true
+	if !same(prev.rules, next.rules) || !same(prev.balancers, balancers) {
+		// Xray replaces its rules and balancers together, live; it stops at the first rule it cannot
+		// build, and the old ones keep running then
+		rt := map[string]any{"rules": next.rules}
+		if list, _ := balancers.([]any); len(list) > 0 {
+			rt["balancers"] = list
+		}
+		if err := e.cli(ctx, "adrules", map[string]any{"routing": rt}); err != nil {
+			note(err)
 			rulesOK = false
-		} else {
-			rt := map[string]any{"rules": next.rules}
-			if len(balancers) > 0 {
-				rt["balancers"] = balancers
-			}
-			if err := e.cli(ctx, "adrules", map[string]any{"routing": rt}); err != nil {
-				note(err)
-				rulesOK = false
-			}
 		}
 		res.Changed = true
 	}
@@ -615,9 +605,9 @@ func (e *Engine) apply(ctx context.Context, d *proto.Xray, version, mirror strin
 	// on disk, what waits for the restart stays as Xray runs it (a crash restart runs what ran, and the
 	// next check still sees the restart pending), and what could not be applied live stays as it was,
 	// so the next pass tries again and keeps saying why instead of taking it as done
-	onDisk := next.full
+	onDisk := desired
 	if restPending {
-		onDisk = withRunning(next.full, prev.rest)
+		onDisk = withRunning(desired, prev.rest)
 	}
 	if !outsOK || !rulesOK {
 		onDisk = keepRunning(onDisk, oldFull, !outsOK, !rulesOK)
@@ -692,14 +682,8 @@ func parseFull(full map[string]any) *rendered {
 		case "inbounds", "outbounds":
 		case "routing":
 			if rt, ok := v.(map[string]any); ok {
-				r.rules = rt["rules"]
-				cp := map[string]any{}
-				for k2, v2 := range rt {
-					if k2 != "rules" {
-						cp[k2] = v2
-					}
-				}
-				r.rest[k] = cp
+				r.rules, r.balancers = rt["rules"], rt["balancers"]
+				r.rest[k] = restRouting(rt)
 			}
 		default:
 			r.rest[k] = v
@@ -1062,30 +1046,127 @@ func (e *Engine) Restart(ctx context.Context) error {
 	return nil
 }
 
-// balancersIn are the routing balancers of a configuration's restart-only sections (rendered.rest).
-func balancersIn(rest map[string]any) []any {
-	rt, _ := rest["routing"].(map[string]any)
-	list, _ := rt["balancers"].([]any)
-	return list
+// restRouting is the part of the routing section that needs a restart: all but rules and balancers.
+func restRouting(v any) map[string]any {
+	cp := map[string]any{}
+	if rt, ok := v.(map[string]any); ok {
+		for k, x := range rt {
+			if k != "rules" && k != "balancers" {
+				cp[k] = x
+			}
+		}
+	}
+	return cp
 }
 
-// missingBalancer is a balancer a rule uses that is not among balancers ("" when none is missing).
-func missingBalancer(rules any, balancers []any) string {
-	have := map[string]bool{}
-	for _, b := range balancers {
-		if m, ok := b.(map[string]any); ok {
-			tag, _ := m["tag"].(string)
-			have[tag] = true
+// runningBalancers are the balancers as Xray can run them with the restart-only sections it runs
+// (running): one that picks the fastest member needs latency checks (observatory) and picks at
+// random until they run.
+func runningBalancers(balancers any, running map[string]any) any {
+	list, _ := balancers.([]any)
+	if len(list) == 0 || running["observatory"] != nil || running["burstObservatory"] != nil {
+		return balancers
+	}
+	out := make([]any, 0, len(list))
+	for _, b := range list {
+		m, ok := b.(map[string]any)
+		st, _ := m["strategy"].(map[string]any)
+		if t, _ := st["type"].(string); ok && (t == "leastPing" || t == "leastLoad") {
+			cp := map[string]any{}
+			for k, v := range m {
+				cp[k] = v
+			}
+			cp["strategy"] = map[string]any{"type": "random"}
+			delete(cp, "fallbackTag") // a fallback needs the latency checks too: Xray refuses it without them
+			m = cp
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// withBalancers is full with its routing balancers replaced (none removes them).
+func withBalancers(full map[string]any, balancers any) map[string]any {
+	rt, _ := full["routing"].(map[string]any)
+	if same(rt["balancers"], balancers) {
+		return full
+	}
+	out := make(map[string]any, len(full))
+	for k, v := range full {
+		out[k] = v
+	}
+	cp := map[string]any{}
+	for k, v := range rt {
+		cp[k] = v
+	}
+	if list, _ := balancers.([]any); len(list) > 0 {
+		cp["balancers"] = list
+	} else {
+		delete(cp, "balancers")
+	}
+	out["routing"] = cp
+	return out
+}
+
+// checksGone says whether the only restart-only change from prev to next is that Xray's latency
+// checks are no longer wanted.
+func checksGone(prev, next map[string]any) bool {
+	gone := false
+	for _, k := range []string{"observatory", "burstObservatory"} {
+		if prev[k] != nil && next[k] == nil {
+			gone = true
 		}
 	}
-	list, _ := rules.([]any)
-	for _, r := range list {
-		m, _ := r.(map[string]any)
-		if tag, _ := m["balancerTag"].(string); tag != "" && !have[tag] {
-			return tag
+	if !gone {
+		return false
+	}
+	rest := map[string]any{}
+	for k, v := range prev {
+		if k != "observatory" && k != "burstObservatory" {
+			rest[k] = v
 		}
 	}
-	return ""
+	return same(rest, next)
+}
+
+// restChange says in plain words what waits for a restart.
+func restChange(prev, next map[string]any) string {
+	var what []string
+	keys := map[string]bool{}
+	for k := range prev {
+		keys[k] = true
+	}
+	for k := range next {
+		keys[k] = true
+	}
+	for k := range keys {
+		if same(prev[k], next[k]) {
+			continue
+		}
+		switch k {
+		case "observatory", "burstObservatory":
+			switch {
+			case prev[k] == nil:
+				what = append(what, "latency checks for a load balancer that picks the fastest member (it picks at random until then)")
+			case next[k] == nil:
+				what = append(what, "stopping latency checks no load balancer needs any more (traffic is not affected meanwhile)")
+			default:
+				what = append(what, "new latency check settings")
+			}
+		case "dns":
+			what = append(what, "Xray's DNS settings")
+		case "routing":
+			what = append(what, "Xray's routing settings")
+		default:
+			what = append(what, "global Xray settings")
+		}
+	}
+	slices.Sort(what)
+	what = slices.Compact(what)
+	if len(what) == 0 {
+		return "global Xray settings changed"
+	}
+	return strings.Join(what, "; ")
 }
 
 // keepRunning puts the outbounds and/or the routing rules back as the file had them (old), so a
@@ -1109,8 +1190,14 @@ func keepRunning(full, old map[string]any, outbounds, rules bool) map[string]any
 			}
 		}
 		delete(rt, "rules")
-		if r, ok := old["routing"].(map[string]any); ok && r["rules"] != nil {
-			rt["rules"] = r["rules"]
+		delete(rt, "balancers")
+		if r, ok := old["routing"].(map[string]any); ok {
+			if r["rules"] != nil {
+				rt["rules"] = r["rules"]
+			}
+			if r["balancers"] != nil {
+				rt["balancers"] = r["balancers"]
+			}
 		}
 		out["routing"] = rt
 	}
@@ -1118,7 +1205,7 @@ func keepRunning(full, old map[string]any, outbounds, rules bool) map[string]any
 }
 
 // withRunning is the desired configuration with the sections that need a restart (everything but
-// inbounds, outbounds and routing rules, which apply live) as Xray runs them now.
+// inbounds, outbounds and routing rules and balancers, which apply live) as Xray runs them now.
 func withRunning(full map[string]any, running map[string]any) map[string]any {
 	out := map[string]any{"inbounds": full["inbounds"], "outbounds": full["outbounds"]}
 	for k, v := range running {
@@ -1132,8 +1219,14 @@ func withRunning(full map[string]any, running map[string]any) map[string]any {
 			rt[k] = v
 		}
 	}
-	if nr, ok := full["routing"].(map[string]any); ok && nr["rules"] != nil {
-		rt["rules"] = nr["rules"]
+	delete(rt, "balancers")
+	if nr, ok := full["routing"].(map[string]any); ok {
+		if nr["rules"] != nil {
+			rt["rules"] = nr["rules"]
+		}
+		if nr["balancers"] != nil {
+			rt["balancers"] = nr["balancers"]
+		}
 	}
 	out["routing"] = rt
 	return out
