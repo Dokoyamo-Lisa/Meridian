@@ -257,18 +257,19 @@ A user signs in at `/me` with the username and password you gave them and sees:
 
 What it shows depends on who looks:
 
-- **Visitors** see every server on a live globe and in detail, like a probe page: where it is and
-  its IP addresses, up or down, availability for 24 hours, 30 days and each day, live throughput and
-  daily traffic, load, memory, disk and connections, the system it runs, bandwidth used this month
-  and the day its paid period ends (the server's **Renews on** date). Prices, users, protocols and
-  ports are never shown. **Sign in** at the top right takes users to their own page.
-  Turn off **Show IP addresses** to keep the addresses to yourself, or **Show the servers to
-  everyone** to leave visitors only the logo, the panel name (Settings › Panel › Panel name), your
-  line of text and a sign-in form.
+- **Visitors** see every server on a live globe and in detail, like a probe page: where it is, up
+  or down, availability for 24 hours, 30 days and each day, live throughput and daily traffic, load,
+  memory, disk and connections, the system it runs, bandwidth used this month and the day its paid
+  period ends (the server's **Renews on** date). Prices, users, protocols and ports are never shown,
+  and IP addresses only if you turn on **Show IP addresses** (then for everyone who opens the page;
+  anyone can then find, test or block your servers by address). **Sign in** at the top right takes
+  users to their own page. Turn off **Show the servers to everyone** to leave visitors only the
+  logo, the panel name (Settings › Panel › Panel name), your line of text and a sign-in form.
 - **Users** who sign in see their own page: the data they have left, the devices connected now,
   their link with QR code and one-tap import, and their usage per server.
-- **You** (signed in with the supervisor account) always see every server, addresses included, and
-  what needs you - such as a paid period ending within a week. **The panel on the globe** draws an
+- **You** (signed in with the supervisor account) always see every server - addresses only as the
+  switch says, the panel always has them - and what needs you, such as a paid period ending within
+  a week. **The panel on the globe** draws an
   arc from every server to the panel's city.
 
 On each server page, **On the status page** leaves a server off the globe, gives it another name

@@ -274,9 +274,10 @@ function General() {
         )}
         <p class="muted" style="margin:-2px 0 12px">
           {(() => {
+            const ips = v.status_ips ? ', IP addresses included' : ''
             const seen = v.status_public
-              ? `visitors see every server on a live globe and in detail${v.status_ips ? ', IP addresses included' : ''}, and sign in from the top right; users then see their own usage and link`
-              : 'visitors see only a sign-in; users see their own usage and link, and you every server'
+              ? `visitors see every server on a live globe and in detail${ips}, and sign in from the top right; users then see their own usage and link`
+              : `visitors see only a sign-in; users see their own usage and link, and you every server${ips}`
             return domainMode
               ? `The status page is at https://${v.status_domain || 'status.example.com'}: ${seen}. The panel itself stays at ${location.origin}; users can also sign in at ${location.origin}/me.`
               : v.status_page === 'home'
@@ -294,14 +295,12 @@ function General() {
               label="Show the servers to everyone"
               hint="Where each server is, whether it is up, its load, bandwidth, traffic and the day its paid period ends - like a probe page. Prices are never shown. Off: visitors see only the sign-in."
             />
-            {v.status_public && (
-              <Check
-                checked={v.status_ips}
-                onChange={(x) => set('status_ips', x)}
-                label="Show IP addresses"
-                hint="Each server's public addresses, for visitors too. Anyone can then find, test - or block - your servers by address; you always see them when signed in."
-              />
-            )}
+            <Check
+              checked={v.status_ips}
+              onChange={(x) => set('status_ips', x)}
+              label="Show IP addresses"
+              hint="Each server's public addresses on the status page, for everyone who opens it - you included. Anyone can then find, test - or block - your servers by address. Off, nobody sees them there; the panel always shows them."
+            />
           </>
         )}
         <Field label="A line on the sign-in page" hint="For example who runs the service, or how to reach support. Visitors see it.">

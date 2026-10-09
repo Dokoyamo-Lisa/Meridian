@@ -18,7 +18,7 @@ Report vulnerabilities privately - through the repository's private security adv
 | Servers (root via the agent) | a forged or replayed panel message, tampered downloads | per-server 256-bit secret, signed requests, sealed replies bound to each request, checksum-pinned installer, agent and cores |
 | Subscription credentials | link sharing, copied configs | 144-bit link tokens, new link / new credentials actions, per-IP online limits and alerts |
 | Connection logs (IPs, destinations) | disclosure | panel DB 0600 under a dedicated user, root-only log files on servers, configurable retention |
-| The status page | revealing users, keys or more than you chose to show | the server dashboard is built from a fixed set of fields that never includes users, ports, protocols, keys or prices; visitors get it only while the page shows the servers to everyone (IP addresses only where it shows those too), otherwise only a sign-in; users only their own page; its own domain never serves the panel |
+| The status page | revealing users, keys or more than you chose to show | the server dashboard is built from a fixed set of fields that never includes users, ports, protocols, keys or prices; visitors get it only while the page shows the servers to everyone, otherwise only a sign-in; IP addresses only while the page is set to show them (off by default), and then to everyone alike; users only their own page; its own domain never serves the panel |
 | Client certificate checks | a man in the middle on TLS / Hysteria2 | real certificates are verified by name; self-signed ones are pinned (SHA-256 / the certificate itself) and left out of formats that cannot pin - no format ever turns checks off (a test renders every format to make sure) |
 | Server hosts | the panel turning a server into an open proxy to its own network | REALITY targets must be public (or your own site on loopback, with sensitive ports refused), forwards cannot reach loopback / link-local / cloud metadata |
 | Access by country | being locked out; abuse from some regions | the panel refuses site rules that would refuse their author, `meridian reset-site-access` to recover; server rules never touch SSH or the agent's own connection |
@@ -50,9 +50,11 @@ Report vulnerabilities privately - through the repository's private security adv
   public IP addresses, up/down, availability, throughput, load, memory, disk, connections, system,
   bandwidth and traffic, the day the paid period ends, outages - and never contains users, ports,
   protocols, keys or prices (a test checks this).
-- Visitors get it only while **Show the servers to everyone** is on, and the addresses only while
-  **Show IP addresses** is on too (both are on by default; a test checks both ways); otherwise they
+- Visitors get it only while **Show the servers to everyone** is on (the default); otherwise they
   see a sign-in form and nothing else. The supervisor (session or API token) always gets it.
+- The addresses are in it only while **Show IP addresses** is on (off by default) - then for
+  everyone who opens the page, otherwise for nobody, the supervisor included (a test checks both
+  ways). The panel itself always shows them to the supervisor.
 - A user's page shows only their own link, usage, devices and servers.
 - On the status page's own domain the panel and its API answer `404`; a supervisor session made
   there opens nothing else.

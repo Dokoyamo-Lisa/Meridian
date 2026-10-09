@@ -1410,11 +1410,11 @@ var mcpTools = []mcpTool{
 			return out, nil
 		}},
 	{Name: "set_status_page", Title: "Set up the status page", Write: true,
-		Description: "Turn the status page on or off. mode home: it is the site's front page (the panel stays at /overview); page: at /status; off: not at the front (users still sign in at /me). With public on, visitors see every server (place, up or down, load, bandwidth, traffic, expiry date, and the IP addresses when show_ips is on) and sign in from the top-right button; users see their own usage; the supervisor sees everything. Prices are never shown. Only the given fields change.",
+		Description: "Turn the status page on or off. mode home: it is the site's front page (the panel stays at /overview); page: at /status; off: not at the front (users still sign in at /me). With public on, visitors see every server (place, up or down, load, bandwidth, traffic, expiry date) and sign in from the top-right button; users see their own usage; the supervisor sees everything. The servers' IP addresses appear on the page only with show_ips on - then to everyone who opens it, otherwise to nobody (the panel always shows them). Prices are never shown. Only the given fields change.",
 		Props: map[string]any{
 			"mode":       pEnum("Where it is", "off", "home", "page"),
 			"public":     pBool("Visitors see every server without signing in (default true); false: only a sign-in"),
-			"show_ips":   pBool("Visitors also see the servers' public IP addresses"),
+			"show_ips":   pBool("The page shows the servers' public IP addresses, to everyone who opens it (default false)"),
 			"domain":     pStr("Its own domain (shows only the status page and user sign-in), e.g. status.example.com; empty removes it"),
 			"about":      pStr("A line on the sign-in page, e.g. who runs the service"),
 			"panel_city": pStr("Where the panel runs, drawn on the globe with an arc from every server: a city such as 'Hong Kong' or 'Frankfurt am Main, DE'; 'none' removes it"),

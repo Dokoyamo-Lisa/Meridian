@@ -36,7 +36,7 @@ type Settings struct {
 	StatusAbout  string          `json:"status_about" doc:"A line of text on the sign-in page, e.g. who runs the service"`
 	StatusHub    *serverLocation `json:"status_hub" doc:"Where the panel is drawn on the status page's globe, with an arc from each server; null = not drawn"`
 	StatusPublic bool            `json:"status_public" doc:"Visitors see every server on the status page without signing in - where it is, up or down, load, bandwidth, traffic, expiry date - and sign in from its top-right button. Off: visitors see only the sign-in. Prices are never shown"`
-	StatusIPs    bool            `json:"status_ips" doc:"Visitors also see each server's public IP addresses (you always do)"`
+	StatusIPs    bool            `json:"status_ips" doc:"The status page shows each server's public IP addresses - to everyone who opens it, you included (the panel always shows them). Off by default"`
 
 	AgentPort int `json:"agent_port" doc:"Where new agents put their two loopback-only ports: the Xray API on this port, Hysteria's auth hook on the next (1024-65534, default 50000). Agents already installed keep theirs."`
 
@@ -57,7 +57,6 @@ func defaultSettings() Settings {
 		Mirror:          true,
 		StatusPage:      "off",
 		StatusPublic:    true,
-		StatusIPs:       true,
 		LogoAnimation:   "assemble",
 		AgentPort:       50000,
 	}

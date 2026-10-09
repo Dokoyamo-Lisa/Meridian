@@ -18,8 +18,9 @@ skill has step-by-step procedures.
 - **Security bar is "zero known vulnerabilities"**: validate input where it enters (panel) and again
   where it is used (agent: nft, paths, systemd); never log secrets; every route checks ownership
   (`ownServer`/`ownSub`/`ownNode`); user sessions reach only `/api/portal/*`; the dashboard data
-  (`/api/status`) is public only while the status page shows the servers to everyone (IP addresses
-  only where it shows those too) and never contains users, ports, protocols, keys or prices; no
+  (`/api/status`) is public only while the status page shows the servers to everyone, has IP
+  addresses only while the page shows those (off by default; then for nobody, the supervisor
+  included) and never contains users, ports, protocols, keys or prices; no
   subscription format ever turns certificate checks off; keep `make check` clean.
 - **Only working protocol combinations**: `xraySettings.check` refuses anything that would not work
   on the server or in the listed apps, and app support is computed by the subscription renderers.

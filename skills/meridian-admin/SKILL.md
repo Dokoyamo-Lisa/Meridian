@@ -143,14 +143,16 @@ and a generated password (shown once) - pass them on with the sign-in address fr
 
 ## The status page
 
-By default visitors see every server there - on a live globe and in detail: place, IP addresses, up
-or down, load, memory, disk, bandwidth, traffic and the day its paid period ends (never prices,
-users, protocols or ports) - and sign in from the top-right button; users then see their own page,
-the supervisor everything. `get_status_page` shows how it is set up (`status_public`: visitors see
-the servers; `status_ips`: they see the addresses too). `set_status_page {mode: "home" | "page" |
-"off", public?, show_ips?, domain?, about?, panel_city?}` changes it: `show_ips: false` keeps the
-addresses to the supervisor, `public: false` leaves visitors only the sign-in. Answer with what
-visitors will now see, from the reply's `status_public` and `status_ips`;
+By default visitors see every server there - on a live globe and in detail: place, up or down,
+load, memory, disk, bandwidth, traffic and the day its paid period ends (never IP addresses unless
+turned on; never prices, users, protocols or ports) - and sign in from the top-right button; users
+then see their own page, the supervisor everything else. `get_status_page` shows how it is set up
+(`status_public`: visitors see the servers; `status_ips`: the page shows their IP addresses, to
+everyone who opens it, the supervisor included). `set_status_page {mode: "home" | "page" | "off",
+public?, show_ips?, domain?, about?, panel_city?}` changes it: `show_ips: true` publishes every
+server's addresses - only when the operator asks for exactly that, after saying anyone can then find
+and block the servers; `public: false` leaves visitors only the sign-in. Answer with what visitors
+will now see, from the reply's `status_public` and `status_ips`;
 `set_server_on_status_page {server_id, shown?, public_name?, city?}` hides a server, renames it there
 or fixes where it sits on the globe (`city: "auto"` returns to the IP database). The sign-in page's
 text is public: never put anything private in it.

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.4 - 2026-10-08
+
+**Security: upgrade the panel and the agents** (Settings › Updates › Upgrade all agents - nobody is
+disconnected). Meridian is now built with Go 1.27.2 and golang.org/x/net 0.60.0, which fix twelve
+published issues in Go's HTTP server and client, HTTP/2, TLS, header parsing and HTML templates
+(GO-2026-6599, 6600, 6603, 6605, 6607 to 6613 and 6617). `go.mod` names the toolchain, so builds
+from source use it.
+
+- **IP addresses are off the status page by default**, and the switch now applies to everyone who
+  opens it - you included (the panel always shows them). A panel that never changed the switch
+  stops showing addresses when it upgrades; to show them again, turn on Settings › Panel › Status
+  page › **Show IP addresses**.
+
 ## 0.7.3 - 2026-10-08
 
 The agents have no changes in this version: upgrading them is optional.

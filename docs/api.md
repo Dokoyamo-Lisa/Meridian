@@ -108,7 +108,7 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json
   https://panel.example.com/api/access/servers
 ```
 
-Make the status page the site's front page (visitors see every server and sign in from the top right; users then get their own page). Add `| .status_ips = false` to keep the servers' addresses to yourself, or `| .status_public = false` to give visitors only the sign-in:
+Make the status page the site's front page (visitors see every server and sign in from the top right; users then get their own page). Add `| .status_ips = true` to show the servers' IP addresses there too (to everyone), or `| .status_public = false` to give visitors only the sign-in:
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" https://panel.example.com/api/settings \

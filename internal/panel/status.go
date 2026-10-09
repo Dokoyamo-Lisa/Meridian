@@ -295,8 +295,8 @@ func (p *Panel) statusData(ctx context.Context) (*statusPayload, error) {
 			continue
 		}
 		keep[s.ID] = true
-		// no users, protocols, ports or prices here: the page may be public (addresses are left out for
-		// visitors where it does not show them - see apiStatus)
+		// no users, protocols, ports or prices here: the page may be public (addresses are left out
+		// where it does not show them - see apiStatus)
 		v := statusServer{ID: s.ID, Name: s.ShownName(), Country: s.Country, City: s.City, TZ: tzOf(s.City, s.Country),
 			Online: s.Online, Since: s.StatusChangedAt, Availability: avail[s.ID], Addrs: publicAddrsOf(s, nodeAddrs[s.ID]),
 			Cycle: &statusCycle{Up: s.CycleTX, Down: s.CycleRX, Start: s.CycleStart}, Expires: s.ExpiresOn}
@@ -470,7 +470,7 @@ func (p *Panel) statusViewer(w http.ResponseWriter, r *http.Request) (bool, erro
 }
 
 // apiStatus serves the dashboard's data: to the supervisor, and to everyone while the status page shows
-// the servers - their IP addresses only where it shows those too.
+// the servers - IP addresses only while it shows those, and then to everyone alike.
 func (p *Panel) apiStatus(w http.ResponseWriter, r *http.Request) {
 	sup, err := p.statusViewer(w, r)
 	if err != nil {
@@ -484,7 +484,8 @@ func (p *Panel) apiStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	out := *d
 	out.Supervisor = sup
-	if !sup && !p.settings().StatusIPs {
+	// the switch is for the page, not the person: off, nobody sees addresses there (the panel shows them)
+	if !p.settings().StatusIPs {
 		out.Servers = make([]statusServer, len(d.Servers))
 		for i, s := range d.Servers {
 			s.Addrs = nil

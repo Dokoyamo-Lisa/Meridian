@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meridian API",
-    "version": "0.7.3",
+    "version": "0.7.4",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -2717,7 +2717,7 @@
           "Status page"
         ],
         "summary": "Every server for the live dashboard",
-        "description": "The status page's dashboard: servers (name, place, public IP addresses, up or down, availability over 24 hours and 30 days, throughput, load, memory, disk, connections, monthly bandwidth and traffic, expiry date, system), totals, traffic per day and outages. Visitors get it while the status page shows the servers to everyone (addresses only where it shows those too); the supervisor always. Nothing about users, protocols, ports, keys or prices.",
+        "description": "The status page's dashboard: servers (name, place, public IP addresses, up or down, availability over 24 hours and 30 days, throughput, load, memory, disk, connections, monthly bandwidth and traffic, expiry date, system), totals, traffic per day and outages. Visitors get it while the status page shows the servers to everyone; the supervisor always. IP addresses are in it only while the status page shows them (status_ips, off by default) - then for everyone, otherwise for nobody. Nothing about users, protocols, ports, keys or prices.",
         "operationId": "getStatus",
         "responses": {
           "200": {
@@ -7398,7 +7398,7 @@
             "type": "boolean"
           },
           "status_ips": {
-            "description": "Visitors also see each server's public IP addresses (you always do)",
+            "description": "The status page shows each server's public IP addresses - to everyone who opens it, you included (the panel always shows them). Off by default",
             "type": "boolean"
           },
           "agent_port": {

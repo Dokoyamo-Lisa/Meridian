@@ -91,7 +91,7 @@ Change (full-access token):
 | `update_protocol` | changes a protocol in place (only the given fields); needs `confirm=true` when its devices must refresh their subscription (transport, security, domain, certificate, port, address...) or a Hysteria2 protocol restarts |
 | `set_protocol_code` | a protocol's own settings as code: Xray JSON (its inbound, outbounds, rules for its traffic only) or Hysteria2 YAML (it restarts, so that needs `confirm=true`) |
 | `replace_certificate` | replaces a shared certificate once for every server that uses it (Hysteria2 protocols using it restart: then it needs `confirm=true`) |
-| `set_status_page`, `set_server_on_status_page` | where the status page is, whether visitors see the servers (`public`) and their IP addresses (`show_ips`), and how each server appears on its globe |
+| `set_status_page`, `set_server_on_status_page` | where the status page is, whether visitors see the servers (`public`), whether the page shows their IP addresses (`show_ips`, off by default), and how each server appears on its globe |
 | `set_notifications`, `test_notifications` | send problems to Telegram and/or an HTTPS webhook; a test message per channel |
 | `set_branding` | the panel's name, its logo (SVG markup or a base64 image; checked like an upload) and how the logo moves |
 | `import_protocols`, `set_country_rule`, `set_protocol_enabled`, `remove_protocol`, `remove_forward`, `block_ip`, `server_action` | can disconnect people or stop services - need `confirm=true` |

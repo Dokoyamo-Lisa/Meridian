@@ -250,7 +250,7 @@ var apiOps = []opDoc{
 
 	// status page
 	{Method: "GET", Path: "/api/status", Tag: "Status page", Scope: "status", Summary: "Every server for the live dashboard",
-		Desc: "The status page's dashboard: servers (name, place, public IP addresses, up or down, availability over 24 hours and 30 days, throughput, load, memory, disk, connections, monthly bandwidth and traffic, expiry date, system), totals, traffic per day and outages. Visitors get it while the status page shows the servers to everyone (addresses only where it shows those too); the supervisor always. Nothing about users, protocols, ports, keys or prices.",
+		Desc: "The status page's dashboard: servers (name, place, public IP addresses, up or down, availability over 24 hours and 30 days, throughput, load, memory, disk, connections, monthly bandwidth and traffic, expiry date, system), totals, traffic per day and outages. Visitors get it while the status page shows the servers to everyone; the supervisor always. IP addresses are in it only while the status page shows them (status_ips, off by default) - then for everyone, otherwise for nobody. Nothing about users, protocols, ports, keys or prices.",
 		Resp: statusPayload{}},
 	{Method: "GET", Path: "/api/status/live", Tag: "Status page", Scope: "status", Summary: "Throughput per server since a time",
 		Query: []paramDoc{{Name: "since", Type: "integer", Desc: "Unix seconds; only newer points"}}, Resp: statusLive{}},

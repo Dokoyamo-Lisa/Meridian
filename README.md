@@ -19,11 +19,11 @@ sign-in to see their own usage; the supervisor watches every server on a live gl
 - **Users see their own usage.** Each user signs in to their own page: usage per server, per
   protocol and per day, devices connected now, their link with QR code and one-tap import for every app.
 - **A status page built in.** As the site's front page, at `/status`, on its own domain, or only at
-  `/me`. Everyone sees every server on a live globe and in detail - where it is and its IP addresses,
-  up or down, availability, throughput, load, memory and disk, bandwidth used and the day its paid
-  period ends (never prices, users or protocols) - and signs in from the top right; users then see
-  their own page. One switch hides the addresses, another leaves visitors only the sign-in. On its own
-  domain the panel itself never opens.
+  `/me`. Everyone sees every server on a live globe and in detail - where it is, up or down,
+  availability, throughput, load, memory and disk, bandwidth used and the day its paid period ends
+  (never IP addresses unless you turn them on, never prices, users or protocols) - and signs in from
+  the top right; users then see their own page. One switch leaves visitors only the sign-in. On its
+  own domain the panel itself never opens.
 - **Country rules.** Block countries (or allow only some) on every server, cutting open connections
   at once; separately choose which countries may open the panel, the users' pages and the status page.
 - **Brings existing setups along.** The agent finds Xray, V2Ray, x-ui, 3x-ui, sing-box and Hysteria2
@@ -117,7 +117,7 @@ Details: [docs/getting-started.md](docs/getting-started.md).
 
 ## Building from source
 
-Go 1.26+ and Node 22+.
+Go 1.26 or newer (it fetches the toolchain `go.mod` names, currently Go 1.27.2) and Node 22+.
 
 ```bash
 make            # UI, panel (dist/meridian) and agents (dist/meridian-agent-linux-*)

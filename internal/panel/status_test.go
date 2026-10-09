@@ -97,15 +97,22 @@ func TestStatusPage(t *testing.T) {
 	if page("", "/") != "STATUS" || page("", "/overview") != "PANEL" || page("", "/servers/1") != "PANEL" {
 		t.Errorf("pages with the status page home: / %q, /overview %q", page("", "/"), page("", "/overview"))
 	}
-	// public by default: visitors see every server and its addresses - never users, protocols, ports,
-	// keys or prices; the supervisor's answer says it is the supervisor's
+	// public by default, without addresses: visitors see every server - never its IP addresses, users,
+	// protocols, ports, keys or prices; the supervisor's answer says it is the supervisor's
+	noAddrs := func(who string, raw []byte) {
+		t.Helper()
+		if s := string(raw); strings.Contains(s, "203.0.113.") || strings.Contains(s, "198.51.100.9") || strings.Contains(s, "addrs") {
+			t.Errorf("addresses shown to %s with show IPs off: %s", who, raw)
+		}
+	}
 	code, pub, praw := anon.do("GET", "/api/status", nil)
 	if code != 200 || pub["supervisor"] != nil {
 		t.Fatalf("a visitor on the public status page: %d %s", code, praw)
 	}
-	if ps := pub["servers"].([]any); len(ps) != 1 || fmt.Sprint(ps[0].(map[string]any)["addrs"]) != "[203.0.113.7 198.51.100.9 203.0.113.8]" {
+	if ps := pub["servers"].([]any); len(ps) != 1 {
 		t.Errorf("visitor's servers: %s", praw)
 	}
+	noAddrs("a visitor", praw)
 	for _, secret := range []string{"Carol", "carol", "vless", "reality", "\"port\"", "token", "price", "currency"} {
 		if strings.Contains(strings.ToLower(string(praw)), strings.ToLower(secret)) {
 			t.Errorf("the public dashboard data shows %q: %s", secret, praw)
@@ -114,12 +121,23 @@ func TestStatusPage(t *testing.T) {
 	if code, _, _ := anon.do("GET", "/api/status/live", nil); code != 200 {
 		t.Errorf("visitor's live data: %d", code)
 	}
-	// addresses hidden from visitors (the supervisor still sees them), then the servers too
-	set["status_ips"] = false
-	owner.must("PUT", "/api/settings", set, 200)
-	if code, _, praw = anon.do("GET", "/api/status", nil); code != 200 || strings.Contains(string(praw), "203.0.113.") || strings.Contains(string(praw), "198.51.100.9") || strings.Contains(string(praw), "addrs") {
-		t.Errorf("addresses shown to visitors with show IPs off: %d %s", code, praw)
+	// the switch is for the page: off, the supervisor sees no addresses there either (the panel has them)
+	if code, _, raw := owner.do("GET", "/api/status", nil); code != 200 {
+		t.Fatalf("supervisor's dashboard: %d %s", code, raw)
+	} else {
+		noAddrs("the supervisor", raw)
 	}
+	// on, everyone sees every public address: set by hand, then the protocols' own (not host names, not
+	// private addresses)
+	set["status_ips"] = true
+	owner.must("PUT", "/api/settings", set, 200)
+	for who, c := range map[string]*client{"a visitor": anon, "the supervisor": owner} {
+		if _, d, raw := c.do("GET", "/api/status", nil); fmt.Sprint(d["servers"].([]any)[0].(map[string]any)["addrs"]) != "[203.0.113.7 198.51.100.9 203.0.113.8]" {
+			t.Errorf("addresses for %s with show IPs on: %s", who, raw)
+		}
+	}
+	// then hidden again, and the servers too
+	set["status_ips"] = false
 	set["status_public"] = false
 	owner.must("PUT", "/api/settings", set, 200)
 	for _, p := range []string{"/api/status", "/api/status/live"} {
@@ -145,10 +163,12 @@ func TestStatusPage(t *testing.T) {
 	if hub, _ := st["hub"].(map[string]any); hub == nil || hub["tz"] != "Asia/Hong_Kong" {
 		t.Errorf("hub: %v", st["hub"])
 	}
-	// the supervisor's dashboard data has the addresses, and still no users, protocols, ports or prices
-	if st["supervisor"] != true || !strings.Contains(string(raw), "203.0.113.7") {
+	// the supervisor's dashboard data: theirs, and still no users, protocols, ports or prices (nor
+	// addresses, with show IPs off)
+	if st["supervisor"] != true {
 		t.Errorf("supervisor's data: %s", raw)
 	}
+	noAddrs("the supervisor", raw)
 	for _, secret := range []string{"Carol", "carol", "vless", "reality", "\"port\"", "token", "price", "currency"} {
 		if strings.Contains(strings.ToLower(string(raw)), strings.ToLower(secret)) {
 			t.Errorf("the dashboard data shows %q: %s", secret, raw)

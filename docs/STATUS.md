@@ -1,6 +1,13 @@
 # Meridian status
 
-Last updated 2026-10-08 (version 0.7.3).
+Last updated 2026-10-08 (version 0.7.4).
+
+## Tested for 0.7.4 (local panel)
+
+- **IP addresses off the status page**: with "Show IP addresses" off (now the default) neither a
+  visitor nor the supervisor got an address in the status data, and the supervisor's signed-in
+  status page showed none (no address chips, no address in the text); switched on, both got every
+  address again. Settings shows the switch whenever the status page is on, with what it does.
 
 ## Tested for 0.7.3
 
