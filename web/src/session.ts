@@ -93,6 +93,8 @@ export const tones: { id: string; name: string; a: string; b: string }[] = [
   { id: 'ink', name: 'Ink', a: '#93bde3', b: '#13110f' },
   { id: 'paper', name: 'Paper', a: '#2c6aa3', b: '#f3efe6' },
   { id: 'mist', name: 'Mist', a: '#487d73', b: '#eef2f1' },
+  { id: 'umbrella', name: 'Umbrella', a: '#d42a33', b: '#0a0a0b' },
+  { id: 'romance', name: 'Romance', a: '#c2416b', b: '#fbf0f2' },
 ]
 
 export function currentTone(): string {
@@ -106,4 +108,16 @@ export function setTone(id: string) {
   } catch {
     /* private mode: the choice lasts for this visit */
   }
+  window.dispatchEvent(new Event('meridian:tone'))
+}
+
+// useTone is the look on screen, kept current wherever it is changed (the palette, Settings).
+export function useTone(): string {
+  const [tone, setT] = useState(currentTone())
+  useEffect(() => {
+    const on = () => setT(currentTone())
+    window.addEventListener('meridian:tone', on)
+    return () => window.removeEventListener('meridian:tone', on)
+  }, [])
+  return tone
 }

@@ -1,6 +1,14 @@
 # Meridian status
 
-Last updated 2026-10-09 (version 1.0.0).
+Last updated 2026-10-09 (version 1.1.0).
+
+## Tested for 1.1 (local panel)
+
+- **Looks**: Umbrella and Romance on the panel, the status page (globe, charts, a server's history)
+  and users' pages in a browser at 1280 and 390 px; Settings › Look sets what a new visitor sees
+  (`data-default-tone`, before the first paint), a viewer's own pick in the palette menu wins, and
+  the menu marks the look on screen wherever it was picked. The panel's tests cover the setting
+  (`TestDefaultTone`).
 
 ## Tested for 1.0 (local panel; Ubuntu VM with systemd, Alpine VM with OpenRC)
 

@@ -561,6 +561,8 @@ export interface Settings {
   /** The charts of a server's details visitors and users get (cpu, memory, disk, diskio, network, load, connections, temperature, ping). */
   status_charts: string[]
   logo_animation: string
+  /** The look pages open with for people who have not picked one ('' = Ice, or Paper on light devices). */
+  default_tone: string
   agent_port: number
   auto_update: boolean
   /** A server that keeps losing the panel is moved to reach it through this server, once; 0 = off. */

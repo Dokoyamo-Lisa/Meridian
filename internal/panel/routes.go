@@ -299,6 +299,7 @@ func (p *Panel) webApp() http.Handler {
 		}
 		page = p.plugins.page(which, page) // the styles (and status page scripts) of plugins that are on
 		page = p.withCSS(which, page)      // and the operator's own styles, last (customcss.go)
+		page = p.withTone(page)            // the site's own look, for people who did not pick one
 		page.serve(w, r)
 	})
 }

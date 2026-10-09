@@ -2159,6 +2159,7 @@ var mcpTools = []mcpTool{
 		Props: map[string]any{
 			"name":        pStr("The panel's name, shown on every page and in users' apps (up to 64 characters)"),
 			"animation":   pEnum("How the logo moves while pages load and when someone signs in (assemble needs the built-in umbrella; an uploaded logo rises instead)", logoAnimations...),
+			"look":        pEnum("How the panel, the status page and users' pages look to people who have not picked a look themselves: umbrella (black, white and signal red, a laboratory's), romance (blush and rose, a serif voice), the quiet tones ice, celadon, ink, paper, mist - or automatic (Ice, Paper on light devices)", append([]string{"automatic"}, siteTones...)...),
 			"logo_svg":    pStr("A new logo as SVG markup"),
 			"logo_base64": pStr("A new logo as a base64 PNG, JPEG or WebP image"),
 			"reset_logo":  pBool("Use the built-in umbrella again"),
@@ -2195,12 +2196,18 @@ var mcpTools = []mcpTool{
 			if x, ok := argStr(a, "animation"); ok && x != "" {
 				change["logo_animation"] = x
 			}
+			if x, ok := argStr(a, "look"); ok && x != "" {
+				if x == "automatic" {
+					x = ""
+				}
+				change["default_tone"] = x
+			}
 			if len(change) > 0 {
 				if _, err := c.api("PUT", "/api/settings", change); err != nil {
 					return nil, err
 				}
 			}
-			return map[string]any{"name": c.p.settings().SiteTitle, "logo": c.p.logoInfo()}, nil
+			return map[string]any{"name": c.p.settings().SiteTitle, "logo": c.p.logoInfo(), "look": nz(c.p.settings().DefaultTone, "automatic")}, nil
 		}},
 	{Name: "set_server_on_status_page", Title: "A server on the status page", Write: true,
 		Description: "How a server appears on the status page: shown or hidden, the name shown there, and where it sits on the globe. IP databases often place data-centre addresses at the provider's office; set city to correct it.",

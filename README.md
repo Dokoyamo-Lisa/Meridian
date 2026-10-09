@@ -68,9 +68,11 @@ Meridian is the software; what your users see is yours. In **Settings › Panel 
 set the panel's name, upload your own logo (SVG, PNG, JPEG or WebP) and choose how it moves while
 pages load and when someone signs in - the umbrella assembling panel by panel, rising, pulsing,
 spinning, or not at all. Name and logo appear everywhere users look: the top bar, the sign-in and
-loading screens, the status page, subscription pages, the browser tab and users' apps. No files to
-edit; the API (`PUT /api/settings`, `PUT /api/settings/logo`) and the MCP tool `set_branding` do
-the same.
+loading screens, the status page, subscription pages, the browser tab and users' apps. **Look**
+sets how every page looks to people who have not picked one themselves: **Umbrella** (black glass,
+white type and one signal red - a corporate laboratory after hours), **Romance** (blush paper, rose
+ink and a serif voice), or one of the quiet tones. No files to edit; the API (`PUT /api/settings`,
+`PUT /api/settings/logo`) and the MCP tool `set_branding` do the same.
 
 ## What it runs
 

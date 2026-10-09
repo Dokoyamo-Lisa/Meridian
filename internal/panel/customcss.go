@@ -1,9 +1,11 @@
 package panel
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -70,6 +72,31 @@ func (p *Panel) withCSS(which string, page *staticFile) *staticFile {
 	link := fmt.Sprintf(`<link rel="stylesheet" href="/custom/%s.css?v=%s" data-custom="css">`, which, strings.Trim(f.etag, `"`))
 	c := newStaticFile("index.html", injectBefore(page.body, "</head>", link))
 	if len(p.css.pages) > 8 {
+		p.css.pages = map[string]*staticFile{}
+	}
+	p.css.pages[key] = c
+	return c
+}
+
+// siteTones are the looks a page can open with (web/public/boot.js knows the same).
+var siteTones = []string{"ice", "celadon", "ink", "paper", "mist", "umbrella", "romance"}
+
+// withTone names the site's default look on a page: boot.js applies it to people who did not pick
+// one themselves.
+func (p *Panel) withTone(page *staticFile) *staticFile {
+	t := p.settings().DefaultTone
+	if t == "" || !slices.Contains(siteTones, t) {
+		return page
+	}
+	p.css.mu.Lock()
+	defer p.css.mu.Unlock()
+	key := "tone|" + t + page.etag
+	if c := p.css.pages[key]; c != nil {
+		return c
+	}
+	body := bytes.Replace(page.body, []byte(`<html lang="en"`), []byte(`<html lang="en" data-default-tone="`+t+`"`), 1)
+	c := newStaticFile("index.html", body)
+	if len(p.css.pages) > 16 {
 		p.css.pages = map[string]*staticFile{}
 	}
 	p.css.pages[key] = c

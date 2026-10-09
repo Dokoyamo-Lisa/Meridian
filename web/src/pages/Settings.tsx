@@ -3,7 +3,7 @@ import { Settings as PanelSettings, Place, dateTime, del, flag, get, post, put, 
 import { Icon, LogoMark } from '../icons'
 import type { LogoInfo } from '../mark'
 import { setQuery, useLocation } from '../router'
-import { loadSession, setMeta, useSession } from '../session'
+import { loadSession, setMeta, setTone, tones, useSession } from '../session'
 import { Ago, Check, Code, Empty, ErrorBox, Field, Loading, Modal, PageHead, QR, Seg, Tabs, ask, errText, run, toast, toastError, useAsync } from '../ui'
 import { ApiReference } from './ApiDocs'
 import { Certificates } from './Certificates'
@@ -84,7 +84,7 @@ function zones(): string[] {
 // Brand is what users see of the panel: its name, its logo (the built-in umbrella or an upload) and
 // how the logo moves. The logo is stored as soon as it is uploaded; name and animation are saved
 // with the rest of the form. The preview plays the animation as it will look.
-function Brand(props: { name: string; anim: string; onName: (v: string) => void; onAnim: (v: string) => void }) {
+function Brand(props: { name: string; anim: string; tone: string; onName: (v: string) => void; onAnim: (v: string) => void; onTone: (v: string) => void }) {
   const s = useSession()
   const logo = s.meta?.logo
   const custom = !!logo?.custom
@@ -172,6 +172,29 @@ function Brand(props: { name: string; anim: string; onName: (v: string) => void;
           <Field label="Animation" hint={hint}>
             <Seg value={props.anim} onChange={props.onAnim} options={anims} label="Logo animation" />
           </Field>
+          <Field
+            label="Look"
+            hint="How the panel, the status page and users’ pages look to everyone who has not picked a look themselves (the palette button at the top). Click one to try it here."
+          >
+            <div class="tone-pick" role="radiogroup" aria-label="The site’s look">
+              {[{ id: '', name: 'Automatic', a: '#8cc0ff', b: '#f3efe6' }, ...tones].map((t) => (
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={props.tone === t.id}
+                  class={'tone-opt' + (props.tone === t.id ? ' on' : '')}
+                  title={t.id ? undefined : 'Ice, or Paper on a device set to light'}
+                  onClick={() => {
+                    props.onTone(t.id)
+                    if (t.id) setTone(t.id)
+                  }}
+                >
+                  <span class="sw" style={{ '--sw-a': t.a, '--sw-b': t.b } as any} />
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          </Field>
         </div>
       </div>
     </section>
@@ -221,7 +244,14 @@ function General() {
   return (
     <form onSubmit={save} class="settings">
       {err && <ErrorBox error={err} />}
-      <Brand name={v.site_title} anim={v.logo_animation} onName={(x) => set('site_title', x)} onAnim={(x) => set('logo_animation', x)} />
+      <Brand
+        name={v.site_title}
+        anim={v.logo_animation}
+        tone={v.default_tone || ''}
+        onName={(x) => set('site_title', x)}
+        onAnim={(x) => set('logo_animation', x)}
+        onTone={(x) => set('default_tone', x)}
+      />
       <section class="panel">
         <div class="ph">
           <span class="pn">02</span>

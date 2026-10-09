@@ -1,12 +1,13 @@
 import { render } from 'preact'
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect } from 'preact/hooks'
 import './app.css'
+import './themes.css'
 import './mark.css'
 import { setUnauthorizedHandler } from './api'
 import { Icon, Logo } from './icons'
 import { PluginEvents, PluginMenuItems, PluginPage, isPluginPath, loadPluginScripts, usePluginNav } from './plugins'
 import { match, navigate, onLinkClick, useLocation } from './router'
-import { currentTone, loadSession, setTone, signOut, signedOut, tones, useSession } from './session'
+import { loadSession, setTone, signOut, signedOut, tones, useSession, useTone } from './session'
 import { DialogHost, Empty, Loading, Menu, Toasts } from './ui'
 import { Access } from './pages/Access'
 import { ConsoleDock } from './pages/Console'
@@ -63,19 +64,12 @@ function Routes() {
 }
 
 function ToneMenu() {
-  const [tone, setT] = useState(currentTone())
+  const tone = useTone()
   return (
-    <Menu label="Colour tone" icon="palette">
-      <div class="who">Tone</div>
+    <Menu label="Look" icon="palette">
+      <div class="who">Look</div>
       {tones.map((t) => (
-        <button
-          role="menuitemradio"
-          aria-checked={tone === t.id}
-          onClick={() => {
-            setTone(t.id)
-            setT(t.id)
-          }}
-        >
+        <button role="menuitemradio" aria-checked={tone === t.id} onClick={() => setTone(t.id)}>
           <span class="sw" style={{ '--sw-a': t.a, '--sw-b': t.b } as any} />
           {t.name}
           {tone === t.id && <Icon name="check" size="sm" class="push" />}

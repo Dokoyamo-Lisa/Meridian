@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0 - 2026-10-09
+
+**Upgrading keeps everything as it is.** Nothing changed for agents: 1.0.0 agents keep working, and
+upgrading them is optional.
+
+- **Two new looks**: **Umbrella** - black glass, white type and one signal red, a laboratory's grid
+  and hazard tape - and **Romance** - blush paper, rose ink, a serif voice, rounded and soft. Both
+  dress the panel, the status page (its globe and charts too) and users' pages; anyone can pick
+  them with the palette button.
+- **The site's look**: Settings › Panel › Name and logo › **Look** sets what people see before they
+  pick one themselves (`default_tone`; MCP `set_branding` takes `look`).
+- The palette button's menu is called **Look**, as in Settings, and always marks the look on screen
+  (it kept marking the one from when the page opened after a look was picked in Settings).
+
 ## 1.0.0 - 2026-10-09
 
 **Upgrading keeps everything as it is**: an existing panel keeps its SQLite database (move it to

@@ -12507,6 +12507,10 @@
             "description": "Where new agents put their two loopback-only ports: the Xray API on this port, Hysteria's auth hook on the next (1024-65534, default 50000). Agents already installed keep theirs.",
             "type": "integer"
           },
+          "default_tone": {
+            "description": "The look pages open with for people who have not picked one themselves (the palette button): ice, celadon, ink, paper, mist, umbrella or romance; empty = Ice, or Paper on a device set to light",
+            "type": "string"
+          },
           "logo_animation": {
             "description": "How the logo moves while pages load and when someone signs in: assemble (the built-in umbrella's panels slide in; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo",
             "type": "string"

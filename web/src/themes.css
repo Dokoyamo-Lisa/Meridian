@@ -1,0 +1,121 @@
+/* Two looks beyond the quiet tones: Umbrella and Romance. Each is a tone like the others (the
+   colour tokens the panel and the status page share, the globe's, the charts') plus a character of
+   its own - type, corners, light, a few details - written against the classes both pages have. No
+   image or font is loaded: everything here is drawn by CSS from system fonts. */
+
+/* ------------------------------------------------------------------ Umbrella
+   A corporate laboratory after hours: black glass, white type, one signal red, clinical lines. */
+:root[data-theme="umbrella"] {
+  color-scheme: dark;
+  --page: #0a0a0b;
+  --surface: #111113;
+  --raised: #17171a;
+  --hover: rgba(255, 255, 255, .045);
+  --line: rgba(255, 255, 255, .085);
+  --line-2: rgba(255, 255, 255, .17);
+  --ink: #f3f1ee;
+  --ink-2: #bcb8b3;
+  --ink-3: #86827d;
+  --ink-4: #57534f;
+  --accent: #d42a33;
+  --accent-ink: #ff5b63;
+  --accent-soft: rgba(212, 42, 51, .15);
+  --on-accent: #ffffff;
+  --grid: rgba(255, 255, 255, .06);
+  --baseline: rgba(255, 255, 255, .18);
+  --good: #5cc48a;
+  --warn: #e7b544;
+  --crit: #ff6a5c;
+  --good-soft: rgba(92, 196, 138, .14);
+  --warn-soft: rgba(231, 181, 68, .14);
+  --crit-soft: rgba(255, 106, 92, .15);
+  --scrim: rgba(0, 0, 0, .7);
+  --shadow-pop: 0 30px 80px -24px rgba(0, 0, 0, .9), 0 0 0 1px rgba(212, 42, 51, .25);
+  --pool: rgba(212, 42, 51, .085);
+  --g-day: #a6a19b;
+  --g-night: #3c3936;
+  --g-night-lum: .5;
+  --g-rim: rgba(255, 255, 255, .1);
+  --g-halo: rgba(212, 42, 51, .06);
+  --g-arc: #e2333c;
+  --g-accent: #ff6a71;
+  --g-hub: #ffffff;
+  --g-client: #f2c14e;
+  --g-back: .03;
+  --font-d: "Helvetica Neue", "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  --num-weight: 300;
+  --c1: #e2464e; --c2: #ece8e3; --c3: #8f99a4; --c4: #e7b544; --c5: #62b5c8; --c6: #73c592; --c7: #c08ad6; --c8: #8a817a;
+}
+
+/* the laboratory's grid, faint, under a red glow at the top */
+:root[data-theme="umbrella"] body::before {
+  background:
+    radial-gradient(70vw 34vw at 50% -12%, rgba(212, 42, 51, .13), transparent 70%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 40px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, .022) 0 1px, transparent 1px 40px);
+}
+/* a strip of hazard tape along the top edge */
+:root[data-theme="umbrella"] body::after {
+  content: "";
+  position: fixed;
+  z-index: 60;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  pointer-events: none;
+  background: repeating-linear-gradient(-45deg, #d42a33 0 8px, #0a0a0b 8px 16px);
+  opacity: .9;
+}
+
+/* ------------------------------------------------------------------ Romance
+   Letters on blush paper: rose ink, soft light, a serif voice, rounded and warm. */
+:root[data-theme="romance"] {
+  color-scheme: light;
+  --page: #fbf0f2;
+  --surface: #fffafb;
+  --raised: #ffffff;
+  --hover: rgba(122, 30, 64, .045);
+  --line: rgba(122, 30, 64, .1);
+  --line-2: rgba(122, 30, 64, .19);
+  --ink: #3e1d2b;
+  --ink-2: #6c4253;
+  --ink-3: #9b7383;
+  --ink-4: #c5a6b2;
+  --accent: #c2416b;
+  --accent-ink: #a6325a;
+  --accent-soft: rgba(194, 65, 107, .1);
+  --on-accent: #ffffff;
+  --grid: rgba(122, 30, 64, .07);
+  --baseline: rgba(122, 30, 64, .2);
+  --good: #4b8b58;
+  --warn: #ad7418;
+  --crit: #c03a3a;
+  --good-soft: rgba(75, 139, 88, .12);
+  --warn-soft: rgba(173, 116, 24, .12);
+  --crit-soft: rgba(192, 58, 58, .11);
+  --scrim: rgba(62, 29, 43, .28);
+  --shadow-pop: 0 30px 80px -24px rgba(122, 30, 64, .35), 0 0 0 1px rgba(122, 30, 64, .08);
+  --pool: rgba(255, 210, 222, .75);
+  --g-day: #6c4253;
+  --g-night: #cdb0ba;
+  --g-night-lum: .62;
+  --g-rim: rgba(62, 29, 43, .16);
+  --g-halo: rgba(194, 65, 107, .06);
+  --g-arc: #c2416b;
+  --g-accent: #e07a9d;
+  --g-hub: #3e1d2b;
+  --g-client: #df8a5e;
+  --g-back: .025;
+  --font-d: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --num-weight: 400;
+  --c1: #c2416b; --c2: #8e6bbf; --c3: #df8a5e; --c4: #4f9d8f; --c5: #c99a16; --c6: #6f97c4; --c7: #e27a9e; --c8: #a68b96;
+}
+
+/* soft light: rose from one corner, peach from the other, a breath of lavender */
+:root[data-theme="romance"] body::before {
+  background:
+    radial-gradient(48vw 34vw at 6% -6%, rgba(255, 196, 212, .8), transparent 70%),
+    radial-gradient(40vw 30vw at 102% 4%, rgba(226, 210, 255, .55), transparent 70%),
+    radial-gradient(52vw 40vw at 96% 108%, rgba(255, 214, 190, .6), transparent 70%);
+}

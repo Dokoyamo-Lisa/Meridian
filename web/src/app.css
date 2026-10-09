@@ -703,3 +703,43 @@ label.btn.disabled { opacity: .55; pointer-events: none; }
 .chip-pick { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12px; color: var(--ink-3); border: 1px solid var(--line-2); background: none; transition: color .2s, background .2s, border-color .2s; }
 .chip-pick:hover { color: var(--ink); }
 .chip-pick.on { color: var(--accent-ink); background: var(--accent-soft); border-color: transparent; }
+
+/* ------------------------------------------------------------------ the Umbrella and Romance looks
+   (their colour tokens are in themes.css) */
+:root[data-theme="umbrella"] .top { box-shadow: 0 1px 0 rgba(212, 42, 51, .38); background: linear-gradient(#0a0a0b 82%, rgba(10, 10, 11, .55)); }
+:root[data-theme="umbrella"] .brand { font-weight: 600; letter-spacing: .42em; }
+:root[data-theme="umbrella"] .nav a { text-transform: uppercase; font-size: 11.5px; letter-spacing: .14em; }
+:root[data-theme="umbrella"] .nav a::after { height: 2px; }
+:root[data-theme="umbrella"] .page-head h1 { text-transform: uppercase; letter-spacing: .08em; font-weight: 500; font-size: 23px; }
+:root[data-theme="umbrella"] .page-head h1::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 13px; vertical-align: .14em; background: var(--accent); transform: rotate(45deg); }
+:root[data-theme="umbrella"] .ph .h { text-transform: uppercase; letter-spacing: .16em; font-size: 11.5px; font-weight: 600; }
+:root[data-theme="umbrella"] .panel { border-top-color: var(--line-2); }
+:root[data-theme="umbrella"] .panel::before { content: ""; position: absolute; top: -1px; left: 0; width: 44px; height: 2px; background: var(--accent); }
+:root[data-theme="umbrella"] :is(.btn, .input, .icon-btn, .seg, .seg button, .badge, .callout, .menu, .menu button, .menu a, .toast, .code, .chip-pick, .stack-key) { border-radius: 3px; }
+:root[data-theme="umbrella"] :is(.card, .modal, .proto, .step, .src-card, .proto-user, .subsection, .setup-step, .check-panel) { border-radius: 4px; }
+:root[data-theme="umbrella"] .btn.primary { text-transform: uppercase; letter-spacing: .13em; font-size: 11.5px; font-weight: 600; }
+:root[data-theme="umbrella"] .kpi .l { text-transform: uppercase; letter-spacing: .12em; font-size: 10.5px; }
+:root[data-theme="umbrella"] .modal { box-shadow: var(--shadow-pop); }
+
+:root[data-theme="romance"] .brand { font-family: var(--font-d); letter-spacing: .26em; font-size: 13.5px; }
+:root[data-theme="romance"] .nav a { font-family: var(--font-d); font-size: 14px; letter-spacing: .02em; }
+:root[data-theme="romance"] .nav a::after { height: 2px; border-radius: 2px; left: 16px; right: 16px; }
+:root[data-theme="romance"] .page-head h1 { font-style: italic; font-size: 32px; letter-spacing: 0; }
+:root[data-theme="romance"] .ph .h { font-family: var(--font-d); font-size: 16px; font-weight: 500; letter-spacing: .01em; }
+:root[data-theme="romance"] .pn { font: italic 400 13px/1 var(--font-d); }
+:root[data-theme="romance"] .panel { border-top-color: transparent; }
+:root[data-theme="romance"] .panel::before { content: ""; position: absolute; top: -1px; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, var(--line-2), rgba(194, 65, 107, .35) 35%, transparent); }
+:root[data-theme="romance"] :is(.btn, .seg, .seg button, .badge, .chip-pick, .icon-btn) { border-radius: 999px; }
+:root[data-theme="romance"] :is(.input, .callout, .toast, .code, .menu button, .menu a, .stack-key) { border-radius: 12px; }
+:root[data-theme="romance"] :is(.card, .modal, .menu, .proto, .step, .src-card, .proto-user, .subsection, .setup-step, .check-panel) { border-radius: 18px; }
+:root[data-theme="romance"] :is(.card, .proto, .src-card, .proto-user) { box-shadow: 0 18px 40px -30px rgba(122, 30, 64, .35); background: color-mix(in srgb, var(--raised) 75%, transparent); }
+:root[data-theme="romance"] .btn.primary { background: linear-gradient(135deg, #d65a83, #b8345f); border-color: transparent; box-shadow: 0 8px 18px -10px rgba(194, 65, 107, .65); }
+:root[data-theme="romance"] .btn.primary:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: linear-gradient(135deg, #c94a75, #a32b53); }
+:root[data-theme="romance"] .kpi .v { font-style: italic; }
+
+/* the site's look, in Settings › Panel */
+.tone-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.tone-opt { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 6px; border-radius: 15px; border: 1px solid var(--line-2); background: none; font-size: 12.5px; color: var(--ink-2); transition: color .2s, border-color .2s, background .2s; }
+.tone-opt:hover { color: var(--ink); background: var(--hover); }
+.tone-opt.on { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); }
+:root[data-theme="romance"] .btn.primary:is(:disabled, [aria-disabled="true"]) { background: var(--hover); border-color: var(--line-2); color: var(--ink-3); box-shadow: none; }

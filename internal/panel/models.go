@@ -49,6 +49,8 @@ type Settings struct {
 
 	AgentPort int `json:"agent_port" doc:"Where new agents put their two loopback-only ports: the Xray API on this port, Hysteria's auth hook on the next (1024-65534, default 50000). Agents already installed keep theirs."`
 
+	DefaultTone string `json:"default_tone" doc:"The look pages open with for people who have not picked one themselves (the palette button): ice, celadon, ink, paper, mist, umbrella or romance; empty = Ice, or Paper on a device set to light"`
+
 	LogoAnimation string `json:"logo_animation" doc:"How the logo moves while pages load and when someone signs in: assemble (the built-in umbrella's panels slide in; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo"`
 }
 
@@ -87,6 +89,9 @@ func (s *Settings) normalize() {
 	s.AutoRelay = max(s.AutoRelay, 0)
 	if s.AgentTransport != "http" {
 		s.AgentTransport = d.AgentTransport
+	}
+	if !slices.Contains(siteTones, s.DefaultTone) {
+		s.DefaultTone = ""
 	}
 	if !slices.Contains(logoAnimations, s.LogoAnimation) {
 		s.LogoAnimation = d.LogoAnimation
