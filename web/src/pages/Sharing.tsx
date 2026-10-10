@@ -16,7 +16,7 @@ export function ShareCodeBox(props: { server: Server; code: string }) {
         <span class="pm">shared with you</span>
       </div>
       <p class="muted" style="margin-top:0">
-        Give this share code to the person whose server this is. In their Meridian panel they open the server's page, choose <b>Share with another panel</b> and paste it. Its agent then
+        Give this share code to the person whose server this is. In their Rosélune panel they open the server's page, choose <b>Share with another panel</b> and paste it. Its agent then
         reports here too, and you set up your own protocols and users on it. Its console, upgrades and country rule stay theirs.
       </p>
       <Code text={props.code} label="Copy share code" />
@@ -61,7 +61,7 @@ export function SharingPanel(props: { server: Server; onChanged: () => void }) {
       </div>
       {shares.length === 0 ? (
         <p class="muted" style="margin:0">
-          Not shared. Another Meridian panel can run its own protocols and users on {s.name} too - everything but the console; the server itself stays yours. Two panels at most.
+          Not shared. Another Rosélune panel can run its own protocols and users on {s.name} too - everything but the console; the server itself stays yours. Two panels at most.
         </p>
       ) : (
         <div class="table-wrap">

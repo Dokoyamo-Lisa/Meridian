@@ -79,7 +79,7 @@ release: web agents
 		COPYFILE_DISABLE=1 tar --no-xattrs -C dist/release -czf dist/release/meridian-$(VERSION)-linux-$$arch.tar.gz meridian-$(VERSION)-linux-$$arch || exit 1; \
 	done
 	# the same binary on its own, for a Linux desktop: the MCP stdio bridge (meridian mcp) and backups.
-	# Meridian runs on Linux only - no other systems are built or supported.
+	# Rosélune runs on Linux only - no other systems are built or supported.
 	for arch in amd64 arm64; do \
 		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch $(GO) build $(GOFLAGS) -ldflags "$(PANEL_LD)" \
 			-o dist/release/meridian-cli-$(VERSION)-linux-$$arch ./cmd/meridian || exit 1; \

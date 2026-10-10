@@ -42,7 +42,7 @@ export function Servers() {
       title: `Upgrade the agent on ${older.length} server${older.length === 1 ? '' : 's'}?`,
       body: (
         <p style="margin-top:0">
-          Each agent downloads Meridian {version}'s agent from this panel and restarts itself. The proxies keep running and nobody is disconnected. Offline servers upgrade as soon as they connect.
+          Each agent downloads Rosélune {version}'s agent from this panel and restarts itself. The proxies keep running and nobody is disconnected. Offline servers upgrade as soon as they connect.
         </p>
       ),
       confirm: 'Upgrade agents',
@@ -256,7 +256,7 @@ function AddServer(props: { onClose: () => void }) {
         />
         {shared ? (
           <p class="muted">
-            A server someone else runs with Meridian, who shares it with you: you get a share code to send them, and once they paste it, you set up your own protocols and users on it. Its console,
+            A server someone else runs with Rosélune, who shares it with you: you get a share code to send them, and once they paste it, you set up your own protocols and users on it. Its console,
             upgrades and country rule stay theirs.
           </p>
         ) : (

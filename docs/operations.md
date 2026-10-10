@@ -72,7 +72,7 @@ Agents reconnect by themselves; nothing on the servers changes unless the restor
 
 **Panel** - **Settings › Updates** shows the newest release; **Update now** installs it, and
 **Install new releases by themselves** does the same at night (03:00-05:00, panel time). The panel
-downloads the release from GitHub, checks that its `SHA256SUMS` carries Meridian's release signature
+downloads the release from GitHub, checks that its `SHA256SUMS` carries Rosélune's release signature
 (the public key is built into the panel - a release without a valid signature is never installed)
 and that the archive matches it, and backs up its database (`/var/lib/meridian/backups`, the last
 three). It then leaves the release in `/var/lib/meridian/update`, where the updater service
@@ -368,7 +368,7 @@ off when you are done.
 
 Everything else lives in **Settings** in the panel.
 
-## Removing Meridian
+## Removing Rosélune
 
 - A server: delete it in the panel. The agent removes protocols, forwards, firewall rules and
   itself. Or on the server: `sudo meridian-agent uninstall`. Services that were stopped by

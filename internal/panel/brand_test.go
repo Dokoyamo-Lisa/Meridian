@@ -3,14 +3,17 @@ package panel
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"image/png"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 const inkscapeLogo = `<?xml version="1.0" encoding="UTF-8"?>
@@ -154,7 +157,7 @@ func TestLogoUploadAndServing(t *testing.T) {
 		_ = json.Unmarshal(b, &l)
 		return l
 	}
-	if l := meta(); l.Custom || l.Animation != "assemble" {
+	if l := meta(); l.Custom || l.Mark != "rose" || l.Animation != "assemble" {
 		t.Fatalf("default: %+v", l)
 	}
 	if r := get("/brand/logo"); r.StatusCode != 404 {
@@ -177,12 +180,12 @@ func TestLogoUploadAndServing(t *testing.T) {
 		t.Errorf("oversized logo: %d", code)
 	}
 
-	// a good one replaces the umbrella everywhere
+	// a good one replaces the built-in logo everywhere
 	if code, b := put(owner, []byte(inkscapeLogo), "application/octet-stream"); code != 200 {
 		t.Fatalf("upload: %d %s", code, b)
 	}
 	l := meta()
-	if !l.Custom || l.V == "" || l.Animation != "rise" { // assemble needs the umbrella's panels
+	if !l.Custom || l.V == "" || l.Animation != "rise" { // assemble needs a built-in mark's pieces
 		t.Errorf("after upload: %+v", l)
 	}
 	r := get("/brand/logo?v=" + l.V)
@@ -202,8 +205,8 @@ func TestLogoUploadAndServing(t *testing.T) {
 	if l := meta(); l.Animation != "spin" {
 		t.Errorf("animation: %+v", l)
 	}
-	if _, m, _ := owner.do("PUT", "/api/settings", map[string]any{"logo_animation": "wobble"}); m["logo_animation"] != "assemble" {
-		t.Errorf("unknown animation kept: %v", m["logo_animation"])
+	if code, m, _ := owner.do("PUT", "/api/settings", map[string]any{"logo_animation": "wobble"}); code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "assemble") {
+		t.Errorf("unknown animation: %d %v", code, m)
 	}
 
 	// subscription pages carry it inline (they allow no other images)
@@ -226,31 +229,84 @@ func TestLogoUploadAndServing(t *testing.T) {
 		t.Errorf("logo on the subscription page: %s", s)
 	}
 
-	// back to the umbrella
+	// back to the built-in logo: the rose, drawn on the subscription page too
 	owner.must("DELETE", "/api/settings/logo", nil, 200)
-	if l := meta(); l.Custom {
+	if l := meta(); l.Custom || l.Mark != "rose" {
 		t.Errorf("after delete: %+v", l)
 	}
 	if r := get("/brand/logo"); r.StatusCode != 404 {
 		t.Errorf("deleted logo still served: %d", r.StatusCode)
 	}
+	subPage := func() string {
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+	if p := subPage(); !strings.Contains(p, markStill("rose")) || strings.Contains(p, "<img") {
+		t.Errorf("subscription page without the rose")
+	}
+	owner.must("PUT", "/api/settings", map[string]any{"logo_mark": "umbrella"}, 200)
+	if l := meta(); l.Mark != "umbrella" {
+		t.Errorf("umbrella: %+v", l)
+	}
+	if p := subPage(); !strings.Contains(p, markStill("umbrella")) {
+		t.Errorf("subscription page without the umbrella")
+	}
+	if _, _, events := owner.do("GET", "/api/events?limit=5", nil); !strings.Contains(string(events), "The logo is the built-in rose again") {
+		t.Errorf("events: %s", events)
+	}
+}
+
+// TestIconFollowsTheMark: the browser tab shows the built-in logo that was chosen.
+func TestIconFollowsTheMark(t *testing.T) {
+	h := newHarness(t)
+	h.p.cfg.WebFS = fstest.MapFS{"favicon.svg": {Data: []byte("<svg>rose</svg>")}, "favicon-umbrella.svg": {Data: []byte("<svg>umbrella</svg>")}}
+	ts := httptest.NewServer(h.p.Handler())
+	t.Cleanup(ts.Close)
+	h.srv = ts
+	icon := func() string {
+		resp, err := http.Get(ts.URL + "/brand/icon")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+	if got := icon(); got != "<svg>rose</svg>" {
+		t.Errorf("default icon: %s", got)
+	}
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	b.must("PUT", "/api/settings", map[string]any{"logo_mark": "umbrella"}, 200)
+	if got := icon(); got != "<svg>umbrella</svg>" {
+		t.Errorf("umbrella icon: %s", got)
+	}
 }
 
 func TestBrandedBoot(t *testing.T) {
-	page := []byte(`<body><div class="boot"><!--logo--><svg class="umb-mark umb-loop" viewBox="0 0 24 24"><path class="w"/></svg><!--/logo--></div></body>`)
+	page := []byte(`<body><div class="boot"><!--logo-->` + markSVG("rose", "umb-mark umb-loop") + `<!--/logo--></div></body>`)
 	for _, c := range []struct {
 		l    logoInfo
 		want string
 	}{
-		{logoInfo{Animation: "assemble"}, `<svg class="umb-mark umb-loop"`},
-		{logoInfo{Animation: "pulse"}, `<!--logo--><svg class="umb-mark lg-pulse lg-loop" viewBox="0 0 24 24"><path class="w"/></svg><!--/logo-->`},
-		{logoInfo{Animation: "none"}, `<svg class="umb-mark " viewBox`},
-		{logoInfo{Custom: true, V: "ab12", Animation: "rise"}, `<!--logo--><img class="logo-img lg-rise lg-loop" src="/brand/logo?v=ab12" alt=""><!--/logo--></div>`},
-		{logoInfo{Custom: true, V: "ab12", Animation: "none"}, `<img class="logo-img " src="/brand/logo?v=ab12" alt="">`},
+		{logoInfo{Mark: "rose", Animation: "assemble"}, string(page)},
+		{logoInfo{Mark: "umbrella", Animation: "assemble"}, `<!--logo-->` + markSVG("umbrella", "umb-mark umb-loop") + `<!--/logo-->`},
+		{logoInfo{Mark: "rose", Animation: "pulse"}, `<!--logo-->` + markSVG("rose", "umb-mark lg-pulse lg-loop") + `<!--/logo-->`},
+		{logoInfo{Mark: "umbrella", Animation: "none"}, `<!--logo-->` + markSVG("umbrella", "umb-mark") + `<!--/logo-->`},
+		{logoInfo{Custom: true, V: "ab12", Mark: "rose", Animation: "rise"}, `<!--logo--><img class="logo-img lg-rise lg-loop" src="/brand/logo?v=ab12" alt=""><!--/logo--></div>`},
+		{logoInfo{Custom: true, V: "ab12", Mark: "umbrella", Animation: "none"}, `<img class="logo-img " src="/brand/logo?v=ab12" alt="">`},
 	} {
 		if got := string(brandedBoot(page, c.l)); !strings.Contains(got, c.want) {
 			t.Errorf("%+v:\n%s", c.l, got)
 		}
+	}
+	if !strings.Contains(markSVG("umbrella", "x"), `<path class="w white" d="M12 12L21.7 7.98L16.02 2.3Z" fill="#f5f3ef" style="--i:1;--dx:0.7071;--dy:-0.7071"/>`) {
+		t.Errorf("the umbrella's white panel: %s", markSVG("umbrella", "x"))
 	}
 	if got := brandedBoot([]byte("<body>no markers</body>"), logoInfo{Custom: true, V: "x", Animation: "rise"}); string(got) != "<body>no markers</body>" {
 		t.Errorf("page without markers changed: %s", got)

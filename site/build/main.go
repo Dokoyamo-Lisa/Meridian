@@ -1,4 +1,4 @@
-// Command build makes Meridian's guide site: the overview (site/front.md, the front page) and a page
+// Command build makes Rosélune's guide site: the overview (site/front.md, the front page) and a page
 // per document in docs/, rendered from the repository's own Markdown so the guide never drifts from
 // the code. Everything it writes is static - HTML, one style sheet, one script, the screenshots - with
 // relative links, so the site works from any folder.
@@ -44,7 +44,7 @@ type page struct {
 // pages: the user guide first - step by step, for someone doing it for the first time (site/guide/) -
 // then the reference: the repository's own documents, for everything in detail.
 var pages = []page{
-	{"index", "site/front.md", "Meridian", "Start here", "Proxy and VPN servers for your team, run from one quiet panel"},
+	{"index", "site/front.md", "Rosélune", "Start here", "Proxy and VPN servers for your team, run from one quiet panel"},
 	{"before-you-begin", "site/guide/before-you-begin.md", "Before you begin", "Start here", "What you need, and how to check you have it"},
 	{"install", "site/guide/install.md", "Install the panel", "Start here", "One command on your server, about five minutes"},
 	{"first-sign-in", "site/guide/first-sign-in.md", "Sign in the first time", "Start here", "Your password, two-factor sign-in, and a quick look around"},
@@ -160,12 +160,12 @@ func main() {
 			nav = "reference"
 		}
 		data := map[string]any{"Root": "../", "Base": "", "Nav": nav, "Page": r, "Pages": pages, "Repo": repoURL, "Demo": demoURL,
-			"Title": r.Title + " · Meridian", "Description": r.Blurb, "Version": version}
+			"Title": r.Title + " · Rosélune", "Description": r.Blurb, "Version": version}
 		file := filepath.Join(out, "guide", r.Slug+".html")
 		if r.Slug == "index" {
 			data["Root"], data["Base"], data["Nav"], file = "", "guide/", "overview", filepath.Join(out, "index.html")
-			data["Title"] = "Meridian - proxy and VPN servers for your team, from one quiet panel"
-			data["Description"] = "Meridian sets up VLESS, VMess, Trojan, Shadowsocks, Hysteria2 and WireGuard on your own Linux servers, gives every user a link and a page of their own, and shows every server on a live globe."
+			data["Title"] = "Rosélune - proxy and VPN servers for your team, from one quiet panel"
+			data["Description"] = "Rosélune sets up VLESS, VMess, Trojan, Shadowsocks, Hysteria2, WireGuard, mieru and Snell on your own Linux servers, gives every user a link and a page of their own, and shows every server on a live globe."
 		}
 		var b bytes.Buffer
 		check(tpl.ExecuteTemplate(&b, "doc.html", data))

@@ -1,11 +1,11 @@
 ---
 name: meridian-admin
-description: Operate a Meridian proxy/VPN panel through its MCP tools - check health, onboard servers and protocols, import existing setups, add and manage users and their sign-ins, investigate link sharing and abuse, see where traffic goes, split traffic with rules, load balancers and external nodes (imported proxies), set country rules and the status page, review signs of a break-in on the servers (health risks), set up the Telegram bot, and handle alerts safely. Use whenever the user asks about their Meridian servers, users, connected IPs, traffic, routing, blocks, country rules or status page, and the umbrella MCP server is connected.
+description: Operate a Rosélune proxy/VPN panel through its MCP tools - check health, onboard servers and protocols, import existing setups, add and manage users and their sign-ins, investigate link sharing and abuse, see where traffic goes, split traffic with rules, load balancers and external nodes (imported proxies), set country rules and the status page, review signs of a break-in on the servers (health risks), set up the Telegram bot, and handle alerts safely. Use whenever the user asks about their Rosélune servers, users, connected IPs, traffic, routing, blocks, country rules or status page, and the umbrella MCP server is connected.
 ---
 
-# Operating Meridian
+# Operating Rosélune
 
-Meridian manages servers and their protocols (Xray: VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP;
+Rosélune manages servers and their protocols (Xray: VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP;
 Hysteria2; WireGuard; port forwards) and **users**. Each user has one subscription link for their
 apps and usually a username and password for their own page (`/me`), where they see their usage per
 server, their devices and their link. You reach the panel through the `meridian` MCP tools, acting
@@ -28,8 +28,12 @@ for its one supervisor account.
    blocks traffic or a new link moves it, `set_traffic_rule` for a rule that blocks everything): the
    tool then answers with what would happen instead of doing it - tell the user, and call again with
    `confirm=true` only after their yes.
-3. **Nothing happens automatically, and you should not pretend otherwise.** Quotas, expiry dates and
-   IP limits only raise flags; a flagged user keeps working until a person pauses them.
+3. **Know the one thing that happens automatically.** A user who uses up their quota is out of data
+   (`status` `out_of_data`): no server serves them until their data starts over - their next reset,
+   a higher quota (`update_user`), `reset_user_usage` or a new period (`apply_plan`) - and then they
+   are back by themselves. What they have open is cut at once (strict, the default) or may finish
+   within the supervisor's grace (loose: `grace_until`, `grace_left` on the user). Expiry dates and IP limits only raise flags; such a user keeps working
+   until a person pauses them. Nothing ever resumes a paused user but a person.
 4. **Keep secrets out of the chat.** Do not print links, passwords, install commands (they contain a
    server secret) or credentials unless the user asks for them. When a tool returns a generated
    password, say it is shown once and hand it over only to the person who asked.
@@ -53,7 +57,10 @@ for its one supervisor account.
    - `health_risk` - a server's health check found something high or critical that is still open (a
      crypto-miner, a new SSH key or account, a program run from a temporary folder...). See "Signs of a
      break-in" below.
-   - `over_ip_limit`, `over_quota`, `expired` - soft limits; offer to investigate, never pause unasked.
+   - `over_quota` - the user's data is used up and the servers do not serve them until it starts over
+     (the message says when). Nothing to do unless the user asks: offer to raise the quota or reset
+     the usage if they want that person back sooner.
+   - `over_ip_limit`, `expired` - soft limits; offer to investigate, never pause unasked.
    - `bandwidth` - a server is near its monthly plan.
    - `panel_trouble` - a server keeps losing the panel (offline again and again although it is up:
      a poor route to the panel). Offer to let it reach the panel through another server - see
@@ -88,7 +95,7 @@ judge whether use is acceptable, state facts and let the user decide.
 ## Abuse from an IP or a country
 
 1. Confirm with `online_now` / `ip_history {query: "<ip prefix>"}` what the IP did.
-2. Propose `block_ip {ip, hours, reason}` - it drops the IP's connections to Meridian's ports on
+2. Propose `block_ip {ip, hours, reason}` - it drops the IP's connections to Rosélune's ports on
    every server (never SSH). Prefer a time limit (24 h) over a permanent block. Needs confirmation.
 3. `list_blocked_ips` and `unblock_ip` to review or undo.
 4. Whole countries: `get_access` shows devices connected now by country; `set_country_rule {mode:
@@ -100,7 +107,7 @@ judge whether use is acceptable, state facts and let the user decide.
 
 Every agent (1.0 and later) checks its server every five minutes: crypto-miners, programs run from
 temporary folders, new ports, accounts and SSH keys, changed administrator rights, scheduled tasks and
-services, kernel modules, SSH sign-ins, traffic Meridian does not account for, Meridian's own programs
+services, kernel modules, SSH sign-ins, traffic Rosélune does not account for, Rosélune's own programs
 changed. What it finds are *risks*. They only tell - nothing was stopped, and you cannot run commands
 on the server through the panel.
 
@@ -120,7 +127,7 @@ on the server through the panel.
      build, Hysteria not the published release) - treat it as a break-in until the user shows
      otherwise;
    - `high` (a new SSH key or account that can sign in, a program from `/tmp` or deleted, sudoers
-     changed, a password sign-in as root, far more traffic than Meridian carries) - likely serious;
+     changed, a password sign-in as root, far more traffic than Rosélune carries) - likely serious;
    - `warning` and `info` (new ports, services, modules, scheduled tasks, sign-ins with a key) - often
      the user's own doing.
    `active: true` means it still holds (the process runs, the port is open).
@@ -161,7 +168,7 @@ on the server through the panel.
 3. A minute later, `get_notifications`: `telegram_bot_status` should be `"listening"`. Otherwise it
    says why - "the bot token was refused by Telegram" (copy the token again from @BotFather),
    "another program reads this bot's messages" (the bot has a webhook or a second panel reads it:
-   Meridian needs a bot of its own).
+   Rosélune needs a bot of its own).
 4. Allowing changes from Telegram, and who may use the bot, are set only by the user in the panel
    (Settings › Notifications › Telegram bot) - never through MCP. If asked, say where.
 
@@ -219,7 +226,7 @@ and a generated password (shown once) - pass them on with the sign-in address fr
 - **An existing setup** (Xray, V2Ray, x-ui, 3x-ui, sing-box, Hysteria2 already on the server):
   `scan_server`, wait for `action_status` done, `get_scan`, then `import_protocols {server_id, items,
   take_over?}`. Without `take_over` nothing is stopped; with it the old service stops and its users'
-  devices reconnect to Meridian on the same ports - confirm first.
+  devices reconnect to Rosélune on the same ports - confirm first.
 - **Forwards**: `add_forward {server_id, target: "ip:port"}`; the kernel engine needs an IP.
 
 ## Traffic splitting and external nodes
@@ -320,7 +327,7 @@ again with `confirm=true`.
 - `Xray refuses a site list or country name (...)` → a typo in `sites`: fix the rule; until then those
   servers keep their previous configuration.
 
-Usage is counted where users connect, wherever their traffic leaves. At an external node Meridian sees
+Usage is counted where users connect, wherever their traffic leaves. At an external node Rosélune sees
 nothing - not its bandwidth, its quota or whether it is up (beyond `check_external_node`).
 
 ## A server that keeps losing the panel
@@ -378,9 +385,11 @@ will now see, from the reply's `status_public` and `status_ips`;
 or fixes where it sits on the globe (`city: "auto"` returns to the IP database). The sign-in page's
 text is public: never put anything private in it.
 
-`set_branding {name?, animation?, logo_svg? | logo_base64? | reset_logo?}` sets what users see: the
-panel's name, its logo and how the logo moves (assemble, rise, pulse, spin, none). A logo with
-scripts, links or outside resources is refused - tell the user what the answer says to remove.
+`set_branding {name?, mark?, animation?, look?, logo_svg? | logo_base64? | reset_logo?}` sets what
+users see: the panel's name, its logo - the built-in rose (Rosélune's own, the default) or umbrella
+(`mark`), or an uploaded one - how the logo moves (assemble, rise, pulse, spin, none), and the look
+pages open with (`look`: romance, the default; umbrella; a quiet tone; auto). A logo with scripts,
+links or outside resources is refused - tell the user what the answer says to remove.
 
 ## Plugins
 
@@ -402,7 +411,7 @@ turning on or off and removing happen only in the panel (Settings › Plugins) o
 3. **"Install / turn on / remove this plugin"** → you cannot. Tell the user to do it in the panel
    under Settings › Plugins (Upload a plugin, then Turn on), and to read the list of what it may do
    before agreeing: a plugin that is on can do whatever it asks for, and a server plugin can read
-   every key and password Meridian holds. Never suggest a plugin from a source the user does not
+   every key and password Rosélune holds. Never suggest a plugin from a source the user does not
    trust; [docs/plugins.md](../../docs/plugins.md) explains every permission.
 4. **"The panel broke after I turned on a plugin"** (blank pages, errors everywhere, servers that
    stopped working right after a plugin started):

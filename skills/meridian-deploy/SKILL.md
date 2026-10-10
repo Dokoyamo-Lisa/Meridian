@@ -1,11 +1,11 @@
 ---
 name: meridian-deploy
-description: Install, configure, upgrade, back up and move a Meridian proxy/VPN panel and its servers, step by step, using only Meridian's supported interfaces (the release installer, the meridian CLI, the REST API and the panel's settings) - never by editing Meridian's files. Use it whenever you are asked to deploy, set up, install, upgrade, migrate, rebrand or configure Meridian, or to add servers, protocols or users to it.
+description: Install, configure, upgrade, back up and move a Rosélune proxy/VPN panel and its servers, step by step, using only Rosélune's supported interfaces (the release installer, the meridian CLI, the REST API and the panel's settings) - never by editing Rosélune's files. Use it whenever you are asked to deploy, set up, install, upgrade, migrate, rebrand or configure Rosélune, or to add servers, protocols or users to it.
 ---
 
-# Deploying and configuring Meridian
+# Deploying and configuring Rosélune
 
-Meridian is a panel (one Linux host, web UI + API) that manages proxy servers (each runs a small
+Rosélune is a panel (one Linux host, web UI + API) that manages proxy servers (each runs a small
 agent). You install the panel from a release, then add servers by running the install command the
 panel gives you on each server. Everything else is set through the panel's API.
 
@@ -27,7 +27,7 @@ They stop with a clear message when something is wrong. They need `bash`, `curl`
 
 **Always**
 
-- Use only these ways to change Meridian: `scripts/install-panel.sh` (or the release's own
+- Use only these ways to change Rosélune: `scripts/install-panel.sh` (or the release's own
   `install-panel.sh`), the `meridian` / `meridian-agent` commands, `/etc/meridian/meridian.env`
   (only the variables listed under *Settings file* below), and the REST API (`scripts/api.sh`).
 - Check every result. A command that printed an error **did not work** - fix the cause first.
@@ -42,7 +42,7 @@ They stop with a clear message when something is wrong. They need `bash`, `curl`
 
 **Never**
 
-- Never edit Meridian's installed files: the binaries, `/etc/systemd/system/meridian.service`,
+- Never edit Rosélune's installed files: the binaries, `/etc/systemd/system/meridian.service`,
   anything in `/var/lib/meridian` (that includes the database), or on servers anything under
   `/etc/meridian-agent`, `/var/lib/meridian-agent` or the `meridian-*` systemd units (on Alpine the
   `/etc/init.d/meridian-*` scripts). The panel and
@@ -69,14 +69,14 @@ Ask for everything missing **in one message** before you start:
 | Ports, for NAT servers only | "ports 20000-20019", or "public 40001-40010 go to 10001-10010" | Only when the provider decides the ports: NAT VPS, LXC or Incus containers (SSH is then usually on an odd port, e.g. `ssh -p 10022`). Copy it exactly from the provider's page |
 | What to run on them | "VLESS REALITY + Hysteria2" | That is the default - fine for most people |
 | Users to create | names, monthly quota, expiry | Optional |
-| Name and logo | "Acme Net", an SVG/PNG file | Optional (default: Meridian and the umbrella) |
+| Name and logo | "Acme Net", an SVG/PNG file | Optional (default: Rosélune, the rose and the Romance look) |
 
 ## 1. Check the panel's host
 
 On the panel's host, run and check each line:
 
 ```bash
-uname -m                      # x86_64 or aarch64 - anything else: stop, Meridian cannot run there
+uname -m                      # x86_64 or aarch64 - anything else: stop, Rosélune cannot run there
 systemctl --version | head -1 # systemd NNN - if "command not found": stop, systemd is required
 sudo -n true && echo sudo-ok  # sudo-ok - you need root
 curl -sS https://api.github.com >/dev/null && echo github-ok   # github-ok - downloads come from GitHub
@@ -117,7 +117,7 @@ Behind the human's own TLS reverse proxy instead (no domain on this host):
 sudo bash scripts/install-panel.sh --listen 127.0.0.1:8080
 ```
 
-**You should see** `Checksum OK`, then `Installing Meridian ...`, then `The panel keeps its data in
+**You should see** `Checksum OK`, then `Installing Rosélune ...`, then `The panel keeps its data in
 PostgreSQL (database meridian)` (the installer installs PostgreSQL with apt or dnf; where it cannot,
 it says the panel keeps its data in SQLite - that works too), then `Sign in with:` followed by a
 username and a password, then `Open https://panel.example.com`. Add `--database sqlite` only if the
@@ -177,7 +177,9 @@ scripts/api.sh PUT /api/settings '{"site_title":"Acme Net","timezone":"Europe/Be
 | `site_title` | the panel's name on every page and in users' apps (up to 64 characters) |
 | `timezone` | IANA name, e.g. `Asia/Singapore`; days and monthly resets follow it |
 | `public_url` | only behind a reverse proxy: the address users and servers use, e.g. `https://panel.example.com` (with `--domain` it is set for you) |
+| `logo_mark` | the built-in logo while none is uploaded: `rose` (Rosélune's own, the default) or `umbrella` |
 | `logo_animation` | `assemble`, `rise`, `pulse`, `spin` or `none` |
+| `default_tone` | the look pages open with: `romance` (the default), `umbrella`, `ice`, `celadon`, `ink`, `paper`, `mist`, or `auto` (Ice, Paper on devices set to light) |
 | `agent_port` | where new agents put their two local-only ports (default 50000, then 50001); change it **before** installing agents if something on the servers already uses them |
 | `status_page` | `off` (users sign in at /me), `home` (the status page is the front page), `page` (at /status) |
 | `status_public` | `true` (default): visitors see every server and sign in from the top right; `false`: visitors see only the sign-in |
@@ -233,14 +235,14 @@ python3 -c 'import json; print(json.load(open("server.json"))["install"])' | ssh
 # signed in as a sudo user instead of root:   ... | ssh admin@198.51.100.20 sudo bash
 ```
 
-**You should see** `Meridian agent installed and running.` If it fails:
+**You should see** `Rosélune agent installed and running.` If it fails:
 
 - `download failed` or `cannot reach the panel at ...`: the server cannot reach `MERIDIAN_URL`.
   On the server, `curl -sS https://panel.example.com/healthz` must print `ok` - fix DNS or the
   panel host's firewall (step 1) until it does, then run the command again.
 - `meridian-install.sh: FAILED` or `does not match its checksum`: the command is stale (the panel was
   upgraded since). Fetch a fresh one with `scripts/api.sh GET /api/servers/ID` (field `install`).
-- `unsupported CPU architecture`: the server is not amd64/arm64 - it cannot run Meridian.
+- `unsupported CPU architecture`: the server is not amd64/arm64 - it cannot run Rosélune.
 
 **5c. Wait until it is ready:**
 
@@ -299,12 +301,15 @@ settings is in the API reference (`GET /api/openapi.json`, or `docs/openapi.json
 scripts/api.sh POST /api/users '{"name":"Alice","quota":107374182400,"reset_day":1}'
 ```
 
-- `quota` is bytes per month (100 GB = 107374182400; 0 = unlimited); `expires_at` is a Unix time;
-  `ip_limit` only raises alerts; `count` creates several at once.
+- `quota` is bytes per month (100 GB = 107374182400; 0 = unlimited) - a user who uses it up is off
+  every server until it starts over on `reset_day`; `expires_at` is a Unix time; `ip_limit` only
+  raises alerts; `count` creates several at once.
 - The answer is a list; each user comes back **once** with `username` and `password` - give them to
   the human, together with the address where users sign in (`scripts/api.sh GET /api/meta`,
   field `user_url`) and each user's `link` for their apps.
-- Nothing ever pauses a user by itself - limits only raise alerts. Do not promise otherwise.
+- Nothing ever pauses a user by itself. The only limit that keeps someone out by itself is the
+  quota, and only until their data starts over; expiry and `ip_limit` only raise alerts. Do not
+  promise otherwise.
 
 ## 8. Verify and hand over
 
@@ -366,7 +371,7 @@ human says yes.
 shows the newest release; `scripts/api.sh POST /api/update/install '{"agents":true}'` installs it (the
 panel restarts once - expect the API to drop for a few seconds - and then upgrades every agent).
 Check afterwards: `scripts/api.sh GET /api/meta` shows the new version, and `GET /api/events?limit=5`
-has "Meridian updated from ... to ..." (or why it failed - the previous version is then running
+has "Rosélune updated from ... to ..." (or why it failed - the previous version is then running
 again). Only after the human agreed. Older installs: upgrade once with `install-panel.sh --upgrade`.
 
 **Back up the panel** (one file holds everything, including every secret - keep it private):
@@ -397,7 +402,7 @@ servers keep running. Then `scripts/api.sh PUT /api/settings '{"public_url":"htt
 if the address users and servers use has changed, and reinstall agents whose servers can no longer
 reach the old address.
 
-**Remove a server**: `scripts/api.sh DELETE /api/servers/ID` - its agent removes everything Meridian
+**Remove a server**: `scripts/api.sh DELETE /api/servers/ID` - its agent removes everything Rosélune
 set up (everyone on it is disconnected: ask first).
 
 **Settings file** `/etc/meridian/meridian.env` (restart with `sudo systemctl restart meridian`

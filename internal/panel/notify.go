@@ -598,8 +598,9 @@ func oneLineText(s string) string { return strings.Join(strings.Fields(s), " ") 
 
 // ---------------------------------------------------------------- events from limits
 
-// limitEvents records, once each, a user's quota used up, access ended or ending soon, and shared
-// certificates expiring - for the timeline and for notifications. Nothing is paused.
+// limitEvents records, once each, a user's data used up (which suspends them until it starts over:
+// outofdata.go), access ended or ending soon, and shared certificates expiring - for the timeline and
+// for notifications. Nothing here pauses anyone.
 func (p *Panel) limitEvents(ctx context.Context) {
 	rows, err := p.db.QueryContext(ctx, `SELECT `+subCols+` FROM subs WHERE paused = 0`)
 	if err != nil {
@@ -614,22 +615,15 @@ func (p *Panel) limitEvents(ctx context.Context) {
 	}
 	rows.Close()
 	t := now()
-	happened := func(kind string, subID, since int64) bool {
-		var n int
-		_ = p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE kind = ? AND sub_id = ? AND ts >= ?`, kind, subID, since).Scan(&n)
-		return n > 0
-	}
 	for _, s := range subs {
-		if s.Quota > 0 && s.Used() >= s.Quota && !happened("quota_reached", s.ID, s.CycleStart) {
-			p.event(s.AccountID, "warn", "quota_reached", 0, s.ID, 0, fmt.Sprintf("%s used all of their %s this cycle - nothing is paused: pause them or raise the limit if needed",
-				s.Name, fmtBytes(s.Quota)), nil)
-		}
+		p.markOut(ctx, s)      // in step with the data, whatever changed it (outofdata.go)
+		p.quotaReached(ctx, s) // told already when a report used it up, unless the panel was down then
 		switch {
 		case s.ExpiresAt == 0:
-		case t >= s.ExpiresAt && !happened("user_expired", s.ID, s.ExpiresAt):
+		case t >= s.ExpiresAt && !p.eventSince(ctx, "user_expired", s.ID, s.ExpiresAt):
 			p.event(s.AccountID, "warn", "user_expired", 0, s.ID, 0, fmt.Sprintf("%s's access ended on %s - nothing is paused: pause them or extend it if needed",
 				s.Name, p.dateText(s.ExpiresAt)), nil)
-		case t < s.ExpiresAt && s.ExpiresAt-t <= 3*86400 && !happened("user_expiring", s.ID, s.ExpiresAt-3*86400):
+		case t < s.ExpiresAt && s.ExpiresAt-t <= 3*86400 && !p.eventSince(ctx, "user_expiring", s.ID, s.ExpiresAt-3*86400):
 			p.event(s.AccountID, "info", "user_expiring", 0, s.ID, 0, fmt.Sprintf("%s's access ends on %s", s.Name, p.dateText(s.ExpiresAt)), nil)
 		}
 	}

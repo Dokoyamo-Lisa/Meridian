@@ -33,7 +33,7 @@ claude mcp add --transport http meridian https://panel.example.com/mcp \
 ```
 
 **Clients that only start local programs** use the bridge built into the `meridian` binary - each
-release has `meridian-cli-<version>-linux-<arch>` builds (Meridian runs on Linux only); save one as,
+release has `meridian-cli-<version>-linux-<arch>` builds (Rosélune runs on Linux only); save one as,
 say, `/usr/local/bin/meridian`. On other systems, connect the client over HTTP as above. The bridge
 reads the token from the environment, never from the command line:
 

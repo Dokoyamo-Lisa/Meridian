@@ -9,8 +9,9 @@ import (
 	"time"
 )
 
-// jobs runs the periodic bookkeeping. None of it pauses a subscription or touches a running core:
-// cycle resets only zero counters, retention only deletes old log rows.
+// jobs runs the periodic bookkeeping. None of it pauses a user or restarts a core: cycle resets zero
+// counters (and the servers serve users again whose data was used up, live), retention only deletes
+// old log rows.
 func (p *Panel) jobs(ctx context.Context) {
 	tick := time.NewTicker(15 * time.Second)
 	defer tick.Stop()
@@ -39,8 +40,9 @@ func (p *Panel) jobs(ctx context.Context) {
 		if time.Since(lastMinute) >= 59*time.Second {
 			lastMinute = time.Now()
 			p.sampleUptime(ctx)
-			p.autoUpdate(ctx) // a night-time install, when automatic updates are on
-			p.relayJob(ctx)   // servers that keep losing the panel (relay.go)
+			p.resetCycles(ctx) // each minute: a user whose data was used up is back right as it starts over
+			p.autoUpdate(ctx)  // a night-time install, when automatic updates are on
+			p.relayJob(ctx)    // servers that keep losing the panel (relay.go)
 		}
 		if time.Now().After(nextUpdateCheck) {
 			nextUpdateCheck = time.Now().Add(6 * time.Hour)
@@ -50,7 +52,6 @@ func (p *Panel) jobs(ctx context.Context) {
 		}
 		if time.Since(lastHourly) > time.Hour {
 			lastHourly = time.Now()
-			p.resetCycles(ctx)
 			p.retention(ctx)
 			p.pruneMirror(ctx)
 		}
@@ -151,7 +152,8 @@ func monthDay(y int, m time.Month, day int, loc *time.Location) time.Time {
 // only the start moves to the boundary in the new zone.
 func shifted(start, boundary int64) bool { return boundary-start < 27*3600 }
 
-// resetCycles zeroes monthly counters whose cycle rolled over.
+// resetCycles zeroes monthly counters whose cycle rolled over. Users whose data was used up are
+// served again (outofdata.go).
 func (p *Panel) resetCycles(ctx context.Context) {
 	loc, err := time.LoadLocation(p.settings().Timezone)
 	if err != nil {
@@ -159,9 +161,10 @@ func (p *Panel) resetCycles(ctx context.Context) {
 	}
 	t := time.Now().In(loc)
 	restarted := map[int64]bool{} // accounts whose users started a new cycle
+	back := map[int64]bool{}      // ... among them one whose data was used up
 	err = p.db.Write(ctx, func(tx *sql.Tx) error {
-		rows, err := tx.Query(`SELECT id, account_id, name, reset_day, reset_every, starts_at, created_at, cycle_start FROM subs
-			WHERE reset_day > 0 OR reset_every > 0`)
+		rows, err := tx.Query(`SELECT id, account_id, name, reset_day, reset_every, starts_at, created_at, cycle_start,
+			quota, count_mode, cycle_up, cycle_down, paused FROM subs WHERE reset_day > 0 OR reset_every > 0`)
 		if err != nil {
 			return err
 		}
@@ -169,13 +172,15 @@ func (p *Panel) resetCycles(ctx context.Context) {
 			id, account, start int64
 			name               string
 			day                int
+			out                bool
 		}
 		var due, moved []item
 		for rows.Next() {
 			var x item
 			var s Sub
-			if rows.Scan(&x.id, &x.account, &x.name, &s.ResetDay, &s.ResetEvery, &s.StartsAt, &s.CreatedAt, &x.start) == nil {
-				x.day = s.ResetDay
+			if rows.Scan(&x.id, &x.account, &x.name, &s.ResetDay, &s.ResetEvery, &s.StartsAt, &s.CreatedAt, &x.start,
+				&s.Quota, &s.CountMode, &s.CycleUp, &s.CycleDown, &s.Paused) == nil {
+				x.day, x.out = s.ResetDay, !s.Paused && s.outOfData()
 				if cs := periodStart(&s, t); cs > 0 && x.start < cs {
 					// a monthly boundary that only moved with the time zone; every-N-days cycles keep their instant
 					if s.ResetEvery == 0 && shifted(x.start, cs) {
@@ -195,14 +200,19 @@ func (p *Panel) resetCycles(ctx context.Context) {
 			}
 		}
 		for _, x := range due {
-			if _, err := tx.Exec(`UPDATE subs SET cycle_up = 0, cycle_down = 0, cycle_start = ? WHERE id = ?`, x.start, x.id); err != nil {
+			if _, err := tx.Exec(`UPDATE subs SET cycle_up = 0, cycle_down = 0, cycle_start = ?, out_at = 0 WHERE id = ?`, x.start, x.id); err != nil {
 				return err
 			}
 			if err := resetNodeUsage(tx, x.id); err != nil {
 				return err
 			}
 			restarted[x.account] = true
-			eventTx(tx, x.account, "info", "cycle_reset", 0, x.id, fmt.Sprintf("%s: usage reset - a new cycle started", x.name))
+			msg := fmt.Sprintf("%s: usage reset - a new cycle started", x.name)
+			if x.out {
+				back[x.account] = true
+				msg += " and the servers serve them again"
+			}
+			eventTx(tx, x.account, "info", "cycle_reset", 0, x.id, msg)
 		}
 
 		rows, err = tx.Query(`SELECT id, account_id, name, bw_reset_day, cycle_start FROM servers WHERE deleted_at = 0`)
@@ -240,8 +250,8 @@ func (p *Panel) resetCycles(ctx context.Context) {
 	})
 	logErr("reset cycles", err)
 	if err == nil {
-		for acct := range restarted { // protocols a limit stopped serve their users again (nodequota.go)
-			if len(p.stopModeSubs(ctx, acct)) > 0 {
+		for acct := range restarted { // users whose data was used up, and protocols a limit stopped, serve them again (nodequota.go)
+			if back[acct] || len(p.stopModeSubs(ctx, acct)) > 0 {
 				p.touchAccount(acct)
 			}
 		}

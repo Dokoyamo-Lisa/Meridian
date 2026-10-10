@@ -1,6 +1,6 @@
 // Health checks: what each server's agent found that may be a break-in or abuse - a crypto-miner, a
 // program run from a temporary folder, a new port, account or SSH key, a changed scheduled task or
-// service, SSH sign-ins, traffic Meridian does not account for, Meridian's own programs changed - and
+// service, SSH sign-ins, traffic Rosélune does not account for, Rosélune's own programs changed - and
 // what was decided about each. Nothing is ever stopped or blocked because of a risk: it only tells.
 
 import { useState } from 'preact/hooks'
@@ -272,7 +272,7 @@ export function HealthTab(props: { servers: Server[] }) {
     <>
       <p class="muted" style="margin-top:0">
         Every few minutes each server's agent looks for signs of a break-in or abuse: crypto-miners, programs run from temporary folders, new ports, accounts and SSH keys, changed administrator
-        rights, scheduled tasks and services, kernel modules, SSH sign-ins, traffic Meridian does not account for, Meridian's own programs changed. <Decisions />
+        rights, scheduled tasks and services, kernel modules, SSH sign-ins, traffic Rosélune does not account for, Rosélune's own programs changed. <Decisions />
       </p>
       <div class="row wrap" style="margin-bottom:12px">
         <Seg

@@ -26,7 +26,7 @@ Work from the top; most problems are found in the first three rows.
 | The server is up | **Servers** | A green dot and **Online**. |
 | The protocol runs | **Protocols** | The card does not say *starting up* or show an error. |
 | The port is open at the provider | Your provider's control panel (firewall, security group) | Incoming traffic allowed to the protocol's port - **TCP** for VLESS, Trojan, VMess, Shadowsocks; **UDP** for Hysteria2 and WireGuard. |
-| The user is not paused | The user's page | A green **Active**, not *Paused*. |
+| The user is not paused or out of data | The user's page | **Active** or **Online**, not *Paused* or *Out of data* (see [When someone uses up their data](everyday.md#when-someone-uses-up-their-data)). |
 | The app has the newest link | The person's app | Update the profile in the app (or add it again from their page). |
 | The camouflage site works | **Protocols** › the card › **Test from server** | It says the site answered. |
 | The device's clock is right | The person's phone or computer | Automatic date and time on. |

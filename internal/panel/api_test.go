@@ -162,9 +162,12 @@ func TestMetaRevealsLittleToStrangers(t *testing.T) {
 		t.Fatalf("anonymous meta: %v", m)
 	}
 	for k := range logo {
-		if k != "custom" && k != "v" && k != "animation" {
+		if k != "custom" && k != "v" && k != "mark" && k != "animation" {
 			t.Errorf("anonymous meta tells %q about the logo", k)
 		}
+	}
+	if logo["mark"] != "rose" { // which built-in logo it draws, nothing more
+		t.Errorf("the built-in logo: %v", logo["mark"])
 	}
 	b := h.browser()
 	b.login("owner", "owner-password-1")

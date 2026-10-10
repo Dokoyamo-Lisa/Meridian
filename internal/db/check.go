@@ -21,7 +21,7 @@ func CheckFile(path string) error {
 	_, err = io.ReadFull(f, head)
 	f.Close()
 	if err != nil || string(head) != "SQLite format 3\x00" {
-		return errors.New("this is not a Meridian backup (not an SQLite database)")
+		return errors.New("this is not a Rosélune backup (not an SQLite database)")
 	}
 	d, err := sql.Open("sqlite", "file:"+(&url.URL{Path: path}).EscapedPath()+"?mode=ro&immutable=1")
 	if err != nil {
@@ -37,14 +37,14 @@ func CheckFile(path string) error {
 	}
 	var version int
 	if err := d.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&version); err != nil {
-		return errors.New("this is not a Meridian backup")
+		return errors.New("this is not a Rosélune backup")
 	}
 	var servers int
 	if err := d.QueryRow(`SELECT COUNT(*) FROM servers`).Scan(&servers); err != nil {
-		return errors.New("this is not a Meridian backup")
+		return errors.New("this is not a Rosélune backup")
 	}
 	if version > Version() {
-		return errors.New("the backup comes from a newer Meridian - upgrade the panel first")
+		return errors.New("the backup comes from a newer Rosélune - upgrade the panel first")
 	}
 	return nil
 }

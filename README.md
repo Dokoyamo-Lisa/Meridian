@@ -1,10 +1,13 @@
 <p align="center"><img src="docs/logo.svg" width="72" height="72" alt=""></p>
 
-# Meridian
+# Rosélune
 
 A panel for running proxy and VPN servers for a team or a small company. One supervisor adds
 servers and protocols and creates users; each user gets a subscription link for their apps and a
 sign-in to see their own usage; the supervisor watches every server on a live globe.
+
+Rosélune was called Meridian until 1.3. Its programs, services, paths and this repository keep the
+old name (`meridian`, `meridian-agent`, `/var/lib/meridian`), so nothing changes on your servers.
 
 **[The guide](https://doc.losantos.space)** · **[Try the demo](https://deep.losantos.space)** (made-up
 servers and people; look around, nothing can be changed) · [Releases](https://github.com/Dokoyamo-Lisa/Meridian/releases)
@@ -12,10 +15,11 @@ servers and people; look around, nothing can be changed) · [Releases](https://g
 - **Simple to run.** One command installs the panel with HTTPS; one command (copied from the panel)
   installs the agent on each server. Protocols are added from guided forms that only accept
   combinations that work, and show which apps can use each one. The panel updates itself (only to
-  releases signed with Meridian's release key) and upgrades every agent with one click.
-- **Never disruptive on its own.** Nothing is paused automatically - quotas, expiry dates and IP
-  limits only raise alerts. Users, keys and settings change live through the cores' APIs; a core
-  restarts only when you click a button that says it will.
+  releases signed with Rosélune's release key) and upgrades every agent with one click.
+- **Never disruptive on its own.** A user who uses up their data is off every server until it starts
+  over, then back by themselves; expiry dates and IP limits only raise alerts, and only you pause.
+  Users, keys and settings change live through the cores' APIs; a core restarts only when you click
+  a button that says it will.
 - **Accountable.** Every connecting IP is recorded with its user, server, place and network;
   destinations are recorded per user; traffic is counted exactly once per user, protocol and day,
   and each user's usage is shown per protocol.
@@ -49,7 +53,7 @@ servers and people; look around, nothing can be changed) · [Releases](https://g
   answer "who is sharing their link?" or add users - asking first before anything disruptive.
 - **Watches for break-ins.** Every few minutes each agent checks its server for crypto-miners,
   programs run from temporary folders, ports nobody opened, new accounts and SSH keys, changed
-  scheduled tasks and services, SSH sign-ins, traffic Meridian does not account for and Meridian's
+  scheduled tasks and services, SSH sign-ins, traffic Rosélune does not account for and Rosélune's
   own programs changed. You mark each finding as yours or seen - here or on every server; nothing is
   stopped on its own.
 - **A Telegram bot.** Notifications, a daily report (traffic per server and the top users,
@@ -67,15 +71,17 @@ servers and people; look around, nothing can be changed) · [Releases](https://g
 
 ## Your name, your logo
 
-Meridian is the software; what your users see is yours. In **Settings › Panel › Name and logo** you
-set the panel's name, upload your own logo (SVG, PNG, JPEG or WebP) and choose how it moves while
-pages load and when someone signs in - the umbrella assembling panel by panel, rising, pulsing,
-spinning, or not at all. Name and logo appear everywhere users look: the top bar, the sign-in and
-loading screens, the status page, subscription pages, the browser tab and users' apps. **Look**
-sets how every page looks to people who have not picked one themselves: **Umbrella** (black glass,
-white type and one signal red - a corporate laboratory after hours), **Romance** (blush paper, rose
-ink and a serif voice), or one of the quiet tones. No files to edit; the API (`PUT /api/settings`,
-`PUT /api/settings/logo`) and the MCP tool `set_branding` do the same.
+Rosélune is the software; what your users see is yours. In **Settings › Panel › Name and logo** you
+set the panel's name and its logo - Rosélune's rose (five petals, a blush bloom and the moon at its
+heart), the umbrella, or your own (SVG, PNG, JPEG or WebP) - and choose how it moves while pages load
+and when someone signs in: assembling piece by piece, rising, pulsing, spinning, or not at all. Name
+and logo appear everywhere users look: the top bar, the sign-in and loading screens, the status page,
+subscription pages, the browser tab and users' apps. **Look** sets how every page looks to people
+who have not picked one themselves: **Romance**, Rosélune's own (blush paper, rose ink and a serif
+voice; the sign-in among falling petals), **Umbrella** (black glass, white type and one signal red - a
+corporate laboratory after hours), one of the quiet tones, or the device's choice of Ice or Paper. No
+files to edit; the API (`PUT /api/settings`, `PUT /api/settings/logo`) and the MCP tool
+`set_branding` do the same.
 
 ## What it runs
 
@@ -88,6 +94,8 @@ ink and a serif voice), or one of the quiet tones. No files to edit; the API (`P
 | SOCKS5, HTTP proxy | Xray | username and password per user |
 | Hysteria2 | official Hysteria server | QUIC, port hopping, optional Salamander obfuscation, bandwidth limits |
 | WireGuard | Linux kernel | official apps; destinations logged per device |
+| mieru | mieru's server (mita) | TCP or UDP; one port and one small process per user, so usage, cuts and limits are exact per user |
+| Snell | Surge's snell-server 5 | apps speak version 4 (Surge, Stash, mihomo apps, sing-box); one port and one small process per user |
 | Port forwards | nftables (kernel) or realm | TCP/UDP relays with exact byte counts |
 
 TLS certificates are obtained from Let's Encrypt by the agent, pasted in, self-signed, or
@@ -115,7 +123,7 @@ and the tests check every combination with sing-box, mihomo and Xray themselves
 ## Quick start
 
 1. **Install the panel** on a Linux server (amd64 or arm64, systemd) with a domain pointing to it.
-   Meridian runs on Linux only: the panel, the agent (systemd or OpenRC, amd64 or arm64) and the
+   Rosélune runs on Linux only: the panel, the agent (systemd or OpenRC, amd64 or arm64) and the
    command-line tool.
    This downloads the newest [release](https://github.com/Dokoyamo-Lisa/Meridian/releases), checks
    its SHA-256 and installs it:
@@ -193,14 +201,14 @@ test/e2e/             end-to-end test kit for a local VM
 
 ## Deploying with an AI agent
 
-Codex, Claude Code and other coding agents can install and configure Meridian for you: point them at
+Codex, Claude Code and other coding agents can install and configure Rosélune for you: point them at
 this repository - [AGENTS.md](AGENTS.md) sends them to the step-by-step
 [deploy skill](skills/meridian-deploy/SKILL.md), which uses only the installer, the `meridian`
-command and the API (never edits Meridian's files) and checks every step.
+command and the API (never edits Rosélune's files) and checks every step.
 
 ## License
 
-Meridian is free software under the [GNU Affero General Public License v3.0](LICENSE): you may use,
+Rosélune is free software under the [GNU Affero General Public License v3.0](LICENSE): you may use,
 study, change and share it; if you run a changed version as a service, its users are entitled to
 its source.
 

@@ -118,6 +118,8 @@ only needs a panel address with IPv6 (an AAAA record) - the dialog says so when 
 | **Shadowsocks 2022** | Simple and supported everywhere, TCP and UDP - including Surge and Quantumult X. |
 | **WireGuard** | A full VPN for laptops, phones and offices. |
 | **SOCKS5 / HTTP proxy** | For apps that only speak a plain proxy. |
+| **mieru** | Looks like random data. mihomo apps (Clash Verge Rev, FlClash, Mihomo Party) and Stash. |
+| **Snell** | Surge's own protocol: Surge, Stash, mihomo apps and sing-box. |
 
 Each is only a starting point: change the protocol, transport (raw, WebSocket, gRPC, HTTPUpgrade,
 XHTTP), security (REALITY, TLS, none) and every other setting in the same form.
@@ -173,10 +175,22 @@ do instead. Below the form you see which apps can use the protocol as configured
   own exit must leave the internet itself. A protocol can also pass through an **external node** - a
   provider's proxy you imported (see [Routing](routing.md)).
 
+- **mieru and Snell** run one small server process per user (mieru's server, mita, from its GitHub
+  releases; snell-server 5 from Surge's own site, each file checked against a checksum Rosélune
+  pins), each on the user's own port: from the protocol's port on, as many ports as the protocol
+  has **room for** (50 by default, up to 1000). A user keeps their port. So what each user uses, their
+  speed limit, their devices and cutting them off are exact - their port is theirs alone. Open the
+  range in the provider's firewall (mieru: TCP or UDP, as chosen; Snell: TCP and UDP). Each process
+  takes about 10-15 MB of memory. They need agent 1.3 and nftables, cannot pass through other
+  servers or be a proxy pass exit, and have no configuration as code. Users with a speed limit do
+  not get mieru over UDP (a speed limit stalls it); mieru over TCP and Snell keep to limits.
+  Links: mieru goes to the mihomo apps and Stash; Snell to Surge, Stash, the mihomo apps and
+  sing-box (SFI, SFA, SFM) as version 4.
+
 **Already running Xray, V2Ray, x-ui, 3x-ui, sing-box or Hysteria2 on the server?** Use **Import
 existing setup** on the server page. The agent reads their configuration (it changes nothing), you
 pick what to bring over, and each protocol keeps its keys, and each user keeps their ID or password
-- devices keep working. With **Take over**, the old service is stopped and Meridian serves the same
+- devices keep working. With **Take over**, the old service is stopped and Rosélune serves the same
 ports; without it, nothing is stopped and the imports use free ports.
 
 ### IP version
@@ -233,7 +247,7 @@ them off removes them when you save:
 }
 ```
 
-A Hysteria2 protocol takes YAML in the same panel; `auth` and `trafficStats` stay Meridian's, and
+A Hysteria2 protocol takes YAML in the same panel; `auth` and `trafficStats` stay Rosélune's, and
 saving restarts it. Apps' links are always built from the form: advanced settings that change how
 apps connect (transport, security, keys) make the links stop working.
 
@@ -245,7 +259,7 @@ on it, merged last:
 - `inbounds` with a protocol's tag (`n12`, listed in the section) change that protocol; others are
   added as your own inbounds, with the users written in them;
 - other sections (`dns`, `fakedns`, ...) are merged; `api`, `stats`, `log` and `policy` stay
-  Meridian's.
+  Rosélune's.
 
 ## 4. Add users
 
@@ -278,13 +292,25 @@ Options:
   kernel rate limit (nftables) on the addresses the user's devices are connected from, each way, and
   the extra devices get a routing rule in Xray and are refused at Hysteria2's sign-in - nothing
   restarts. A new device is under the speed limit within one report interval (10 seconds by
-  default). Hysteria2 apps of a limited user also ask for no more than the limit when the protocol
-  declares a bandwidth. WireGuard devices are limited by speed; a WireGuard configuration is one
-  device anyway.
+  default); a changed limit holds within seconds, for downloads already running too. Hysteria2 is
+  different: an app that declares no bandwidth stalls completely under such a limit, so a limited
+  user's Hysteria2 links declare 95% of the limit, and the server lets in only Hysteria2 apps that
+  declare a rate within it. After you lower a limit, the user's Hysteria2 app is turned away until
+  it takes the updated link (apps update their links by themselves, or press update in the app;
+  the timeline says so) - their other protocols follow the new limit at once. WireGuard devices are
+  limited by speed; a WireGuard configuration is one device anyway.
 - **How many**: create `team-01` … `team-20` in one go, each with their own password.
 
-The quota and the end date only raise alerts. Nothing is ever paused automatically - pausing is
-always your click. Everything above can be changed later with **Edit**.
+A user who uses up their quota is **out of data**: from the report that used it up (within one
+report interval, 10 seconds by default), no server lets them in - live, nothing restarts. What they
+have open right then follows **Settings › Panel › When a user's data runs out**: *strict* (the
+default) cuts it at once on every protocol; *loose* lets it go on for at most 10 minutes or 5 GB more,
+whichever comes first, then cuts it (both numbers can be changed). Their link keeps working and its
+page, their own page and the Telegram bot tell them why and when they can connect again. They are back by themselves when their data starts over (the next reset, checked
+every minute), or at once when you raise the quota, reset their usage or start a new period on a
+plan. A quota that never resets keeps them out until you do one of those. The end date and the
+device limit only raise alerts; pausing is always your click, and no limit ever resumes a paused
+user. Everything above can be changed later with **Edit**.
 
 ### Plans
 
@@ -355,10 +381,10 @@ office).
 - **Notifications** (Settings › Notifications): problems that need you, sent as they happen to a
   Telegram chat and/or an HTTPS webhook (Slack, Discord and Mattermost work as they are) - servers
   going offline or coming back, a machine that restarted, a configuration a server refused, a core
-  that crashed, users who used up their data or whose access ended, expiring shared certificates,
-  and (if you want) sign-ins, and high and critical health risks. Create a bot with @BotFather, send
-  it a message, paste its token and press **Find chats**. Turning notifications on never sends the
-  past, and they never pause anyone. The same bot can answer commands and send a daily report
+  that crashed, users who used up their data (and are out until it starts over) or whose access
+  ended, expiring shared certificates, and (if you want) sign-ins, and high and critical health risks.
+  Create a bot with @BotFather, send it a message, paste its token and press **Find chats**. Turning
+  notifications on never sends the past, and a notification never changes anything. The same bot can answer commands and send a daily report
   ([the Telegram bot](telegram.md)).
 
 ## 8. Country rules (optional)
@@ -377,13 +403,17 @@ The country lists come from DB-IP's free database, downloaded by the panel once 
 
 ## 9. Your name and logo (optional)
 
-**Settings › Panel › Name and logo**: the panel's name, your own logo (SVG, PNG, JPEG or WebP, up to
-128 KB) and how it moves - the umbrella assembling, Rise, Pulse, Spin or None. The preview shows it
-as users will see it; **Use the umbrella** brings the built-in logo back.
+**Settings › Panel › Name and logo**: the panel's name; its logo - the **Rose** (Rosélune's own: five
+petals, a blush bloom and the moon at its heart), the **Umbrella**, or your own (SVG, PNG, JPEG or
+WebP, up to 128 KB); how it moves - Assemble (the built-in logo's pieces fly in), Rise, Pulse, Spin or
+None; and the **Look** pages open with for people who have not picked one: Romance (the default),
+Umbrella, a quiet tone, or **Follow the device** (Ice in the dark, Paper in the light). The preview
+shows the logo as users will see it; **Use the rose** (or the umbrella) brings the built-in logo back
+after an upload.
 
 ### Your own styles
 
-**Settings › Panel › Your own styles (CSS)** adds your CSS after Meridian's, for the panel and for
+**Settings › Panel › Your own styles (CSS)** adds your CSS after Rosélune's, for the panel and for
 the status page and users' pages separately - e.g. `:root { --accent: #e0673a; }`. A style sheet
 cannot load images or fonts from other sites (use `data:` addresses), so it changes looks only.
 For whole themes, see [plugins](plugins.md).

@@ -70,7 +70,7 @@ func (d *DB) migratePostgres() error {
 		return err
 	}
 	if v > len(migrations) {
-		return fmt.Errorf("the database is from a newer Meridian (schema %d; this one knows %d) - install that version again", v, len(migrations))
+		return fmt.Errorf("the database is from a newer Rosélune (schema %d; this one knows %d) - install that version again", v, len(migrations))
 	}
 	if v == 0 {
 		s, err := pgSchema()

@@ -9,18 +9,18 @@ looked.
 
 ![Settings › Updates](../img/guide/settings-updates.webp)
 
-When there is a newer one, it says *Meridian 1.2.0 is available* (with **What is new**):
+When there is a newer one, it says *Rosélune 1.4.0 is available* (with **What is new**):
 
 1. Leave **Then upgrade every server's agent** ticked.
 2. Press **Update now**.
 
-**You should see** *Downloading and checking Meridian 1.2.0…*, then *Installing Meridian 1.2.0 - the
+**You should see** *Downloading and checking Rosélune 1.4.0…*, then *Installing Rosélune 1.4.0 - the
 panel restarts in a moment; this page reconnects by itself.* After about a minute the page shows the
 new version. The panel saved a copy of its data first.
 
 > **Good to know:** Nobody is disconnected by an update. The servers keep serving while the panel
 > restarts, and their agents are upgraded one by one without touching your users' connections. The
-> panel only installs releases that carry Meridian's signature.
+> panel only installs releases that carry Rosélune's signature.
 
 ### Or let it update itself
 
@@ -34,7 +34,7 @@ If **Agents** says *1 server runs an older agent* (or more), press **Upgrade all
 asks *Upgrade the agent on 1 server?* and says what happens: each agent fetches the new agent from
 the panel and restarts itself, while the proxies keep running. Press **Upgrade agents**.
 
-**You should see**, within a minute, *Every server runs this panel's agent (1.2.0).* It is safe at any
+**You should see**, within a minute, *Every server runs this panel's agent (1.4.0).* It is safe at any
 time: nobody is disconnected.
 
 ## Back up
@@ -91,8 +91,8 @@ sudo bash install-panel.sh --upgrade
 **You should see**, ending with:
 
 ```text
-Installing Meridian 1.2.0
-Meridian upgraded. Servers keep running; upgrade their agents in Settings > Updates (Upgrade all agents) when convenient.
+Installing Rosélune 1.4.0
+Rosélune upgraded. Servers keep running; upgrade their agents in Settings > Updates (Upgrade all agents) when convenient.
 ```
 
 ## If something goes wrong
@@ -102,4 +102,4 @@ Meridian upgraded. Servers keep running; upgrade their agents in Settings > Upda
 | *The last update did not go through:* and a reason | Read the reason; most often the server could not reach GitHub. Press **Check now** and try again later. Nothing changed: the old version keeps running. |
 | The page does not come back after an update | Wait two minutes and reload. Then on the server: `systemctl status meridian --no-pager` and `journalctl -u meridian -n 50 --no-pager`. |
 | **Update now** is missing and a sentence says why | The panel cannot install updates itself on this host (for example, it was not installed with the installer). Use **Update by hand**. |
-| A restore is refused | The file is not a Meridian backup, or the passphrase is wrong. |
+| A restore is refused | The file is not a Rosélune backup, or the passphrase is wrong. |

@@ -10,7 +10,7 @@ import qrcode from 'qrcode-generator'
 import '../mark.css'
 import './status.css'
 import '../themes.css'
-import { LogoInfo, WEDGES, animClass, brand, logoSrc, openInto, setBrand, transition } from '../mark'
+import { LogoInfo, animClass, brand, logoSrc, markPieces, openInto, setBrand, transition } from '../mark'
 import { $, $$, append, clear, h, icon, numUnit, s, safeHref, setText } from './dom'
 import {
   ago,
@@ -1067,7 +1067,7 @@ function updateFlowStats() {
 // ================================================================ globe
 
 let globe: Globe | null = null
-let placeKeys = ''
+let placeKeys: string | null = null // null until the globe got its first layout (which may have no places at all)
 
 function globeColors() {
   const cs = getComputedStyle(document.documentElement)
@@ -1571,14 +1571,20 @@ function updateMe() {
   const m = S.me
   if (!m || S.view !== 'me') return
   setText($('#hMe'), m.name ? `Hello, ${m.name}` : 'Your usage')
-  setText($('#meSub'), `Signed in as ${m.username}${m.status === 'paused' ? ' · paused' : ''}`)
+  setText($('#meSub'), `Signed in as ${m.username}${m.status === 'paused' ? ' · paused' : m.status === 'out_of_data' ? ' · out of data' : ''}`)
 
   // notes: paused, over quota, expiry ...
   const flags = clear($('#meFlags'))
   if (m.status === 'paused') flags.append(h('div.note-box.crit', icon('alert', 'sm'), h('span', 'Your access is paused. Contact the administrator if you think this is a mistake.')))
   for (const f of m.flags || []) {
     const t = FLAG_TEXT[f]
-    if (t) flags.append(h('div.note-box', { cls: t[0] }, icon('alert', 'sm'), h('span', t[1])))
+    if (f === 'over_quota' && m.status === 'out_of_data') {
+      // the servers let them in again by themselves when the data starts over
+      const back = m.next_reset
+        ? `You have used all of this cycle's data, so you cannot connect right now. You can connect again on ${isoDate(m.next_reset)} (${inDays(daysUntil(m.next_reset))}), when your data starts over.`
+        : 'You have used all of your data, so you cannot connect right now. Ask your administrator for more.'
+      flags.append(h('div.note-box', { cls: 'crit' }, icon('alert', 'sm'), h('span', back)))
+    } else if (t) flags.append(h('div.note-box', { cls: t[0] }, icon('alert', 'sm'), h('span', t[1])))
   }
 
   // the data left this cycle, as the one big figure
@@ -2357,12 +2363,12 @@ function toast(msg: string, warn = false) {
   toastTimer = window.setTimeout(() => t.classList.remove('on'), 2600)
 }
 
-const TONES = ['ice', 'celadon', 'ink', 'paper', 'mist', 'umbrella', 'romance']
+const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist']
 function initTones() {
   const root = document.documentElement
   const btn = $('#palBtn')
   const pop = $('#palPop')
-  const mark = () => $$('button', pop).forEach((b) => b.setAttribute('aria-checked', String(b.dataset.tone === (root.dataset.theme || 'ice'))))
+  const mark = () => $$('button', pop).forEach((b) => b.setAttribute('aria-checked', String(b.dataset.tone === (root.dataset.theme || 'romance'))))
   const close = () => {
     pop.hidden = true
     btn.setAttribute('aria-expanded', 'false')
@@ -2391,7 +2397,7 @@ function initTones() {
     b.addEventListener('click', () => {
       const tone = b.dataset.tone || ''
       close()
-      if (!TONES.includes(tone) || tone === (root.dataset.theme || 'ice')) return
+      if (!TONES.includes(tone) || tone === (root.dataset.theme || 'romance')) return
       try {
         localStorage.setItem('meridian.tone', tone)
       } catch {
@@ -2683,12 +2689,13 @@ function initReveal() {
   setTimeout(() => $$('.rv').forEach((el) => el.classList.add('in')), 1600) // never leave content hidden
 }
 
-// markEl builds the umbrella mark; 'once' assembles it panel by panel (see mark.css).
+// markEl builds the logo: the uploaded one, or the built-in mark; 'once' assembles it piece by piece
+// (see mark.css).
 function markEl(mode: 'once' | 'loop' | 'still'): Element {
   const cls = animClass(mode)
   if (brand.custom) return h('img', { class: ('logo-img logo ' + cls).trim(), src: logoSrc(), alt: '', 'aria-hidden': 'true', draggable: 'false' })
   const el = s('svg', { class: ('umb-mark logo ' + cls).trim(), viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' })
-  WEDGES.forEach((w, i) => el.append(s('path', { class: 'w' + (w.white ? ' white' : ''), d: w.d, fill: w.fill, style: `--i:${i};--dx:${w.dx};--dy:${w.dy}` })))
+  markPieces().forEach((w) => el.append(s('path', { class: 'w' + (w.white ? ' white' : ''), d: w.d, fill: w.fill, style: `--i:${w.i};--dx:${w.dx};--dy:${w.dy}` })))
   return el
 }
 

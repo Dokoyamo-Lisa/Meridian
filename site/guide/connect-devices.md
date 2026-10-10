@@ -71,5 +71,6 @@ browser: **Connected now** shows your device.
 | The app cannot download or update the profile | Switch the app off, check that your internet works, and update the profile in the app. Still failing: tell the person who runs the service. |
 | Connected, but no website opens | Disconnect, wait ten seconds and connect again, or pick another server in the app. Still nothing: tell the person who runs the service - they can check the server. |
 | Your page says your access is paused | Only the person who runs the service can resume it. Ask them. |
+| Your page says you have used all of your data | You can connect again on the date it gives - by yourself, nothing to change in the app. Need more before then? Ask the person who runs the service. |
 | `wrong username or password` | Check the spelling. After three wrong tries you have to wait 15 minutes. You can also ask for a new password. |
 | `too many failed sign-ins from your address - try again in ...` | Wait the time it says, then try again. |

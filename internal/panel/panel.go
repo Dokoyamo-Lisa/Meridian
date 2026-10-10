@@ -126,10 +126,12 @@ func (p *Panel) loadSettings() error {
 	var raw string
 	err := p.db.QueryRow(`SELECT value FROM settings WHERE key = 'panel'`).Scan(&raw)
 	s := defaultSettings()
+	adopted := ""
 	if err == nil {
 		if err := json.Unmarshal([]byte(raw), &s); err != nil {
 			return err
 		}
+		adopted = adoptIdentity([]byte(raw), &s) // settings from before Rosélune (identity.go)
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -137,7 +139,13 @@ func (p *Panel) loadSettings() error {
 	p.setMu.Lock()
 	p.set = s
 	p.setMu.Unlock()
-	return p.saveSettings(s) // always store the full, explicit set
+	if err := p.saveSettings(s); err != nil { // always store the full, explicit set
+		return err
+	}
+	if adopted != "" {
+		p.event(0, "info", "settings", 0, 0, 0, adopted, nil)
+	}
+	return nil
 }
 
 func (p *Panel) saveSettings(s Settings) error {

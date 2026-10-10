@@ -418,9 +418,10 @@ func (sc *scan) enabledServices() map[string]string {
 	return out
 }
 
-// meridianUnitRE are the names of Meridian's own services: the agent, Xray, and one Hysteria2 server
-// or realm forward per id (systemd meridian-hy2@22.service, OpenRC meridian-hy2.22).
-var meridianUnitRE = regexp.MustCompile(`^meridian-(agent|xray|(hy2|realm)[@.][0-9]{1,12})(\.service)?$`)
+// meridianUnitRE are the names of Meridian's own services: the agent, Xray, one Hysteria2 server or
+// realm forward per id (systemd meridian-hy2@22.service, OpenRC meridian-hy2.22), and one mieru or
+// Snell server per protocol and user (meridian-mita@11-2.service: protocol 11, user 2).
+var meridianUnitRE = regexp.MustCompile(`^meridian-(agent|xray|(hy2|realm)[@.][0-9]{1,12}|(mita|snell)[@.][0-9]{1,15}-[0-9]{1,15})(\.service)?$`)
 
 // ownUnit says whether an enabled service is one of Meridian's: its name, and a link to Meridian's own
 // unit (or OpenRC script) - a look-alike name pointing elsewhere is not.

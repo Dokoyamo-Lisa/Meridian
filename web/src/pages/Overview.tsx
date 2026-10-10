@@ -10,6 +10,7 @@ interface OverviewData {
   tx: number
   users: number
   paused: number
+  out_of_data: number
   online_users: number
   online_ips: number
   today: DayTraffic
@@ -87,7 +88,7 @@ export function Overview() {
     <>
       <PageHead
         title="Overview"
-        sub={`${d.servers.total} server${d.servers.total === 1 ? '' : 's'} · ${d.users} user${d.users === 1 ? '' : 's'}${d.paused ? ` · ${d.paused} paused` : ''}`}
+        sub={`${d.servers.total} server${d.servers.total === 1 ? '' : 's'} · ${d.users} user${d.users === 1 ? '' : 's'}${d.paused ? ` · ${d.paused} paused` : ''}${d.out_of_data ? ` · ${d.out_of_data} out of data` : ''}`}
         actions={
           <>
             <a class="btn" href="/users?add=1">

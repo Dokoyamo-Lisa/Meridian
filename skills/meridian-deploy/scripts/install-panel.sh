@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-panel.sh - install or upgrade the Meridian panel on THIS host from a GitHub release.
+# install-panel.sh - install or upgrade the Rosélune panel on THIS host from a GitHub release.
 # Run it as root on the panel's host:
 #
 #   sudo bash install-panel.sh --domain panel.example.com [--email you@example.com]
@@ -31,7 +31,7 @@ case "$(uname -s)" in Linux) ;; *) die "the panel runs on Linux (this is $(uname
 case "$(uname -m)" in
   x86_64|amd64) ARCH=amd64 ;;
   aarch64|arm64) ARCH=arm64 ;;
-  *) die "unsupported CPU $(uname -m) - Meridian runs on amd64 and arm64" ;;
+  *) die "unsupported CPU $(uname -m) - Rosélune runs on amd64 and arm64" ;;
 esac
 for c in curl sha256sum tar systemctl; do
   command -v "$c" >/dev/null 2>&1 || die "$c is missing - on Debian/Ubuntu: apt-get install -y curl coreutils tar (systemd is required)"
@@ -52,7 +52,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 cd "$WORK"
 
-say "Downloading Meridian $VERSION for $ARCH"
+say "Downloading Rosélune $VERSION for $ARCH"
 get -o SHA256SUMS "$BASE/SHA256SUMS" || die "release v$VERSION has no SHA256SUMS at $BASE - is the version right?"
 get -o "$NAME.tar.gz" "$BASE/$NAME.tar.gz" || die "download failed: $BASE/$NAME.tar.gz"
 grep " $NAME.tar.gz\$" SHA256SUMS > want.sum || die "SHA256SUMS does not list $NAME.tar.gz"

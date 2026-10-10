@@ -292,9 +292,15 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 		if err != nil {
 			return nil, err
 		}
-		for _, s := range all {
-			if !s.Paused && s.Scope.HasServer(id, nodes) {
+		t := now()
+		for _, s := range all { // paused, or their data used up (outofdata.go): served nowhere
+			if !s.Paused && !s.outOfData() && s.Scope.HasServer(id, nodes) {
 				subs = append(subs, s)
+			}
+			// loose mode: what a user whose data ran out has open may go on a while; anyone else
+			// taken off has it cut by the agent at once
+			if until := graceUntil(s, set, t); until > 0 && s.Scope.HasServer(id, nodes) {
+				st.Grace = append(st.Grace, proto.Grace{Sub: s.ID, Until: until})
 			}
 		}
 	}
@@ -440,6 +446,30 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 				hn.Mode = "6"
 			}
 			st.Hysteria = append(st.Hysteria, hn)
+		case "solo": // mieru, Snell: each user's own process and port (solo.go)
+			all, err := p.subsOf(ctx, srv.AccountID)
+			if err != nil {
+				continue
+			}
+			if !acct.Enabled {
+				all = nil
+			}
+			sn, err := p.soloNode(ctx, n, all, servingOf(subs, n, stopped))
+			if err != nil {
+				slog.Error("mieru/snell users", "node", n.ID, "err", err)
+				continue
+			}
+			st.Solo = append(st.Solo, sn)
+			// the programs, and their checksums - only where they run, so other servers' states stay as they were
+			if st.Cores.Mita == "" {
+				st.Cores.Mita, st.Cores.Snell = set.MitaVersion, set.SnellVersion
+				for k, v := range p.digests.forVersions(map[string]string{"mita": set.MitaVersion, "snell": set.SnellVersion}) {
+					if st.Cores.Digests == nil {
+						st.Cores.Digests = map[string]string{}
+					}
+					st.Cores.Digests[k] = v
+				}
+			}
 		case "wireguard":
 			peers, err := p.ensureWGPeers(ctx, n, servingOf(subs, n, stopped))
 			if err != nil {
@@ -638,6 +668,17 @@ func (p *Panel) endpointsFor(ctx context.Context, sub *Sub) ([]subgen.Endpoint, 
 		}
 		for _, n := range nodes {
 			if !n.Enabled || len(usersOf([]*Sub{sub}, n)) == 0 {
+				continue
+			}
+			if isSolo(n.Kind) { // the user's own port (solo.go)
+				if !soloServes(n, sub) {
+					continue
+				}
+				ports, err := p.ensureSoloPorts(ctx, n, []*Sub{sub}, false)
+				if err != nil || ports[sub.ID] == 0 {
+					continue // no room left on it
+				}
+				out = append(out, soloEndpoint(n, srv, sub, ports[sub.ID], endpointName(srv, n)))
 				continue
 			}
 			var peer *wgPeer

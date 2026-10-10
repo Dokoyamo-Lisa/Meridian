@@ -35,6 +35,7 @@ import (
 	"meridian/internal/agent/realm"
 	"meridian/internal/agent/scan"
 	"meridian/internal/agent/service"
+	"meridian/internal/agent/solo"
 	"meridian/internal/agent/sys"
 	"meridian/internal/agent/wg"
 	"meridian/internal/agent/xray"
@@ -132,6 +133,7 @@ type Agent struct {
 	actions     string          // the actions file (empty: in DataDir; tests keep their own)
 	actionsMu   sync.Mutex      // one write of the actions file at a time
 	health      *health.Monitor // signs of a break-in or abuse, reported to the panel
+	solo        *solo.Engine    // mieru and Snell: one process per user (solo/)
 	pub         publicAddrs     // the public addresses between hellos (publicaddr.go)
 
 	// the panels the server is shared with (share.go): their links, and the state the host runs -
@@ -175,6 +177,7 @@ func New(cfg *Config) (*Agent, error) {
 	a.hy = &hy.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "hy2"), RunDir: RunDir, AuthPort: cfg.APIPort + 1,
 		Events: a.event}
 	a.realm = &realm.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "realm")}
+	a.solo = &solo.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "solo"), RunDir: filepath.Join(RunDir, "solo"), Events: a.event}
 	a.health = a.newHealth()
 	a.restoreBaselines()
 	a.certs = &acme.Manager{Dir: filepath.Join(DataDir, "certs"), Directory: cfg.ACMEDirectory, CAFile: cfg.ACMECAFile,
@@ -471,6 +474,10 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 		// a core that could not be downloaded keeps running as it is; everything else applies
 		ready := a.prepare(ctx, st)
 		xr, hys, waiting := a.withCerts(full)
+		grace := graceOf(full.Grace) // users taken off whose open connections may stay a while
+		a.xray.SetGrace(grace)
+		a.hy.SetGrace(grace)
+		a.solo.SetGrace(grace)
 		for _, w := range waiting {
 			errs = append(errs, "certificate: "+w)
 		}
@@ -480,8 +487,10 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 			res, err := a.xray.Apply(ctx, xr, st.Cores.Xray, st.Cores.Mirror, logOn, false)
 			note("xray", err)
 			pending = append(pending, res.Pending...)
+			a.xray.Cut() // the connections users taken off still have open go too (xray/cuts.go)
 		}
 		a.hy.SetRefused(full.Refuse) // devices over a user's limit, refused at sign-in (hy/limits.go)
+		a.hy.SetSpeed(full.Speed)    // speed limits: Hysteria2 sign-ins must keep to them (hy/limits.go)
 		if ready.hysteria != nil {
 			note("download", ready.hysteria)
 		} else {
@@ -489,6 +498,7 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 			pending = append(pending, a.hy.Pending()...)
 		}
 		note("wireguard", a.wg.Apply(full.WireGuard))
+		note("mieru and Snell", a.solo.Apply(ctx, full.Solo, st.Cores.Mita, st.Cores.Snell, st.Cores.Mirror))
 		if ready.realm != nil {
 			note("download", ready.realm)
 		} else {
@@ -676,6 +686,22 @@ func (a *Agent) nftSpec(st *proto.State) nft.Spec {
 	}
 	spec.UDPPorts = append(spec.UDPPorts, hy.Ports(st.Hysteria)...)
 	spec.Hysteria = st.Hysteria // their port hopping ranges
+	// mieru and Snell users' own ports - those in grace too, refusing new connections (solo/)
+	running, noNew := a.solo.Running(solo.Wanted(st.Solo))
+	refused := map[int64][]string{}
+	for _, r := range st.Refuse {
+		refused[r.Sub] = append(refused[r.Sub], r.IPs...)
+	}
+	for _, i := range running {
+		if i.TCP() {
+			spec.TCPPorts = append(spec.TCPPorts, i.Port)
+		}
+		if i.UDP() {
+			spec.UDPPorts = append(spec.UDPPorts, i.Port)
+		}
+		spec.Solo = append(spec.Solo, nft.SoloPort{Node: i.Node, Sub: i.Sub, Port: i.Port, TCP: i.TCP(), UDP: i.UDP(), NoNew: noNew[i.Key()],
+			Refused: refused[i.Sub]})
+	}
 	for _, w := range st.WireGuard {
 		spec.UDPPorts = append(spec.UDPPorts, w.ListenPort)
 		g := nft.WGNat{NodeID: w.NodeID, Iface: w.Name, SNAT: w.SNAT}
@@ -980,6 +1006,24 @@ func (a *Agent) report(ctx context.Context) {
 		if full == nil {
 			full = st
 		}
+		// mieru and Snell: each user's port - what it carried, the devices on it - and their
+		// processes; grace that ended stops a process (solo/)
+		a.solo.Expire(solo.Wanted(full.Solo))
+		for k, d := range a.nft.TakeSolo() {
+			traffic = append(traffic, proto.UserTraffic{Sub: k[1], Node: k[0], Up: d[0], Down: d[1]})
+		}
+		so := a.solo.Online()
+		live.Online = append(live.Online, so...)
+		if connLog {
+			for _, u := range so {
+				for _, ip := range u.IPs {
+					ips = append(ips, proto.IPSeen{Sub: u.Sub, Node: u.Node, IP: ip.IP, First: ip.Since, Last: ip.Last})
+				}
+			}
+		}
+		for name, cs := range a.solo.Status() {
+			live.Cores[name] = cs
+		}
 		a.limitDevices(full, live.Online) // users' speed limits follow their devices (limits.go)
 	}
 	var fwds []proto.FwdTraffic
@@ -1061,6 +1105,8 @@ func (a *Agent) report(ctx context.Context) {
 	caps.Limits = true  // enforces users' speed limits and turns away devices over a limit
 	caps.Console = consoleAllowed()
 	caps.Share = true // can be shared with other panels (share.go)
+	caps.Cut = true   // cuts the open connections of users taken off (xray/cuts.go, hy)
+	caps.Solo = true  // runs mieru and Snell, one process per user (solo/)
 	addrs := sys.LocalAddrs()
 	sendHello := time.Since(a.lastHello) > 10*time.Minute || caps != a.lastCaps || !slices.Equal(addrs, a.lastAddrs) || a.pub.moved()
 	a.mu.Unlock()
@@ -1206,7 +1252,18 @@ func (a *Agent) saveDone() {
 // decommission removes everything the agent manages and the agent itself: the panel deleted
 // this server.
 func (a *Agent) decommission() {
-	slog.Warn("this server was deleted in the panel - removing Meridian from it")
+	slog.Warn("this server was deleted in the panel - removing Rosélune from it")
 	Uninstall(false)
 	os.Exit(0)
+}
+
+// graceOf is State.Grace as user -> until.
+func graceOf(list []proto.Grace) map[int64]int64 {
+	out := make(map[int64]int64, len(list))
+	for _, g := range list {
+		if g.Sub > 0 && g.Until > out[g.Sub] {
+			out[g.Sub] = g.Until
+		}
+	}
+	return out
 }

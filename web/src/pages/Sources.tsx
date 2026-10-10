@@ -8,7 +8,7 @@ import { Check, ErrorBox, Field, Menu, Meter, Modal, Search, Seg, Toggle, ask, e
 // external nodes that follow the provider; they can be exits, load balancer members (all of them as
 // one member), and - when the operator says so - part of users' own subscriptions.
 
-const clientNames: Record<ExtSource['client'], string> = { '': 'Meridian', clash: 'Clash (mihomo)', singbox: 'sing-box', v2rayn: 'v2rayN' }
+const clientNames: Record<ExtSource['client'], string> = { '': 'Rosélune', clash: 'Clash (mihomo)', singbox: 'sing-box', v2rayn: 'v2rayN' }
 
 const everyOptions: [number, string][] = [
   [0, 'Only when I ask'],
@@ -300,13 +300,13 @@ export function SourceEditor(props: { source?: ExtSource; onClose: () => void; o
         </Field>
         <Field
           label="Ask as"
-          hint="Many providers answer each app in its own form. Every form is read - links, base64, Clash and sing-box - and each node is written out again by Meridian, so every app gets it in a form it understands. Pick another app if the provider refuses Meridian."
+          hint="Many providers answer each app in its own form. Every form is read - links, base64, Clash and sing-box - and each node is written out again by Rosélune, so every app gets it in a form it understands. Pick another app if the provider refuses Rosélune."
         >
           <Seg
             value={client}
             onChange={setClient}
             options={[
-              ['', 'Meridian'],
+              ['', 'Rosélune'],
               ['clash', 'Clash'],
               ['singbox', 'sing-box'],
               ['v2rayn', 'v2rayN'],
@@ -328,7 +328,7 @@ export function SourceEditor(props: { source?: ExtSource; onClose: () => void; o
           checked={offer}
           onChange={setOffer}
           label="Give its nodes to users too"
-          hint="They appear in users' subscriptions next to your own protocols. Meridian cannot count or limit what users send through them - the provider does. WireGuard nodes are never given out: one key cannot serve many devices."
+          hint="They appear in users' subscriptions next to your own protocols. Rosélune cannot count or limit what users send through them - the provider does. WireGuard nodes are never given out: one key cannot serve many devices."
         />
         {offer && (
           <div class="src-offer">

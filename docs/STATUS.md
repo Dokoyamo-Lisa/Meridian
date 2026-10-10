@@ -2,6 +2,46 @@
 
 Last updated 2026-10-10 (version 1.2.0).
 
+## Tested for 1.3 (local panel; three Ubuntu 26.04 VMs on one shared network)
+
+- **Out of data, every protocol**: a user with a 30 MB quota downloading 90 MB through VLESS REALITY,
+  Shadowsocks, VLESS XHTTP, VMess WebSocket, Trojan REALITY, SOCKS5, HTTP proxy, Hysteria2,
+  WireGuard, mieru (TCP and UDP) and Snell (with mihomo and sing-box): the panel marks them out of
+  data within one report, their running download is cut at once - the client's connection and the
+  server's connection to the site both gone - new connections are refused, and another user keeps
+  working throughout. Reset usage, a higher quota and a new cycle each bring them back at once. Xray
+  and Hysteria2 keep their process (no restart).
+- **Loose mode** (one minute, in the test): what was open went on after the data ran out, a new
+  connection during the grace was refused, and when the minute ended everything was cut.
+- **Live counting**: with Xray's zero-copy relay switched off (`XRAY_BUF_SPLICE=disable`), long
+  VLESS Vision, SOCKS5 and HTTP downloads count as they flow; an already running Xray showed
+  **restart needed**, and the restart from the panel applied it.
+- **Speed limits, live, one download each**: 300 then 200 Mbps then none, changed in the panel while
+  it ran - REALITY 306/203, Shadowsocks ~300/~200, WireGuard 304/206, mieru TCP 304/205, Snell
+  306/~200 Mbps, back to full speed at once. Hysteria2 with the link's declared bandwidth: 288 and
+  193 Mbps steady (behind an emulated 1 Gbit/s line with 40 ms). Without a declared bandwidth
+  Hysteria2 and mieru over UDP stall under any limit - hence the rules in the changelog.
+- **mieru and Snell**: each user's own process and port (mita 3.38.0, snell-server 5.0.1, checksums
+  verified), connecting with mihomo (mieru TCP/UDP, Snell 4 and 5) and sing-box (Snell 4);
+  counting, quota cut and live limits as above.
+- **Proxy passes**: every entry (VLESS REALITY, Shadowsocks, VLESS XHTTP, VMess WebSocket, Trojan
+  REALITY, SOCKS5, HTTP) through every exit on a second server (VLESS REALITY, Shadowsocks,
+  Hysteria2, Trojan REALITY, VMess WebSocket): 35 of 35 reached a destination only the exit server
+  can reach, and none reached one only the entry server can. Through two imported external nodes:
+  6 of 6. Relay chains across three servers (entry, relay, exit): 3 of 3 left only from the last
+  server. A chain back to its own server is refused.
+- **Rosélune and Romance**: two panels started with 1.2 data - one still called Meridian (it took
+  the name Rosélune, the rose and the Romance look), one with a name of its own and the Umbrella look
+  (it kept its name, look and the umbrella) - each with one event saying so. In a browser at 1440 and
+  390 px, in Romance, Umbrella, Ice and Paper: the panel's pages, windows and menus, the sign-in
+  among falling petals, the status page with its globe and a server's history, a user's own page,
+  subscription pages, the loading screens, the rose and umbrella assembling and opening into the
+  page. Text contrast measured (4.5:1, the faintest 3:1). The guide's 29 screenshots were taken
+  again from a rehearsal on a fresh panel and VM: the agent installed with the pasted command, a
+  REALITY protocol, two users, a real client connected through the link, a passkey added with
+  Chrome's virtual authenticator.
+- **The globe** draws the earth while no server has a location yet (it waited for one before).
+
 ## Tested for 1.2 (local panel; a fresh Ubuntu 24.04 VM)
 
 - **Passkeys**: added and used in Chrome with its virtual authenticator - on a local panel and on a

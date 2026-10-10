@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,8 +61,8 @@ func (p *Panel) alerts(ctx context.Context, accountID int64, servers []*Server, 
 			switch f {
 			case "over_ip_limit":
 				a.Message = fmt.Sprintf("%s is connected from %d IPs (limit %d) - possible sharing", s.Name, n, s.IPLimit)
-			case "over_quota":
-				a.Message = fmt.Sprintf("%s used %s of %s", s.Name, fmtBytes(s.Used()), fmtBytes(s.Quota))
+			case "over_quota": // suspended by itself until the data starts over (outofdata.go)
+				a.Message = fmt.Sprintf("%s used all of their %s - suspended, back %s", s.Name, fmtBytes(s.Quota), p.backOn(s))
 			case "expired":
 				a.Message = fmt.Sprintf("%s expired on %s", s.Name, time.Unix(s.ExpiresAt, 0).UTC().Format("Jan 2"))
 			default:
@@ -130,6 +131,7 @@ type overview struct {
 	TX      int64        `json:"tx" doc:"All servers, bytes per second sent now"`
 	Subs    int          `json:"users"`
 	Paused  int          `json:"paused"`
+	NoData  int          `json:"out_of_data" doc:"Users whose data is used up: no server serves them until it starts over"`
 	OnlineS int          `json:"online_users" doc:"Users with at least one connection now"`
 	OnlineI int          `json:"online_ips" doc:"Distinct client IPs connected now"`
 	Today   dayTraffic   `json:"today"`
@@ -197,8 +199,11 @@ func (p *Panel) apiOverview(w http.ResponseWriter, r *http.Request, a *Account) 
 	}
 	for _, s := range subs {
 		res.Subs++
-		if s.Paused {
+		switch userStatus(s) {
+		case "paused":
 			res.Paused++
+		case "out_of_data":
+			res.NoData++
 		}
 	}
 	for _, list := range online {
@@ -487,7 +492,27 @@ func (p *Panel) apiPutSettings(w http.ResponseWriter, r *http.Request, a *Accoun
 	if err := readJSON(r, &s); err != nil {
 		return err
 	}
-	for name, v := range map[string]string{"Xray": s.XrayVersion, "Hysteria": s.HysteriaVersion, "realm": s.RealmVersion} {
+	if s.SnellVersion != "" && !slices.Contains(snellVersions(), s.SnellVersion) {
+		return errStatus(http.StatusBadRequest, "snell-server versions Rosélune can verify: "+strings.Join(snellVersions(), ", "))
+	}
+	// the look and the built-in logo: empty leaves them as they are (what pages before 1.3 sent for
+	// a look that followed the device - now "auto")
+	if s.DefaultTone == "" {
+		s.DefaultTone = p.settings().DefaultTone
+	}
+	if s.DefaultTone != "auto" && !slices.Contains(siteTones, s.DefaultTone) {
+		return errStatus(http.StatusBadRequest, "default_tone is "+strings.Join(siteTones, ", ")+" or auto (Ice, or Paper on a device set to light)")
+	}
+	if s.LogoMark == "" {
+		s.LogoMark = p.settings().LogoMark
+	}
+	if !slices.Contains(logoMarks, s.LogoMark) {
+		return errStatus(http.StatusBadRequest, "logo_mark is rose (Rosélune's own) or umbrella")
+	}
+	if s.LogoAnimation != "" && !slices.Contains(logoAnimations, s.LogoAnimation) {
+		return errStatus(http.StatusBadRequest, "logo_animation is "+strings.Join(logoAnimations, ", "))
+	}
+	for name, v := range map[string]string{"Xray": s.XrayVersion, "Hysteria": s.HysteriaVersion, "realm": s.RealmVersion, "mieru": s.MitaVersion} {
 		if v = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(v), "app/"), "v"); v != "" && !versionRE.MatchString(v) {
 			return errStatus(http.StatusBadRequest, name+" version must look like 26.3.27")
 		}
@@ -522,6 +547,15 @@ func (p *Panel) apiPutSettings(w http.ResponseWriter, r *http.Request, a *Accoun
 		if err := p.checkAutoRelay(r.Context(), a, s.AutoRelay); err != nil {
 			return err
 		}
+	}
+	if s.QuotaMode != "strict" && s.QuotaMode != "loose" {
+		return errStatus(http.StatusBadRequest, "quota_mode is strict (cut everything at once) or loose (what is open may finish within the grace)")
+	}
+	if s.QuotaGraceMin < 1 || s.QuotaGraceMin > 1440 {
+		return errStatus(http.StatusBadRequest, "quota_grace_min is 1 to 1440 minutes")
+	}
+	if s.QuotaGraceGB < 1 || s.QuotaGraceGB > 1000 {
+		return errStatus(http.StatusBadRequest, "quota_grace_gb is 1 to 1000 GB")
 	}
 	s.MaintenanceNote = cleanNote(s.MaintenanceNote, 300)
 	old := p.settings()

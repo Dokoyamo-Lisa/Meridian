@@ -92,7 +92,7 @@ func TestUpdatesAPI(t *testing.T) {
 		t.Errorf("after the update: %d events, %d upgrades", count(`SELECT COUNT(*) FROM events WHERE kind = 'panel_updated'`),
 			count(`SELECT COUNT(*) FROM actions WHERE kind = 'upgrade_agent'`))
 	}
-	res, _ = json.Marshal(update.Result{From: Version, To: "99.0.0", Error: "the release is not signed by Meridian's release key"})
+	res, _ = json.Marshal(update.Result{From: Version, To: "99.0.0", Error: "the release is not signed by Rosélune's release key"})
 	os.WriteFile(filepath.Join(dir, update.ResultFile), res, 0o600)
 	h.p.updateResult(context.Background())
 	if count(`SELECT COUNT(*) FROM events WHERE kind = 'update_failed' AND message LIKE '%not signed%'`) != 1 {

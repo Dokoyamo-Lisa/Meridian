@@ -29,7 +29,7 @@ type state struct {
 	Tokens  map[int64]string `json:"tokens"`
 }
 
-const usage = `meridian-demo - Meridian's public demo: servers that do not exist, on a panel nobody can change
+const usage = `meridian-demo - Rosélune's public demo: servers that do not exist, on a panel nobody can change
 
   meridian-demo setup -panel URL -data DIR -url PUBLIC_URL -state FILE
       fill a new, empty panel with the demo's servers, protocols, users, plans and monitors, and the

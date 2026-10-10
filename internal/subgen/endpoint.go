@@ -17,7 +17,15 @@ const (
 	KindWireGuard   = "wireguard"
 	KindSOCKS       = "socks"
 	KindHTTP        = "http"
+	// one process and one port per user on the server (Username, Password; Transport tcp or udp)
+	KindMieru = "mieru"
+	// one process and one port per user (Password is the PSK, Version the protocol version)
+	KindSnell = "snell"
 )
+
+// SnellVersion is the Snell protocol the links ask for: the servers run snell-server 5, which takes
+// version 4 apps - the version Surge, Stash, mihomo and sing-box all speak (sing-box has no 5).
+const SnellVersion = 4
 
 // Transports of the Xray protocols (VLESS, VMess, Trojan).
 const (
@@ -87,6 +95,9 @@ type Endpoint struct {
 
 	// Shadowsocks
 	Method string `json:"method,omitempty"`
+
+	// Snell
+	Version int `json:"version,omitempty"`
 
 	// WireGuard
 	WG *WireGuard `json:"wg,omitempty"`

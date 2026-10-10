@@ -1,6 +1,6 @@
 # Security
 
-Meridian holds the keys to every server it manages and a record of who connected from where. This
+Rosélune holds the keys to every server it manages and a record of who connected from where. This
 document describes what it protects, how, and what remains the operator's job.
 
 ## Reporting a problem
@@ -162,7 +162,7 @@ Report vulnerabilities privately - through the repository's private security adv
 ### Plugins
 
 A plugin that is on is trusted with what it asks for - a server plugin's program runs on the panel's
-host as the panel's user and can read the database. What Meridian guarantees is that nothing runs
+host as the panel's user and can read the database. What Rosélune guarantees is that nothing runs
 without the supervisor's informed yes, and that a plugin cannot stall the panel or grant itself more:
 
 - Installing, updating, removing and turning plugins on or off need a signed-in browser session with
@@ -216,7 +216,7 @@ without the supervisor's informed yes, and that a plugin cannot stall the panel 
   owner match lets only root connect to them.
 - The WireGuard DNS resolver answers only WireGuard clients.
 - Connection logs (client IPs, destinations) are readable by root only and rotated.
-- IP blocks apply only to Meridian's own ports, so a mistake can never lock you out of SSH.
+- IP blocks apply only to Rosélune's own ports, so a mistake can never lock you out of SSH.
 - Let's Encrypt: the agent opens port 80 only while a certificate is being issued, and certificate
   names are checked as plain domain names before they reach the file system.
 - Behind NAT the agent learns its public IPv4 address from DB-IP (`api.db-ip.com`) or Cloudflare
@@ -249,8 +249,8 @@ ignored.
 
 - Few dependencies; `make check` runs the race-enabled tests, `go vet`, staticcheck,
   govulncheck (Go and Linux builds) and `npm audit`. At the time of writing they report nothing that
-  affects Meridian. (govulncheck lists GO-2026-5932, a module-level note that the deprecated
-  `golang.org/x/crypto/openpgp` package is unmaintained; Meridian never imports it, and there is no
+  affects Rosélune. (govulncheck lists GO-2026-5932, a module-level note that the deprecated
+  `golang.org/x/crypto/openpgp` package is unmaintained; Rosélune never imports it, and there is no
   fixed version.)
 - Release archives come with `SHA256SUMS`.
 
@@ -262,7 +262,7 @@ ignored.
   Whoever controls the panel controls every server - by design.
 - **Treat backups as secrets.** The database holds every key and credential; `meridian backup`
   writes files only the owner can read.
-- **Keep cores current.** Meridian pins Xray, Hysteria and realm versions; set newer ones in
+- **Keep cores current.** Rosélune pins Xray, Hysteria and realm versions; set newer ones in
   Settings › Cores and upgrade servers from their pages.
 - **Mind the law on connection logs.** Client IPs and destinations are personal data in many places.
   Set a retention period you can justify, or turn logging off in Settings.

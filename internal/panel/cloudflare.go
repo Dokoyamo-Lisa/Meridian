@@ -403,7 +403,7 @@ func (c cfClient) setKind(ctx context.Context, zone cfZone, name, typ, want, lab
 		out = append(out, fmt.Sprintf("%s record %s (was %s)", typ, want, have[0].Content))
 	case keep < 0:
 		if err := c.call(ctx, http.MethodPost, base, nil, map[string]any{"type": typ, "name": name, "content": want, "ttl": cfTTL,
-			"proxied": false, "comment": "Kept up to date by Meridian"}, nil); err != nil {
+			"proxied": false, "comment": "Kept up to date by Rosélune"}, nil); err != nil {
 			return out, err
 		}
 		out = append(out, fmt.Sprintf("%s record %s added", typ, want))

@@ -1,9 +1,10 @@
 package panel
 
-// The panel's look is the operator's: besides the name (Settings.SiteTitle), the logo can be
-// replaced by an uploaded image and its animation chosen (Settings.LogoAnimation). The built-in
-// mark is the umbrella; an uploaded logo is shown wherever the mark would be - the top bar, the
-// sign-in pages, the loading screens, the status page, subscription pages and the browser tab.
+// The panel's look is the operator's: besides the name (Settings.SiteTitle), the logo is one of the
+// built-in marks (Settings.LogoMark: the rose, Rosélune's own, or the umbrella - brandmarks.go) or an
+// uploaded image, and its animation is chosen (Settings.LogoAnimation). The logo is shown wherever
+// the mark would be - the top bar, the sign-in pages, the loading screens, the status page,
+// subscription pages and the browser tab.
 //
 // Uploaded SVGs are rebuilt from an allowlist of drawing elements and attributes and refused when
 // they carry anything active (scripts, event handlers, foreign content, links, outside resources);
@@ -36,8 +37,8 @@ const (
 	logoMaxSide  = 2048
 )
 
-// logoAnimations are the ways the logo can move; "assemble" needs the built-in mark (its panels
-// slide in one by one) and falls back to "rise" for an uploaded logo.
+// logoAnimations are the ways the logo can move; "assemble" needs a built-in mark (its pieces fly in
+// one by one) and falls back to "rise" for an uploaded logo.
 var logoAnimations = []string{"assemble", "rise", "pulse", "spin", "none"}
 
 type brandLogo struct {
@@ -78,13 +79,14 @@ func (p *Panel) loadBrand() error {
 
 // logoInfo is what pages need to know about the logo (public: the sign-in page shows it).
 type logoInfo struct {
-	Custom    bool   `json:"custom" doc:"An uploaded logo replaces the built-in umbrella"`
+	Custom    bool   `json:"custom" doc:"An uploaded logo replaces the built-in one"`
 	V         string `json:"v,omitempty" doc:"Changes whenever the logo does: add it to /brand/logo?v= so browsers fetch the new one"`
+	Mark      string `json:"mark" doc:"The built-in logo, shown while none is uploaded: rose | umbrella"`
 	Animation string `json:"animation" doc:"assemble | rise | pulse | spin | none"`
 }
 
 func (p *Panel) logoInfo() logoInfo {
-	out := logoInfo{Animation: p.settings().LogoAnimation}
+	out := logoInfo{Mark: p.settings().LogoMark, Animation: p.settings().LogoAnimation}
 	if l := p.brand.get(); l != nil {
 		out.Custom, out.V = true, l.V
 		if out.Animation == "assemble" {
@@ -112,9 +114,13 @@ func (p *Panel) serveIcon(w http.ResponseWriter, r *http.Request) {
 		writeImage(w, r, l.Type, l.Data, l.V)
 		return
 	}
+	name := "favicon.svg" // the rose
+	if p.settings().LogoMark == "umbrella" {
+		name = "favicon-umbrella.svg"
+	}
 	var body []byte
 	if p.cfg.WebFS != nil {
-		body, _ = fs.ReadFile(p.cfg.WebFS, "favicon.svg")
+		body, _ = fs.ReadFile(p.cfg.WebFS, name)
 	}
 	if len(body) == 0 {
 		http.NotFound(w, r)
@@ -155,8 +161,9 @@ func (p *Panel) logoDataURI() string {
 }
 
 // brandedPages are the two HTML pages with the chosen logo on their loading screen: the mark between
-// <!--logo--> and <!--/logo--> is the umbrella assembling; another animation changes its class, an
-// uploaded logo replaces it. One version is kept per page, rebuilt when the logo or animation changes.
+// <!--logo--> and <!--/logo--> is the rose assembling, as built; the umbrella or another animation
+// draws it anew, an uploaded logo replaces it. One version is kept per page, rebuilt when the logo,
+// the built-in mark or the animation changes.
 type brandedPages struct {
 	mu    sync.Mutex
 	key   string
@@ -164,7 +171,7 @@ type brandedPages struct {
 }
 
 func (b *brandedPages) get(which string, l logoInfo, raw []byte) *staticFile {
-	key := l.V + "|" + l.Animation
+	key := l.V + "|" + l.Mark + "|" + l.Animation
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.key != key {
@@ -193,10 +200,12 @@ func brandedBoot(page []byte, l logoInfo) []byte {
 	switch {
 	case l.Custom:
 		mark = `<img class="logo-img ` + cls + `" src="/brand/logo?v=` + l.V + `" alt="">`
+	case l.Animation == "assemble" && l.Mark == logoMarks[0]:
+		return page // the rose assembling, as built
 	case l.Animation == "assemble":
-		return page // the umbrella assembling, as built
+		mark = markSVG(l.Mark, "umb-mark umb-loop") // its pieces assembling, over and over (mark.css)
 	default:
-		mark = strings.Replace(string(page[i+len(open):j]), `class="umb-mark umb-loop"`, `class="umb-mark `+cls+`"`, 1)
+		mark = markSVG(l.Mark, strings.TrimSpace("umb-mark "+cls))
 	}
 	out := make([]byte, 0, len(page)+len(mark))
 	out = append(out, page[:i+len(open)]...)
@@ -239,7 +248,7 @@ func (p *Panel) apiDeleteLogo(w http.ResponseWriter, r *http.Request, a *Account
 	p.brand.logo = nil
 	p.brand.mu.Unlock()
 	if had {
-		p.event(0, "info", "settings", 0, 0, a.ID, "The logo is the built-in umbrella again", nil)
+		p.event(0, "info", "settings", 0, 0, a.ID, "The logo is the built-in "+p.settings().LogoMark+" again", nil)
 	}
 	writeJSON(w, http.StatusOK, p.logoInfo())
 	return nil

@@ -7,7 +7,7 @@ Nothing here touches real servers.
 ## Once
 
 ```bash
-limactl create --name meridian-test test/e2e/lima.yaml
+limactl create --mount-none --name meridian-test test/e2e/lima.yaml
 limactl start meridian-test
 ```
 
@@ -23,7 +23,8 @@ limactl start meridian-test
    ```
 
    Sign in at http://127.0.0.1:18080. In **Settings › Panel** set the public URL to the address the
-   VM reaches your machine at (for Lima's user networking that is `http://192.168.5.2:18080`).
+   VM reaches your machine at: `http://192.168.104.2:18080` (host.lima.internal on the shared
+   network the kit's VMs have; without it, Lima's user network's `http://192.168.5.2:18080`).
 
 2. **Servers › Add server** with all four protocols and the VM's address, then run the install
    command inside the VM:
@@ -51,6 +52,18 @@ limactl start meridian-test
 | `country-live.sh CONFIG PORT [SECONDS]` | a client on a Chinese address (101.0.0.2) making a request every 2 s: block CN in Access and watch it stop, add an exception and watch it return |
 | `foreign-xray.sh` | installs an Xray "from another panel" as `xray.service` with users carol and dave, and client configs with the original credentials - for testing import and take-over |
 | `block-live.sh N` | one open session for protocol N (1-4) making a request every 2 s; block `10.99.0.2` in the panel: requests fail within seconds, and recover after unblocking |
+
+**Proxy passes across servers**: make a second VM the same way (`--name meridian-test2`, and a
+third for relay chains), add it as a server with its `eth0` address (the shared network, 192.168.104.x)
+and give each VM a destination only it can reach - a network namespace with an address such as
+`11.22.22.22` serving a page that names the VM. Through a pass, the exit's destination must answer and
+the entry's must not: then nothing leaves from the wrong server.
+
+**Quotas and speed limits**: a user with a small quota downloading more than it, through each
+protocol, must lose the running download as soon as the panel says *out of data* (the server's own
+connection to the site gone too); a speed limit changed in the panel during one long download must
+hold within seconds. A local source that the proxies may reach - not on the VM itself, which they
+must not reach - is a namespace at a public-looking address (e.g. `11.11.11.11`) streaming data.
 
 Things worth checking after a change:
 

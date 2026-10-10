@@ -21,6 +21,65 @@ type tryHit struct {
 	last      int64
 }
 
+// Users' speed limits (State.Speed). The agent limits a user's traffic on every protocol by dropping
+// what goes over the limit (nft), which TCP and WireGuard take in their stride - but Hysteria2 apps
+// that declare no bandwidth (BBR) stall completely under it, and so does one declaring more than the
+// limit (Brutal pushes on). A limited user's links therefore declare a bandwidth below the limit
+// (the panel's capHysteria), and here a sign-in is let in only when it does: Hysteria2 tells the
+// sign-in hook the rate it is to send at (tx, bytes per second; 0 = no declared rate). A lower
+// limit makes the user's sessions sign in again, so the new one holds at once.
+
+// maxTx is the most a user with a limit of mbps may be sent, in bytes per second - the limit with a
+// little room, as apps round.
+func maxTx(mbps int) uint64 { return uint64(mbps) * 125_000 * 105 / 100 }
+
+// SetSpeed takes the users' speed limits now. Users whose limit is new or lower sign in again.
+func (e *Engine) SetSpeed(list []proto.SpeedLimit) {
+	m := map[int64]int{}
+	for _, l := range list {
+		if l.Sub > 0 && l.Mbps > 0 {
+			m[l.Sub] = l.Mbps
+		}
+	}
+	e.mu.Lock()
+	again := map[int64]map[string]bool{} // node -> ids to sign in again
+	for sub, mbps := range m {
+		if old, had := e.speed[sub]; had && old <= mbps {
+			continue
+		}
+		for node, users := range e.users {
+			for _, id := range users {
+				if s, _, ok := proto.ParseEmail(id); ok && s == sub {
+					if again[node] == nil {
+						again[node] = map[string]bool{}
+					}
+					again[node][id] = true
+				}
+			}
+		}
+	}
+	e.speed = m
+	e.mu.Unlock()
+	for node, ids := range again {
+		list := make([]string, 0, len(ids))
+		for id := range ids {
+			list = append(list, id)
+		}
+		e.kickOnline(node, list)
+	}
+}
+
+// overLimit says whether a sign-in of user id that asks to be sent tx bytes per second would break
+// their speed limit (under e.mu).
+func (e *Engine) overLimit(id string, tx uint64) bool {
+	sub, _, ok := proto.ParseEmail(id)
+	if !ok {
+		return false
+	}
+	mbps, limited := e.speed[sub]
+	return limited && (tx == 0 || tx > maxTx(mbps))
+}
+
 // SetRefused takes the devices turned away now. It restarts nothing.
 func (e *Engine) SetRefused(list []proto.Refusal) {
 	m := map[int64]map[string]bool{}

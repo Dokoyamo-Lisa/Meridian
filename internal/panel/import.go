@@ -209,7 +209,7 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 			}
 		default:
 			s.CertMode = certSelf
-			why = "its certificate could not be read: Meridian makes a new self-signed one, so devices must refresh their subscription"
+			why = "its certificate could not be read: Rosélune makes a new self-signed one, so devices must refresh their subscription"
 			if err := s.certSettings.settle(nil, s.SNI, "", ""); err != nil {
 				return "", nil, "", err
 			}
@@ -221,7 +221,7 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 			if s.CertMode == certCustom { // a certificate for another name still works for pinned clients
 				s.CertMode = certSelf
 				_ = s.certSettings.settle(nil, s.SNI, "", "")
-				why = "its certificate does not match the server name: Meridian makes a new self-signed one"
+				why = "its certificate does not match the server name: Rosélune makes a new self-signed one"
 			} else {
 				return "", nil, "", err
 			}
@@ -291,7 +291,7 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 		default:
 			s.CertMode = certSelf
 			s.SNI = nz(s.SNI, defaultSelfSignedName)
-			why = "its certificate could not be read: Meridian makes a new self-signed one, so devices must refresh their subscription"
+			why = "its certificate could not be read: Rosélune makes a new self-signed one, so devices must refresh their subscription"
 			if err := s.certSettings.settle(nil, s.SNI, "", ""); err != nil {
 				return "", nil, "", err
 			}
@@ -325,7 +325,7 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 			}
 		}
 		if len(others) > 0 {
-			why = joinWhy(why, fmt.Sprintf("its users do not all use the same flow: Meridian has one per protocol (%s), so %s must refresh their subscription",
+			why = joinWhy(why, fmt.Sprintf("its users do not all use the same flow: Rosélune has one per protocol (%s), so %s must refresh their subscription",
 				nz(best, "no flow"), strings.Join(others, ", ")))
 		}
 	}
@@ -333,14 +333,14 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 		s.Method, s.ServerKey = in.Method, in.ServerKey
 		if strings.HasPrefix(s.Method, "2022-") && len(in.Users) == 1 && in.Users[0].Password == in.ServerKey {
 			// one key for everyone: such devices send no user of their own, which a protocol of many users needs
-			why = joinWhy(why, "it served one key to all devices (single-user Shadowsocks 2022): Meridian gives each user a key of their own, so its devices must refresh their subscription")
+			why = joinWhy(why, "it served one key to all devices (single-user Shadowsocks 2022): Rosélune gives each user a key of their own, so its devices must refresh their subscription")
 		}
 		if !strings.HasPrefix(s.Method, "2022-") {
 			// classic: users carry their own passwords; the server key only guards the placeholder user
 			s.ServerKey = randB64(16)
 			for _, u := range in.Users {
 				if u.Method != "" && u.Method != s.Method {
-					return "", nil, "", errors.New("its users use different ciphers - Meridian needs one cipher per protocol")
+					return "", nil, "", errors.New("its users use different ciphers - Rosélune needs one cipher per protocol")
 				}
 			}
 		}
@@ -361,7 +361,7 @@ func importSettings(in scan.Inbound) (kind string, raw json.RawMessage, why stri
 // frozenCert is what an import says about a certificate it read from files: whatever renewed them on
 // the server (certbot, acme.sh) no longer reaches it.
 func frozenCert(expires int64) string {
-	return fmt.Sprintf("its certificate is copied as it is now and expires on %s - Meridian does not renew it: switch the protocol to Let's Encrypt or a shared certificate before then",
+	return fmt.Sprintf("its certificate is copied as it is now and expires on %s - Rosélune does not renew it: switch the protocol to Let's Encrypt or a shared certificate before then",
 		time.Unix(expires, 0).UTC().Format("2006-01-02"))
 }
 
@@ -647,5 +647,5 @@ func finishTakeover(tx *sql.Tx, srv *Server, ar proto.ActionResult) {
 		_, _ = tx.Exec(`UPDATE nodes SET enabled = 1, updated_at = ? WHERE id = ? AND server_id = ?`, now(), id, srv.ID)
 	}
 	eventTx(tx, srv.AccountID, "info", "takeover_done", srv.ID, 0, fmt.Sprintf(
-		"%s: %s stopped - Meridian now serves the imported protocols on the same ports", srv.Name, x.Unit))
+		"%s: %s stopped - Rosélune now serves the imported protocols on the same ports", srv.Name, x.Unit))
 }

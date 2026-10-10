@@ -95,10 +95,15 @@ export function Login() {
 
   return (
     <div class="login">
+      <div class="petals" aria-hidden="true">
+        {Array.from({ length: 9 }, () => (
+          <i />
+        ))}
+      </div>
       <form class="login-box fade-in" onSubmit={submit}>
         <div class="brand">
           <LogoMark mode="once" markRef={mark} />
-          <span>{s.meta?.site_title || 'Meridian'}</span>
+          <span>{s.meta?.site_title || 'Rosélune'}</span>
         </div>
         <p class="lead">{needCode ? 'Two-factor sign-in' : 'Sign in to the panel'}</p>
         {s.meta?.maintenance && (

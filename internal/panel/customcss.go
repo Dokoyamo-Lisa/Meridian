@@ -78,14 +78,15 @@ func (p *Panel) withCSS(which string, page *staticFile) *staticFile {
 	return c
 }
 
-// siteTones are the looks a page can open with (web/public/boot.js knows the same).
-var siteTones = []string{"ice", "celadon", "ink", "paper", "mist", "umbrella", "romance"}
+// siteTones are the looks a page can open with, the default first (web/public/boot.js knows the
+// same); a site's look may also be "auto": Ice, or Paper on a device set to light.
+var siteTones = []string{"romance", "umbrella", "ice", "celadon", "ink", "paper", "mist"}
 
 // withTone names the site's default look on a page: boot.js applies it to people who did not pick
 // one themselves.
 func (p *Panel) withTone(page *staticFile) *staticFile {
 	t := p.settings().DefaultTone
-	if t == "" || !slices.Contains(siteTones, t) {
+	if !slices.Contains(siteTones, t) && t != "auto" {
 		return page
 	}
 	p.css.mu.Lock()

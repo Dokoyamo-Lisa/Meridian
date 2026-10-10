@@ -175,7 +175,7 @@ func TestSubscriptionLinks(t *testing.T) {
 	}
 	f.set("<html>Service unavailable</html>")
 	v = b.must("POST", fmt.Sprintf("/api/external-sources/%d/refresh", sid), nil, 200)
-	if !strings.Contains(fmt.Sprint(v["error"]), "no node Meridian can use") || len(nodes()) != 4 {
+	if !strings.Contains(fmt.Sprint(v["error"]), "no node Rosélune can use") || len(nodes()) != 4 {
 		t.Errorf("an error page: %v", v)
 	}
 	var failed int

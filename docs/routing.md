@@ -124,7 +124,7 @@ is among the countries and addresses - and, when given, its port, network and Bi
 
 **Countries and addresses match connections made to an address.** Most apps send the server the
 name of the site they want (`chatgpt.com`, not an IP), and then only sites and domains can match:
-the server never looks the name up for the rule. When an app sends only an address, Meridian's
+the server never looks the name up for the rule. When an app sends only an address, Rosélune's
 protocols still read the name from the connection itself (the TLS server name, the HTTP host), so
 site rules match those connections too. So for a country, **pair it with its site list**: `cn` as a
 site and `CN` as a country catch Chinese sites whichever way an app asks for them. (On a server
@@ -237,7 +237,7 @@ Chinese sites then leave from Hong Kong, everything else still through Tokyo.
 *Streaming*: sites `netflix, disney, youtube`, **Load balancer** *Streaming*. Each server shows
 *restart needed* once for the latency checks; until you restart it, it takes the members at random.
 
-## What Meridian cannot count at an external node
+## What Rosélune cannot count at an external node
 
 Usage is counted where users connect - on your servers - per user, protocol and day, exactly as
 always, wherever the traffic then leaves; destinations are recorded there too. Traffic sent to an
@@ -245,6 +245,6 @@ exit also counts toward the server's own bandwidth, and on one of your servers u
 counts toward that server's bandwidth, never as anyone's usage (users are counted once, where they
 connect).
 
-At an external node Meridian sees nothing: not its bandwidth or quota, its load, whether it is up
+At an external node Rosélune sees nothing: not its bandwidth or quota, its load, whether it is up
 (beyond **Check**), or who else uses it. Its operator sees your users' destinations and the address
 of your server - choose providers you trust with that.

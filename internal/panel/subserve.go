@@ -238,11 +238,16 @@ func (p *Panel) subPage(w http.ResponseWriter, r *http.Request, s *Sub) {
 	nonce := make([]byte, 16)
 	_, _ = rand.Read(nonce)
 	n := base64.StdEncoding.EncodeToString(nonce)
+	set := p.settings()
 	data := map[string]any{
-		"Site": p.settings().SiteTitle, "Name": s.Name, "Paused": s.Paused, "Link": link, "QR": qrSVG(link),
+		"Site": set.SiteTitle, "Name": s.Name, "Paused": s.Paused, "Out": "", "Link": link, "QR": qrSVG(link),
 		"Used": fmtBytes(used), "Quota": fmtBytes(s.Quota), "Unlimited": s.Quota == 0, "Pct": fmt.Sprintf("%.1f", pct),
 		"Expires": expires, "Clients": subgen.Clients(link, s.Name), "WG": wgs, "Nonce": n,
 		"Summary": summary, "Logo": template.URL(p.logoDataURI()), // a data: URI of a checked image, or empty
+		"Mark": template.HTML(markStill(set.LogoMark)), "Look": lookCSS(set.DefaultTone), "Tone": set.DefaultTone, "ThemeColor": lookColor(set.DefaultTone),
+	}
+	if s.outOfData() { // suspended until the data starts over (outofdata.go)
+		data["Out"] = p.outText(s)
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
@@ -258,23 +263,23 @@ func (p *Panel) subPage(w http.ResponseWriter, r *http.Request, s *Sub) {
 var subPageTmpl = template.Must(template.New("sub").Funcs(template.FuncMap{
 	"safeURL": func(s string) template.URL { return template.URL(s) },
 }).Parse(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex"><title>{{.Name}} · {{.Site}}</title>
+<html lang="en" class="look-{{.Tone}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><meta name="theme-color" content="{{.ThemeColor}}"><title>{{.Name}} · {{.Site}}</title>
 <style>
-:root{color-scheme:dark;--page:#07090d;--surface:#0c1017;--line:rgba(205,220,240,.075);--line2:rgba(205,220,240,.15);--ink:#e6ebf1;--ink2:#a6b1be;--ink3:#6f7a89;--accent:#8cc0ff;--good:#4cc38a;--warn:#e3b341}
-@media (prefers-color-scheme:light){:root{color-scheme:light;--page:#f3efe6;--surface:#fbf8f2;--line:rgba(29,27,23,.09);--line2:rgba(29,27,23,.17);--ink:#1d1b17;--ink2:#4b463e;--ink3:#7b746a;--accent:#2c6aa3;--good:#3b7a44;--warn:#a2690f}}
-*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
+{{.Look}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--page) fixed;background-image:var(--glow);color:var(--ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
+::selection{background:color-mix(in srgb,var(--accent) 22%,transparent)}
 main{max-width:720px;margin:0 auto;padding:40px 20px 60px}
 .brand{display:flex;align-items:center;gap:10px;font-size:11px;letter-spacing:.44em;text-transform:uppercase;color:var(--ink3)}.brand .mark{width:18px;height:18px;flex:none;object-fit:contain}
-h1{font:400 30px/1.15 -apple-system,"SF Pro Display",system-ui,sans-serif;margin:10px 0 4px;letter-spacing:-.01em}
+h1{font:var(--display-style) 400 30px/1.15 var(--display);margin:10px 0 4px;letter-spacing:-.01em}
 .sub{color:var(--ink3);font-size:13px}
 section{border-top:1px solid var(--line);margin-top:28px;padding-top:16px}
 h2{font-size:12px;font-weight:600;letter-spacing:.08em;margin:0 0 14px;color:var(--ink)}
 .bar{height:3px;border-radius:3px;background:var(--line2);overflow:hidden;margin-top:10px}.bar i{display:block;height:100%;background:var(--accent)}
-.figs{display:flex;gap:36px;flex-wrap:wrap}.fig b{display:block;font:300 26px/1.1 -apple-system,"SF Pro Display",system-ui;letter-spacing:-.01em}.fig span{font-size:11px;color:var(--ink3)}
+.figs{display:flex;gap:36px;flex-wrap:wrap}.fig b{display:block;font:var(--display-style) var(--display-weight) 26px/1.1 var(--display);letter-spacing:-.01em}.fig span{font-size:11px;color:var(--ink3)}
 .apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
 .app{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;color:inherit;text-decoration:none;transition:border-color .2s,background .2s}
-.app:hover{border-color:var(--line2);background:rgba(140,192,255,.06)}.app b{font-weight:500}.app span{font-size:11px;color:var(--ink3)}
+.app:hover{border-color:var(--line2);background:color-mix(in srgb,var(--accent) 7%,transparent)}.app b{font-weight:500}.app span{font-size:11px;color:var(--ink3)}
 .app.copy{cursor:pointer;background:none;font:inherit;text-align:left}
 .link{display:flex;gap:8px;margin-top:4px}.link input{flex:1;min-width:0;padding:9px 12px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);font:12px ui-monospace,Menlo,monospace}
 button.btn{padding:9px 14px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer}
@@ -282,10 +287,17 @@ button.btn{padding:9px 14px;border-radius:8px;border:1px solid var(--line2);back
 .wg{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}.wg .qr{width:150px;height:150px}
 .paused{color:var(--warn)}.note{font-size:12px;color:var(--ink3);margin-top:28px}
 a.dl{color:var(--accent)}
+.look-romance .brand{font:italic 400 15px/1 var(--display);letter-spacing:.02em;text-transform:none;color:var(--ink2)}.look-romance .brand .mark{width:22px;height:22px}
+.look-romance h2{font:500 16px/1.3 var(--display);letter-spacing:.01em}
+.look-romance section{border-top-color:transparent;background:linear-gradient(90deg,var(--line2),rgba(193,58,102,.35) 35%,transparent) top/100% 1px no-repeat}
+.look-romance .app{border-radius:16px;background:color-mix(in srgb,#fff 70%,transparent);box-shadow:0 14px 30px -26px rgba(122,30,64,.4)}
+.look-romance .link input{border-radius:12px}.look-romance button.btn{border-radius:999px;padding:9px 16px}.look-romance .qr{border-radius:14px}
+.look-umbrella .brand{letter-spacing:.42em;font-weight:600}.look-umbrella h1{text-transform:uppercase;letter-spacing:.08em;font-weight:500;font-size:26px}
+.look-umbrella h2{text-transform:uppercase;letter-spacing:.16em;font-size:11px}.look-umbrella .app,.look-umbrella .link input,.look-umbrella button.btn{border-radius:3px}
 </style></head><body><main>
-<div class="brand">{{if .Logo}}<img class="mark" src="{{.Logo}}" alt="">{{else}}<svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#d8232a" d="M12 12L16.02 2.3L7.98 2.3ZM12 12L2.3 7.98L2.3 16.02ZM12 12L7.98 21.7L16.02 21.7ZM12 12L21.7 16.02L21.7 7.98Z"/><path fill="#f5f3ef" d="M12 12L21.7 7.98L16.02 2.3ZM12 12L7.98 2.3L2.3 7.98ZM12 12L2.3 16.02L7.98 21.7ZM12 12L16.02 21.7L21.7 16.02Z"/><path fill="none" stroke="currentColor" stroke-opacity=".35" stroke-width=".7" stroke-linejoin="round" d="M16.02 2.3L7.98 2.3L2.3 7.98L2.3 16.02L7.98 21.7L16.02 21.7L21.7 16.02L21.7 7.98Z"/></svg>{{end}}{{.Site}}</div>
+<div class="brand">{{if .Logo}}<img class="mark" src="{{.Logo}}" alt="">{{else}}{{.Mark}}{{end}}{{.Site}}</div>
 <h1>{{.Name}}</h1>
-<div class="sub">{{if .Paused}}<span class="paused">Paused by your administrator.</span>{{else}}{{.Summary}}{{end}}</div>
+<div class="sub">{{if .Paused}}<span class="paused">Paused by your administrator.</span>{{else if .Out}}<span class="paused">{{.Out}}</span>{{else}}{{.Summary}}{{end}}</div>
 
 <section><h2>Usage</h2>
 <div class="figs"><div class="fig"><b>{{.Used}}</b><span>used{{if not .Unlimited}} of {{.Quota}}{{end}}</span></div>

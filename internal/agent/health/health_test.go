@@ -247,6 +247,9 @@ func TestBaselineThenChanges(t *testing.T) {
 	h.link("etc/systemd/system/multi-user.target.wants/evil.service", "/etc/systemd/system/evil.service")
 	h.link("etc/systemd/system/multi-user.target.wants/meridian-xray.service", "/etc/systemd/system/meridian-xray.service")
 	h.link("etc/systemd/system/multi-user.target.wants/meridian-hy2@22.service", "/etc/systemd/system/meridian-hy2@.service")
+	h.link("etc/systemd/system/multi-user.target.wants/meridian-mita@11-2.service", "/etc/systemd/system/meridian-mita@.service")
+	h.link("etc/systemd/system/multi-user.target.wants/meridian-snell@12-1.service", "/etc/systemd/system/meridian-snell@.service")
+	h.link("etc/systemd/system/multi-user.target.wants/meridian-snell@9-1.service", "/opt/.x/snell.service")
 	// a look-alike of Meridian's, and a change to what Xray's service runs
 	h.link("etc/systemd/system/multi-user.target.wants/meridian-update.service", "/etc/systemd/system/meridian-update.service")
 	h.link("etc/systemd/system/multi-user.target.wants/meridian-hy2@7.service", "/opt/.x/run.service")
@@ -287,6 +290,7 @@ func TestBaselineThenChanges(t *testing.T) {
 		"service:evil.service":               proto.SevWarning,
 		"service:meridian-update.service":    proto.SevWarning,
 		"service:meridian-hy2@7.service":     proto.SevWarning,
+		"service:meridian-snell@9-1.service": proto.SevWarning,
 		"file:/etc/systemd/system/meridian-xray.service.d/override.conf": proto.SevWarning,
 		"module:diamorphine":             proto.SevWarning,
 		"port:tcp:31337":                 proto.SevWarning,

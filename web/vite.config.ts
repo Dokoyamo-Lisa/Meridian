@@ -20,6 +20,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: { '/api': 'http://127.0.0.1:18080', '/s/': 'http://127.0.0.1:18080', '/agent': 'http://127.0.0.1:18080' },
+    // the panel the dev pages talk to (MERIDIAN_PANEL, e.g. a local demo panel on another port)
+    proxy: Object.fromEntries(['/api', '/s/', '/agent', '/brand'].map((p) => [p, process.env.MERIDIAN_PANEL || 'http://127.0.0.1:18080'])),
   },
 })

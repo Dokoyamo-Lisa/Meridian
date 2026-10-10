@@ -49,7 +49,7 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/hello-plugin/bin/hello .
 Expected: no output from `go build`, then `adding: ...` lines for `plugin.json`, `panel.js`,
 `status.js` and `bin/hello`, and the file `/tmp/hello.zip` (about 2-3 MB). If `go build` fails with
 "go: command not found", install Go 1.26 or newer from https://go.dev/dl/ (as for building
-Meridian).
+Rosélune).
 
 Upload `/tmp/hello.zip` and turn it on. Within a few seconds its row on the Plugins page says
 **running** and lists what it added:

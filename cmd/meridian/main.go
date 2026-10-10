@@ -76,7 +76,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, `Meridian panel
+	fmt.Fprintln(os.Stderr, `Rosélune panel (the program is still called meridian)
 
 usage:
   meridian serve [flags]                 run the panel
@@ -165,7 +165,7 @@ func serve(args []string) {
 
 	release, err := lockData(*data)
 	if errors.Is(err, errLocked) {
-		fatal("data dir", fmt.Errorf("another Meridian panel (or a restore) is using %s", *data))
+		fatal("data dir", fmt.Errorf("another Rosélune panel (or a restore) is using %s", *data))
 	} else if err != nil {
 		fatal("data dir", err)
 	}
@@ -503,7 +503,7 @@ func restoreBackup(args []string) {
 				fatal("restore", fmt.Errorf("putting the backup into PostgreSQL: %w", err))
 			}
 		}
-		fmt.Printf("Restored the backup made %s by Meridian %s.\n", time.Unix(info.CreatedAt, 0).UTC().Format("2006-01-02 15:04 UTC"), info.Version)
+		fmt.Printf("Restored the backup made %s by Rosélune %s.\n", time.Unix(info.CreatedAt, 0).UTC().Format("2006-01-02 15:04 UTC"), info.Version)
 		fmt.Println("What it replaced is kept in before-restore-* in the data directory (delete it once all is well - it holds keys too).")
 		fmt.Println("Start the panel: sudo systemctl start meridian - the servers reconnect by themselves.")
 		return

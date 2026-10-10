@@ -64,7 +64,7 @@ var unsupported = map[string]string{
 }
 
 const (
-	whyInsecure  = "the node turns certificate checks off - Meridian never does: ask its provider for one with a valid certificate (or, for Hysteria2, its certificate's SHA-256)"
+	whyInsecure  = "the node turns certificate checks off - Rosélune never does: ask its provider for one with a valid certificate (or, for Hysteria2, its certificate's SHA-256)"
 	whyPlaintext = "it sends traffic unencrypted between your server and the node - use one with TLS or REALITY"
 )
 

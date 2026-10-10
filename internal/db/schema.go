@@ -763,6 +763,21 @@ CREATE TABLE passkeys (
 CREATE INDEX passkeys_account ON passkeys(account_id);
 ALTER TABLE accounts ADD COLUMN webauthn_id TEXT NOT NULL DEFAULT '';
 `,
+	// 25: when a user's data ran out (Unix seconds; 0 = it has not): in the supervisor's loose mode
+	// what they have open may go on for a while from then (internal/panel/outofdata.go)
+	`
+ALTER TABLE subs ADD COLUMN out_at INTEGER NOT NULL DEFAULT 0;
+`,
+	// 26: mieru and Snell give every user their own port (internal/panel/solo.go): it stays theirs
+	`
+CREATE TABLE solo_ports (
+  node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  sub_id  INTEGER NOT NULL REFERENCES subs(id) ON DELETE CASCADE,
+  port    INTEGER NOT NULL,
+  PRIMARY KEY (node_id, sub_id),
+  UNIQUE (node_id, port)
+);
+`,
 }
 
 // NextID is an SQL expression for the id of a new row of nodes or subs: above every id the table

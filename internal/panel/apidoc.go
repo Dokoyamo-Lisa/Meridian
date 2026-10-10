@@ -183,7 +183,7 @@ var apiOps = []opDoc{
 	{Method: "GET", Path: "/api/servers/{id}", Tag: "Servers", Summary: "Server details", Resp: serverDetail{}},
 	{Method: "PATCH", Path: "/api/servers/{id}", Tag: "Servers", Summary: "Change a server", Desc: "Only the given fields change.", Body: serverInput{}, Resp: serverDetail{}},
 	{Method: "DELETE", Path: "/api/servers/{id}", Tag: "Servers", Summary: "Delete a server",
-		Desc: "The agent removes everything Meridian set up and uninstalls itself. Everyone on the server is disconnected.", Resp: okResult{}},
+		Desc: "The agent removes everything Rosélune set up and uninstalls itself. Everyone on the server is disconnected.", Resp: okResult{}},
 	{Method: "POST", Path: "/api/servers/{id}/rotate-token", Tag: "Servers", Summary: "Issue a new agent token",
 		Desc: "The agent cannot reach the panel until it is reinstalled with the new command. Traffic is not affected.", Resp: installResult{}},
 	{Method: "POST", Path: "/api/servers/{id}/shares", Tag: "Servers", Summary: "Share a server with another panel",
@@ -246,7 +246,7 @@ var apiOps = []opDoc{
 		Desc: "Programs, their protocols, ports and user names, and whether each can be imported. Keys and passwords are never shown.",
 		Resp: scanView{}},
 	{Method: "POST", Path: "/api/servers/{id}/import", Tag: "Import", Summary: "Import protocols found by the scan",
-		Desc: "Each detected user becomes a Meridian user (or is matched by name) and keeps their credentials, keys and certificate. With take_over the old service is stopped and the same ports are served, so devices keep working; without it nothing is stopped and busy ports are moved.",
+		Desc: "Each detected user becomes a Rosélune user (or is matched by name) and keeps their credentials, keys and certificate. With take_over the old service is stopped and the same ports are served, so devices keep working; without it nothing is stopped and busy ports are moved.",
 		Body: importInput{}, Resp: importResult{}, Status: 201},
 
 	// forwards
@@ -265,14 +265,14 @@ var apiOps = []opDoc{
 	// users
 	{Method: "GET", Path: "/api/users", Tag: "Users", Summary: "List users", Resp: []subView{}},
 	{Method: "POST", Path: "/api/users", Tag: "Users", Summary: "Create users",
-		Desc: "Each user gets a subscription link and, unless sign_in is false, a username and password for their own page. A generated password is returned once. count > 1 creates name-01, name-02, ... Quota, expiry and IP limit only raise alerts; nothing is paused automatically.",
+		Desc: "Each user gets a subscription link and, unless sign_in is false, a username and password for their own page. A generated password is returned once. count > 1 creates name-01, name-02, ... A user who uses up their quota is suspended by itself (status out_of_data) until their data starts over - the next reset, a higher quota, a new period on a plan or reset-usage; expiry and the IP limit only raise alerts.",
 		Body: subInput{}, Resp: []subView{}, Status: 201},
 	{Method: "GET", Path: "/api/users/{id}", Tag: "Users", Summary: "User details", Resp: subDetail{}},
 	{Method: "PATCH", Path: "/api/users/{id}", Tag: "Users", Summary: "Change a user",
 		Desc: "Only the given fields change. A new username or password signs the user out everywhere; an empty username removes the sign-in.", Body: subInput{}, Resp: subView{}},
 	{Method: "DELETE", Path: "/api/users/{id}", Tag: "Users", Summary: "Delete a user", Resp: okResult{}},
 	{Method: "POST", Path: "/api/users/{id}/{action}", Tag: "Users", Summary: "Pause, resume, new link, new credentials, reset usage, sign out or new password",
-		Desc: "pause disconnects every device now; resume lets them back; rotate-link replaces the link (old one stops working); reset-keys gives new credentials (devices must refresh); reset-usage zeroes this cycle; sign-out ends the user's sessions on their own page; new-password generates a sign-in password (and a username if there is none) and returns it once.",
+		Desc: "pause disconnects every device now; resume lets them back (a user whose data is used up stays out until it starts over); rotate-link replaces the link (old one stops working); reset-keys gives new credentials (devices must refresh); reset-usage zeroes this cycle (a user whose data was used up can connect again at once); sign-out ends the user's sessions on their own page; new-password generates a sign-in password (and a username if there is none) and returns it once.",
 		Resp: subView{}},
 	{Method: "POST", Path: "/api/users/{id}/plan", Tag: "Users", Summary: "Start a new period on a preset plan",
 		Desc: "Copies the plan's quota, counting, reset, device and speed limits and access into the user, starting at starts_at (default now) and ending after the plan's duration. Usage starts at zero unless reset_usage is false. Changing the plan later changes nobody unless it is saved with update_users.",
@@ -360,7 +360,7 @@ var apiOps = []opDoc{
 	{Method: "GET", Path: "/api/external-sources", Tag: "Routing", Summary: "Subscription links: providers' subscriptions read again on a schedule",
 		Desc: "Each with its nodes (external nodes that follow it), when it was last read and why that failed if it did, the entries it could not use, what the provider says about the subscription (traffic, expiry) and the load balancers that use all of its nodes.", Resp: []sourceView{}},
 	{Method: "POST", Path: "/api/external-sources", Tag: "Routing", Summary: "Add a subscription link",
-		Desc: "Read at once and then every every_hours hours (https only, public addresses only, 4 MB at most). Share links, base64, Clash / mihomo YAML and sing-box configurations are read alike; each node is written into Meridian's own form, so every app gets it in a form it understands. Its nodes become external nodes that follow the provider: new ones are added, changed ones updated in place (rules and protocols keep using them), and ones that left are removed - or kept, marked, while a protocol, rule or load balancer still names them. A refresh that fails, or finds no usable node, changes nothing. offer gives the nodes to users too (not WireGuard: one key cannot serve many devices); Meridian cannot count or limit what goes through them. The link is saved even when the first read fails (error says why).",
+		Desc: "Read at once and then every every_hours hours (https only, public addresses only, 4 MB at most). Share links, base64, Clash / mihomo YAML and sing-box configurations are read alike; each node is written into Rosélune's own form, so every app gets it in a form it understands. Its nodes become external nodes that follow the provider: new ones are added, changed ones updated in place (rules and protocols keep using them), and ones that left are removed - or kept, marked, while a protocol, rule or load balancer still names them. A refresh that fails, or finds no usable node, changes nothing. offer gives the nodes to users too (not WireGuard: one key cannot serve many devices); Rosélune cannot count or limit what goes through them. The link is saved even when the first read fails (error says why).",
 		Body: sourceInput{}, Resp: sourceSaved{}},
 	{Method: "PATCH", Path: "/api/external-sources/{id}", Tag: "Routing", Summary: "Change a subscription link",
 		Desc: "A new address, prefix or filter reads it again at once. Turned off, it is not read and its nodes cannot be used: what uses them is blocked until it is on again.",
@@ -390,7 +390,7 @@ var apiOps = []opDoc{
 
 	// health checks
 	{Method: "GET", Path: "/api/risks", Tag: "Health", Summary: "What the servers' health checks found",
-		Desc: "Signs that a server was broken into or is abused - crypto-miners, programs in temporary folders, new ports, accounts, SSH keys, scheduled tasks, services, kernel modules, SSH sign-ins, unexplained traffic, Meridian's programs changed - most serious first. Nothing is ever stopped or blocked because of a risk: they only tell.",
+		Desc: "Signs that a server was broken into or is abused - crypto-miners, programs in temporary folders, new ports, accounts, SSH keys, scheduled tasks, services, kernel modules, SSH sign-ins, unexplained traffic, Rosélune's programs changed - most serious first. Nothing is ever stopped or blocked because of a risk: they only tell.",
 		Query: []paramDoc{{Name: "status", Type: "string", Desc: "Which (default open)", Enum: []string{"open", "acknowledged", "expected", "all"}},
 			{Name: "severity", Type: "string", Desc: "At least this serious", Enum: []string{"info", "warning", "high", "critical"}}, qServer},
 		Resp: []riskView{}},
@@ -469,7 +469,7 @@ var apiOps = []opDoc{
 		Resp: updateView{}},
 	{Method: "POST", Path: "/api/update/check", Tag: "Settings", Summary: "Look for a new release now", Resp: updateView{}},
 	{Method: "POST", Path: "/api/update/install", Tag: "Settings", Summary: "Install the newest release",
-		Desc: "The panel downloads the release, checks its signature (Meridian's release key) and checksum, backs up the database and hands it to the updater service, which checks it again and installs it. Proxies keep running; the panel restarts once. With agents (the default), every server's agent is upgraded afterwards - nobody is disconnected. Needs a panel installed with install-panel.sh.",
+		Desc: "The panel downloads the release, checks its signature (Rosélune's release key) and checksum, backs up the database and hands it to the updater service, which checks it again and installs it. Proxies keep running; the panel restarts once. With agents (the default), every server's agent is upgraded afterwards - nobody is disconnected. Needs a panel installed with install-panel.sh.",
 		Body: updateInstallInput{}, Resp: updateView{}},
 	{Method: "POST", Path: "/api/agents/upgrade", Tag: "Servers", Summary: "Upgrade every server's agent to this panel's version",
 		Desc: "Only servers whose agent differs from the panel's are upgraded; offline ones as soon as they connect. Agents restart themselves; the proxies keep running and nobody is disconnected. An upgrade that still waits with other binaries is replaced; servers left out are named with the reason (skipped).",
@@ -513,7 +513,7 @@ var tagDocs = []struct{ Name, Desc string }{
 	{"Import", "Bring over protocols and users from Xray, V2Ray, 3x-ui, x-ui, sing-box or Hysteria2 already running on a server."},
 	{"Forwards", "Port forwards through nftables (kernel) or realm."},
 	{"Certificates", "Shared certificates: kept once, used by TLS and Hysteria2 protocols on any server, replaced once for all of them."},
-	{"Users", "The people you serve: each has a subscription link and can sign in to see their own usage. Limits raise alerts only."},
+	{"Users", "The people you serve: each has a subscription link and can sign in to see their own usage. A used-up quota suspends a user until their data starts over; other limits raise alerts."},
 	{"User page", "What a signed-in user sees. Uses its own session cookie; the admin API does not accept it."},
 	{"Status page", "The public status page: which servers are up and where. Chosen and shaped in the settings."},
 	{"Access", "Who may connect, by country: a rule for the servers' protocols and a rule for this site."},
@@ -806,7 +806,7 @@ func buildOpenAPI() *ordered {
 	}
 	return newOrdered().
 		set("openapi", "3.1.0").
-		set("info", newOrdered().set("title", "Meridian API").set("version", Version).set("description",
+		set("info", newOrdered().set("title", "Rosélune API").set("version", Version).set("description",
 			"Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) "+
 				"or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. "+
 				"Errors are {\"error\": \"...\"} with a 4xx/5xx status.")).

@@ -1,4 +1,4 @@
-// Hello is an example Meridian server plugin: a program the panel starts and talks to over its
+// Hello is an example Rosélune server plugin: a program the panel starts and talks to over its
 // standard input and output - JSON-RPC 2.0, one JSON object per line. It uses every part of the
 // protocol:
 //
@@ -247,7 +247,7 @@ func main() {
 			Version string `json:"version"`
 		}
 		_ = json.Unmarshal(res, &welcome)
-		c.log("info", "Hello is running, with Meridian "+welcome.Version)
+		c.log("info", "Hello is running, with Rosélune "+welcome.Version)
 		count(c, s) // the first count now, then every five minutes
 	}()
 

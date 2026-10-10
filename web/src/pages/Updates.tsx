@@ -44,7 +44,7 @@ export function Updates() {
       try {
         const next = await get<UpdateView>('/api/update')
         if (next.current !== from) {
-          toast(`Meridian ${next.current} is installed`)
+          toast(`Rosélune ${next.current} is installed`)
           void loadSession()
         }
         v.set(next)
@@ -72,11 +72,11 @@ export function Updates() {
   const check = () => act('check', async () => v.set(await post<UpdateView>('/api/update/check')))
   const install = async () => {
     const ok = await ask({
-      title: `Install Meridian ${u.latest}?`,
+      title: `Install Rosélune ${u.latest}?`,
       body: (
         <>
           <p style="margin-top:0">
-            The panel downloads it, checks that it carries Meridian's release signature, backs up its database and installs it. The panel restarts once - this page reconnects by itself.
+            The panel downloads it, checks that it carries Rosélune's release signature, backs up its database and installs it. The panel restarts once - this page reconnects by itself.
           </p>
           <p>
             Proxies keep running: nobody is disconnected.{' '}
@@ -94,7 +94,7 @@ export function Updates() {
       title: `Upgrade the agent on ${n} server${n === 1 ? '' : 's'}?`,
       body: (
         <p style="margin-top:0">
-          Each agent downloads Meridian {u.current}'s agent from this panel and restarts itself. The proxies keep running and nobody is disconnected. Offline servers upgrade as soon as they connect.
+          Each agent downloads Rosélune {u.current}'s agent from this panel and restarts itself. The proxies keep running and nobody is disconnected. Offline servers upgrade as soon as they connect.
         </p>
       ),
       confirm: 'Upgrade agents',
@@ -120,7 +120,7 @@ export function Updates() {
       <section class="panel">
         <div class="ph">
           <span class="pn">01</span>
-          <h2 class="h">Meridian</h2>
+          <h2 class="h">Rosélune</h2>
           <span class="pm">
             <button type="button" class="btn sm ghost" onClick={() => void check()} disabled={busy !== '' || working}>
               {busy === 'check' ? <span class="spin" /> : 'Check now'}
@@ -160,7 +160,7 @@ export function Updates() {
           <div class="callout" style="margin-top:12px">
             <span class="spin" />
             <div>
-              {u.state === 'downloading' ? `Downloading and checking Meridian ${u.latest}…` : `Installing Meridian ${u.latest} - the panel restarts in a moment; this page reconnects by itself.`}
+              {u.state === 'downloading' ? `Downloading and checking Rosélune ${u.latest}…` : `Installing Rosélune ${u.latest} - the panel restarts in a moment; this page reconnects by itself.`}
             </div>
           </div>
         ) : u.newer ? (
@@ -168,7 +168,7 @@ export function Updates() {
             <div class="callout warn" style="margin-top:12px">
               <Icon name="download" size="sm" />
               <div class="grow">
-                Meridian {u.latest} is available.{' '}
+                Rosélune {u.latest} is available.{' '}
                 {u.notes && (
                   <button type="button" class="linkish" onClick={() => setNotes(!notes)}>
                     {notes ? 'Hide what is new' : 'What is new'}
@@ -211,7 +211,7 @@ export function Updates() {
           label="Install new releases by themselves"
           hint={
             u.ready
-              ? 'Looked for every few hours, installed between 03:00 and 05:00 (panel time), then every agent follows. Each release must carry Meridian’s signature; the database is backed up first. Proxies keep running.'
+              ? 'Looked for every few hours, installed between 03:00 and 05:00 (panel time), then every agent follows. Each release must carry Rosélune’s signature; the database is backed up first. Proxies keep running.'
               : u.not_ready
           }
         />

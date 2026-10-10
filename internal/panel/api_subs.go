@@ -114,7 +114,19 @@ func liveIPs(list []proto.OnlineUser) int {
 	return len(seen)
 }
 
-// subFlags lists the soft limits a subscription is over. None of them pauses anything.
+// userStatus is active, paused (by a person) or out_of_data (by itself, until the data starts over).
+func userStatus(s *Sub) string {
+	switch {
+	case s.Paused:
+		return "paused"
+	case s.outOfData():
+		return "out_of_data"
+	}
+	return "active"
+}
+
+// subFlags lists the limits a user reached. Of them only over_quota keeps the user off the servers,
+// by itself and until their data starts over (outofdata.go); the others are alerts.
 func subFlags(s *Sub, online int, t int64) []string {
 	flags := []string{}
 	if s.Quota > 0 && s.Used() >= s.Quota {
@@ -139,8 +151,10 @@ type subView struct {
 	Used       int64       `json:"used" doc:"What counts toward the quota this cycle (count_mode decides: upload and download, one of them, or the larger)"`
 	NextReset  int64       `json:"next_reset" doc:"When usage next resets (Unix seconds); 0 = never"`
 	Link       string      `json:"link" doc:"The subscription link - give it to the user"`
-	Status     string      `json:"status" doc:"active | paused"`
-	Flags      []string    `json:"flags" doc:"Soft limits reached: over_quota, near_quota, expired, expiring, over_ip_limit"`
+	Status     string      `json:"status" doc:"active | paused | out_of_data (the quota is used up: no server serves the user until their data starts over - the next reset, a higher quota or reset-usage)"`
+	GraceUntil int64       `json:"grace_until,omitempty" doc:"Out of data in loose mode: until when what the user has open may go on (Unix seconds) - unless grace_left runs out first"`
+	GraceLeft  int64       `json:"grace_left,omitempty" doc:"Out of data in loose mode: bytes what the user has open may still use"`
+	Flags      []string    `json:"flags" doc:"Limits reached: over_quota (the data is used up: status out_of_data, unless paused), near_quota, expired, expiring, over_ip_limit (these only raise alerts)"`
 	OnlineIPs  int         `json:"online_ips"`
 	Away       []string    `json:"turned_away,omitempty" doc:"Devices (addresses) over the device limit that are turned away now (device_mode refuse)"`
 	Online     []onlineIP  `json:"online,omitempty"`
@@ -150,9 +164,11 @@ type subView struct {
 
 func (p *Panel) subView(r *http.Request, s *Sub, online []onlineIP, detail bool) *subView {
 	v := &subView{Sub: s, Used: s.Used(), NextReset: nextPeriod(s, p.localNow()), Link: p.subBase(r) + "/s/" + s.Token, OnlineIPs: distinctIPs(online)}
-	v.Status = "active"
-	if s.Paused {
-		v.Status = "paused"
+	v.Status = userStatus(s)
+	if set := p.settings(); s.outOfData() { // loose mode: what they have open, for a while (outofdata.go)
+		if until := graceUntil(s, set, now()); until > 0 {
+			v.GraceUntil, v.GraceLeft = until, max(0, s.Quota+set.graceBytes()-s.Used())
+		}
 	}
 	v.Flags = subFlags(s, v.OnlineIPs, now())
 	if s.enforced() {
@@ -704,6 +720,7 @@ func (p *Panel) apiUpdateSub(w http.ResponseWriter, r *http.Request, a *Account)
 		return err
 	}
 	touch := false
+	wasOut := s.outOfData()
 	if in.Name != nil {
 		n := cleanName(*in.Name, 64)
 		if n == "" {
@@ -801,6 +818,9 @@ func (p *Panel) apiUpdateSub(w http.ResponseWriter, r *http.Request, a *Account)
 	if schedule || in.CountMode != nil {
 		touch = touch || s.NodeQuotaMode == "stop" // what counts against a protocol's limit changed
 	}
+	if s.outOfData() != wasOut {
+		touch = true // a new quota or way of counting used their data up, or gave them more: served again (outofdata.go)
+	}
 	s.UpdatedAt = now()
 	err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`UPDATE subs SET name = ?, note = ?, quota = ?, reset_day = ?, expires_at = ?, ip_limit = ?,
@@ -820,6 +840,7 @@ func (p *Panel) apiUpdateSub(w http.ResponseWriter, r *http.Request, a *Account)
 		return err
 	}
 	s.CanSignIn = s.Login != "" && s.PasswordHash != ""
+	p.markOut(r.Context(), s) // a new quota or way of counting may use their data up, or give them more (outofdata.go)
 	if touch {
 		p.touchAccount(s.AccountID)
 	}
@@ -857,6 +878,9 @@ func (p *Panel) apiSubAction(w http.ResponseWriter, r *http.Request, a *Account)
 		}
 		_, err = p.db.Exec1(`UPDATE subs SET paused = 0, paused_at = 0, updated_at = ? WHERE id = ?`, t, id)
 		msg, level = fmt.Sprintf("%s resumed %s", a.Username, s.Name), "info"
+		if s.outOfData() {
+			msg += fmt.Sprintf(" - their data is used up, so the servers serve them %s", p.backOn(s))
+		}
 	case "rotate-link":
 		_, err = p.db.Exec1(`UPDATE subs SET token = ?, updated_at = ? WHERE id = ?`, randB64URL(18), t, id)
 		msg, level, touch = fmt.Sprintf("%s issued a new link for %s - the old link stopped working", a.Username, s.Name), "warn", false
@@ -876,12 +900,17 @@ func (p *Panel) apiSubAction(w http.ResponseWriter, r *http.Request, a *Account)
 		msg, level = fmt.Sprintf("%s reset the credentials of %s - devices must refresh the subscription", a.Username, s.Name), "warn"
 	case "reset-usage":
 		err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
-			if _, err := tx.Exec(`UPDATE subs SET cycle_up = 0, cycle_down = 0, cycle_start = ?, updated_at = ? WHERE id = ?`, t, t, id); err != nil {
+			if _, err := tx.Exec(`UPDATE subs SET cycle_up = 0, cycle_down = 0, cycle_start = ?, out_at = 0, updated_at = ? WHERE id = ?`, t, t, id); err != nil {
 				return err
 			}
 			return resetNodeUsage(tx, id)
 		})
-		msg, level, touch = fmt.Sprintf("%s reset the usage of %s", a.Username, s.Name), "info", false
+		msg, level = fmt.Sprintf("%s reset the usage of %s", a.Username, s.Name), "info"
+		// served again: a user whose data was used up (outofdata.go), protocols a limit stopped (nodequota.go)
+		touch = s.outOfData() || (s.NodeQuotaMode == "stop" && len(s.NodeQuotas) > 0)
+		if s.outOfData() && !s.Paused {
+			msg += " - they can connect again"
+		}
 	case "sign-out":
 		_, err = p.db.Exec1(`DELETE FROM user_sessions WHERE sub_id = ?`, id)
 		msg, level, touch = fmt.Sprintf("%s signed %s out everywhere", a.Username, s.Name), "info", false

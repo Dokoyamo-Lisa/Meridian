@@ -2,8 +2,8 @@
 
 Every few minutes each server's agent looks for signs that the server was broken into or is being
 abused: a crypto-miner, a program running from a temporary folder, a port nobody opened, a new
-account or SSH key, a changed scheduled task or service, SSH sign-ins, traffic Meridian does not
-account for, Meridian's own programs changed. What it finds becomes a **risk** in the panel, and you
+account or SSH key, a changed scheduled task or service, SSH sign-ins, traffic Rosélune does not
+account for, Rosélune's own programs changed. What it finds becomes a **risk** in the panel, and you
 decide about each one.
 
 Health checks only tell. Nothing is ever stopped, blocked or paused because of a risk - if a server
@@ -16,7 +16,7 @@ its server page (**More actions › Upgrade agent** - nobody is disconnected).
 
 - **The first check records what is normal.** A minute after the agent starts, the first check
   notes the server's accounts, SSH keys, scheduled tasks, services, kernel modules, listening ports
-  and Meridian's own programs - the *baseline* - and keeps it on the server
+  and Rosélune's own programs - the *baseline* - and keeps it on the server
   (`/var/lib/meridian-agent/health.json`, readable by root only). From then on, every check (every
   five minutes) reports what changed since.
 - **Some things are bad in themselves** and are reported even by the first check: a crypto-miner, a
@@ -24,7 +24,7 @@ its server page (**More actions › Upgrade agent** - nobody is disconnected).
   `/dev/shm` or whose file was deleted, a program posing as a kernel thread, a second account with
   full rights (uid 0).
 - **It is light.** It reads `/proc` and a few files, at the lowest processor and disk priority, and
-  hashes Meridian's programs only when they change (and once a day). It runs no shell; the only
+  hashes Rosélune's programs only when they change (and once a day). It runs no shell; the only
   program it starts is `journalctl`, to read the SSH server's messages.
 - **It sends little.** Each finding is a title and a short detail. Command lines, file contents and
   password hashes never leave the server: a changed file is described by how many lines were added
@@ -37,10 +37,10 @@ its server page (**More actions › Upgrade agent** - nobody is disconnected).
 | Finding | Severity |
 | --- | --- |
 | A known crypto-miner (xmrig, kinsing, kdevtmpfsi, minerd, cpuminer, nanominer and others), or a program whose command line is a miner's | critical |
-| A connection from a program that is not Meridian's to a port mining pools use (3333, 4444, 5555, 14444, ...) | high (critical for a miner) |
+| A connection from a program that is not Rosélune's to a port mining pools use (3333, 4444, 5555, 14444, ...) | high (critical for a miner) |
 | A program running from `/tmp`, `/var/tmp` or `/dev/shm`, one whose file was deleted, or one posing as a kernel thread | high |
-| A program - not Meridian's (agent, Xray, Hysteria, realm) and not a common system service - that kept a processor busy for 10 minutes | warning |
-| A port that opened after the baseline and is not Meridian's (protocols, WireGuard, forwards, the agent) or a system service's (sshd, resolvers, time servers ...) | warning |
+| A program - not Rosélune's (agent, Xray, Hysteria, realm) and not a common system service - that kept a processor busy for 10 minutes | warning |
+| A port that opened after the baseline and is not Rosélune's (protocols, WireGuard, forwards, the agent) or a system service's (sshd, resolvers, time servers ...) | warning |
 | A second account with uid 0 | critical |
 | A new account | high if it can sign in, warning if it cannot |
 | An account that gained a login shell, or a password where it had none | high |
@@ -57,7 +57,7 @@ its server page (**More actions › Upgrade agent** - nobody is disconnected).
 | Someone signed in over SSH with a key | info |
 | Someone signed in over SSH with a password | warning (high for root) |
 | Many failed SSH sign-ins (on average 60 or more in 5 minutes) | warning |
-| The server sent far more than Meridian's protocols and forwards carried and than it received - over 1 GB more, and three times as much, in 10 minutes (a DDoS bot) | high |
+| The server sent far more than Rosélune's protocols and forwards carried and than it received - over 1 GB more, and three times as much, in 10 minutes (a DDoS bot) | high |
 | A load average above twice the processor cores over 15 minutes | warning |
 | The agent's program file replaced while it runs (not by its own upgrade) | high |
 | The agent's program is not this panel's build of its version | critical |

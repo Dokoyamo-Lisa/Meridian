@@ -23,12 +23,15 @@ Only **Name** is needed - everything else can stay empty:
 | **Quota per cycle (GB)** | How much data a cycle - for example *100*. Empty = unlimited. |
 | **Usage resets** | **Monthly** for a monthly allowance, **Never** for a one-off amount. |
 | **Devices online at once** | For example *3*. Empty = no limit. |
+| **Speed limit** | For example *300* **Mbps** (or *1* **Gbps**): the most this person's devices get together on each server. Empty = no limit. |
 | **Valid until** | An end date, if the access should end. Empty = no end. |
 | **Access** | *Everything, including new servers* - or **Only these** to pick servers. |
 
-> **Good to know:** A quota, an end date or a device limit only **tells you** when it is reached - in
-> the panel and, if you set it up, on [Telegram](telegram-alerts.md). Nobody is cut off by
-> themselves; pausing someone is always your click.
+> **Good to know:** When someone uses up their **quota**, the servers stop serving them by
+> themselves - until their data starts over on the reset day, or until you give them more. Then they
+> are back without anyone's click (see [Everyday tasks](everyday.md#when-someone-uses-up-their-data)).
+> An end date or a device limit only **tells you** when it is reached - in the panel and, if you set
+> it up, on [Telegram](telegram-alerts.md); pausing someone is always your click.
 
 ![The New user form](../img/guide/new-user-dialog.webp)
 

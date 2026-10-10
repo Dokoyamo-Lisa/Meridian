@@ -342,7 +342,7 @@ func xrayInbound(raw json.RawMessage) (Inbound, bool) {
 		in.Protocol = "hysteria2"
 	default:
 		in.Protocol = "other"
-		in.Note = "Meridian does not run " + x.Protocol
+		in.Note = "Rosélune does not run " + x.Protocol
 	}
 	switch n := strings.ToLower(x.Stream.Network); n {
 	case "", "tcp", "raw":
@@ -365,7 +365,7 @@ func xrayInbound(raw json.RawMessage) (Inbound, bool) {
 	default:
 		in.Transport = n
 		if in.Note == "" {
-			in.Note = "Meridian does not support the " + n + " transport"
+			in.Note = "Rosélune does not support the " + n + " transport"
 		}
 	}
 	switch strings.ToLower(x.Stream.Security) {
@@ -396,7 +396,7 @@ func xrayInbound(raw json.RawMessage) (Inbound, bool) {
 	default:
 		in.Security = x.Stream.Security
 		if in.Note == "" {
-			in.Note = "Meridian does not support " + x.Stream.Security + " security"
+			in.Note = "Rosélune does not support " + x.Stream.Security + " security"
 		}
 	}
 	if in.Protocol == "shadowsocks" {
@@ -519,7 +519,7 @@ func parseSingBox(path string) ([]Inbound, error) {
 		case "tun", "tproxy", "redirect", "direct":
 			continue
 		default:
-			in.Protocol, in.Note = "other", "Meridian does not run "+x.Type
+			in.Protocol, in.Note = "other", "Rosélune does not run "+x.Type
 		}
 		switch x.Transport.Type {
 		case "":
@@ -534,7 +534,7 @@ func parseSingBox(path string) ([]Inbound, error) {
 		case "grpc":
 			in.Transport, in.Service = "grpc", x.Transport.ServiceName
 		default:
-			in.Transport, in.Note = x.Transport.Type, "Meridian does not support the "+x.Transport.Type+" transport"
+			in.Transport, in.Note = x.Transport.Type, "Rosélune does not support the "+x.Transport.Type+" transport"
 		}
 		if x.Type == "hysteria2" {
 			in.Transport = ""

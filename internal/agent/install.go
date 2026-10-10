@@ -126,7 +126,7 @@ func Install(panel, token string, apiPort int) error {
 	} else if err := service.EnableNow(Unit); err != nil {
 		return err
 	}
-	fmt.Println("\nMeridian agent installed and running.")
+	fmt.Println("\nRosélune agent installed and running.")
 	fmt.Println("The server shows up as online in the panel within a few seconds.")
 	fmt.Println("Logs: " + service.Logs(Unit))
 	return nil
@@ -155,7 +155,7 @@ func Uninstall(verbose bool) {
 	os.RemoveAll(ConfDir)
 	say("Removing the agent")
 	os.Remove(BinPath)
-	say("Meridian was removed from this server.")
+	say("Rosélune was removed from this server.")
 	// last: this stops the agent itself when it runs as the service
 	if service.Init() == "openrc" {
 		// rc-service stops and starts services itself, from the calling process: hand the stop to a

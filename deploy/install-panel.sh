@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Meridian panel installer. Run it as root from an unpacked release directory
+# Rosélune panel installer (the program and its service keep the name meridian). Run it as root from an unpacked release directory
 # (meridian-<version>-linux-<arch>/):
 #
 #   sudo ./install-panel.sh --domain panel.example.com [--email you@example.com]
@@ -53,7 +53,7 @@ if [ "$ACTION" = "uninstall" ]; then
   rm -f "$UNIT" "$UPDATER.path" "$UPDATER.service" "$BIN"
   rm -rf "$LIB"
   systemctl daemon-reload
-  say "Meridian panel removed. Its data is still in $DATA and $ETC (and, if it used PostgreSQL, in the database meridian) - delete them yourself if you no longer need them."
+  say "Rosélune panel removed. Its data is still in $DATA and $ETC (and, if it used PostgreSQL, in the database meridian) - delete them yourself if you no longer need them."
   exit 0
 fi
 
@@ -90,7 +90,7 @@ if [ "$ACTION" = "install" ] && [ -n "$DOMAIN" ]; then
   fi
 fi
 
-say "Installing Meridian $("$HERE/meridian" version | awk '{print $2}')"
+say "Installing Rosélune $("$HERE/meridian" version | awk '{print $2}')"
 id meridian >/dev/null 2>&1 || useradd --system --home-dir "$DATA" --shell /usr/sbin/nologin meridian
 install -d -m 0700 -o meridian -g meridian "$DATA"
 install -d -m 0755 "$LIB/agent" "$ETC"
@@ -141,7 +141,7 @@ fi
 if [ "$ACTION" = "install" ] || [ ! -f "$ETC/meridian.env" ]; then
   umask 077
   {
-    echo "# Meridian panel settings - restart after changes: systemctl restart meridian"
+    echo "# Rosélune panel settings - restart after changes: systemctl restart meridian"
     echo "MERIDIAN_DATA=$DATA"
     echo "MERIDIAN_AGENT_DIR=$LIB/agent"
     if [ -n "$DOMAIN" ]; then
@@ -229,7 +229,7 @@ systemctl daemon-reload
 systemctl enable --now meridian-update.path >/dev/null 2>&1 || die "could not start the updater (meridian-update.path)"
 if [ "$ACTION" = "upgrade" ]; then
   systemctl restart meridian
-  say "Meridian upgraded. Servers keep running; upgrade their agents in Settings > Updates (Upgrade all agents) when convenient."
+  say "Rosélune upgraded. Servers keep running; upgrade their agents in Settings > Updates (Upgrade all agents) when convenient."
   exit 0
 fi
 if systemctl is-active --quiet meridian; then

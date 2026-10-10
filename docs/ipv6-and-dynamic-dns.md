@@ -1,6 +1,6 @@
 # IPv6-only servers and dynamic DNS
 
-Meridian links servers to each other - proxy passes, traffic rules that send traffic to a protocol on
+Rosélune links servers to each other - proxy passes, traffic rules that send traffic to a protocol on
 another server, relays, port forwards - and gives users links to them. Normally it uses the public
 address each agent reports. Two kinds of servers need more:
 
@@ -94,7 +94,7 @@ An IPv6-only server cannot open connections to sites that have IPv4 only, unless
 
 - its provider offers **DNS64 and NAT64** (many IPv6-only offers do): the agent notices it, names of
   IPv4-only sites get an IPv6 address from the provider's DNS, and the provider carries those
-  connections on to IPv4. Nothing to set up in Meridian; or
+  connections on to IPv4. Nothing to set up in Rosélune; or
 - a **traffic rule** sends that traffic - everything, or chosen sites - through an exit that has IPv4:
   a protocol on a server with both, or an imported **external node** such as a WARP WireGuard
   configuration (see [Routing](routing.md)).

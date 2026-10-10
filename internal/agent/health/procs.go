@@ -117,7 +117,7 @@ func (sc *scan) isCore(p *proc) bool {
 }
 
 // meridianNames are Meridian's programs: busy by design, never a finding for their processor time.
-var meridianNames = []string{"meridian-agent", "xray", "hysteria", "realm"}
+var meridianNames = []string{"meridian-agent", "xray", "hysteria", "realm", "mita", "snell"}
 
 // systemNames are common system services: busy now and then, and listening by design.
 var systemNames = []string{

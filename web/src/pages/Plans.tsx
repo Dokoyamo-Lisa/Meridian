@@ -117,7 +117,7 @@ export function LimitFields(props: { v: Limits; set: (v: Limits) => void; startH
   return (
     <>
       <div class="inline-fields">
-        <Field label="Quota per cycle (GB)" hint="Empty = unlimited. Reaching it raises an alert - nothing is cut off.">
+        <Field label="Quota per cycle (GB)" hint="Empty = unlimited. Used up, the user is off every server until their data starts over - then back by themselves.">
           <input class="input" inputMode="decimal" value={v.quota} placeholder="unlimited" onInput={(e) => up({ quota: num(e.currentTarget.value, true) })} />
         </Field>
         <Field label="What counts" hint="Download is what the user's devices receive.">

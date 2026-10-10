@@ -60,6 +60,9 @@ type Engine struct {
 	logID   map[int64]uint64          // the request log each offset is in (its inode)
 	pending map[int64]bool            // nodes whose new configuration waits for a restart (see inputKey)
 	refused map[int64]map[string]bool // user -> devices turned away (limits.go)
+	speed   map[int64]int             // user -> speed limit in Mbps (limits.go)
+	slowed  map[int64]int64           // user -> when a sign-in over their limit was last told
+	grace   map[int64]int64           // user -> until when a user taken off keeps their open sessions (State.Grace)
 	tries   map[string]tryHit         // their attempts still going on
 	first   map[string]int64          // user's device -> when it was first seen
 	// no record of where the last agent stopped reading: the logs as they are were read already
@@ -164,6 +167,7 @@ func (e *Engine) startAuth() error {
 		var req struct {
 			Addr string `json:"addr"`
 			Auth string `json:"auth"`
+			Tx   uint64 `json:"tx"` // what the server is to send at, bytes per second; 0 = no declared rate
 		}
 		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req)
 		e.mu.Lock()
@@ -178,6 +182,16 @@ func (e *Engine) startAuth() error {
 		now := time.Now().Unix()
 		if ok && e.refuse(node, id, ip, now) { // a device over the user's limit (limits.go)
 			ok = false
+		}
+		if ok && e.overLimit(id, req.Tx) { // an app that would break the user's speed limit (limits.go)
+			ok = false
+			if sub, _, _ := proto.ParseEmail(id); now-e.slowed[sub] > 600 && e.Events != nil {
+				if e.slowed == nil {
+					e.slowed = map[int64]int64{}
+				}
+				e.slowed[sub] = now
+				e.Events("hy_over_speed", "warn", fmt.Sprintf("Hysteria2 turned away a device of user %d: its app asks for more than the user's %d Mbps speed limit, or declares no speed - it gets in once the app takes the user's link again", sub, e.speed[sub]))
+			}
 		}
 		if ok {
 			if sub, _, isSub := proto.ParseEmail(id); isSub {
@@ -522,7 +536,7 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.HyNode, version, mirro
 			ids[u.ID] = true
 		}
 		for _, old := range e.users[id] {
-			if !ids[old] {
+			if !ids[old] && !e.inGrace(old, time.Now().Unix()) { // in grace: kicked when it ends (Collect)
 				kick[id] = append(kick[id], old)
 			}
 		}
@@ -772,6 +786,19 @@ func (e *Engine) kick(node int64, ids []string) {
 	}()
 }
 
+// SetGrace says until when users whose data ran out may keep their open sessions (State.Grace).
+func (e *Engine) SetGrace(g map[int64]int64) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.grace = g
+}
+
+// inGrace says whether a user (by id) taken off may still keep their open sessions. Callers hold e.mu.
+func (e *Engine) inGrace(id string, now int64) bool {
+	sub, _, ok := proto.ParseEmail(id)
+	return ok && e.grace[sub] > now
+}
+
 // hasUser reports whether id may currently authenticate on node. Callers hold e.mu.
 func (e *Engine) hasUser(node int64, id string) bool {
 	for _, u := range e.users[node] {
@@ -969,9 +996,22 @@ func (e *Engine) Collect(connLog, destLog bool) Collected {
 		if b, err := e.call(pi, http.MethodGet, "/online", nil); err == nil {
 			var m map[string]int
 			if json.Unmarshal(b, &m) == nil {
+				// still online but no longer served here (taken off, their grace over): cut now
+				var gone []string
+				e.mu.Lock()
+				for uid, count := range m {
+					if _, _, ok := proto.ParseEmail(uid); ok && count > 0 && !e.hasUser(id, uid) && !e.inGrace(uid, now) {
+						gone = append(gone, uid)
+					}
+				}
+				e.mu.Unlock()
+				if len(gone) > 0 {
+					sort.Strings(gone)
+					e.kickOnline(id, gone)
+				}
 				for uid, count := range m {
 					sub, node, ok := proto.ParseEmail(uid)
-					if !ok || count <= 0 {
+					if !ok || count <= 0 || slices.Contains(gone, uid) {
 						continue
 					}
 					e.mu.Lock()

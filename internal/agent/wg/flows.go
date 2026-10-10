@@ -167,3 +167,34 @@ func (m *flowMonitor) collect(peerSub map[netip.Addr]struct{ sub, node int64 }, 
 	}
 	return out
 }
+
+// dropFlows forgets the connections that devices with these tunnel addresses had open through the
+// server: once their peer is gone nothing passes any more, and without their conntrack entries the
+// server keeps no way back to them either - what the device had open is cut both ways.
+func dropFlows(prefixes []netip.Prefix) int {
+	if len(prefixes) == 0 {
+		return 0
+	}
+	c, err := conntrack.Dial(nil)
+	if err != nil {
+		return 0
+	}
+	defer c.Close()
+	flows, err := c.DumpFilter(conntrack.NewFilter().Mark(WGMark).MarkMask(0xffff0000), nil)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, f := range flows {
+		src := f.TupleOrig.IP.SourceAddress.Unmap()
+		for _, p := range prefixes {
+			if p.Contains(src) {
+				if c.Delete(f) == nil {
+					n++
+				}
+				break
+			}
+		}
+	}
+	return n
+}

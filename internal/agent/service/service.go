@@ -34,6 +34,7 @@ type Spec struct {
 	Log          string            // a file both output streams are appended to ("" = the system log)
 	Sandbox      bool              // systemd: ProtectSystem=full, ProtectHome, PrivateTmp
 	RestartSec   int               // pause before a restart after a crash (default 2)
+	Private      []string          // systemd: directories each instance gets empty, its own (TemporaryFileSystem)
 }
 
 // Init is "systemd", "openrc" or "" (neither: the agent cannot run its services here).
@@ -54,11 +55,16 @@ func Available() bool { return Init() != "" }
 
 // Instance is the name of one instance of a template: Instance("meridian-hy2@", 22).
 func Instance(template string, id int64) string {
+	return InstanceOf(template, strconv.FormatInt(id, 10))
+}
+
+// InstanceOf is the name of an instance with a key of digits and dashes: InstanceOf("meridian-snell@", "5-12").
+func InstanceOf(template, key string) string {
 	base := strings.TrimSuffix(template, "@")
 	if Init() == "openrc" {
-		return base + "." + strconv.FormatInt(id, 10)
+		return base + "." + key
 	}
-	return base + "@" + strconv.FormatInt(id, 10)
+	return base + "@" + key
 }
 
 // Logs says where a service's output can be read, for messages to people.
@@ -291,6 +297,9 @@ func systemdUnit(s Spec) string {
 		w("ProtectSystem=full")
 		w("ProtectHome=true")
 		w("PrivateTmp=true")
+	}
+	for _, d := range s.Private {
+		w("TemporaryFileSystem=%s", d)
 	}
 	w("")
 	w("[Install]")

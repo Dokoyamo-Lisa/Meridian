@@ -19,6 +19,8 @@ import (
 type AccessEntry struct {
 	TS      int64
 	SrcIP   string
+	SrcPort int  // the client's port: with SrcIP, the connection (cuts.go)
+	SrcUDP  bool // the client came over UDP (a session no socket of its own carries)
 	Network string
 	Host    string
 	Port    int
@@ -48,13 +50,17 @@ func ParseAccess(line string) (AccessEntry, bool) {
 	if !ok {
 		return e, false
 	}
+	e.SrcUDP = strings.HasPrefix(src, "udp:")
 	src = strings.TrimPrefix(strings.TrimPrefix(src, "tcp:"), "udp:")
-	host, _, err := net.SplitHostPort(src)
+	host, sport, err := net.SplitHostPort(src)
 	if err != nil {
 		return e, false
 	}
 	if a, err := netip.ParseAddr(host); err == nil {
 		e.SrcIP = a.Unmap().String() // one address, one spelling: "::ffff:1.2.3.4" is 1.2.3.4
+	}
+	if p, err := strconv.Atoi(sport); err == nil && p > 0 && p <= 65535 {
+		e.SrcPort = p
 	}
 	status, rest, ok := strings.Cut(rest, " ")
 	if !ok {

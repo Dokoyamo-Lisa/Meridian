@@ -195,3 +195,32 @@ func TestForwardPortsAsSourcePorts(t *testing.T) {
 		t.Errorf("a forward's port is matched on the way out:\n%s", out)
 	}
 }
+
+// TestSoloRules: a mieru or Snell user's port is counted both ways, per family, and while they are
+// in grace or a device is over their limit, new connections there are refused.
+func TestSoloRules(t *testing.T) {
+	e := New()
+	out := e.render(Spec{TCPPorts: []int{31000}, UDPPorts: []int{31000}, Solo: []SoloPort{
+		{Node: 11, Sub: 2, Port: 31000, TCP: true, UDP: true, NoNew: true, Refused: []string{"198.51.100.9", "2001:db8::9", "bad"}},
+	}})
+	for _, want := range []string{
+		`tcp dport 31000 ct state new drop`,
+		`udp dport 31000 ct state new drop`,
+		`ip saddr { 198.51.100.9 } tcp dport 31000 ct state new drop`,
+		`ip6 saddr { 2001:db8::9 } udp dport 31000 ct state new drop`,
+		`meta nfproto ipv4 tcp dport 31000 counter comment "u11.2:up:40"`,
+		`meta nfproto ipv6 udp sport 31000 counter comment "u11.2:down:48"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(out, "bad") {
+		t.Error("a malformed address reached the table")
+	}
+	e.soloCount("u11.2:up:40", 10_000, 10)
+	e.soloCount("u11.2:down:40", 2_000, 50) // only headers: nothing
+	if got := e.TakeSolo(); got[[2]int64{11, 2}] != [2]int64{9_600, 0} {
+		t.Errorf("counted: %v", got)
+	}
+}

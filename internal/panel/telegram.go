@@ -284,7 +284,7 @@ func (p *Panel) botCall(ctx context.Context, token, method string, form url.Valu
 		case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusNotFound:
 			return errors.New("the bot token was refused by Telegram - copy it again from @BotFather")
 		case resp.StatusCode == http.StatusConflict:
-			return errors.New("another program reads this bot's messages (a webhook or a second panel) - give Meridian a bot of its own")
+			return errors.New("another program reads this bot's messages (a webhook or a second panel) - give Rosélune a bot of its own")
 		case resp.StatusCode == http.StatusTooManyRequests:
 			return fmt.Errorf("too many messages for Telegram - it asks to wait %d s", r.Parameters.RetryAfter)
 		case r.Description != "":

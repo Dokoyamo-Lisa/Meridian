@@ -1,4 +1,4 @@
-// Meridian's guide: the look menu, the menu on phones, copy buttons, search over the guide, the
+// Rosélune's guide: the look menu, the menu on phones, copy buttons, search over the guide, the
 // page's contents following the reading, and screenshots full size on a click.
 ;(function () {
   'use strict'
@@ -13,13 +13,15 @@
   // ---------------------------------------------------------------- the look
   var toneBtn = $('[data-tone-btn]')
   var pop = $('.tone-pop')
-  var looks = ['umbrella', 'romance']
+  var looks = ['romance', 'umbrella']
   function chosen() {
     var t = store.get('meridian.site.tone')
-    return looks.indexOf(t) >= 0 ? t : 'umbrella'
+    return looks.indexOf(t) >= 0 ? t : 'romance'
   }
   function apply(t) {
     root.setAttribute('data-theme', t)
+    var icon = $('link[rel="icon"][data-umbrella]')
+    if (icon) icon.href = icon.getAttribute(t === 'umbrella' ? 'data-umbrella' : 'data-rose')
     $$('button', pop).forEach(function (b) { b.setAttribute('aria-checked', String(b.dataset.tone === t)) })
   }
   if (toneBtn && pop) {
@@ -32,7 +34,7 @@
     })
     $$('button', pop).forEach(function (b) {
       b.addEventListener('click', function () {
-        store.set('meridian.site.tone', b.dataset.tone === 'umbrella' ? null : b.dataset.tone)
+        store.set('meridian.site.tone', b.dataset.tone === 'romance' ? null : b.dataset.tone)
         apply(b.dataset.tone)
         close()
       })

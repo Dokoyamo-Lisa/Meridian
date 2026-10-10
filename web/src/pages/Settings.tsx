@@ -38,7 +38,7 @@ export function Settings() {
   const tab = (loc.query.get('tab') as Tab) || 'general'
   return (
     <>
-      <PageHead title="Settings" sub={`Meridian ${s.meta?.version || ''}`} />
+      <PageHead title="Settings" sub={`Rosélune ${s.meta?.version || ''}`} />
       <Tabs<Tab>
         value={tab}
         onChange={(t) => setQuery('tab', t)}
@@ -82,13 +82,28 @@ function zones(): string[] {
   }
 }
 
-// Brand is what users see of the panel: its name, its logo (the built-in umbrella or an upload) and
-// how the logo moves. The logo is stored as soon as it is uploaded; name and animation are saved
-// with the rest of the form. The preview plays the animation as it will look.
-function Brand(props: { name: string; anim: string; tone: string; onName: (v: string) => void; onAnim: (v: string) => void; onTone: (v: string) => void }) {
+// Brand is what users see of the panel: its name, its logo (a built-in one - the rose or the umbrella
+// - or an upload), how the logo moves and the look pages open with. The logo is stored as soon as it
+// is uploaded; the rest is saved with the form. The preview plays the animation as it will look.
+const marks: { id: string; name: string; hint: string }[] = [
+  { id: 'rose', name: 'Rose', hint: 'Rosélune’s own: five petals, a blush bloom, the moon at its heart' },
+  { id: 'umbrella', name: 'Umbrella', hint: 'Eight panels, red and white' },
+]
+
+function Brand(props: {
+  name: string
+  anim: string
+  mark: string
+  tone: string
+  onName: (v: string) => void
+  onAnim: (v: string) => void
+  onMark: (v: string) => void
+  onTone: (v: string) => void
+}) {
   const s = useSession()
   const logo = s.meta?.logo
   const custom = !!logo?.custom
+  const markName = props.mark === 'umbrella' ? 'umbrella' : 'rose'
   const [replay, setReplay] = useState(0)
   const [busy, setBusy] = useState(false)
   const fresh = (l: LogoInfo) => {
@@ -114,11 +129,15 @@ function Brand(props: { name: string; anim: string; tone: string; onName: (v: st
     }
   }
   const reset = async () => {
-    const ok = await ask({ title: 'Use the built-in umbrella again?', body: 'Your uploaded logo is removed from every page. You can upload it again at any time.', confirm: 'Use the umbrella' })
+    const ok = await ask({
+      title: `Use the built-in ${markName} again?`,
+      body: 'Your uploaded logo is removed from every page. You can upload it again at any time.',
+      confirm: `Use the ${markName}`,
+    })
     if (!ok) return
     try {
       fresh(await del<LogoInfo>('/api/settings/logo'))
-      toast('The umbrella is back')
+      toast(`The ${markName} is back`)
     } catch (e) {
       toastError(e)
     }
@@ -133,11 +152,15 @@ function Brand(props: { name: string; anim: string; tone: string; onName: (v: st
   const hint =
     props.anim === 'assemble'
       ? custom
-        ? 'Assemble needs the umbrella’s panels - your logo rises instead.'
-        : 'The umbrella’s panels slide in one by one.'
+        ? 'Assemble needs a built-in logo’s pieces - your logo rises instead.'
+        : markName === 'rose'
+          ? 'The rose’s petals open one by one, then the moon at its heart.'
+          : 'The umbrella’s panels slide in one by one.'
       : props.anim === 'none'
         ? 'The logo stays still, and signing in goes straight to the page.'
         : 'While pages load, and when someone signs in.'
+  // "auto" previews as what this device would get
+  const tryTone = (id: string) => (id === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'paper' : 'ice') : id)
   return (
     <section class="panel">
       <div class="ph">
@@ -147,8 +170,8 @@ function Brand(props: { name: string; anim: string; tone: string; onName: (v: st
       </div>
       <div class="brand-edit">
         <div class="brand-preview">
-          <LogoMark key={`${replay}-${props.anim}-${logo?.v || 'umbrella'}`} mode="once" anim={props.anim} size={72} label="Your logo" />
-          <b>{props.name || 'Meridian'}</b>
+          <LogoMark key={`${replay}-${props.anim}-${logo?.v || props.mark}`} mode="once" anim={props.anim} mark={props.mark} size={72} label="Your logo" />
+          <b>{props.name || 'Rosélune'}</b>
           <button type="button" class="btn ghost sm" onClick={() => setReplay((n) => n + 1)} disabled={props.anim === 'none'}>
             Play again
           </button>
@@ -157,15 +180,40 @@ function Brand(props: { name: string; anim: string; tone: string; onName: (v: st
           <Field label="Panel name" hint="Shown in the top bar, on sign-in and status pages, on subscription pages and in users’ apps.">
             <input class="input" value={props.name} maxLength={64} onInput={(e) => props.onName(e.currentTarget.value)} />
           </Field>
-          <Field label="Logo" hint="SVG, PNG, JPEG or WebP, up to 128 KB. It replaces the umbrella in the top bar, on sign-in and loading screens, on the status page, on subscription pages and in the browser tab.">
+          <Field
+            label="Logo"
+            hint={
+              custom
+                ? 'Your uploaded logo shows in the top bar, on sign-in and loading screens, on the status page, on subscription pages and in the browser tab. The built-in one returns when you remove it.'
+                : 'A built-in logo, or your own: SVG, PNG, JPEG or WebP, up to 128 KB. It shows in the top bar, on sign-in and loading screens, on the status page, on subscription pages and in the browser tab.'
+            }
+          >
             <div class="row" style="gap:8px;flex-wrap:wrap">
+              <div class={'tone-pick' + (custom ? ' muted-pick' : '')} role="radiogroup" aria-label="The built-in logo">
+                {marks.map((m) => (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={props.mark === m.id}
+                    class={'tone-opt mark-opt' + (props.mark === m.id ? ' on' : '')}
+                    title={m.hint}
+                    onClick={() => {
+                      props.onMark(m.id)
+                      setReplay((n) => n + 1)
+                    }}
+                  >
+                    <LogoMark mark={m.id} size={20} />
+                    {m.name}
+                  </button>
+                ))}
+              </div>
               <label class={'btn' + (busy ? ' disabled' : '')}>
                 {busy ? 'Uploading…' : custom ? 'Upload another logo' : 'Upload your logo'}
                 <input type="file" accept="image/svg+xml,image/png,image/jpeg,image/webp,.svg" hidden disabled={busy} onChange={(e) => pick(e.currentTarget)} />
               </label>
               {custom && (
                 <button type="button" class="btn ghost" onClick={reset}>
-                  Use the umbrella
+                  Use the {markName}
                 </button>
               )}
             </div>
@@ -178,16 +226,16 @@ function Brand(props: { name: string; anim: string; tone: string; onName: (v: st
             hint="How the panel, the status page and users’ pages look to everyone who has not picked a look themselves (the palette button at the top). Click one to try it here."
           >
             <div class="tone-pick" role="radiogroup" aria-label="The site’s look">
-              {[{ id: '', name: 'Automatic', a: '#8cc0ff', b: '#f3efe6' }, ...tones].map((t) => (
+              {[...tones, { id: 'auto', name: 'Follow the device', a: '#8cc0ff', b: '#f3efe6' }].map((t) => (
                 <button
                   type="button"
                   role="radio"
                   aria-checked={props.tone === t.id}
                   class={'tone-opt' + (props.tone === t.id ? ' on' : '')}
-                  title={t.id ? undefined : 'Ice, or Paper on a device set to light'}
+                  title={t.id === 'auto' ? 'Ice in the dark, Paper in the light - as each device is set' : t.id === 'romance' ? 'Rosélune’s own look' : undefined}
                   onClick={() => {
                     props.onTone(t.id)
-                    if (t.id) setTone(t.id)
+                    setTone(tryTone(t.id))
                   }}
                 >
                   <span class="sw" style={{ '--sw-a': t.a, '--sw-b': t.b } as any} />
@@ -248,9 +296,11 @@ function General() {
       <Brand
         name={v.site_title}
         anim={v.logo_animation}
-        tone={v.default_tone || ''}
+        mark={v.logo_mark || 'rose'}
+        tone={v.default_tone || 'romance'}
         onName={(x) => set('site_title', x)}
         onAnim={(x) => set('logo_animation', x)}
+        onMark={(x) => set('logo_mark', x)}
         onTone={(x) => set('default_tone', x)}
       />
       <section class="panel">
@@ -306,6 +356,51 @@ function General() {
       <section class="panel">
         <div class="ph">
           <span class="pn">04</span>
+          <h2 class="h">When a user's data runs out</h2>
+          <span class="pm">every protocol, every server</span>
+        </div>
+        <p class="muted" style="margin-top:0">
+          The servers stop letting them in at once, and they are back by themselves when their data starts over (or when you raise their quota or reset their usage). What they have open
+          right then:
+        </p>
+        <Seg<'strict' | 'loose'>
+          value={v.quota_mode}
+          onChange={(x) => set('quota_mode', x)}
+          label="What they have open"
+          options={[
+            ['strict', 'Strict: cut at once'],
+            ['loose', 'Loose: may finish'],
+          ]}
+        />
+        {v.quota_mode === 'strict' ? (
+          <p class="muted" style="margin:8px 0 0;font-size:12px">Everything they have open is cut at once, on every protocol - downloads, calls and streams stop on the spot.</p>
+        ) : (
+          <>
+            <p class="muted" style="margin:8px 0 10px;font-size:12px">
+              New connections are refused at once. What they have open may go on until one of these is reached, whichever comes first - then it is cut on every protocol.
+            </p>
+            <div class="inline-fields">
+              <Field label="At most (minutes)" hint="1-1440">
+                <input class="input" inputMode="numeric" value={String(v.quota_grace_min)} onInput={(e) => set('quota_grace_min', Number(e.currentTarget.value.replace(/[^0-9]/g, '')) || 0)} />
+              </Field>
+              <Field label="At most (GB more)" hint="1-1000">
+                <input class="input" inputMode="numeric" value={String(v.quota_grace_gb)} onInput={(e) => set('quota_grace_gb', Number(e.currentTarget.value.replace(/[^0-9]/g, '')) || 0)} />
+              </Field>
+            </div>
+          </>
+        )}
+        <div class="callout" style="margin-top:12px">
+          <Icon name="info" size="sm" />
+          <div>
+            Cutting what is open needs agent 1.3 or later on a server; older agents only refuse new connections (Settings › Updates › Upgrade all agents). WireGuard keeps no separate
+            connections: its devices are cut at once in both modes.
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="ph">
+          <span class="pn">05</span>
           <h2 class="h">Status page</h2>
           <span class="pm">every server for everyone, their own page for users</span>
         </div>
@@ -413,7 +508,7 @@ function General() {
 
       <section class="panel">
         <div class="ph">
-          <span class="pn">05</span>
+          <span class="pn">06</span>
           <h2 class="h">Cores</h2>
         </div>
         <p class="muted" style="margin-top:0">

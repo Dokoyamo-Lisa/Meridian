@@ -3,7 +3,7 @@
   "name": "Ember",
   "version": "1.0.0",
   "description": "A warm accent colour for the panel, the status page and users' pages, in every tone. Styles only: it runs nothing.",
-  "author": "Meridian",
+  "author": "Rosélune",
   "homepage": "https://github.com/Dokoyamo-Lisa/Meridian/tree/main/examples/plugins/ember-theme",
   "panel": { "css": "panel.css" },
   "status_page": { "css": "status.css" }

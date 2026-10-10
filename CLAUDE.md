@@ -1,14 +1,22 @@
-# Meridian - working on this repository
+# Rosélune - working on this repository
 
-Go panel + Go agent + Preact UI for running proxy/VPN servers (Xray: VLESS, VMess, Trojan,
-Shadowsocks, SOCKS5, HTTP over every transport with REALITY/TLS; Hysteria2; WireGuard; nftables/realm
-forwards). One supervisor signs in to the panel; users get links and their own page (`/me`); a public
-status page and country rules are built in. Read `docs/architecture.md` first; the `meridian-dev`
-skill has step-by-step procedures.
+Rosélune (called Meridian until 1.3) is a Go panel + Go agent + Preact UI for running proxy/VPN
+servers (Xray: VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP over every transport with REALITY/TLS;
+Hysteria2; WireGuard; mieru; Snell; nftables/realm forwards). The product name in everything people
+read is Rosélune; what machines and scripts know keeps `meridian`: the binaries, systemd units and
+their descriptions, paths, `MERIDIAN_*` variables, the Go module, the repository, release assets, the
+`X-Meridian` header, the plugin APIs (`window.Meridian`) and User-Agent strings.
+
+One supervisor signs in to the panel; users get links and their own page (`/me`); a public status
+page and country rules are built in. Read `docs/architecture.md` first; the `meridian-dev` skill has
+step-by-step procedures.
 
 ## Product rules (do not break these)
 
-- **Nothing pauses on its own.** Quotas, expiry and IP limits raise alerts; only a person pauses.
+- **Nothing pauses on its own.** Expiry and IP limits raise alerts; only a person pauses or resumes.
+  The one exception, by the owner's decision: a user who uses up their quota is out of data - no
+  server serves them until it starts over (next reset, higher quota, reset usage), then they are back
+  by themselves (`outofdata.go`). Servers and protocols never stop on their own.
 - **No needless restarts.** Apply changes through live APIs (Xray HandlerService, Hysteria HTTP auth,
   wgctrl, atomic nftables). Anything that would restart a core becomes "pending restart" and waits
   for an explicit click. Agent restarts and upgrades must never touch traffic.
@@ -52,16 +60,20 @@ UI only: `cd web && npm run dev` (proxies /api to 127.0.0.1:18080).
   `protocols_test.go` proves every accepted combination renders and works in at least one app.
 - Clean names with `cleanName`, notes with `cleanNote`, hosts with `normHost`; see `validate.go`.
 - The panel <-> agent contract is `internal/proto`. Any incompatible change bumps `proto.Version`.
-- Agent code must build and vet with `GOOS=linux`. Meridian supports Linux only (panel, agent, CLI); the
+- Agent code must build and vet with `GOOS=linux`. Rosélune supports Linux only (panel, agent, CLI); the
   code compiles on macOS solely so the panel can run on a development Mac - never ship or document other
   systems.
 - Tests: `internal/panel/api_test.go` has an httptest harness (`newHarness`, `browser()`, `bearer()`).
 - Generated files: `docs/openapi.json` (`make docs`), `web/dist` (`make web`). Do not edit them.
 - The UI has two pages: the panel (`web/index.html`, `web/src/main.tsx`) and the status page / users'
   page (`web/status/index.html`, `web/src/status/`, plain DOM, and `web/public/status/globe.js`).
-- The logo is the operator's (`internal/panel/brand.go`, `web/src/mark.ts`): draw it with `LogoMark`
-  (panel) or `markEl` (status page) and animate it with `animClass` / `openInto` - never hard-code the
-  umbrella. Loading screens keep their mark between `<!--logo-->` markers (the panel swaps it).
+- The logo is the operator's (`internal/panel/brand.go`, `web/src/mark.ts`): a built-in mark - the
+  rose (the default) or the umbrella, drawn from the same pieces in `brandmarks.go` and `mark.ts`
+  (`TestBuiltinMarksMatchWeb`) - or an upload. Draw it with `LogoMark` (panel) or `markEl` (status
+  page) and animate it with `animClass` / `openInto` - never hard-code a mark. Loading screens keep
+  their mark between `<!--logo-->` markers (the panel swaps it).
+- Looks: Romance is the default (`siteTones[0]`); `default_tone` "auto" follows the device (Ice or
+  Paper). A panel's settings from before 1.3 are moved once by `adoptIdentity` (identity.go).
 - Deployment is documented for AI agents in `skills/meridian-deploy/` (and `AGENTS.md`): when the
   installer, CLI or API change, update that skill and its scripts too.
 

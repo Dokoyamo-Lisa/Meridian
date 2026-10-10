@@ -1,4 +1,6 @@
-# limactl create --name meridian-test test/e2e/lima.yaml && limactl start meridian-test
+# limactl create --mount-none --name meridian-test test/e2e/lima.yaml && limactl start meridian-test
+# (--mount-none: the base template would otherwise mount your home folder into the VM; "mounts: []"
+# below does not take it away)
 base: template:ubuntu-lts
 vmType: vz
 cpus: 2
@@ -6,4 +8,7 @@ memory: "2GiB"
 disk: "20GiB"
 networks:
   - vzNAT: true
+  # a network the VMs share: a second and third VM can be the exit and relay of proxy passes
+  # (vzNAT keeps each VM to itself). With it the panel is at host.lima.internal (192.168.104.2).
+  - lima: user-v2
 mounts: []

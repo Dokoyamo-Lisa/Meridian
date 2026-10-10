@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { Client, DayTraffic, DestRow, Endpoint, PanelEvent, IPRow, Server, User, bytes, date, del, get, patch, pct, plural, post, NodeLimit } from '../api'
+import { Client, DayTraffic, DestRow, Endpoint, PanelEvent, IPRow, Server, User, bytes, date, dateTime, del, get, patch, pct, plural, post, NodeLimit } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import { Ago, Code, CopyButton, Crumb, Empty, ErrorBox, Loading, Menu, Meter, Modal, PageHead, QR, Search, Seg, StackChart, Tabs, ask, copyText, run, toast, toastError, topSeries, useAsync, usePoll } from '../ui'
@@ -146,7 +146,8 @@ export function UserPage(props: { id: number }) {
     if (ok) await act('reset-keys', 'Credentials reset - devices must refresh')
   }
   const resetUsage = async () => {
-    if (await ask({ title: 'Reset this cycle’s usage to zero?', body: <p style="margin-top:0">Total history stays.</p>, confirm: 'Reset usage' })) await act('reset-usage', 'Usage reset')
+    const back = sub.status === 'out_of_data' ? ` ${sub.name} can connect again at once.` : ''
+    if (await ask({ title: 'Reset this cycle’s usage to zero?', body: <p style="margin-top:0">Total history stays.{back}</p>, confirm: 'Reset usage' })) await act('reset-usage', 'Usage reset')
   }
   const remove = async () => {
     const ok = await ask({
@@ -220,6 +221,29 @@ export function UserPage(props: { id: number }) {
           <div>
             Paused <Ago ts={sub.paused_at} />. Devices cannot connect until you resume it.
           </div>
+        </div>
+      )}
+      {sub.status === 'out_of_data' && (
+        <div class="callout crit">
+          <Icon name="ban" size="sm" />
+          <div class="grow">
+            Out of data: {sub.name} used all of their {bytes(sub.quota, 0)}. No server lets them in until{' '}
+            {sub.next_reset > 0 ? <b>{date(sub.next_reset)}, when their data starts over</b> : <b>you give them more data</b>} - or at once when you raise their quota or reset their usage. Their link keeps
+            working and tells them why.{' '}
+            {sub.grace_until ? (
+              <>
+                What they have open may go on until <b>{dateTime(sub.grace_until)}</b> or {bytes(sub.grace_left || 0)} more, whichever comes first (loose mode) - then it is cut.
+              </>
+            ) : (
+              'Everything they had open was cut.'
+            )}
+          </div>
+          <button class="btn sm" onClick={() => setEditing(true)}>
+            Raise quota
+          </button>
+          <button class="btn sm" onClick={resetUsage}>
+            Reset usage…
+          </button>
         </div>
       )}
       {sub.note && <p class="muted" style="margin-top:-8px;white-space:pre-wrap">{sub.note}</p>}

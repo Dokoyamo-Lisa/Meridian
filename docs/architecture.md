@@ -69,8 +69,22 @@ core's live interface:
 
 Changes that genuinely need a restart (a different Xray core version, for example) are **not**
 applied on their own: the server reports them as "pending restart", the panel shows a warning, and
-the supervisor clicks **Restart now**. Nothing pauses on its own either: quotas, expiry dates and
-IP limits raise alerts and wait for a person.
+the supervisor clicks **Restart now**. Nothing pauses on its own either - with one exception: a user
+who uses up their quota is out of data, and no server serves them until it starts over (the report
+that used it up recompiles every server of the account; the next reset, a higher quota, reset usage
+or a new plan period bring them back the same way, live). Expiry dates and IP limits raise alerts
+and wait for a person; only a person pauses or resumes.
+
+A user taken off a protocol (out of data, paused, deleted, credentials reset, access narrowed) loses
+what they still had open there as well (agents 1.3 and later): Xray's connections are matched to
+their users through the access log (each accepted connection with the client's address and port)
+and the server's side of exactly those is destroyed through the kernel's socket diagnostics
+(`SOCK_DESTROY`, `internal/agent/conns`), which also ends the connection Xray opened to the site;
+Hysteria2 sessions are kicked through its API; WireGuard peers are removed and their conntrack
+entries dropped. `State.Grace` lists users whose data ran out in the supervisor's loose mode, with
+until when what they have open may stay. Xray is started with `XRAY_BUF_SPLICE=disable`, so traffic
+its zero-copy relay carries (VLESS Vision, SOCKS5, HTTP) is counted as it flows rather than when the
+connection ends.
 
 Cores run as their own services - systemd units, or OpenRC services on Alpine Linux - so restarting
 or upgrading the agent never interrupts traffic. `internal/agent/service` describes each service once
@@ -181,10 +195,10 @@ and enables the imported protocols on the same ports once it has stopped.
 
 Every five minutes the agent's health check (`internal/agent/health`) reads `/proc` and a few
 files at the lowest processor and disk priority. Its first scan records what is normal on the server
-(accounts, SSH keys, scheduled tasks, services, kernel modules, listening ports, Meridian's programs)
+(accounts, SSH keys, scheduled tasks, services, kernel modules, listening ports, Rosélune's programs)
 in the agent's data folder; later scans report what changed, plus what is bad in itself (miners,
 `ld.so.preload`, programs from temporary folders or deleted). Ports, programs and services are
-Meridian's when the state says so (protocols, WireGuard, forwards, the agent and its cores). Each
+Rosélune's when the state says so (protocols, WireGuard, forwards, the agent and its cores). Each
 finding has a stable key; findings travel in reports (`Report.Health`), numbered per baseline and
 kept on the server until a report with them is acknowledged, so none is lost or counted twice.
 

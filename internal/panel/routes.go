@@ -300,7 +300,7 @@ func (p *Panel) webApp() http.Handler {
 		if statusPage != nil && p.statusPageFor(r, "/"+clean) {
 			page, raw, which = statusPage, statusRaw, "status" // the status page, or a user's own page
 		}
-		if l := p.logoInfo(); l.Custom || l.Animation != "assemble" {
+		if l := p.logoInfo(); l.Custom || l.Mark != logoMarks[0] || l.Animation != "assemble" {
 			page = branded.get(which, l, raw) // the loading screen shows the chosen logo and animation
 		}
 		page = p.plugins.page(which, page) // the styles (and status page scripts) of plugins that are on

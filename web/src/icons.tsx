@@ -1,5 +1,5 @@
 import type { Ref } from 'preact'
-import { MarkMode, WEDGES, animClass, brand, logoSrc } from './mark'
+import { MarkMode, animClass, brand, logoSrc, markPieces } from './mark'
 // Line icons on a 24-unit grid, drawn with the current text colour.
 
 const paths: Record<string, string> = {
@@ -56,10 +56,11 @@ export function Icon({ name, size, class: cls }: { name: string; size?: 'sm'; cl
   )
 }
 
-// LogoMark is the logo: the built-in umbrella seen from above (eight panels alternating red and white),
-// or the image uploaded in Settings › Panel › Logo. mode "once" plays the chosen animation once (sign-in
-// pages), "loop" keeps playing it (loading); anim previews another animation than the saved one.
-export function LogoMark(props: { mode?: MarkMode; size?: number; label?: string; anim?: string; markRef?: Ref<any> }) {
+// LogoMark is the logo: a built-in mark - the rose (five petals, a bloom, the moon at its heart) or the
+// umbrella seen from above - or the image uploaded in Settings › Panel › Logo. mode "once" plays the
+// chosen animation once (sign-in pages), "loop" keeps playing it (loading); anim and mark preview another
+// animation or built-in mark than the saved ones.
+export function LogoMark(props: { mode?: MarkMode; size?: number; label?: string; anim?: string; mark?: string; markRef?: Ref<any> }) {
   const mode = props.mode || 'still'
   const cls = animClass(mode, props.anim)
   if (brand.custom) {
@@ -87,8 +88,8 @@ export function LogoMark(props: { mode?: MarkMode; size?: number; label?: string
       aria-label={props.label}
       aria-hidden={props.label ? undefined : 'true'}
     >
-      {WEDGES.map((w, i) => (
-        <path class={'w' + (w.white ? ' white' : '')} d={w.d} fill={w.fill} style={{ '--i': String(i), '--dx': String(w.dx), '--dy': String(w.dy) } as any} />
+      {markPieces(props.mark).map((w) => (
+        <path class={'w' + (w.white ? ' white' : '')} d={w.d} fill={w.fill} style={{ '--i': String(w.i), '--dx': String(w.dx), '--dy': String(w.dy) } as any} />
       ))}
     </svg>
   )

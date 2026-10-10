@@ -57,6 +57,8 @@ Next: [Add users](add-users.md).
 | **WireGuard** | A full VPN for laptops and phones, with the official WireGuard apps. |
 | **Shadowsocks 2022** | An app that cannot use the others. |
 | **VLESS · WebSocket · CDN** | You want the server hidden behind Cloudflare. Needs a domain on Cloudflare. |
+| **mieru** | People with the mihomo apps (Clash Verge Rev, FlClash, Mihomo Party) or Stash who need something that looks like nothing in particular. Each person gets their own port: open the whole range shown on the card, for **TCP** (or **UDP**, if you chose it). |
+| **Snell** | People with **Surge** (or Stash, a mihomo app, sing-box). Each person gets their own port: open the range shown on the card, for **TCP and UDP**. |
 
 Each one shows its own **Works** box before you save - the panel refuses any combination that would
 not work. [Setup in detail](../../docs/getting-started.md) explains every option.

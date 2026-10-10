@@ -246,11 +246,11 @@ func Stage(dataDir, file, passphrase string, check func(dbPath string) error) (I
 		}
 		defer os.Remove(src)
 	} else if !bytes.HasPrefix(head, []byte("PK\x03\x04")) {
-		return fail(errors.New("this is not a Meridian backup (neither a ZIP nor an encrypted backup)"))
+		return fail(errors.New("this is not a Rosélune backup (neither a ZIP nor an encrypted backup)"))
 	}
 	zr, err := zip.OpenReader(src)
 	if err != nil {
-		return fail(errors.New("this is not a Meridian backup (the ZIP cannot be read)"))
+		return fail(errors.New("this is not a Rosélune backup (the ZIP cannot be read)"))
 	}
 	defer zr.Close()
 	if len(zr.File) > maxEntries {
@@ -264,7 +264,7 @@ func Stage(dataDir, file, passphrase string, check func(dbPath string) error) (I
 			continue
 		}
 		if !entryOK(name) || !f.Mode().IsRegular() || seen[name] {
-			return fail(fmt.Errorf("the backup holds %q, which no Meridian backup has", truncate(name, 80)))
+			return fail(fmt.Errorf("the backup holds %q, which no Rosélune backup has", truncate(name, 80)))
 		}
 		seen[name] = true
 		limit := uint64(maxFile)
@@ -279,7 +279,7 @@ func Stage(dataDir, file, passphrase string, check func(dbPath string) error) (I
 		}
 	}
 	if !seen[manifestName] || !seen[dbName] {
-		return fail(errors.New("this is not a Meridian backup (its manifest or database is missing)"))
+		return fail(errors.New("this is not a Rosélune backup (its manifest or database is missing)"))
 	}
 	root, err := os.OpenRoot(pending)
 	if err != nil {
@@ -296,7 +296,7 @@ func Stage(dataDir, file, passphrase string, check func(dbPath string) error) (I
 	}
 	m, err := os.ReadFile(filepath.Join(pending, manifestName))
 	if err != nil || json.Unmarshal(m, &info) != nil || info.Format != Format {
-		return fail(errors.New("this is not a Meridian backup (its manifest cannot be read)"))
+		return fail(errors.New("this is not a Rosélune backup (its manifest cannot be read)"))
 	}
 	if err := check(filepath.Join(pending, dbName)); err != nil {
 		return fail(err)

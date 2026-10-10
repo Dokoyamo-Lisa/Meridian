@@ -68,7 +68,7 @@ type kindInfo struct {
 	Kind       string   `json:"kind"`
 	Label      string   `json:"label"`
 	Short      string   `json:"short"`
-	Engine     string   `json:"engine" doc:"xray | hysteria | wireguard"`
+	Engine     string   `json:"engine" doc:"xray | hysteria | wireguard | solo (mieru, Snell: a process and a port per user)"`
 	Blurb      string   `json:"blurb"`
 	Transports []string `json:"transports,omitempty" doc:"Transports this protocol can run over"`
 	Securities []string `json:"securities,omitempty" doc:"Security layers: none, tls, reality"`
@@ -99,6 +99,10 @@ var kindList = []kindInfo{
 	{Kind: subgen.KindHTTP, Label: "HTTP proxy", Short: "HTTP", Engine: "xray", Transports: []string{tRaw},
 		Securities: []string{secNone, secTLS},
 		Blurb:      "A proxy with a username and password for browsers and apps that only speak HTTP proxy. With TLS it becomes an encrypted HTTPS proxy."},
+	{Kind: subgen.KindMieru, Label: "mieru", Short: "mieru", Engine: "solo", Transports: []string{"tcp", "udp"},
+		Blurb: "Looks like random data, with no pattern to spot. Each user gets their own port and a small process on the server. Apps: Clash Verge Rev, FlClash, Mihomo Party and other mihomo apps, Stash."},
+	{Kind: subgen.KindSnell, Label: "Snell", Short: "Snell", Engine: "solo",
+		Blurb: "Surge's own protocol, fast and light (server 5, apps speak version 4). Each user gets their own port and a small process on the server. Apps: Surge, Stash, mihomo apps, sing-box."},
 }
 
 func kindOf(kind string) (kindInfo, bool) {
@@ -227,6 +231,7 @@ type protoInput struct {
 	FullTunnel  *bool   `json:"full_tunnel" doc:"WireGuard: send all traffic through the VPN"`
 	IPv6        *bool   `json:"ipv6" doc:"WireGuard: route IPv6 through the VPN too (needs IPv6 on the server and agent 0.6); off = IPv4 only, and full tunnels leave ::/0 out"`
 	Keepalive   *int    `json:"keepalive" doc:"WireGuard: seconds, 0 = off"`
+	Users       *int    `json:"users" doc:"mieru and Snell: how many people the protocol has room for - each gets their own port, from the protocol's port on (1-1000, default 50)"`
 }
 
 // applies lists the input fields a protocol accepts.
@@ -245,15 +250,26 @@ func (in *protoInput) unknownFor(kind string) []string {
 	wgOnly := in.MTU != nil || in.DNSLogging != nil || in.FullTunnel != nil || in.Keepalive != nil || in.IPv6 != nil
 	certish := in.SNI != nil || in.CertMode != nil || in.CertPEM != nil || in.KeyPEM != nil
 	switch kind {
+	case subgen.KindMieru, subgen.KindSnell:
+		otherXray := in.Path != nil || in.HostHeader != nil || in.ServiceName != nil || in.XHTTPMode != nil || in.Security != nil ||
+			in.Flow != nil || in.Fingerprint != nil || in.Target != nil || in.OwnSite != nil || in.CDN != nil || in.CDNHost != nil ||
+			in.CDNPort != nil || in.Method != nil || in.UDP != nil || in.Encryption != nil || in.EncAuth != nil
+		note(otherXray || certish || (kind == subgen.KindSnell && in.Transport != nil), "transport and TLS options")
+		note(hyOnly, "Hysteria2 options")
+		note(wgOnly, "WireGuard options")
+		return bad
 	case subgen.KindHysteria2:
 		note(xrayOnly, "transport and TLS options")
 		note(wgOnly, "WireGuard options")
+		note(in.Users != nil, "users")
 	case subgen.KindWireGuard:
 		note(xrayOnly || certish, "transport and TLS options")
 		note(hyOnly, "Hysteria2 options")
+		note(in.Users != nil, "users")
 	default:
 		note(hyOnly, "Hysteria2 options")
 		note(wgOnly, "WireGuard options")
+		note(in.Users != nil, "users")
 		if kind != subgen.KindShadowsocks {
 			note(in.Method != nil, "method")
 		}
@@ -287,6 +303,12 @@ func newSettings(kind string, in *protoInput, siblings []*Node) (json.RawMessage
 		return nil, fmt.Errorf("%s has no %s", labelOf(kind), strings.Join(bad, " or "))
 	}
 	switch kind {
+	case subgen.KindMieru, subgen.KindSnell:
+		s := soloSettings{Users: soloDefaultUsers}
+		if err := s.apply(kind, in); err != nil {
+			return nil, errStatus(400, err.Error())
+		}
+		return json.Marshal(s)
 	case subgen.KindHysteria2:
 		s := hy2Settings{SNI: defaultSelfSignedName}
 		s.CertMode = certSelf
@@ -385,6 +407,12 @@ func updateSettings(kind string, old json.RawMessage, in *protoInput) (json.RawM
 			return nil, err
 		}
 		s.apply(in)
+		return json.Marshal(s)
+	case subgen.KindMieru, subgen.KindSnell:
+		s := parseSolo(old)
+		if err := s.apply(kind, in); err != nil {
+			return nil, errStatus(400, err.Error())
+		}
 		return json.Marshal(s)
 	}
 	s, err := parseXray(old)
@@ -791,7 +819,7 @@ func (c *certSettings) settle(in *protoInput, sni, oldSNI, oldMode string) error
 		// links check an own certificate against the public authorities and never turn that off: a
 		// self-signed one would work in no app (one stored before stays editable, with a note)
 		if chain := certChain(c.CertPEM); (pasted || oldMode != certCustom) && len(chain) > 0 && selfIssued(chain[0]) {
-			return errors.New("this certificate is self-signed - no app can check it: choose Self-signed instead (Meridian makes one, and apps pin it), or use a certificate from a public authority such as Let's Encrypt")
+			return errors.New("this certificate is self-signed - no app can check it: choose Self-signed instead (Rosélune makes one, and apps pin it), or use a certificate from a public authority such as Let's Encrypt")
 		}
 	case certShared:
 		// the certificate lives in the panel's store (checked by the API against the name)
@@ -1064,6 +1092,9 @@ func publicSettings(kind string, raw json.RawMessage) map[string]any {
 
 // nodeNets says which transports a protocol listens on.
 func nodeNets(kind string, raw json.RawMessage) (tcp, udp bool) {
+	if isSolo(kind) {
+		return soloNets(kind, raw)
+	}
 	switch kind {
 	case subgen.KindHysteria2, subgen.KindWireGuard:
 		return false, true
@@ -1088,6 +1119,9 @@ func netLabel(tcp, udp bool) string {
 
 // preferredPorts are the usual ports for a protocol, best first.
 func preferredPorts(kind string, raw json.RawMessage) []int {
+	if isSolo(kind) { // the first of the users' ports
+		return []int{30000, 31000, 32000, 33000, 34000, 35000, 40000, 45000, 50000, 55000}
+	}
 	switch kind {
 	case subgen.KindHysteria2:
 		return []int{443, 8443, 4443}
@@ -1545,7 +1579,7 @@ func passSSKey(password, method string) string {
 }
 
 // canExit says whether a protocol can be the far end of a proxy pass.
-func canExit(kind string) bool { return kind != subgen.KindWireGuard && kind != "" }
+func canExit(kind string) bool { return kind != subgen.KindWireGuard && kind != "" && !isSolo(kind) }
 
 func nz(s, d string) string {
 	if s == "" {
@@ -1772,6 +1806,9 @@ func clientEndpoint(n *Node, srv *Server, c creds, peer *wgPeer, name string) (s
 
 // endpoint resolves a node for one subscription.
 func endpoint(n *Node, srv *Server, sub *Sub, peer *wgPeer, name string, over map[int64]creds) (subgen.Endpoint, error) {
+	if isSolo(n.Kind) { // the protocol's first port; endpointsFor gives each user theirs
+		return soloEndpoint(n, srv, sub, n.Port, name), nil
+	}
 	var s *xraySettings
 	if n.Kind != subgen.KindHysteria2 && n.Kind != subgen.KindWireGuard {
 		var err error
@@ -1784,6 +1821,15 @@ func endpoint(n *Node, srv *Server, sub *Sub, peer *wgPeer, name string, over ma
 
 // protocolLabel is a short name for a node in apps: "REALITY", "VLESS WS TLS", "Trojan gRPC", ...
 func protocolLabel(kind string, raw json.RawMessage) string {
+	switch kind {
+	case subgen.KindMieru:
+		if parseSolo(raw).Transport == "udp" {
+			return "mieru UDP"
+		}
+		return "mieru"
+	case subgen.KindSnell:
+		return "Snell"
+	}
 	switch kind {
 	case subgen.KindHysteria2:
 		return "Hy2"
@@ -1912,6 +1958,23 @@ func protocolNotes(kind string, raw json.RawMessage, acmePort int) []string {
 		return notes
 	case subgen.KindWireGuard:
 		return []string{"Uses UDP: open the port for UDP in the server provider's firewall."}
+	case subgen.KindMieru, subgen.KindSnell:
+		ss := parseSolo(raw)
+		nets := "TCP"
+		switch {
+		case kind == subgen.KindSnell:
+			nets = "TCP and UDP"
+		case ss.Transport == "udp":
+			nets = "UDP"
+		}
+		out := []string{
+			fmt.Sprintf("Every user gets their own port and a small process (about 10-15 MB of memory each): room for %d users, on the %d ports from this protocol's port on. Open that range for %s in the server provider's firewall.", ss.Users, ss.Users, nets),
+			"Each user's usage, speed limit and cut are exact: their port is theirs alone.",
+		}
+		if kind == subgen.KindMieru && ss.Transport == "udp" {
+			out = append(out, "Users with a speed limit do not get mieru over UDP - it stalls under a limit; their links leave it out. Give them mieru over TCP, which keeps to limits.")
+		}
+		return out
 	}
 	s, err := parseXray(raw)
 	if err != nil {
@@ -1967,6 +2030,9 @@ func hy2Password(sub *Sub) string { return sub.Secret }
 
 // regenKeys replaces a protocol's key material and keeps every choice the admin made.
 func regenKeys(kind string, raw json.RawMessage) (json.RawMessage, error) {
+	if isSolo(kind) { // nothing of its own: each user's key comes from their secret
+		return raw, nil
+	}
 	switch kind {
 	case subgen.KindHysteria2:
 		var s hy2Settings

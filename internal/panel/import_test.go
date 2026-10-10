@@ -28,7 +28,7 @@ func TestImportKeepsCredentials(t *testing.T) {
 					{Name: "bob", ID: "22222222-2222-4222-8222-222222222222", Flow: "xtls-rprx-vision"}}},
 			{Tag: "ss", Protocol: "shadowsocks", Port: 8388, Method: "2022-blake3-aes-128-gcm", ServerKey: "c2VydmVyLWtleS0xNmJ5dA==",
 				Users: []scan.User{{Name: "bob", Password: "dXNlci1rZXktMTZieXRlcw=="}}},
-			{Tag: "kcp", Protocol: "vless", Port: 9000, Transport: "kcp", Note: "Meridian does not support the kcp transport"},
+			{Tag: "kcp", Protocol: "vless", Port: 9000, Transport: "kcp", Note: "Rosélune does not support the kcp transport"},
 		}}}}
 	raw, _ := json.Marshal(res)
 	if _, err := h.p.db.Exec1(`INSERT INTO server_scans (server_id, at, data) VALUES (?, ?, ?)`, sid, now(), string(raw)); err != nil {
@@ -217,7 +217,7 @@ func TestImportSaysWhatChanges(t *testing.T) {
 		{Tag: "h", Protocol: "hysteria2", Port: 443, SNI: "proxy.example.com", CertPEM: certPEM, KeyPEM: keyPEM,
 			Users: []scan.User{{Name: "a", Password: "pw-123456"}}},
 	} {
-		if _, _, why, err := importSettings(in); err != nil || !strings.Contains(why, "Meridian does not renew it") {
+		if _, _, why, err := importSettings(in); err != nil || !strings.Contains(why, "Rosélune does not renew it") {
 			t.Errorf("%s: certificate from files: %v %q", in.Tag, err, why)
 		}
 	}

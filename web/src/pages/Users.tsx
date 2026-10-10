@@ -8,7 +8,7 @@ import { Limits, LimitFields, Plans, limitsBody, limitsOf, limitsSummary } from 
 import { ScopePicker, ScopeState, scopeBody, scopeState } from './ScopePicker'
 
 export const flagText: Record<string, [string, string]> = {
-  over_quota: ['Over quota', 'crit'],
+  over_quota: ['Out of data', 'crit'],
   near_quota: ['Near quota', 'warn'],
   expired: ['Expired', 'crit'],
   expiring: ['Expiring', 'warn'],
@@ -17,12 +17,25 @@ export const flagText: Record<string, [string, string]> = {
 
 export function UserStatus(props: { user: User }) {
   const s = props.user
+  const out = s.status === 'out_of_data' // suspended by itself until the data starts over
   return (
     <span class="row wrap" style="gap:5px">
-      {s.paused ? <span class="badge warn">Paused</span> : s.online_ips > 0 ? <span class="badge good">Online</span> : <span class="badge">Active</span>}
-      {s.flags.map((f) => (
-        <span class={'badge ' + (flagText[f]?.[1] || '')}>{flagText[f]?.[0] || f}</span>
-      ))}
+      {s.paused ? (
+        <span class="badge warn">Paused</span>
+      ) : out ? (
+        <span class="badge crit" title={s.next_reset > 0 ? `No server serves them until ${date(s.next_reset)}, when their data starts over` : 'No server serves them until you give them more data'}>
+          Out of data
+        </span>
+      ) : s.online_ips > 0 ? (
+        <span class="badge good">Online</span>
+      ) : (
+        <span class="badge">Active</span>
+      )}
+      {s.flags
+        .filter((f) => !(out && f === 'over_quota'))
+        .map((f) => (
+          <span class={'badge ' + (flagText[f]?.[1] || '')}>{flagText[f]?.[0] || f}</span>
+        ))}
     </span>
   )
 }
@@ -75,13 +88,14 @@ function UserList() {
     online: all.filter((s) => s.online_ips > 0).length,
     flagged: all.filter((s) => s.flags.length > 0).length,
     paused: all.filter((s) => s.paused).length,
+    out: all.filter((s) => s.status === 'out_of_data').length,
   }
 
   return (
     <>
       <PageHead
         title="Users"
-        sub={list.data ? `${all.length} total · ${counts.online} online now${counts.paused ? ` · ${counts.paused} paused` : ''}` : ' '}
+        sub={list.data ? `${all.length} total · ${counts.online} online now${counts.paused ? ` · ${counts.paused} paused` : ''}${counts.out ? ` · ${counts.out} out of data` : ''}` : ' '}
         actions={
           <>
             {all.length > 0 && <Search value={q} onInput={setQ} placeholder="Find a user" />}
@@ -395,7 +409,8 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
         <div class="callout">
           <Icon name="info" size="sm" />
           <div>
-            The quota and the end date only raise alerts - pausing is always your click. A speed limit, and turning extra devices away, are enforced by the servers: those devices keep working, just slower or not at
+            When a user uses up their quota, no server serves them until their data starts over - at the next reset, or at once when you raise the quota or reset their usage. They are back by themselves.
+            The end date only raises an alert: pausing is always your click. A speed limit, and turning extra devices away, are enforced by the servers: those devices keep working, just slower or not at
             all beyond the limit.
           </div>
         </div>

@@ -193,7 +193,7 @@ type portalMe struct {
 	ID         int64            `json:"id"`
 	Name       string           `json:"name"`
 	Username   string           `json:"username"`
-	Status     string           `json:"status" doc:"active | paused"`
+	Status     string           `json:"status" doc:"active | paused | out_of_data (all of this cycle's data is used: the servers let the user in again when it starts over, at next_reset)"`
 	Flags      []string         `json:"flags"`
 	Link       string           `json:"link" doc:"The user's subscription link"`
 	Clients    []subgen.Client  `json:"clients" doc:"One-tap import links"`
@@ -234,16 +234,16 @@ type portalWG struct {
 func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) error {
 	ctx := r.Context()
 	set := p.settings()
-	me := portalMe{SiteTitle: set.SiteTitle, Timezone: p.loc().String(), ID: s.ID, Name: s.Name, Username: s.Login, Status: "active",
+	me := portalMe{SiteTitle: set.SiteTitle, Timezone: p.loc().String(), ID: s.ID, Name: s.Name, Username: s.Login, Status: userStatus(s),
 		Link: p.subBase(r) + "/s/" + s.Token, Quota: s.Quota, Used: usage{s.CycleUp, s.CycleDown}, Counted: s.Used(), CountMode: nz(s.CountMode, "both"),
 		CycleStart: s.CycleStart, ExpiresAt: s.ExpiresAt, IPLimit: s.IPLimit, Total: usage{s.TotalUp, s.TotalDown},
 		Devices: []portalDevice{}, Servers: []portalServer{}, Days: []portalDay{}, WireGuard: []portalWG{}}
-	if s.Paused {
-		me.Status = "paused"
-	} else if eps, err := p.endpointsFor(ctx, s); err == nil {
-		for _, e := range eps {
-			if e.WG != nil {
-				me.WireGuard = append(me.WireGuard, portalWG{Name: e.Name, URL: fmt.Sprintf("%s/wg/%d.conf", me.Link, e.NodeID), Conf: subgen.WGConf(e)})
+	if !s.Paused {
+		if eps, err := p.endpointsFor(ctx, s); err == nil {
+			for _, e := range eps {
+				if e.WG != nil {
+					me.WireGuard = append(me.WireGuard, portalWG{Name: e.Name, URL: fmt.Sprintf("%s/wg/%d.conf", me.Link, e.NodeID), Conf: subgen.WGConf(e)})
+				}
 			}
 		}
 	}

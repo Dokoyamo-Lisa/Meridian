@@ -156,7 +156,7 @@ func Latest(ctx context.Context, current string) (*Release, error) {
 	}
 	v, ok := ParseVersion(gh.Tag)
 	if !ok || gh.Draft || gh.Pre {
-		return nil, fmt.Errorf("the newest release %q is not a version Meridian installs", gh.Tag)
+		return nil, fmt.Errorf("the newest release %q is not a version Rosélune installs", gh.Tag)
 	}
 	rel := &Release{Version: fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]), URL: gh.URL, Published: gh.Published.Unix(),
 		assets: map[string]string{}}
@@ -294,7 +294,7 @@ func Verify(sums, sig []byte) error {
 			return nil
 		}
 	}
-	return errors.New("the release is not signed by Meridian's release key - it was not installed")
+	return errors.New("the release is not signed by Rosélune's release key - it was not installed")
 }
 
 func keys() []ed25519.PublicKey {

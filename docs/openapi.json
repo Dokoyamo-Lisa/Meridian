@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Meridian API",
-    "version": "1.2.0",
+    "title": "Rosélune API",
+    "version": "1.3.0",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -39,7 +39,7 @@
       "name": "Certificates"
     },
     {
-      "description": "The people you serve: each has a subscription link and can sign in to see their own usage. Limits raise alerts only.",
+      "description": "The people you serve: each has a subscription link and can sign in to see their own usage. A used-up quota suspends a user until their data starts over; other limits raise alerts.",
       "name": "Users"
     },
     {
@@ -1308,7 +1308,7 @@
           "Servers"
         ],
         "summary": "Delete a server",
-        "description": "The agent removes everything Meridian set up and uninstalls itself. Everyone on the server is disconnected.",
+        "description": "The agent removes everything Rosélune set up and uninstalls itself. Everyone on the server is disconnected.",
         "operationId": "deleteServersId",
         "parameters": [
           {
@@ -2341,7 +2341,7 @@
           "Import"
         ],
         "summary": "Import protocols found by the scan",
-        "description": "Each detected user becomes a Meridian user (or is matched by name) and keeps their credentials, keys and certificate. With take_over the old service is stopped and the same ports are served, so devices keep working; without it nothing is stopped and busy ports are moved.",
+        "description": "Each detected user becomes a Rosélune user (or is matched by name) and keeps their credentials, keys and certificate. With take_over the old service is stopped and the same ports are served, so devices keep working; without it nothing is stopped and busy ports are moved.",
         "operationId": "postServersIdImport",
         "parameters": [
           {
@@ -2809,7 +2809,7 @@
           "Users"
         ],
         "summary": "Create users",
-        "description": "Each user gets a subscription link and, unless sign_in is false, a username and password for their own page. A generated password is returned once. count \u003e 1 creates name-01, name-02, ... Quota, expiry and IP limit only raise alerts; nothing is paused automatically.",
+        "description": "Each user gets a subscription link and, unless sign_in is false, a username and password for their own page. A generated password is returned once. count \u003e 1 creates name-01, name-02, ... A user who uses up their quota is suspended by itself (status out_of_data) until their data starts over - the next reset, a higher quota, a new period on a plan or reset-usage; expiry and the IP limit only raise alerts.",
         "operationId": "postUsers",
         "requestBody": {
           "content": {
@@ -2984,7 +2984,7 @@
           "Users"
         ],
         "summary": "Pause, resume, new link, new credentials, reset usage, sign out or new password",
-        "description": "pause disconnects every device now; resume lets them back; rotate-link replaces the link (old one stops working); reset-keys gives new credentials (devices must refresh); reset-usage zeroes this cycle; sign-out ends the user's sessions on their own page; new-password generates a sign-in password (and a username if there is none) and returns it once.",
+        "description": "pause disconnects every device now; resume lets them back (a user whose data is used up stays out until it starts over); rotate-link replaces the link (old one stops working); reset-keys gives new credentials (devices must refresh); reset-usage zeroes this cycle (a user whose data was used up can connect again at once); sign-out ends the user's sessions on their own page; new-password generates a sign-in password (and a username if there is none) and returns it once.",
         "operationId": "postUsersIdAction",
         "parameters": [
           {
@@ -4486,7 +4486,7 @@
           "Routing"
         ],
         "summary": "Add a subscription link",
-        "description": "Read at once and then every every_hours hours (https only, public addresses only, 4 MB at most). Share links, base64, Clash / mihomo YAML and sing-box configurations are read alike; each node is written into Meridian's own form, so every app gets it in a form it understands. Its nodes become external nodes that follow the provider: new ones are added, changed ones updated in place (rules and protocols keep using them), and ones that left are removed - or kept, marked, while a protocol, rule or load balancer still names them. A refresh that fails, or finds no usable node, changes nothing. offer gives the nodes to users too (not WireGuard: one key cannot serve many devices); Meridian cannot count or limit what goes through them. The link is saved even when the first read fails (error says why).",
+        "description": "Read at once and then every every_hours hours (https only, public addresses only, 4 MB at most). Share links, base64, Clash / mihomo YAML and sing-box configurations are read alike; each node is written into Rosélune's own form, so every app gets it in a form it understands. Its nodes become external nodes that follow the provider: new ones are added, changed ones updated in place (rules and protocols keep using them), and ones that left are removed - or kept, marked, while a protocol, rule or load balancer still names them. A refresh that fails, or finds no usable node, changes nothing. offer gives the nodes to users too (not WireGuard: one key cannot serve many devices); Rosélune cannot count or limit what goes through them. The link is saved even when the first read fails (error says why).",
         "operationId": "postExternalSources",
         "requestBody": {
           "content": {
@@ -5001,7 +5001,7 @@
           "Health"
         ],
         "summary": "What the servers' health checks found",
-        "description": "Signs that a server was broken into or is abused - crypto-miners, programs in temporary folders, new ports, accounts, SSH keys, scheduled tasks, services, kernel modules, SSH sign-ins, unexplained traffic, Meridian's programs changed - most serious first. Nothing is ever stopped or blocked because of a risk: they only tell.",
+        "description": "Signs that a server was broken into or is abused - crypto-miners, programs in temporary folders, new ports, accounts, SSH keys, scheduled tasks, services, kernel modules, SSH sign-ins, unexplained traffic, Rosélune's programs changed - most serious first. Nothing is ever stopped or blocked because of a risk: they only tell.",
         "operationId": "getRisks",
         "parameters": [
           {
@@ -6370,7 +6370,7 @@
           "Settings"
         ],
         "summary": "Install the newest release",
-        "description": "The panel downloads the release, checks its signature (Meridian's release key) and checksum, backs up the database and hands it to the updater service, which checks it again and installs it. Proxies keep running; the panel restarts once. With agents (the default), every server's agent is upgraded afterwards - nobody is disconnected. Needs a panel installed with install-panel.sh.",
+        "description": "The panel downloads the release, checks its signature (Rosélune's release key) and checksum, backs up the database and hands it to the updater service, which checks it again and installs it. Proxies keep running; the panel restarts once. With agents (the default), every server's agent is upgraded afterwards - nobody is disconnected. Needs a panel installed with install-panel.sh.",
         "operationId": "postUpdateInstall",
         "requestBody": {
           "content": {
@@ -7227,7 +7227,7 @@
             "type": "string"
           },
           "engine": {
-            "description": "xray | hysteria | wireguard",
+            "description": "xray | hysteria | wireguard | solo (mieru, Snell: a process and a port per user)",
             "type": "string"
           },
           "blurb": {
@@ -7500,6 +7500,10 @@
             "type": "integer"
           },
           "paused": {
+            "type": "integer"
+          },
+          "out_of_data": {
+            "description": "Users whose data is used up: no server serves them until it starts over",
             "type": "integer"
           },
           "online_users": {
@@ -8520,6 +8524,12 @@
           },
           "share": {
             "type": "boolean"
+          },
+          "cut": {
+            "type": "boolean"
+          },
+          "solo": {
+            "type": "boolean"
           }
         }
       },
@@ -9327,6 +9337,10 @@
           "keepalive": {
             "description": "WireGuard: seconds, 0 = off",
             "type": "integer"
+          },
+          "users": {
+            "description": "mieru and Snell: how many people the protocol has room for - each gets their own port, from the protocol's port on (1-1000, default 50)",
+            "type": "integer"
           }
         }
       },
@@ -9847,6 +9861,11 @@
             "description": "When a protocol's limit is used up: '' = an alert only; stop = that protocol stops serving the user until the cycle starts over",
             "type": "string"
           },
+          "out_at": {
+            "description": "When the user's data ran out (Unix seconds); 0 = it has not",
+            "format": "int64",
+            "type": "integer"
+          },
           "node_limits": {
             "description": "(One user) each limit per protocol with what was used of it this cycle",
             "items": {
@@ -9869,11 +9888,21 @@
             "type": "string"
           },
           "status": {
-            "description": "active | paused",
+            "description": "active | paused | out_of_data (the quota is used up: no server serves the user until their data starts over - the next reset, a higher quota or reset-usage)",
             "type": "string"
           },
+          "grace_until": {
+            "description": "Out of data in loose mode: until when what the user has open may go on (Unix seconds) - unless grace_left runs out first",
+            "format": "int64",
+            "type": "integer"
+          },
+          "grace_left": {
+            "description": "Out of data in loose mode: bytes what the user has open may still use",
+            "format": "int64",
+            "type": "integer"
+          },
           "flags": {
-            "description": "Soft limits reached: over_quota, near_quota, expired, expiring, over_ip_limit",
+            "description": "Limits reached: over_quota (the data is used up: status out_of_data, unless paused), near_quota, expired, expiring, over_ip_limit (these only raise alerts)",
             "items": {
               "type": "string"
             },
@@ -10724,7 +10753,7 @@
             "type": "string"
           },
           "status": {
-            "description": "active | paused",
+            "description": "active | paused | out_of_data (all of this cycle's data is used: the servers let the user in again when it starts over, at next_reset)",
             "type": "string"
           },
           "flags": {
@@ -12028,7 +12057,7 @@
             "type": "string"
           },
           "client": {
-            "description": "Which app the panel asks as: '' (Meridian), clash, singbox or v2rayn",
+            "description": "Which app the panel asks as: '' (Rosélune), clash, singbox or v2rayn",
             "type": "string"
           },
           "every_hours": {
@@ -12178,7 +12207,7 @@
             "type": "string"
           },
           "client": {
-            "description": "Ask as: '' (Meridian), clash, singbox or v2rayn - providers often answer each app in its own form; every form is read",
+            "description": "Ask as: '' (Rosélune), clash, singbox or v2rayn - providers often answer each app in its own form; every form is read",
             "type": "string"
           },
           "every_hours": {
@@ -12190,7 +12219,7 @@
             "type": "boolean"
           },
           "offer": {
-            "description": "Give its nodes to users too: they appear in users' subscriptions, written for each app by Meridian. Meridian cannot count or limit what users send through them",
+            "description": "Give its nodes to users too: they appear in users' subscriptions, written for each app by Rosélune. Rosélune cannot count or limit what users send through them",
             "type": "boolean"
           },
           "offer_to": {
@@ -12760,12 +12789,20 @@
             "description": "realm version new servers install",
             "type": "string"
           },
+          "mita_version": {
+            "description": "mieru server (mita) version servers install for mieru",
+            "type": "string"
+          },
+          "snell_version": {
+            "description": "snell-server version servers install for Snell - one Rosélune can verify (5.0.1)",
+            "type": "string"
+          },
           "mirror": {
             "description": "Agents may download cores through the panel",
             "type": "boolean"
           },
           "auto_update": {
-            "description": "Install new Meridian releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts",
+            "description": "Install new Rosélune releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts",
             "type": "boolean"
           },
           "auto_relay": {
@@ -12833,12 +12870,28 @@
             "type": "integer"
           },
           "default_tone": {
-            "description": "The look pages open with for people who have not picked one themselves (the palette button): ice, celadon, ink, paper, mist, umbrella or romance; empty = Ice, or Paper on a device set to light",
+            "description": "The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist - or auto: Ice, or Paper on a device set to light",
+            "type": "string"
+          },
+          "logo_mark": {
+            "description": "The built-in logo, shown while no logo is uploaded: rose (Rosélune's own, the default) | umbrella",
             "type": "string"
           },
           "logo_animation": {
-            "description": "How the logo moves while pages load and when someone signs in: assemble (the built-in umbrella's panels slide in; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo",
+            "description": "How the logo moves while pages load and when someone signs in: assemble (the built-in logo's pieces fly in - the rose's petals, the umbrella's panels; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo",
             "type": "string"
+          },
+          "quota_mode": {
+            "description": "When a user's data runs out, on every protocol: strict (the default) = everything they have open is cut at once and new connections are refused; loose = new connections are refused at once, and what they have open may go on until quota_grace_min minutes have passed or quota_grace_gb GB more were used, whichever comes first - then it is cut. Cutting what is open needs agents 1.3 or later (older ones only refuse new connections); WireGuard devices are cut at once in both modes",
+            "type": "string"
+          },
+          "quota_grace_min": {
+            "description": "Loose mode: minutes what is open may go on (1-1440, default 10)",
+            "type": "integer"
+          },
+          "quota_grace_gb": {
+            "description": "Loose mode: GB more what is open may use (1-1000, default 5)",
+            "type": "integer"
           }
         }
       },
@@ -12846,11 +12899,15 @@
         "type": "object",
         "properties": {
           "custom": {
-            "description": "An uploaded logo replaces the built-in umbrella",
+            "description": "An uploaded logo replaces the built-in one",
             "type": "boolean"
           },
           "v": {
             "description": "Changes whenever the logo does: add it to /brand/logo?v= so browsers fetch the new one",
+            "type": "string"
+          },
+          "mark": {
+            "description": "The built-in logo, shown while none is uploaded: rose | umbrella",
             "type": "string"
           },
           "animation": {

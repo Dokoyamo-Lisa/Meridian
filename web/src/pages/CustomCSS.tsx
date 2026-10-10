@@ -40,7 +40,7 @@ export function CustomCSSSettings() {
         <h2 class="h">Your own styles (CSS)</h2>
       </div>
       <p class="muted" style="margin-top:0">
-        Added after Meridian's own styles, so they win. The colours are variables you can set, e.g. <span class="mono">:root {'{'} --accent: #e0673a; {'}'}</span>. Style sheets cannot load images or fonts
+        Added after Rosélune's own styles, so they win. The colours are variables you can set, e.g. <span class="mono">:root {'{'} --accent: #e0673a; {'}'}</span>. Style sheets cannot load images or fonts
         from other sites; use <span class="mono">data:</span> addresses for those. Plugins can bring whole themes.
       </p>
       {err && <ErrorBox error={err} />}

@@ -129,6 +129,11 @@ func usedPorts(st *proto.State, who string, ps portSet) {
 	for _, f := range st.Forwards {
 		ps.add(f.ListenPort, f.ListenPort, who)
 	}
+	for _, n := range st.Solo {
+		for _, u := range n.Users {
+			ps.add(u.Port, u.Port, who)
+		}
+	}
 }
 
 // publicIP says whether an address is one a guest may send traffic to: not this host's loopback, a
@@ -501,11 +506,13 @@ func mergeShared(home *proto.State, guests []guestState, reserved []int) (*proto
 		baseObj = map[string]any{}
 	}
 	out.Hysteria = slices.Clone(home.Hysteria)
+	out.Solo = slices.Clone(home.Solo) // mieru and Snell: the home panel's alone
 	out.WireGuard = slices.Clone(home.WireGuard)
 	out.Forwards = slices.Clone(home.Forwards)
 	out.Certs = slices.Clone(home.Certs)
 	out.Speed = slices.Clone(home.Speed)
 	out.Refuse = slices.Clone(home.Refuse)
+	out.Grace = slices.Clone(home.Grace)
 	out.Ping = slices.Clone(home.Ping)
 
 	var gOuts, gRules, gBals []any
@@ -517,6 +524,9 @@ func mergeShared(home *proto.State, guests []guestState, reserved []int) (*proto
 		slot, st := g.slot, g.st
 		who := "another panel this server is shared with"
 		note := func(format string, a ...any) { errs[slot] = append(errs[slot], fmt.Sprintf(format, a...)) }
+		if len(st.Solo) > 0 {
+			note("mieru and Snell are not available on a server shared with another panel - they are left out")
+		}
 		var inTags []string
 		if st.Xray != nil {
 			for _, in := range st.Xray.Inbounds {
@@ -641,6 +651,10 @@ func mergeShared(home *proto.State, guests []guestState, reserved []int) (*proto
 		for _, r := range st.Refuse {
 			r.Sub = toGuest(slot, r.Sub)
 			out.Refuse = append(out.Refuse, r)
+		}
+		for _, g := range st.Grace {
+			g.Sub = toGuest(slot, g.Sub)
+			out.Grace = append(out.Grace, g)
 		}
 		for _, pt := range st.Ping { // measured only to public addresses (the agent checks each round)
 			pt.ID = toGuest(slot, pt.ID)

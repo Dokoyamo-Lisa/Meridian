@@ -387,7 +387,8 @@ func (p *Panel) apiTestBackups(w http.ResponseWriter, r *http.Request, a *Accoun
 	ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
 	defer cancel()
 	name := ".meridian-write-test-" + randToken(6)
-	if err := rem.Put(ctx, name, strings.NewReader("Meridian checks that it can write here."), 39); err != nil {
+	const probe = "Rosélune checks that it can write here."
+	if err := rem.Put(ctx, name, strings.NewReader(probe), int64(len(probe))); err != nil { // bytes, not letters
 		return errStatus(http.StatusBadGateway, err.Error())
 	}
 	if _, err := rem.List(ctx); err != nil {
@@ -553,7 +554,7 @@ func (p *Panel) apiRestoreBackup(w http.ResponseWriter, r *http.Request, a *Acco
 		return errStatus(http.StatusBadRequest, err.Error())
 	}
 	made := time.Unix(info.CreatedAt, 0).In(p.loc()).Format("2 Jan 2006 15:04")
-	p.event(a.ID, "warn", "backup_restore", 0, 0, a.ID, fmt.Sprintf("%s is restoring the backup %s (made %s by Meridian %s) - the panel restarts with it",
+	p.event(a.ID, "warn", "backup_restore", 0, 0, a.ID, fmt.Sprintf("%s is restoring the backup %s (made %s by Rosélune %s) - the panel restarts with it",
 		a.Username, truncate(cleanName(from, 120), 120), made, nz(info.Version, "?")), nil)
 	writeJSON(w, http.StatusAccepted, restoreResult{Restarting: true, Backup: info,
 		Message: "The panel restarts now and comes back with the backup in a few seconds. The servers keep running; they get the restored configuration when they reconnect."})
@@ -592,6 +593,6 @@ func restartSelf() {
 // NoteRestore records, in the restored database, that a backup was restored at startup.
 func (p *Panel) NoteRestore(info backup.Info) {
 	made := time.Unix(info.CreatedAt, 0).In(p.loc()).Format("2 Jan 2006 15:04")
-	p.event(0, "warn", "backup_restored", 0, 0, 0, fmt.Sprintf("Restored the backup made %s by Meridian %s - what the panel had before is kept in %s",
+	p.event(0, "warn", "backup_restored", 0, 0, 0, fmt.Sprintf("Restored the backup made %s by Rosélune %s - what the panel had before is kept in %s",
 		made, nz(info.Version, "?"), filepath.Join(p.cfg.DataDir, "before-restore-*")), nil)
 }

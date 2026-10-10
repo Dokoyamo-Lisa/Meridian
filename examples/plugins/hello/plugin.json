@@ -3,7 +3,7 @@
   "name": "Hello",
   "version": "1.0.0",
   "description": "An example of every part of a plugin: it counts what happens in the panel, puts a star before the entries of users' subscriptions and the servers on the status page, and adds a page, an API route, an MCP tool and a timer.",
-  "author": "Meridian",
+  "author": "Rosélune",
   "homepage": "https://github.com/Dokoyamo-Lisa/Meridian/tree/main/examples/plugins/hello",
   "panel": { "js": "panel.js" },
   "status_page": { "js": "status.js" },

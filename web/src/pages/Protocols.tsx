@@ -522,6 +522,14 @@ export function ProtocolCard(props: {
   if (st.hop_ports) facts.push(['Port hopping', <span class="mono ellipsis">UDP {st.hop_ports}</span>])
   if (n.kind === 'shadowsocks') facts.push(['Cipher', <span class="ellipsis">{st.method}</span>])
   if (n.kind === 'wireguard') facts.push(['Network', <span class="mono ellipsis">{st.subnet4}</span>])
+  if (n.kind === 'mieru' || n.kind === 'snell')
+    facts.push([
+      "Users' ports",
+      <span class="mono ellipsis">
+        {n.port} - {n.port + (Number(st.users) || 50) - 1}
+        <span class="faint"> · {n.kind === 'snell' ? 'TCP and UDP' : String(st.transport || 'tcp').toUpperCase()} · one each</span>
+      </span>,
+    ])
   if (n.pass_node > 0 || n.pass_ext > 0)
     facts.push([
       'Proxy pass',
@@ -659,6 +667,8 @@ interface Draft {
   enc_auth: string
   hop: boolean
   hop_ports: string
+  users: string // mieru, Snell: how many users it has room for (a port each)
+  mtransport: 'tcp' | 'udp' // mieru
 }
 
 function draftFrom(kind: string, st: Record<string, any> | undefined): Draft {
@@ -697,6 +707,8 @@ function draftFrom(kind: string, st: Record<string, any> | undefined): Draft {
     enc_auth: s.enc_auth || 'x25519',
     hop: !!s.hop_ports,
     hop_ports: s.hop_ports || '20000-30000',
+    users: s.users ? String(s.users) : '50',
+    mtransport: kind === 'mieru' && s.transport === 'udp' ? 'udp' : 'tcp',
   }
 }
 
@@ -708,6 +720,8 @@ function vision(kind: string, d: Draft) {
 // settingsFor is what the API gets for a draft - only the fields this protocol uses.
 function settingsFor(kind: string, d: Draft, editing: boolean): Record<string, unknown> {
   if (kind === 'wireguard') return { mtu: Number(d.mtu) || 1420, dns_logging: d.dns_logging, full_tunnel: d.full_tunnel, keepalive: Number(d.keepalive) || 0, ipv6: d.ipv6 }
+  if (kind === 'mieru') return { users: Number(d.users) || 50, transport: d.mtransport }
+  if (kind === 'snell') return { users: Number(d.users) || 50 }
   if (kind === 'hysteria2') {
     const o: Record<string, unknown> = {
       sni: d.sni.trim(),
@@ -769,6 +783,8 @@ const presets: { id: string; title: string; text: string; kind: string; d: Parti
   { id: 'ss', title: 'Shadowsocks 2022', text: 'Simple and supported everywhere. TCP + UDP.', kind: 'shadowsocks', d: {} },
   { id: 'wg', title: 'WireGuard', text: 'A full VPN for laptops and phones.', kind: 'wireguard', d: {} },
   { id: 'socks', title: 'SOCKS5 / HTTP proxy', text: 'For apps that only speak a plain proxy.', kind: 'socks', d: {} },
+  { id: 'mieru', title: 'mieru', text: 'Looks like random data. Each user gets their own port. mihomo apps and Stash.', kind: 'mieru', d: { mtransport: 'tcp', users: '50' } },
+  { id: 'snell', title: 'Snell', text: "Surge's own protocol. Each user gets their own port. Surge, Stash, mihomo apps, sing-box.", kind: 'snell', d: { users: '50' } },
 ]
 
 export function ProtocolEditor(props: { servers: Server[]; server?: Server; node?: NodeView; onClose: () => void; onSaved: () => void }) {
@@ -974,7 +990,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
         .filter((x) => x.id !== serverId)
         .flatMap((x) =>
           x.nodes
-            .filter((e) => e.kind !== 'wireguard' && e.id !== n?.id && !mine.some((m) => m.server_id === x.id))
+            .filter((e) => !['wireguard', 'mieru', 'snell'].includes(e.kind) && e.id !== n?.id && !mine.some((m) => m.server_id === x.id))
             .flatMap((e) => {
               if (!e.pass_node) return [{ srv: x, node: e, then: '' }]
               const next = exitOf(e.pass_node)
@@ -1216,6 +1232,29 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                   </div>
                 </>
               )}
+              {(kind === 'mieru' || kind === 'snell') && (
+                <>
+                  {kind === 'mieru' && (
+                    <Field label="Runs over" hint="TCP works everywhere. UDP can be faster on long or lossy routes, where networks let UDP through.">
+                      <Seg<'tcp' | 'udp'>
+                        value={d.mtransport}
+                        onChange={(v) => set({ mtransport: v })}
+                        label="mieru runs over"
+                        options={[
+                          ['tcp', 'TCP'],
+                          ['udp', 'UDP'],
+                        ]}
+                      />
+                    </Field>
+                  )}
+                  <Field
+                    label="Room for (users)"
+                    hint={`Each user gets their own port and a small process on the server: ${Number(d.users) || 50} ports from this protocol's port on. Open them for ${kind === 'snell' ? 'TCP and UDP' : d.mtransport.toUpperCase()} in the provider's firewall. 1-1000.`}
+                  >
+                    <input class="input" inputMode="numeric" value={d.users} onInput={(e) => set({ users: e.currentTarget.value.replace(/[^0-9]/g, '') })} />
+                  </Field>
+                </>
+              )}
               {kind === 'wireguard' && (
                 <>
                   <Check checked={d.full_tunnel} onChange={(v) => set({ full_tunnel: v })} label="Route all traffic" hint="Off: devices only reach the VPN subnet (a company network); everything else goes out directly." />
@@ -1369,7 +1408,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                     hint={exitDirect ? 'The exit stays in users’ links as its own entry.' : 'The exit serves only proxy passes: it leaves users’ links and accepts only the pass.'}
                   />
                 )}
-                {kind && kind !== 'wireguard' && (
+                {kind && !['wireguard', 'mieru', 'snell'].includes(kind) && (
                   <Check
                     checked={passOnly}
                     onChange={setPassOnly}
@@ -1415,7 +1454,7 @@ function AdvancedPanel(props: {
   serverId: number
 }) {
   const { kind, xray } = props
-  const usable = !!kind && kind !== 'wireguard'
+  const usable = !!kind && kind !== 'wireguard' && kind !== 'mieru' && kind !== 'snell'
   return (
     <aside class={'proto-adv' + (usable && props.on ? ' on' : '')}>
       <div class="adv-head">
@@ -1428,7 +1467,10 @@ function AdvancedPanel(props: {
       {!kind ? (
         <p class="muted">Choose a protocol first.</p>
       ) : !usable ? (
-        <p class="muted">WireGuard runs in the Linux kernel and has no advanced settings: everything is in the form.</p>
+        <p class="muted">
+          {kind === 'wireguard' ? 'WireGuard runs in the Linux kernel and has no advanced settings' : 'mieru and Snell run one small server per user, set up by the agent: they have no advanced settings'}:
+          everything is in the form.
+        </p>
       ) : !props.on ? (
         <p class="muted">
           For what the form does not offer: write this protocol's configuration yourself. Advanced settings take precedence - whatever they set overrides the form, and the form is locked while they
@@ -1452,7 +1494,7 @@ function AdvancedPanel(props: {
           {kind === 'hysteria2' ? (
             <ul class="adv-hint">
               <li>
-                Merged on top of what the panel writes, and it wins; <span class="mono">auth</span> and <span class="mono">trafficStats</span> stay Meridian's.
+                Merged on top of what the panel writes, and it wins; <span class="mono">auth</span> and <span class="mono">trafficStats</span> stay Rosélune's.
               </li>
               <li>Saving restarts this protocol; its devices reconnect by themselves.</li>
               <li>Apps' links come from the form - settings that change how apps connect make them stop working.</li>

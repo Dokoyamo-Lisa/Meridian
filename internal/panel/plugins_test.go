@@ -282,7 +282,7 @@ func TestPluginManifest(t *testing.T) {
 		t.Fatalf("asks %v, want %v", m.asks(), want)
 	}
 	w := strings.Join(m.warnings(), "\n")
-	for _, s := range []string{"read every key and password Meridian holds", "runs in your browser with your session: it can do anything you can",
+	for _, s := range []string{"read every key and password Rosélune holds", "runs in your browser with your session: it can do anything you can",
 		"runs in visitors' browsers", "can change what every server runs and what users' apps receive - a mistake can disconnect everyone",
 		"/p/all/", "/api/plugins/all/", "disconnect people"} {
 		if !strings.Contains(w, s) {

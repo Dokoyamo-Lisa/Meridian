@@ -1,7 +1,7 @@
 # When something goes wrong
 
 Find what you see in the tables below; each row says what to do. The messages are quoted exactly as
-Meridian shows them, so you can search this page for a few words of yours (press `/`).
+Rosélune shows them, so you can search this page for a few words of yours (press `/`).
 
 ## Signing in
 
@@ -32,7 +32,8 @@ Meridian shows them, so you can search this page for a few words of yours (press
 ## People cannot connect
 
 Go through the list on [Check that it works](check-it-works.md) - in most cases it is the port at
-the provider's firewall, a paused user, or an app that still has an old link.
+the provider's firewall, a paused user, a user whose data is used up, or an app that still has an old
+link.
 
 ## The panel itself
 

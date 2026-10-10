@@ -1,5 +1,6 @@
 #!/bin/sh
-# Meridian agent installer. POSIX sh: runs under bash, dash and busybox (Alpine Linux).
+# Rosélune agent installer (the program and its service keep the name meridian-agent).
+# POSIX sh: runs under bash, dash and busybox (Alpine Linux).
 #
 # Copy the exact command from the panel (server page): it checks this script's checksum before
 # running it, and this script checks the agent binary against checksums written into it by the

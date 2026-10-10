@@ -78,6 +78,9 @@ type Spec struct {
 	hops     []Hop
 	// Speed are users' speed limits (speed.go): their devices' addresses come with SetSpeedIPs
 	Speed []proto.SpeedLimit
+	// Solo are the ports of mieru and Snell users (solo.go): counted per port, and refusing new
+	// connections while the user is in grace
+	Solo []SoloPort
 }
 
 // GeoSpec limits who may reach the services, by address list: Allow = only these networks,
@@ -153,11 +156,12 @@ type Engine struct {
 	pending    map[int64]*Counter   // deltas not yet collected
 	resolved   map[string][]netip.Addr
 	resolvedAt time.Time
-	geoDrops   int64               // packets the country rule dropped, not yet collected
-	adopt      bool                // no saved baselines: counters met at the first read were counted already
-	speed      []proto.SpeedLimit  // the limits in the table now
-	speedWant  map[string][]string // speed set -> the addresses it should hold
-	speedHave  map[string][]string // ... and holds (nil: not known, filled again)
+	geoDrops   int64                 // packets the country rule dropped, not yet collected
+	adopt      bool                  // no saved baselines: counters met at the first read were counted already
+	speed      []proto.SpeedLimit    // the limits in the table now
+	speedWant  map[string][]string   // speed set -> the addresses it should hold
+	speedHave  map[string][]string   // ... and holds (nil: not known, filled again)
+	soloDelta  map[[2]int64][2]int64 // mieru/Snell user (node, sub) -> bytes up, down not yet collected
 }
 
 // Baseline is where each counter stood at the last read.
@@ -479,7 +483,8 @@ func (e *Engine) render(spec Spec) string {
 		w("    tcp dport @svc_tcp jump geo_in")
 		w("    udp dport @svc_udp jump geo_in")
 	}
-	speedRulesIn(w, speed) // users' speed limits, what their devices send (speed.go)
+	speedRulesIn(w, speed)    // users' speed limits, what their devices send (speed.go)
+	soloRulesIn(w, spec.Solo) // mieru and Snell users' ports: counted, and closed to new connections in grace (solo.go)
 	w("  }")
 	// ...and nothing flows back to them either, so open sessions (QUIC especially, whose large
 	// windows would let a server keep sending until its idle timeout) stop at once
@@ -494,6 +499,7 @@ func (e *Engine) render(spec Spec) string {
 		w("    udp sport @own_udp jump geo_out")
 	}
 	speedRulesOut(w, speed) // ...and what they receive
+	soloRulesOut(w, spec.Solo)
 	w("  }")
 	w("  chain guard_fwd {")
 	w("    type filter hook forward priority -150; policy accept;")
@@ -747,6 +753,11 @@ func (e *Engine) readCounters() {
 		}
 		if key == "geo:in" {
 			e.geoDrops += int64(cur[1] - prev[1])
+			e.last[key] = cur
+			continue
+		}
+		if strings.HasPrefix(key, "u") { // a mieru or Snell user's port (solo.go)
+			e.soloCount(key, cur[0]-prev[0], cur[1]-prev[1])
 			e.last[key] = cur
 			continue
 		}

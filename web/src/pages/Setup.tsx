@@ -189,10 +189,10 @@ export function ImportModal(props: { server: Server; onClose: () => void }) {
         body: (
           <>
             <p style="margin-top:0">
-              <b>{units.join(', ')}</b> will be stopped and disabled on {s.name}. Meridian then serves the same ports with the same keys and passwords, so devices keep working after reconnecting -
+              <b>{units.join(', ')}</b> will be stopped and disabled on {s.name}. Rosélune then serves the same ports with the same keys and passwords, so devices keep working after reconnecting -
               their connections drop for a moment.
             </p>
-            <p>Everything else that service ran stops too. Only continue if Meridian should replace it completely.</p>
+            <p>Everything else that service ran stops too. Only continue if Rosélune should replace it completely.</p>
           </>
         ),
         confirm: 'Stop it and take over',

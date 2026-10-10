@@ -1011,6 +1011,9 @@ func portConflictAt(port int, tcp, udp bool, bind string, nodes []*Node, fwds []
 	if msg := hopConflict(port, udp, bind, nodes, skipNode); msg != "" {
 		return msg
 	}
+	if msg := soloConflict(port, tcp, udp, bind, nodes, skipNode); msg != "" { // mieru's and Snell's users' ports (solo.go)
+		return msg
+	}
 	if !ours && slices.Contains(hostPorts, port) {
 		return fmt.Sprintf("port %d is in use by another program on the server", port)
 	}
@@ -1162,7 +1165,7 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	k, ok := kindOf(in.Kind)
 	if !ok {
-		return errStatus(http.StatusBadRequest, "unknown protocol - choose vless, vmess, trojan, shadowsocks, hysteria2, wireguard, socks or http")
+		return errStatus(http.StatusBadRequest, "unknown protocol - choose vless, vmess, trojan, shadowsocks, hysteria2, wireguard, socks, http, mieru or snell")
 	}
 	nodes, err := p.nodesOf(r.Context(), id)
 	if err != nil {
@@ -1179,6 +1182,16 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	if k.Engine == "wireguard" && noNftables(s) {
 		return errStatus(http.StatusBadRequest, "WireGuard needs nftables on this server (the devices' traffic is routed through it): "+nftMissing)
+	}
+	if k.Engine == "solo" {
+		switch {
+		case s.Guest:
+			return errStatus(http.StatusBadRequest, k.Label+" cannot run on a server another panel shares with you")
+		case s.FirstSeenAt > 0 && !caps.Solo:
+			return errStatus(http.StatusBadRequest, k.Label+" needs agent 1.3 or later on this server: upgrade its agent first (Settings › Updates › Upgrade all agents)")
+		case noNftables(s):
+			return errStatus(http.StatusBadRequest, k.Label+" needs nftables on this server (each user's traffic is counted on their port there): "+nftMissing)
+		}
 	}
 	settings, err := newSettings(in.Kind, in.Settings, nodes)
 	if err != nil {
@@ -1205,7 +1218,25 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	hostPorts := p.hostPorts(id)
 	port := 0
-	if in.Port != nil && *in.Port > 0 {
+	if isSolo(in.Kind) { // a port for each user, from the protocol's port on (solo.go)
+		at := listenAddr(in.Kind, bind)
+		if in.Port != nil && *in.Port > 0 {
+			if err := checkSoloRange(in.Kind, settings, *in.Port, at, nodes, fwds, 0, hostPorts); err != nil {
+				return err
+			}
+			port = *in.Port
+		} else {
+			for _, first := range preferredPorts(in.Kind, settings) {
+				if checkSoloRange(in.Kind, settings, first, at, nodes, fwds, 0, hostPorts) == nil {
+					port = first
+					break
+				}
+			}
+			if port == 0 {
+				return errStatus(http.StatusConflict, fmt.Sprintf("no %d free ports in a row on this server: give the protocol a port, or room for fewer users", parseSolo(settings).Users))
+			}
+		}
+	} else if in.Port != nil && *in.Port > 0 {
 		port = *in.Port
 		tcp, udp := nodeNets(in.Kind, settings)
 		if msg := portConflictAt(port, tcp, udp, listenAddr(in.Kind, bind), nodes, fwds, 0, 0, hostPorts); msg != "" {
@@ -1347,6 +1378,20 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	if moved || usesACME(n.Kind, n.Settings) != usesACME(n.Kind, oldSettings) {
 		if err := checkNodePort(s, n.Kind, n.Settings, n.Port); err != nil {
+			return err
+		}
+	}
+	if isSolo(n.Kind) && (moved || in.Settings != nil) { // every user's port, in the new range (solo.go)
+		nodes, _ := p.nodesOf(r.Context(), n.ServerID)
+		fwds, _ := p.forwardsOf(r.Context(), n.ServerID)
+		hp := p.hostPorts(n.ServerID)
+		first, last := soloRange(n)
+		var own []int
+		for q := first; q <= last; q++ {
+			own = append(own, q)
+		}
+		hp = slices.DeleteFunc(hp, func(q int) bool { return slices.Contains(own, q) && n.Enabled }) // its users' processes listen there
+		if err := checkSoloRange(n.Kind, n.Settings, n.Port, n.BindIP, nodes, fwds, n.ID, hp); err != nil {
 			return err
 		}
 	}

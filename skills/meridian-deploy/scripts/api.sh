@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# api.sh METHOD PATH [BODY] [CONTENT_TYPE] - call the Meridian API.
+# api.sh METHOD PATH [BODY] [CONTENT_TYPE] - call the Rosélune API.
 #
 #   export MERIDIAN_URL=https://panel.example.com
 #   export MERIDIAN_TOKEN=mrd_...        # sudo -u meridian meridian token  (on the panel's host)

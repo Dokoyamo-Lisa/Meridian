@@ -110,7 +110,7 @@ func (p *Panel) checkUpdate(ctx context.Context) updateState {
 	p.upd.mu.Unlock()
 	if update.Newer(rel.Version, Version) && st.Announced != rel.Version {
 		st.Announced = rel.Version
-		p.event(0, "info", "update_available", 0, 0, 0, fmt.Sprintf("Meridian %s is available (this panel runs %s)", rel.Version, Version), nil)
+		p.event(0, "info", "update_available", 0, 0, 0, fmt.Sprintf("Rosélune %s is available (this panel runs %s)", rel.Version, Version), nil)
 	}
 	p.saveUpdateState(st)
 	return st
@@ -142,7 +142,7 @@ func (p *Panel) installUpdate(agents bool, by int64, auto bool) error {
 		p.upd.mu.Unlock()
 		if err != nil {
 			slog.Warn("update", "err", err)
-			p.event(0, "warn", "update_failed", 0, 0, by, "Updating Meridian failed: "+err.Error(), nil)
+			p.event(0, "warn", "update_failed", 0, 0, by, "Updating Rosélune failed: "+err.Error(), nil)
 		}
 	}()
 	return nil
@@ -175,7 +175,7 @@ func (p *Panel) stageUpdate(agents bool, by int64, auto bool) error {
 	if auto {
 		how = "started automatically"
 	}
-	p.event(0, "info", "update_started", 0, 0, by, fmt.Sprintf("Update to Meridian %s %s - the panel restarts in a moment; proxies keep running", rel.Version, how), nil)
+	p.event(0, "info", "update_started", 0, 0, by, fmt.Sprintf("Update to Rosélune %s %s - the panel restarts in a moment; proxies keep running", rel.Version, how), nil)
 	return nil
 }
 
@@ -229,10 +229,10 @@ func (p *Panel) updateResult(ctx context.Context) {
 		return
 	}
 	if !res.OK {
-		p.event(0, "warn", "update_failed", 0, 0, 0, fmt.Sprintf("Updating Meridian to %s failed: %s", res.To, res.Error), nil)
+		p.event(0, "warn", "update_failed", 0, 0, 0, fmt.Sprintf("Updating Rosélune to %s failed: %s", res.To, res.Error), nil)
 		return
 	}
-	p.event(0, "info", "panel_updated", 0, 0, 0, fmt.Sprintf("Meridian updated from %s to %s", res.From, res.To), nil)
+	p.event(0, "info", "panel_updated", 0, 0, 0, fmt.Sprintf("Rosélune updated from %s to %s", res.From, res.To), nil)
 	if res.Agents {
 		if names, skipped, err := p.upgradeAgents(ctx, 0, 0); err == nil && len(names)+len(skipped) > 0 {
 			msg := fmt.Sprintf("Upgrading the agent on %d server(s) - nobody is disconnected", len(names))
@@ -263,7 +263,7 @@ func (p *Panel) autoUpdate(ctx context.Context) {
 	st.Tried = st.Latest
 	p.saveUpdateState(st)
 	if err := p.installUpdate(true, 0, true); err != nil {
-		p.event(0, "warn", "update_failed", 0, 0, 0, "Automatic update to Meridian "+st.Latest+" failed: "+err.Error(), nil)
+		p.event(0, "warn", "update_failed", 0, 0, 0, "Automatic update to Rosélune "+st.Latest+" failed: "+err.Error(), nil)
 	}
 }
 

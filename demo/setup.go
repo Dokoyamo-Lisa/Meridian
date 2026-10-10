@@ -37,10 +37,10 @@ func setup(ctx context.Context, a *api, panel, dataDir, publicURL string) (*stat
 		return nil, err
 	}
 	for k, v := range map[string]any{
-		"site_title": "Meridian Demo", "public_url": publicURL, "timezone": "UTC", "conn_log": true, "dest_log": true,
+		"site_title": "Rosélune Demo", "public_url": publicURL, "timezone": "UTC", "conn_log": true, "dest_log": true,
 		"auto_update": false, "status_page": "home", "status_public": true, "status_overview": true, "status_events": true,
-		"status_ips": false, "status_hub": hub, "default_tone": "umbrella",
-		"status_about": "A demo of Meridian: every server, person and number here is made up, and nothing can be changed.",
+		"status_ips": false, "status_hub": hub, "default_tone": "romance", "logo_mark": "rose",
+		"status_about": "A demo of Rosélune: every server, person and number here is made up, and nothing can be changed.",
 	} {
 		set[k] = v
 	}

@@ -1,4 +1,4 @@
-# Meridian's demo
+# Rosélune's demo
 
 A panel anyone may look around in and nobody can change. Its eight servers and sixteen people do not
 exist. Every server, client and device address comes from the ranges kept for documentation
@@ -7,7 +7,7 @@ Amsterdam on the status page's globe. None of it points at a real machine or a r
 
 It has three parts:
 
-- **The panel**: an ordinary Meridian release with a database of its own. Nothing in Meridian knows it
+- **The panel**: an ordinary Rosélune release with a database of its own. Nothing in Rosélune knows it
   is a demo.
 - **`meridian-demo`** (this folder): `setup` fills a new panel through its API with the demo's servers,
   protocols, users, plans, ping monitors, traffic rules and a forward, and writes the month before

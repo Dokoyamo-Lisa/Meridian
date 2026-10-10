@@ -461,6 +461,7 @@ func (p *Panel) apiUpdatePlan(w http.ResponseWriter, r *http.Request, a *Account
 	if moved > 0 {
 		msg += fmt.Sprintf(" and its %d user(s) with it", moved)
 		p.realignCycles(r.Context(), a.ID)
+		p.markOutAll(r.Context(), a.ID) // their new quotas (outofdata.go)
 		p.touchAccount(a.ID)
 	}
 	p.event(a.ID, "info", "plan_changed", 0, 0, a.ID, msg, nil)
@@ -552,6 +553,9 @@ func (p *Panel) apiApplyPlan(w http.ResponseWriter, r *http.Request, a *Account)
 		msg += " until " + time.Unix(s.ExpiresAt, 0).In(p.loc()).Format("2 Jan 2006")
 	}
 	p.event(a.ID, "info", "plan_applied", 0, s.ID, a.ID, msg, nil)
+	if fresh, err := p.subByID(r.Context(), s.ID); err == nil {
+		p.markOut(r.Context(), fresh) // the new period's data, or the old usage on a smaller quota (outofdata.go)
+	}
 	p.touchAccount(a.ID)
 	s, err = p.subByID(r.Context(), s.ID)
 	if err != nil {

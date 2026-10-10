@@ -36,7 +36,7 @@ func TestParseJSONC(t *testing.T) {
 		t.Errorf("empty: %v %v", doc, err)
 	}
 	for src, want := range map[string]string{
-		`{"log": {"loglevel": "debug"}}`:     `"log" is Meridian's own`,
+		`{"log": {"loglevel": "debug"}}`:     `"log" is Rosélune's own`,
 		`{"outbounds": [{"protocol": "x"}]}`: `outbound 1 needs a "tag"`,
 		`{"inbounds": {"tag": "x"}}`:         `must be a list`,
 		`{"routing": {"rules": {}}}`:         `"routing.rules" must be a list`,
@@ -124,7 +124,7 @@ func TestConfigCode(t *testing.T) {
 	}
 	cfg := b.must("GET", sp+"/config", nil, 200)
 	shown := fmt.Sprint(cfg["xray"])
-	if !strings.Contains(shown, "example.org") || !strings.Contains(shown, "1 users, managed by Meridian") {
+	if !strings.Contains(shown, "example.org") || !strings.Contains(shown, "1 users, managed by Rosélune") {
 		t.Errorf("config view: %s", shown)
 	}
 
@@ -137,7 +137,7 @@ func TestConfigCode(t *testing.T) {
 	if !strings.Contains(string(st.Hysteria[0].Custom), `"maxIdleTimeout":"60s"`) {
 		t.Errorf("hysteria custom: %s", st.Hysteria[0].Custom)
 	}
-	if code, m, _ := b.do("PATCH", fmt.Sprintf("/api/nodes/%d", hy), map[string]any{"code": "auth:\n  type: password\n"}); code != 400 || !strings.Contains(fmt.Sprint(m["error"]), `"auth" is Meridian's own`) {
+	if code, m, _ := b.do("PATCH", fmt.Sprintf("/api/nodes/%d", hy), map[string]any{"code": "auth:\n  type: password\n"}); code != 400 || !strings.Contains(fmt.Sprint(m["error"]), `"auth" is Rosélune's own`) {
 		t.Errorf("hysteria auth: %d %v", code, m)
 	}
 	// an Xray protocol's own settings: merged into its inbound, its outbounds, rules for its traffic only

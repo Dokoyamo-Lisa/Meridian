@@ -1,12 +1,12 @@
 # The Telegram bot
 
-Meridian's Telegram bot sends what needs you to one chat - a conversation with you, or a group or
+Rosélune's Telegram bot sends what needs you to one chat - a conversation with you, or a group or
 channel - and, if you want, answers questions there, sends a daily report and lets you decide about
 health risks or pause a user with a button.
 
 ## Set it up
 
-1. In Telegram, open **@BotFather**, send `/newbot` and copy the token it gives you. Give Meridian a
+1. In Telegram, open **@BotFather**, send `/newbot` and copy the token it gives you. Give Rosélune a
    bot of its own: Telegram lets only one program read a bot's messages.
 2. Send your new bot a message - or add it to a group (or to a channel, as an administrator).
 3. In the panel, **Settings › Notifications**: paste the token, press **Find chats**, pick the chat
@@ -18,10 +18,11 @@ the token and the chat; the bot then stops answering and the daily report stops.
 ## Notifications
 
 What is sent is chosen under **What is sent**: servers (offline, back online, restarted, a
-configuration refused, a crashed core), users (data used up, access ended or ending, too many
-devices), certificates (expiring), sign-ins and security, and **health risks** (high and critical -
-see [health checks](health.md)). They arrive as they happen, in order; turning notifications on never
-sends the past. They only tell: nothing is paused by them.
+configuration refused, a crashed core), users (data used up - the servers stop serving them until
+it starts over -, access ended or ending, too many devices), certificates (expiring), sign-ins and
+security, and **health risks** (high and critical - see [health checks](health.md)). They arrive as
+they happen, in order; turning notifications on never sends the past. They only tell: nothing is
+paused or changed by a message.
 
 ## Commands
 
@@ -131,7 +132,7 @@ why it cannot read messages:
 
 - *the bot token was refused by Telegram* - copy the token again from @BotFather;
 - *another program reads this bot's messages (a webhook or a second panel)* - a bot can be read by
-  one program only: give Meridian a bot of its own, or remove the other program's webhook;
+  one program only: give Rosélune a bot of its own, or remove the other program's webhook;
 - *cannot reach Telegram* - the panel's server cannot reach `api.telegram.org`; it tries again,
   waiting longer each time (up to 5 minutes).
 

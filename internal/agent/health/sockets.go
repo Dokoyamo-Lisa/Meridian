@@ -216,7 +216,7 @@ func (sc *scan) checkSockets() {
 		}
 		sc.last(proto.Finding{Key: "port:" + l.key, Kind: proto.FindPort, Severity: proto.SevWarning,
 			Title:  fmt.Sprintf("A new port is open: %s/%s", port, netw),
-			Detail: detail + ". It was closed when the health check started and is not one of Meridian's. Mark it expected if you opened it."})
+			Detail: detail + ". It was closed when the health check started and is not one of Rosélune's. Mark it expected if you opened it."})
 	}
 	for _, s := range pools {
 		p := owners[s.inode]

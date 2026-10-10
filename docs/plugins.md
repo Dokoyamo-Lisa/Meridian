@@ -1,12 +1,12 @@
 # Plugins
 
-A plugin changes Meridian the way its operator wants: how the panel, the status page and users'
+A plugin changes Rosélune the way its operator wants: how the panel, the status page and users'
 pages look, what they show and do, and - through a program that runs beside the panel - what
 servers run, what users' apps receive, what notifications say, and which API routes, pages, MCP
 tools and timers the panel has. Two examples to start from are in
 [`examples/plugins`](../examples/plugins): a theme and a server plugin written in Go.
 
-A plugin can do a lot of damage, so Meridian is careful about who installs it and what it may do:
+A plugin can do a lot of damage, so Rosélune is careful about who installs it and what it may do:
 
 - Plugins are installed, updated, turned on and off and removed **only from a signed-in browser**
   (Settings › Plugins) - never with an API token or through MCP - or on the panel's host with
@@ -96,7 +96,7 @@ wrong.
 
 | Asks for | What it lets the plugin do |
 | --- | --- |
-| `server` | A server plugin runs as a program on the panel's host with the panel's rights: it can read every key and password Meridian holds, and do anything else the panel's user can. |
+| `server` | A server plugin runs as a program on the panel's host with the panel's rights: it can read every key and password Rosélune holds, and do anything else the panel's user can. |
 | `panel.js` | Its panel JavaScript runs in your browser with your session: it can do anything you can. |
 | `status_page.js` | Its status page JavaScript runs in visitors' browsers - and on your users' own pages, where it sees their links and usage. |
 | `filter:compile`, `filter:subscription` | Its filters can change what every server runs and what users' apps receive - a mistake can disconnect everyone. |
@@ -383,8 +383,8 @@ text to send (at most 8,000 characters), or `""` to hold this one back.
 
 ```json
 {"jsonrpc":"2.0","id":20,"method":"filter.notify","params":{"events":[{"time":1791532464,"level":"crit",
- "kind":"server_offline","message":"Tokyo is offline"}],"text":"Meridian\nTokyo is offline"}}
-{"jsonrpc":"2.0","id":20,"result":"Meridian\nTokyo is offline - the provider knows"}
+ "kind":"server_offline","message":"Tokyo is offline"}],"text":"Rosélune\nTokyo is offline"}}
+{"jsonrpc":"2.0","id":20,"result":"Rosélune\nTokyo is offline - the provider knows"}
 ```
 
 `route` - a request to its API (`/api/plugins/<id>/...`, from the signed-in supervisor or an API

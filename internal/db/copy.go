@@ -37,7 +37,7 @@ func Copy(ctx context.Context, src, dst *DB, note CopyNote) error {
 		return fmt.Errorf("reading the destination: %w", err)
 	}
 	if sv != Version() || dv != Version() {
-		return fmt.Errorf("both databases must be at schema %d (the source is at %d, the destination at %d) - open each with this Meridian first", Version(), sv, dv)
+		return fmt.Errorf("both databases must be at schema %d (the source is at %d, the destination at %d) - open each with this Rosélune first", Version(), sv, dv)
 	}
 	for _, t := range tables {
 		var n int

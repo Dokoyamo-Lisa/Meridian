@@ -273,7 +273,7 @@ func (m *pluginManifest) warnings() []string {
 	has := func(p string) bool { return slices.Contains(m.Permissions, p) }
 	var w []string
 	if m.Server != nil {
-		w = append(w, "A server plugin runs as a program on the panel's host with the panel's rights: it can read every key and password Meridian holds, and do anything else the panel's user can.")
+		w = append(w, "A server plugin runs as a program on the panel's host with the panel's rights: it can read every key and password Rosélune holds, and do anything else the panel's user can.")
 	}
 	if m.Panel != nil && m.Panel.JS != "" {
 		w = append(w, "Its panel JavaScript runs in your browser with your session: it can do anything you can.")

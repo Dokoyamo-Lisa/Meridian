@@ -407,7 +407,11 @@ export interface User {
   last_fetch_ua: string
   created_at: number
   link: string
-  status: 'active' | 'paused'
+  /** out_of_data: the quota is used up - no server serves the user until their data starts over. */
+  status: 'active' | 'paused' | 'out_of_data'
+  /** Out of data in loose mode: until when what they have open may go on, and how many bytes it may still use. */
+  grace_until?: number
+  grace_left?: number
   flags: string[]
   online_ips: number
   online?: OnlineIP[]
@@ -560,8 +564,10 @@ export interface Settings {
   status_events: boolean
   /** The charts of a server's details visitors and users get (cpu, memory, disk, diskio, network, load, connections, temperature, ping). */
   status_charts: string[]
+  /** The built-in logo, shown while none is uploaded: rose (Rosélune's own) or umbrella. */
+  logo_mark: string
   logo_animation: string
-  /** The look pages open with for people who have not picked one ('' = Ice, or Paper on light devices). */
+  /** The look pages open with for people who have not picked one: romance (the default), umbrella, ice, celadon, ink, paper, mist - or auto (Ice, or Paper on light devices). */
   default_tone: string
   agent_port: number
   auto_update: boolean
@@ -569,6 +575,10 @@ export interface Settings {
   auto_relay: number
   /** How agents talk to the panel: ws = one lasting WebSocket each (the default), http = HTTP requests. */
   agent_transport: 'ws' | 'http'
+  /** When a user's data runs out: strict = what they have open is cut at once; loose = it may go on for quota_grace_min minutes or quota_grace_gb GB more. */
+  quota_mode: 'strict' | 'loose'
+  quota_grace_min: number
+  quota_grace_gb: number
   /** Maintenance mode: only the supervisor can sign in; servers keep working. */
   maintenance?: boolean
   maintenance_note?: string

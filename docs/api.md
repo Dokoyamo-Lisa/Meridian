@@ -45,7 +45,12 @@ and the supervisor's session is not a user session.
   `401` (not signed in / bad token), `403` (not allowed, or not from your country), `404` (not
   found), `409` (conflict, e.g. a port in use), `429` (slow down).
 - Changes to servers, protocols, users, country rules, traffic rules and blocks reach the servers within seconds.
-  Nothing restarts a core unless the endpoint says so, and nothing pauses a user unless you ask.
+  Nothing restarts a core unless the endpoint says so, and nothing pauses a user unless you ask. A
+  user who uses up their quota has `status` `out_of_data`: no server serves them until their data
+  starts over (the next reset, a higher `quota`, `reset-usage` or a new plan period). What they have
+  open then follows `quota_mode` in `PUT /api/settings`: `strict` cuts it at once, `loose` lets it go
+  on for `quota_grace_min` minutes or `quota_grace_gb` GB more (the user's `grace_until` and
+  `grace_left` say how much is left).
 
 ## Examples
 

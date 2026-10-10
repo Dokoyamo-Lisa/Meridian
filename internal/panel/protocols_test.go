@@ -76,6 +76,12 @@ func combos() []protocolDraft {
 			}
 		}
 	}
+	for _, tr := range []string{"tcp", "udp"} { // mieru, a process and a port per user (solo.go)
+		out = append(out, protocolDraft{Kind: subgen.KindMieru, Settings: &protoInput{Transport: str(tr), Users: intp(20)}})
+	}
+	out = append(out, protocolDraft{Kind: subgen.KindSnell, Settings: &protoInput{}},
+		protocolDraft{Kind: subgen.KindMieru, Settings: &protoInput{Transport: str("quic")}}, // refused
+		protocolDraft{Kind: subgen.KindSnell, Settings: &protoInput{Users: intp(5000)}})      // refused
 	out = append(out, protocolDraft{Kind: subgen.KindWireGuard, Settings: &protoInput{}},
 		protocolDraft{Kind: subgen.KindVLESS, Settings: &protoInput{Security: str(secReality), OwnSite: &yes,
 			SNI: str("www.example.com"), Target: str("127.0.0.1:8443")}},
@@ -130,6 +136,10 @@ func TestEveryAcceptedProtocolWorks(t *testing.T) {
 			if _, err := hyNode(n, []*Sub{sub}, nil, nil); err != nil {
 				t.Fatalf("%s: hysteria config: %v", describe(d), err)
 			}
+		case "solo":
+			if ss := parseSolo(raw); ss.Users < 1 || (d.Kind == subgen.KindMieru && ss.Transport != "tcp" && ss.Transport != "udp") {
+				t.Fatalf("%s: settings %+v", describe(d), ss)
+			}
 		}
 		var peer *wgPeer
 		if d.Kind == subgen.KindWireGuard {
@@ -148,7 +158,7 @@ func TestEveryAcceptedProtocolWorks(t *testing.T) {
 		if works == 0 {
 			t.Errorf("%s: accepted, but no app can use it", describe(d))
 		}
-		if d.Kind != subgen.KindWireGuard {
+		if canExit(d.Kind) {
 			if _, err := subgen.XrayOutbound(e, "t"); err != nil {
 				t.Errorf("%s: cannot be a proxy pass exit: %v", describe(d), err)
 			}

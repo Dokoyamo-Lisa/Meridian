@@ -383,7 +383,8 @@ func (p *Panel) siteGate(next http.Handler) http.Handler {
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
 			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprintf(w, deniedPage, html.EscapeString(p.settings().SiteTitle))
+			set := p.settings()
+			fmt.Fprintf(w, deniedPage, lookCSS(set.DefaultTone), html.EscapeString(set.SiteTitle))
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -398,10 +399,12 @@ func carriesSignIn(r *http.Request) bool {
 	return r.Header.Get("Authorization") != ""
 }
 
+// deniedPage is what a refused visitor sees, in the site's look (pagelook.go): its rules, then its name.
 const deniedPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex"><title>Not available</title><style>html{color-scheme:dark light}body{margin:0;min-height:100vh;
-display:grid;place-items:center;background:#0b0d10;color:#8b96a3;font:15px/1.6 -apple-system,system-ui,sans-serif}main{padding:24px;
-text-align:center}h1{margin:0 0 6px;font-weight:500;font-size:18px;color:#e6ebf1}p{margin:0}</style><main><h1>%s</h1>
+<meta name="robots" content="noindex"><title>Not available</title><style>%s
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--page) fixed;background-image:var(--glow);color:var(--ink3);
+font:15px/1.6 -apple-system,system-ui,sans-serif}main{padding:24px;text-align:center}h1{margin:0 0 6px;font:var(--display-style) 400 22px/1.3 var(--display);
+color:var(--ink)}p{margin:0}</style><main><h1>%s</h1>
 <p>This site is not available in your region.</p></main></html>`
 
 func (p *Panel) noteDenial(ip, cc, path string) {

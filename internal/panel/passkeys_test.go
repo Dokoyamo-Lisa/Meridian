@@ -179,10 +179,9 @@ func TestPasskeys(t *testing.T) {
 		t.Fatalf("passkey sign-in: %d %s", code, raw)
 	}
 	c.must("GET", "/api/me", nil, 200)
-	var via string
-	h.p.db.QueryRow(`SELECT via FROM sessions ORDER BY created_at DESC, rowid DESC LIMIT 1`).Scan(&via)
-	if via != "passkey" {
-		t.Errorf("the session was made %q", via)
+	var made int // the first passkey sign-in of the test: its session says how it was made (SQL both databases speak)
+	if err := h.p.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE via = 'passkey'`).Scan(&made); err != nil || made != 1 {
+		t.Errorf("sessions made with a passkey: %d %v", made, err)
 	}
 
 	// an answer must be fresh, from this origin, with the person verified

@@ -124,8 +124,8 @@ func (sc *scan) checkTraffic() {
 	}
 	mins := int(sc.at.Sub(base.at).Minutes() + 0.5)
 	sc.last(proto.Finding{Key: "traffic", Kind: proto.FindTraffic, Severity: proto.SevHigh,
-		Title: "The server sends far more than Meridian carries",
-		Detail: fmt.Sprintf("In the last %d minutes it sent %s, while Meridian's protocols and forwards carried %s and it received %s. "+
+		Title: "The server sends far more than Rosélune carries",
+		Detail: fmt.Sprintf("In the last %d minutes it sent %s, while Rosélune's protocols and forwards carried %s and it received %s. "+
 			"A DDoS bot or another program is sending: look for unknown busy programs, and stop it before the provider suspends the server.",
 			mins, gb(sent), gb(carried), gb(got))})
 }

@@ -302,7 +302,7 @@ func (p *Panel) refreshSource(ctx context.Context, src *ExtSource, by string) (s
 		}
 	}
 	if len(kept) == 0 {
-		why := "it has no node Meridian can use"
+		why := "it has no node Rosélune can use"
 		if len(eps) > 0 {
 			why = "no node passes its filters"
 		} else if len(skipped) > 0 {
@@ -597,7 +597,7 @@ type sourceView struct {
 	ID         int64               `json:"id"`
 	Name       string              `json:"name"`
 	URL        string              `json:"url" doc:"The provider's subscription address"`
-	Client     string              `json:"client" doc:"Which app the panel asks as: '' (Meridian), clash, singbox or v2rayn"`
+	Client     string              `json:"client" doc:"Which app the panel asks as: '' (Rosélune), clash, singbox or v2rayn"`
 	EveryHours int                 `json:"every_hours" doc:"Read again every this many hours; 0 = only when asked"`
 	Enabled    bool                `json:"enabled"`
 	Offer      bool                `json:"offer" doc:"Whether users get its nodes in their own subscriptions"`
@@ -661,10 +661,10 @@ func (p *Panel) apiSources(w http.ResponseWriter, r *http.Request, a *Account) e
 type sourceInput struct {
 	Name       *string  `json:"name"`
 	URL        *string  `json:"url" doc:"The provider's subscription address: https:// only, public addresses only"`
-	Client     *string  `json:"client" doc:"Ask as: '' (Meridian), clash, singbox or v2rayn - providers often answer each app in its own form; every form is read"`
+	Client     *string  `json:"client" doc:"Ask as: '' (Rosélune), clash, singbox or v2rayn - providers often answer each app in its own form; every form is read"`
 	EveryHours *int     `json:"every_hours" doc:"Read it again every this many hours (1 to 168; 0 = only when asked; default 12)"`
 	Enabled    *bool    `json:"enabled" doc:"Off: it is not read again, and its nodes cannot be used (what uses them is blocked, as for a node turned off)"`
-	Offer      *bool    `json:"offer" doc:"Give its nodes to users too: they appear in users' subscriptions, written for each app by Meridian. Meridian cannot count or limit what users send through them"`
+	Offer      *bool    `json:"offer" doc:"Give its nodes to users too: they appear in users' subscriptions, written for each app by Rosélune. Rosélune cannot count or limit what users send through them"`
 	OfferTo    *offerTo `json:"offer_to" doc:"Which users get them: these users and the users on these plans (both empty = every user)"`
 	Prefix     *string  `json:"prefix" doc:"Put in front of each node's name, with a space: e.g. 'Provider ·' gives 'Provider · Tokyo 1'"`
 	Include    *string  `json:"include" doc:"Only nodes whose name holds one of these words (separated by commas)"`
@@ -700,7 +700,7 @@ func (p *Panel) applySourceInput(ctx context.Context, s *ExtSource, in *sourceIn
 	}
 	if in.Client != nil {
 		if _, ok := sourceClients[*in.Client]; !ok {
-			return errStatus(http.StatusBadRequest, "ask as '' (Meridian), clash, singbox or v2rayn")
+			return errStatus(http.StatusBadRequest, "ask as '' (Rosélune), clash, singbox or v2rayn")
 		}
 		s.Client = *in.Client
 	}

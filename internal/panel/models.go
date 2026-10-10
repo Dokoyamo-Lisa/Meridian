@@ -28,8 +28,10 @@ type Settings struct {
 	XrayVersion     string `json:"xray_version" doc:"Xray version new servers install, e.g. 26.3.27"`
 	HysteriaVersion string `json:"hysteria_version" doc:"Hysteria version new servers install"`
 	RealmVersion    string `json:"realm_version" doc:"realm version new servers install"`
+	MitaVersion     string `json:"mita_version" doc:"mieru server (mita) version servers install for mieru"`
+	SnellVersion    string `json:"snell_version" doc:"snell-server version servers install for Snell - one Rosélune can verify (5.0.1)"`
 	Mirror          bool   `json:"mirror" doc:"Agents may download cores through the panel"`
-	AutoUpdate      bool   `json:"auto_update" doc:"Install new Meridian releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts"`
+	AutoUpdate      bool   `json:"auto_update" doc:"Install new Rosélune releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts"`
 	AutoRelay       int64  `json:"auto_relay" doc:"A server that keeps losing the panel (see panel_trouble on servers) is switched to reach it through this server, once - by itself, with an event; switch it back on its page at any time. 0 = off: the panel only tells"`
 	Maintenance     bool   `json:"maintenance" doc:"Maintenance mode: only the supervisor can sign in; everyone else - users on their own pages, other accounts - sees \"Maintenance in progress\" and is signed out. Servers, protocols and subscriptions keep working"`
 	MaintenanceNote string `json:"maintenance_note" doc:"A line added to the maintenance message, e.g. when it ends"`
@@ -49,14 +51,20 @@ type Settings struct {
 
 	AgentPort int `json:"agent_port" doc:"Where new agents put their two loopback-only ports: the Xray API on this port, Hysteria's auth hook on the next (1024-65534, default 50000). Agents already installed keep theirs."`
 
-	DefaultTone string `json:"default_tone" doc:"The look pages open with for people who have not picked one themselves (the palette button): ice, celadon, ink, paper, mist, umbrella or romance; empty = Ice, or Paper on a device set to light"`
+	DefaultTone string `json:"default_tone" doc:"The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist - or auto: Ice, or Paper on a device set to light"`
 
-	LogoAnimation string `json:"logo_animation" doc:"How the logo moves while pages load and when someone signs in: assemble (the built-in umbrella's panels slide in; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo"`
+	LogoMark      string `json:"logo_mark" doc:"The built-in logo, shown while no logo is uploaded: rose (Rosélune's own, the default) | umbrella"`
+	LogoAnimation string `json:"logo_animation" doc:"How the logo moves while pages load and when someone signs in: assemble (the built-in logo's pieces fly in - the rose's petals, the umbrella's panels; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo"`
+
+	// when a user's data runs out (outofdata.go)
+	QuotaMode     string `json:"quota_mode" doc:"When a user's data runs out, on every protocol: strict (the default) = everything they have open is cut at once and new connections are refused; loose = new connections are refused at once, and what they have open may go on until quota_grace_min minutes have passed or quota_grace_gb GB more were used, whichever comes first - then it is cut. Cutting what is open needs agents 1.3 or later (older ones only refuse new connections); WireGuard devices are cut at once in both modes"`
+	QuotaGraceMin int    `json:"quota_grace_min" doc:"Loose mode: minutes what is open may go on (1-1440, default 10)"`
+	QuotaGraceGB  int    `json:"quota_grace_gb" doc:"Loose mode: GB more what is open may use (1-1000, default 5)"`
 }
 
 func defaultSettings() Settings {
 	return Settings{
-		SiteTitle:       "Meridian",
+		SiteTitle:       productName,
 		Timezone:        "UTC",
 		ConnLog:         true,
 		DestLog:         true,
@@ -65,15 +73,22 @@ func defaultSettings() Settings {
 		XrayVersion:     "26.3.27",
 		HysteriaVersion: "2.13.0",
 		RealmVersion:    "2.9.6",
+		MitaVersion:     "3.38.0",
+		SnellVersion:    "5.0.1",
 		Mirror:          true,
 		StatusPage:      "off",
 		StatusPublic:    true,
 		StatusOverview:  true,
 		StatusEvents:    true,
 		StatusCharts:    slices.Clone(chartKinds),
+		DefaultTone:     "romance",
+		LogoMark:        "rose",
 		LogoAnimation:   "assemble",
 		AgentPort:       50000,
 		AgentTransport:  "ws",
+		QuotaMode:       "strict",
+		QuotaGraceMin:   10,
+		QuotaGraceGB:    5,
 	}
 }
 
@@ -90,12 +105,26 @@ func (s *Settings) normalize() {
 	if s.AgentTransport != "http" {
 		s.AgentTransport = d.AgentTransport
 	}
-	if !slices.Contains(siteTones, s.DefaultTone) {
-		s.DefaultTone = ""
+	if !slices.Contains(siteTones, s.DefaultTone) && s.DefaultTone != "auto" {
+		s.DefaultTone = d.DefaultTone
+	}
+	if !slices.Contains(logoMarks, s.LogoMark) {
+		s.LogoMark = d.LogoMark
 	}
 	if !slices.Contains(logoAnimations, s.LogoAnimation) {
 		s.LogoAnimation = d.LogoAnimation
 	}
+	if s.QuotaMode != "loose" {
+		s.QuotaMode = d.QuotaMode
+	}
+	if s.QuotaGraceMin < 1 {
+		s.QuotaGraceMin = d.QuotaGraceMin
+	}
+	s.QuotaGraceMin = min(s.QuotaGraceMin, 1440)
+	if s.QuotaGraceGB < 1 {
+		s.QuotaGraceGB = d.QuotaGraceGB
+	}
+	s.QuotaGraceGB = min(s.QuotaGraceGB, 1000)
 	s.PublicURL = strings.TrimRight(strings.TrimSpace(s.PublicURL), "/")
 	s.SubURL = strings.TrimRight(strings.TrimSpace(s.SubURL), "/")
 	if _, err := time.LoadLocation(s.Timezone); err != nil || s.Timezone == "" {
@@ -118,6 +147,12 @@ func (s *Settings) normalize() {
 	}
 	if s.RealmVersion == "" {
 		s.RealmVersion = d.RealmVersion
+	}
+	if s.MitaVersion == "" {
+		s.MitaVersion = d.MitaVersion
+	}
+	if !slices.Contains(snellVersions(), s.SnellVersion) {
+		s.SnellVersion = d.SnellVersion
 	}
 	if s.HysteriaVersion == "" {
 		s.HysteriaVersion = d.HysteriaVersion
@@ -474,6 +509,7 @@ type Sub struct {
 	// limits per protocol (nodequota.go)
 	NodeQuotas    NodeQuotas `json:"node_quotas" doc:"Limits per protocol: protocol id -> bytes per cycle, counted like the quota"`
 	NodeQuotaMode string     `json:"node_quota_mode" doc:"When a protocol's limit is used up: '' = an alert only; stop = that protocol stops serving the user until the cycle starts over"`
+	OutAt         int64      `json:"out_at" doc:"When the user's data ran out (Unix seconds); 0 = it has not"`
 }
 
 // start is when the user's period started: starts_at, or their creation.
@@ -541,7 +577,7 @@ func usersOf(subs []*Sub, n *Node) []*Sub {
 const subCols = `id, account_id, name, note, token, uuid, secret, paused, paused_at, quota, reset_day, expires_at,
 ip_limit, scope, cycle_up, cycle_down, cycle_start, total_up, total_down, last_online_at, last_fetch_at,
 last_fetch_ip, last_fetch_ua, created_at, updated_at, login, password_hash, last_login_at, last_login_ip,
-count_mode, starts_at, reset_every, speed_limit, device_mode, plan_id, node_quotas, node_quota_mode`
+count_mode, starts_at, reset_every, speed_limit, device_mode, plan_id, node_quotas, node_quota_mode, out_at`
 
 func scanSub(r interface{ Scan(...any) error }) (*Sub, error) {
 	s := &Sub{}
@@ -550,7 +586,7 @@ func scanSub(r interface{ Scan(...any) error }) (*Sub, error) {
 		&s.Quota, &s.ResetDay, &s.ExpiresAt, &s.IPLimit, &scope, &s.CycleUp, &s.CycleDown,
 		&s.CycleStart, &s.TotalUp, &s.TotalDown, &s.LastOnlineAt, &s.LastFetchAt, &s.LastFetchIP, &s.LastFetchUA,
 		&s.CreatedAt, &s.UpdatedAt, &s.Login, &s.PasswordHash, &s.LastLoginAt, &s.LastLoginIP,
-		&s.CountMode, &s.StartsAt, &s.ResetEvery, &s.SpeedLimit, &s.DeviceMode, &s.PlanID, &nq, &s.NodeQuotaMode)
+		&s.CountMode, &s.StartsAt, &s.ResetEvery, &s.SpeedLimit, &s.DeviceMode, &s.PlanID, &nq, &s.NodeQuotaMode, &s.OutAt)
 	if err != nil {
 		return nil, err
 	}

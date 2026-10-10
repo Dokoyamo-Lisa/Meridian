@@ -55,6 +55,9 @@ type Engine struct {
 	api     *API
 	tail    *accessTail
 	agg     *Aggregate
+	cuts    *cutter // connections of users taken off, to cut (cuts.go)
+	logConn bool    // what the panel last asked of the access log
+	logDest bool
 	since   map[string]int64
 	lastPID int
 	desired *proto.Xray
@@ -99,6 +102,7 @@ func (e *Engine) init() {
 		e.agg = newAggregate()
 		e.since = map[string]int64{}
 		e.tail = &accessTail{path: e.accessPath(), api: e.api}
+		e.cuts = newCutter()
 	}
 }
 
@@ -450,6 +454,7 @@ func (e *Engine) apply(ctx context.Context, d *proto.Xray, version, mirror strin
 	}
 	*missing = next.missing
 	e.aliases = next.aliases
+	e.cuts.follow(next, e.identity) // whom each inbound serves now: the others' open connections go (cuts.go)
 	body := marshal(next.full)
 	if err := e.validate(body); err != nil {
 		return res, err
@@ -475,11 +480,31 @@ func (e *Engine) apply(ctx context.Context, d *proto.Xray, version, mirror strin
 		return res, nil
 	}
 
+	// a unit written by an older agent is written anew (nothing restarts); the running Xray counts
+	// everything as it flows once it starts from it
+	if err := e.writeUnit(); err != nil {
+		return res, err
+	}
+	liveWaits := !countsLive()
+
 	// baseline: what the config file on disk says is running
 	var prev *rendered
 	var oldFull map[string]any
 	if old, err := os.ReadFile(e.configPath()); err == nil {
 		if bytes.Equal(old, body) {
+			if liveWaits {
+				if allowRestart {
+					if err := service.Restart(Unit); err != nil {
+						return res, err
+					}
+					e.waitAPI(ctx)
+					e.event("core_restarted", "warn", "Xray restarted on request to apply settings")
+					res.Changed = true
+					return res, nil
+				}
+				e.waiting = true
+				res.Pending = append(res.Pending, livePending)
+			}
 			// nothing changed on paper; still verify the live users and inbounds
 			return res, e.reconcile(ctx, next)
 		}
@@ -495,8 +520,11 @@ func (e *Engine) apply(ctx context.Context, d *proto.Xray, version, mirror strin
 	// latency checks that no load balancer needs any more simply stop with the next restart, whenever
 	// that comes: they ask for none (the file loses them now)
 	restPending := !same(prev.rest, next.rest) && !checksGone(prev.rest, next.rest)
-	e.waiting = restPending && !allowRestart
-	if restPending {
+	e.waiting = (restPending || liveWaits) && !allowRestart
+	if liveWaits && !allowRestart {
+		res.Pending = append(res.Pending, livePending)
+	}
+	if restPending || (liveWaits && allowRestart) {
 		if allowRestart {
 			if err := e.writeConfig(body); err != nil {
 				return res, err
@@ -926,18 +954,44 @@ func (e *Engine) writeConfig(body []byte) error {
 	return os.Rename(tmp, e.configPath())
 }
 
-func (e *Engine) writeUnit() error {
-	_, err := service.Define(service.Spec{
+func (e *Engine) unitSpec() service.Spec {
+	return service.Spec{
 		Name:        Unit,
 		Description: "Meridian Xray",
 		Exec:        e.currentDir() + "/xray",
 		Args:        []string{"run", "-config", e.configPath()},
-		Env:         map[string]string{"XRAY_LOCATION_ASSET": e.currentDir()},
+		Env:         map[string]string{"XRAY_LOCATION_ASSET": e.currentDir(), spliceEnv: "disable"},
 		Caps:        []string{"CAP_NET_ADMIN", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW"},
 		NoFile:      1048576,
 		Sandbox:     true,
-	})
+	}
+}
+
+func (e *Engine) writeUnit() error {
+	_, err := service.Define(e.unitSpec())
 	return err
+}
+
+// Xray relays some downloads with zero-copy (splice: VLESS with Vision, SOCKS5, HTTP) and counts
+// those only when the connection ends - a long download would count nothing until it closed, and
+// no quota could stop it in time. XRAY_BUF_SPLICE=disable makes Xray count everything as it flows.
+// Xray reads it when it starts: an Xray started from a unit of an older agent counts this way only
+// after a restart, which waits for the supervisor (ApplyResult.Pending).
+const spliceEnv = "XRAY_BUF_SPLICE"
+
+const livePending = "live traffic counting (until then long VLESS Vision, SOCKS5 and HTTP connections count only when they end)"
+
+// countsLive says whether the running Xray counts all traffic as it flows (it cannot be told: yes).
+func countsLive() bool {
+	pid, _ := service.Status(Unit)
+	if pid <= 0 {
+		return true
+	}
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid))
+	if err != nil {
+		return true
+	}
+	return bytes.Contains(b, []byte(spliceEnv+"=disable\x00"))
 }
 
 func (e *Engine) waitAPI(ctx context.Context) {
@@ -1371,6 +1425,7 @@ func (e *Engine) Collect(ctx context.Context, connLog, destLog bool) Collected {
 			}
 			u := proto.OnlineUser{Sub: sub, Node: node}
 			for ip, last := range ips {
+				e.cuts.online(proto.InboundTag(node), sub, ip, now) // SOCKS5, HTTP: who to cut (cuts.go)
 				key := name + "|" + ip
 				seen[key] = true
 				first, ok := e.since[key]
@@ -1393,16 +1448,9 @@ func (e *Engine) Collect(ctx context.Context, connLog, destLog bool) Collected {
 		}
 	}
 
-	e.tail.read(func(line string) {
-		if !connLog && !destLog {
-			return
-		}
-		if ent, ok := ParseAccess(line); ok {
-			if sub, node, ok := e.accessIdentity(ent); ok {
-				e.agg.add(ent, sub, node, connLog, destLog)
-			}
-		}
-	})
+	e.logConn, e.logDest = connLog, destLog
+	e.readLog(connLog, destLog)
+	e.cut(now) // users taken off whose grace ended (cuts.go)
 	{
 		for _, v := range e.agg.IPs {
 			out.IPs = append(out.IPs, *v)

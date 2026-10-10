@@ -124,7 +124,7 @@ func (p *Panel) relyingParty(r *http.Request) (*webauthn.WebAuthn, error) {
 	}
 	name := p.settings().SiteTitle
 	if name == "" {
-		name = "Meridian"
+		name = productName
 	}
 	return webauthn.New(&webauthn.Config{RPID: host, RPDisplayName: name, RPOrigins: []string{u.Scheme + "://" + u.Host}})
 }

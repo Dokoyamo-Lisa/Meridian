@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +35,39 @@ var coreReleases = map[string]coreAssets{
 		assets: []string{"hysteria-linux-amd64", "hysteria-linux-arm64"}},
 	"realm": {repo: "zhboner/realm", tag: func(v string) string { return "v" + v },
 		assets: []string{"realm-x86_64-unknown-linux-musl.tar.gz", "realm-aarch64-unknown-linux-musl.tar.gz"}},
+	// mieru's server; "{v}" is the version
+	"mita": {repo: "enfein/mieru", tag: func(v string) string { return "v" + v },
+		assets: []string{"mita_{v}_linux_amd64.tar.gz", "mita_{v}_linux_arm64.tar.gz"}},
+}
+
+// files are a release's asset names for one version.
+func (c coreAssets) files(version string) []string {
+	out := make([]string, len(c.assets))
+	for i, a := range c.assets {
+		out[i] = strings.ReplaceAll(a, "{v}", version)
+	}
+	return out
+}
+
+// snellDigests pin snell-server's archives: it is closed source, from Surge's own site only, with no
+// checksum published anywhere - so only these files are ever accepted (the agent pins the same ones:
+// agent/cores SnellDigests). Key: version/asset.
+var snellDigests = map[string]string{
+	"5.0.1/snell-server-v5.0.1-linux-amd64.zip":   "9bea1c2b9e35b73b31634856c04d18c393072b9e5dcde6a32781d8b8f908c539",
+	"5.0.1/snell-server-v5.0.1-linux-aarch64.zip": "2f178bf5ac468ce1a130454efa40a0603fbbe4e47ecc4880a989f4abc7f824cf",
+}
+
+// snellVersions are the snell-server versions Meridian can verify.
+func snellVersions() []string {
+	var out []string
+	for k := range snellDigests {
+		v, _, _ := strings.Cut(k, "/")
+		if !slices.Contains(out, v) {
+			out = append(out, v)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 type digestCache struct {
@@ -59,7 +93,15 @@ func (d *digestCache) forVersions(versions map[string]string) map[string]string 
 	defer d.mu.Unlock()
 	out := map[string]string{}
 	for core, v := range versions {
-		for _, a := range coreReleases[core].assets {
+		if core == "snell" {
+			for k, sum := range snellDigests {
+				if strings.HasPrefix(k, v+"/") {
+					out["snell/"+k] = sum
+				}
+			}
+			continue
+		}
+		for _, a := range coreReleases[core].files(v) {
 			k := core + "/" + v + "/" + a
 			if s, ok := d.m[k]; ok {
 				out[k] = s
@@ -75,7 +117,7 @@ func (d *digestCache) forVersions(versions map[string]string) map[string]string 
 func (d *digestCache) complete(core, version string) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	for _, a := range coreReleases[core].assets {
+	for _, a := range coreReleases[core].files(version) {
 		if d.m[core+"/"+version+"/"+a] == "" {
 			return false
 		}
@@ -99,7 +141,7 @@ func (p *Panel) maintainDigests(ctx context.Context) {
 	for {
 		changed := false
 		set := p.settings()
-		for core, v := range map[string]string{"xray": set.XrayVersion, "hysteria": set.HysteriaVersion, "realm": set.RealmVersion} {
+		for core, v := range map[string]string{"xray": set.XrayVersion, "hysteria": set.HysteriaVersion, "realm": set.RealmVersion, "mita": set.MitaVersion} {
 			if v == "" || p.digests.complete(core, v) {
 				continue
 			}
@@ -172,7 +214,7 @@ func (p *Panel) fetchDigests(ctx context.Context, core, version string) int {
 		}
 	}
 	dl := fmt.Sprintf("https://github.com/%s/releases/download/%s/", rel.repo, strings.ReplaceAll(tag, "/", "%2F"))
-	for _, a := range rel.assets {
+	for _, a := range rel.files(version) {
 		if found[a] != "" {
 			continue
 		}
@@ -197,7 +239,7 @@ func (p *Panel) fetchDigests(ctx context.Context, core, version string) int {
 	}
 	n := 0
 	p.digests.mu.Lock()
-	for _, a := range rel.assets {
+	for _, a := range rel.files(version) {
 		if d := found[a]; d != "" {
 			p.digests.m[core+"/"+version+"/"+a] = d
 			n++

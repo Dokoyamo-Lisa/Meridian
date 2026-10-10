@@ -218,10 +218,16 @@ func (e *Engine) applyOne(client *wgctrl.Client, w proto.WGInterface) error {
 			AllowedIPs: allowed})
 		changed = true
 	}
-	for k := range have {
+	var gone []netip.Prefix // the tunnel addresses of devices taken off
+	for k, p := range have {
 		if !wantKeys[k] {
 			cfg.Peers = append(cfg.Peers, wgtypes.PeerConfig{PublicKey: k, Remove: true})
 			changed = true
+			for _, n := range p.AllowedIPs {
+				if pf, err := netip.ParsePrefix(n.String()); err == nil {
+					gone = append(gone, pf.Masked())
+				}
+			}
 		}
 	}
 	if changed {
@@ -229,6 +235,7 @@ func (e *Engine) applyOne(client *wgctrl.Client, w proto.WGInterface) error {
 			return err
 		}
 	}
+	dropFlows(gone) // what they had open through the server goes too (flows.go)
 
 	if w.DNS && len(w.Address) > 0 {
 		gw := strings.Split(w.Address[0], "/")[0]

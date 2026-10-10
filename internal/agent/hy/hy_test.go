@@ -170,3 +170,36 @@ func TestFailure(t *testing.T) {
 		t.Errorf("long log: %q", got)
 	}
 }
+
+// TestSpeedSignIn: a user with a speed limit gets in only with an app that declares a rate within it
+// (with a little room); without a limit any rate - or none - is fine. A lower limit marks the user's
+// sessions to sign in again; a higher one does not.
+func TestSpeedSignIn(t *testing.T) {
+	e := &Engine{}
+	e.init()
+	e.users[2] = map[string]string{"pw-a": proto.Email(5, 2), "pw-b": proto.Email(6, 2)}
+	e.SetSpeed([]proto.SpeedLimit{{Sub: 5, Mbps: 300}})
+	for _, c := range []struct {
+		id   string
+		tx   uint64
+		over bool
+	}{
+		{proto.Email(5, 2), 0, true},                          // no declared rate: stalls under the limit
+		{proto.Email(5, 2), 285 * 125_000, false},             // what the link declares
+		{proto.Email(5, 2), 300 * 125_000 * 104 / 100, false}, // apps round
+		{proto.Email(5, 2), 400 * 125_000, true},              // more than the limit
+		{proto.Email(6, 2), 0, false},                         // no limit: BBR is fine
+		{proto.Email(6, 2), 900 * 125_000, false},
+		{"p7", 0, false}, // a proxy pass
+	} {
+		e.mu.Lock()
+		over := e.overLimit(c.id, c.tx)
+		e.mu.Unlock()
+		if over != c.over {
+			t.Errorf("%s at %d B/s: over %v, want %v", c.id, c.tx, over, c.over)
+		}
+	}
+	if maxTx(300) != 39_375_000 {
+		t.Errorf("maxTx(300) = %d", maxTx(300))
+	}
+}

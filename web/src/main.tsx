@@ -83,7 +83,7 @@ function Shell() {
   const s = useSession()
   const loc = useLocation()
   const a = s.account!
-  const title = s.meta?.site_title || 'Meridian'
+  const title = s.meta?.site_title || 'Rosélune'
   const links = [...nav.slice(0, -1), ...usePluginNav(), ...nav.slice(-1)] // plugins' pages go before Settings
   useEffect(() => void loadPluginScripts(), [])
   useEffect(() => {
@@ -138,7 +138,7 @@ function Shell() {
       <footer class="app-foot">
         <span>
           <a href="https://github.com/Dokoyamo-Lisa/Meridian" target="_blank" rel="noopener noreferrer">
-            Meridian
+            Rosélune
           </a>{' '}
           {s.meta?.version || ''} · AGPL-3.0
         </span>

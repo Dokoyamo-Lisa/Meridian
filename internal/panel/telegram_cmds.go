@@ -450,6 +450,8 @@ func (p *Panel) botUsers(ctx context.Context) string {
 		switch {
 		case s.Paused:
 			mark = "⏸"
+		case s.outOfData():
+			mark = "⛔"
 		case len(n.online[s.ID]) > 0:
 			mark = "🟢"
 		}
@@ -469,8 +471,11 @@ func (p *Panel) botUser(ctx context.Context, q string) string {
 	}
 	var b strings.Builder
 	status := "active"
-	if s.Paused {
+	switch {
+	case s.Paused:
 		status = "⏸ paused"
+	case s.outOfData():
+		status = "⛔ data used up - suspended, back " + p.backOn(s)
 	}
 	fmt.Fprintf(&b, "<b>%s</b> - %s\n", esc(s.Name), status)
 	fmt.Fprintf(&b, "This cycle: %s (↓ %s · ↑ %s)", usedOf(s), fmtBytes(s.CycleDown), fmtBytes(s.CycleUp))
@@ -504,8 +509,9 @@ func (p *Panel) botUser(ctx context.Context, q string) string {
 	if s.LastOnlineAt > 0 && devices == 0 {
 		fmt.Fprintf(&b, "Last online %s ago\n", humanDuration(now()-s.LastOnlineAt))
 	}
-	if flags := subFlags(s, devices, now()); len(flags) > 0 {
-		fmt.Fprintf(&b, "Flags: %s (nothing is paused by them)\n", strings.ReplaceAll(strings.Join(flags, ", "), "_", " "))
+	// a used-up quota is in the status line; the rest only raise alerts
+	if flags := slices.DeleteFunc(subFlags(s, devices, now()), func(f string) bool { return f == "over_quota" }); len(flags) > 0 {
+		fmt.Fprintf(&b, "Flags: %s (alerts only - nothing is paused by them)\n", strings.ReplaceAll(strings.Join(flags, ", "), "_", " "))
 	}
 	return strings.TrimSpace(b.String())
 }
@@ -718,7 +724,10 @@ func (p *Panel) endingSoon(ctx context.Context, days int) (ending, data []string
 				ending = append(ending, fmt.Sprintf("🟠 %s's access ends on %s", esc(s.Name), p.dateText(s.ExpiresAt)))
 			}
 		}
-		if s.Quota > 0 && s.Used() >= s.Quota*8/10 {
+		switch {
+		case s.outOfData():
+			data = append(data, fmt.Sprintf("⛔ %s used all of %s - suspended, back %s", esc(s.Name), fmtBytes(s.Quota), p.backOn(s)))
+		case s.Quota > 0 && s.Used() >= s.Quota*8/10:
 			data = append(data, fmt.Sprintf("🟠 %s used %.0f%% of %s", esc(s.Name), float64(s.Used())*100/float64(s.Quota), fmtBytes(s.Quota)))
 		}
 	}
@@ -1066,10 +1075,16 @@ func (p *Panel) botUserCommand(ctx context.Context, s *Sub, l *tgLink, from tgUs
 func (p *Panel) botUsage(ctx context.Context, s *Sub) string {
 	var b strings.Builder
 	status := "active"
-	if s.Paused {
+	switch {
+	case s.Paused:
 		status = "⏸ paused"
+	case s.outOfData():
+		status = "⛔ data used up"
 	}
 	fmt.Fprintf(&b, "<b>%s</b> - %s\n", esc(s.Name), status)
+	if s.outOfData() && !s.Paused {
+		b.WriteString(esc(p.outText(s)) + "\n")
+	}
 	if s.Quota > 0 {
 		left := max(s.Quota-s.Used(), 0)
 		fmt.Fprintf(&b, "Data: %s of %s used · <b>%s left</b>\n", fmtBytes(s.Used()), fmtBytes(s.Quota), fmtBytes(left))

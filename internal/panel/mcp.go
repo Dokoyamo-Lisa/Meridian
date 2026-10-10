@@ -318,7 +318,7 @@ func (r *recorder) Write(b []byte) (int, error) {
 }
 
 func mcpInstructions(scope string) string {
-	s := `Meridian manages proxy and VPN servers (Xray: VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP; Hysteria2; WireGuard; port forwards) and the users who connect through them.
+	s := `Rosélune (called Meridian before 1.3; its programs and services still are) manages proxy and VPN servers (Xray: VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP; Hysteria2; WireGuard; mieru; Snell; port forwards) and the users who connect through them.
 
 How to work with it:
 - Start with "overview" to see what is running and what needs attention.
@@ -330,7 +330,8 @@ How to work with it:
 - The status page shows visitors only a sign-in; users see their own usage there, and only the supervisor sees the servers. Its texts are public: never put private information in them.
 - Country rules ("set_country_rule") cut connections from blocked countries at once on every server that follows the global rule.
 - Traffic rules ("get_routing", "set_traffic_rule") send chosen sites directly, through another server or an imported external node ("import_external_nodes", or a provider's subscription kept up to date: "add_subscription_link"), to a load balancer, or nowhere - live. After a change, read "problems" in get_routing: what cannot be used somewhere is blocked there, never sent out directly instead.
-- Traffic is in bytes, rates in bytes per second, times in Unix seconds. Quotas and IP limits only raise alerts - nothing is ever paused automatically.
+- Traffic is in bytes, rates in bytes per second, times in Unix seconds.
+- A user who uses up their quota is suspended by itself (status out_of_data): no server serves them until their data starts over - their next reset, a higher quota, a new period on a plan or reset_user_usage - and then they are back by themselves. End dates and IP limits only raise alerts. Nothing else is ever paused automatically; pausing is a person's decision.
 - Tools marked destructive (pause, delete, reset, block, restart) disconnect people. Never call them without the user's explicit confirmation in this conversation; pass confirm=true only after that.
 - Never print subscription links, passwords, install commands or credentials unless the user asks for them.`
 	if scope != "full" {
@@ -714,7 +715,7 @@ var mcpTools = []mcpTool{
 			return srv, nil
 		}},
 	{Name: "list_users", Title: "List users",
-		Description: "Users (each has a subscription link and maybe a sign-in for their own page) with status, soft-limit flags (over_quota, expired, over_ip_limit...), IPs online now, distinct IPs in 24 h and usage this cycle.",
+		Description: "Users (each has a subscription link and maybe a sign-in for their own page) with status (active, paused, or out_of_data: the quota is used up and no server serves them until it starts over), flags (over_quota, expired, over_ip_limit...), IPs online now, distinct IPs in 24 h and usage this cycle.",
 		Props: map[string]any{
 			"filter": pEnum("Only some of them", "all", "online", "flagged", "paused"),
 			"query":  pStr("Text to look for in the name, username or note"),
@@ -850,7 +851,7 @@ var mcpTools = []mcpTool{
 			return pick(v, "id", "ts", "level", "kind", "server_id", "user_id", "message"), err
 		}},
 	{Name: "list_risks", Title: "Health risks",
-		Description: "What the servers' health checks found that looks like a break-in or abuse: crypto-miners, programs run from temporary folders or deleted, new ports, new accounts and SSH keys, changed administrator rights, scheduled tasks and services, kernel modules, SSH sign-ins, traffic Meridian does not account for, Meridian's own programs changed. Each has a severity (info, warning, high, critical), when it was first and last seen, how often, whether it still holds, and a status: open, acknowledged (seen; flagged again if it happens again) or expected (never flagged again). Nothing is ever stopped or blocked because of a risk.",
+		Description: "What the servers' health checks found that looks like a break-in or abuse: crypto-miners, programs run from temporary folders or deleted, new ports, new accounts and SSH keys, changed administrator rights, scheduled tasks and services, kernel modules, SSH sign-ins, traffic Rosélune does not account for, Rosélune's own programs changed. Each has a severity (info, warning, high, critical), when it was first and last seen, how often, whether it still holds, and a status: open, acknowledged (seen; flagged again if it happens again) or expected (never flagged again). Nothing is ever stopped or blocked because of a risk.",
 		Props: map[string]any{
 			"status":    pEnum("Which (default open)", "open", "acknowledged", "expected", "all"),
 			"severity":  pEnum("At least this serious", "info", "warning", "high", "critical"),
@@ -910,7 +911,7 @@ var mcpTools = []mcpTool{
 
 	// ------------------------------------------------------------ change
 	{Name: "create_user", Title: "Create user", Write: true,
-		Description: "Create a user: they get a subscription link and, unless sign_in is false, a username and password to see their own usage on the panel's site. A generated password is returned once - pass it on to the user. By default the link covers all servers, including future ones. A plan_id (list_plans) fills in whatever is left out. Quota and end date only raise alerts; a speed limit and device_mode refuse are enforced by the servers.",
+		Description: "Create a user: they get a subscription link and, unless sign_in is false, a username and password to see their own usage on the panel's site. A generated password is returned once - pass it on to the user. By default the link covers all servers, including future ones. A plan_id (list_plans) fills in whatever is left out. A user who uses up their quota is suspended until their data starts over (the next reset); the end date only raises alerts; a speed limit and device_mode refuse are enforced by the servers.",
 		Props: withProps(map[string]any{
 			"name":         pStr("Who it is for"),
 			"username":     pStr("Sign-in name (3-26 of a-z 0-9 . _ -); omit to make one from the name"),
@@ -949,7 +950,7 @@ var mcpTools = []mcpTool{
 				"speed_limit", "plan_id"), err
 		}},
 	{Name: "update_user", Title: "Change user", Write: true,
-		Description: "Change a user's name, sign-in, limits, counting, period, servers or note. Only the given fields change; a new reset schedule keeps the usage counted so far. To start a new period on a plan use apply_plan. A new username or password signs the user out of their page; an empty username removes the sign-in. Changing servers takes effect within seconds; devices pick up new servers when they refresh.",
+		Description: "Change a user's name, sign-in, limits, counting, period, servers or note. Only the given fields change; a new reset schedule keeps the usage counted so far. To start a new period on a plan use apply_plan. A new username or password signs the user out of their page; an empty username removes the sign-in. Changing servers takes effect within seconds; devices pick up new servers when they refresh. A quota at or below what they used this cycle suspends them until their data starts over; a higher one lets a suspended user back in at once.",
 		Props: withProps(map[string]any{
 			"user_id":      pInt("User id"),
 			"name":         pStr("New name"),
@@ -986,7 +987,7 @@ var mcpTools = []mcpTool{
 	subAction("reset_user_credentials", "Reset credentials", "reset-keys", true,
 		"Give the user new proxy credentials. Every device is disconnected and must refresh the subscription (the link stays the same). Use it to kick out copied configs."),
 	subAction("reset_user_usage", "Reset usage", "reset-usage", false,
-		"Set this cycle's usage of a user back to zero. History stays."),
+		"Set this cycle's usage of a user back to zero. History stays. A user whose data was used up can connect again at once."),
 	subAction("sign_out_user", "Sign the user out", "sign-out", false,
 		"End the user's sessions on their own page (their proxy connections are not affected)."),
 	{Name: "new_user_password", Title: "New sign-in password", Write: true,
@@ -1221,7 +1222,7 @@ var mcpTools = []mcpTool{
 			"ip_version":   pEnum("both (IPv4 and IPv6), ipv4 or ipv6: how protocols reach sites, which address links use, whether WireGuard routes IPv6", "both", "ipv4", "ipv6"),
 			"public_ports": pStr(publicPortsHelp + " Empty string = every port."),
 			"note":         pStr("A note for yourself"),
-			"xray_code":    pStr("Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates: outbounds (added, or replacing the one with the same tag), routing.rules (before the panel's), inbounds by a protocol's tag n<id> (merged into it) or new ones, other sections such as dns. api, stats, log and policy are Meridian's. Only the syntax is checked; Xray's refusals show in get_server (apply_errors). Empty string removes it"),
+			"xray_code":    pStr("Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates: outbounds (added, or replacing the one with the same tag), routing.rules (before the panel's), inbounds by a protocol's tag n<id> (merged into it) or new ones, other sections such as dns. api, stats, log and policy are Rosélune's. Only the syntax is checked; Xray's refusals show in get_server (apply_errors). Empty string removes it"),
 			"dynamic_dns":  pBool(dynamicDNSHelp),
 			"cloudflare":   pBool(cloudflareDNSHelp),
 		},
@@ -1420,7 +1421,7 @@ var mcpTools = []mcpTool{
 			return c.api("GET", fmt.Sprintf("/api/servers/%d/scan", id), nil)
 		}},
 	{Name: "import_protocols", Title: "Import found protocols", Write: true, Destructive: true,
-		Description: "Import protocols the scan found. Every user keeps their credentials (new users are created, or matched by name). With take_over the old service is stopped and Meridian serves the same ports, so devices keep working - its users are disconnected for a moment. Without take_over nothing is stopped and busy ports move.",
+		Description: "Import protocols the scan found. Every user keeps their credentials (new users are created, or matched by name). With take_over the old service is stopped and Rosélune serves the same ports, so devices keep working - its users are disconnected for a moment. Without take_over nothing is stopped and busy ports move.",
 		Props: map[string]any{
 			"server_id": pInt("Server id"),
 			"items": map[string]any{"type": "array", "description": "Protocols to import, as get_scan lists them",
@@ -1730,7 +1731,7 @@ var mcpTools = []mcpTool{
 			return c.api("PUT", fmt.Sprintf("/api/nodes/%d/users", id), b)
 		}},
 	{Name: "add_subscription_link", Title: "Add a provider's subscription link", Write: true,
-		Description: "Keep a provider's subscription in the panel: it is read at once and again every every_hours hours, and its nodes become external nodes that follow the provider (new ones added, changed ones updated in place, gone ones removed - or kept while something still names them). They can be used as exits, and a load balancer member src:<id> stands for all of them. With offer=true users get them in their own subscriptions too (Meridian cannot count or limit that traffic). Answers what the first read found.",
+		Description: "Keep a provider's subscription in the panel: it is read at once and again every every_hours hours, and its nodes become external nodes that follow the provider (new ones added, changed ones updated in place, gone ones removed - or kept while something still names them). They can be used as exits, and a load balancer member src:<id> stands for all of them. With offer=true users get them in their own subscriptions too (Rosélune cannot count or limit that traffic). Answers what the first read found.",
 		Props: map[string]any{"name": pStr("A name for it"), "url": pStr("The subscription address, https://..."),
 			"every_hours": pInt("Read it again every this many hours (default 12; 0 = only when asked)"),
 			"prefix":      pStr("Put in front of each node's name"), "include": pStr("Only nodes whose name holds one of these words (comma separated)"),
@@ -1928,10 +1929,10 @@ var mcpTools = []mcpTool{
 			return "Unblocked.", nil
 		}},
 	{Name: "check_updates", Title: "Updates",
-		Description: "This panel's Meridian version, the newest release (as of the last look on GitHub, every few hours) with its notes, whether the panel can install updates itself, whether automatic updates are on, and which servers run an older agent.",
+		Description: "This panel's Rosélune version, the newest release (as of the last look on GitHub, every few hours) with its notes, whether the panel can install updates itself, whether automatic updates are on, and which servers run an older agent.",
 		Run:         func(c *mcpCall, a map[string]any) (any, error) { return c.api("GET", "/api/update", nil) }},
 	{Name: "update_panel", Title: "Install the newest release", Write: true, Destructive: true,
-		Description: "Install the newest Meridian release: the panel downloads it, checks its signature and checksum, backs up the database, and the updater service installs it. Proxies keep running; the panel restarts once (this connection drops for a few seconds). With agents (the default), every server's agent is upgraded afterwards - nobody is disconnected. Ask the user first.",
+		Description: "Install the newest Rosélune release: the panel downloads it, checks its signature and checksum, backs up the database, and the updater service installs it. Proxies keep running; the panel restarts once (this connection drops for a few seconds). With agents (the default), every server's agent is upgraded afterwards - nobody is disconnected. Ask the user first.",
 		Props: map[string]any{
 			"agents": pBool("Also upgrade every server's agent afterwards (default true)"),
 		},
@@ -2155,14 +2156,15 @@ var mcpTools = []mcpTool{
 			return c.api("GET", fmt.Sprintf("/api/servers/%d/series?range=%s", id, url.QueryEscape(rng)), nil)
 		}},
 	{Name: "set_branding", Title: "Name, logo and animation", Write: true,
-		Description: "What users see of the panel: its name, its logo and how the logo moves. Give the logo as SVG markup (logo_svg) or a base64 PNG, JPEG or WebP (logo_base64), up to 128 KB; SVGs may only draw - the answer says what to remove otherwise. reset_logo=true brings back the built-in umbrella. Only the given fields change.",
+		Description: "What users see of the panel: its name, its logo and how the logo moves. Give the logo as SVG markup (logo_svg) or a base64 PNG, JPEG or WebP (logo_base64), up to 128 KB; SVGs may only draw - the answer says what to remove otherwise. reset_logo=true brings back the built-in logo (mark: the rose or the umbrella). Only the given fields change.",
 		Props: map[string]any{
 			"name":        pStr("The panel's name, shown on every page and in users' apps (up to 64 characters)"),
-			"animation":   pEnum("How the logo moves while pages load and when someone signs in (assemble needs the built-in umbrella; an uploaded logo rises instead)", logoAnimations...),
-			"look":        pEnum("How the panel, the status page and users' pages look to people who have not picked a look themselves: umbrella (black, white and signal red, a laboratory's), romance (blush and rose, a serif voice), the quiet tones ice, celadon, ink, paper, mist - or automatic (Ice, Paper on light devices)", append([]string{"automatic"}, siteTones...)...),
+			"mark":        pEnum("The built-in logo, shown while no logo is uploaded: rose (Rosélune's own: five petals, a blush bloom, the moon at its heart) or umbrella (eight panels, red and white)", logoMarks...),
+			"animation":   pEnum("How the logo moves while pages load and when someone signs in (assemble flies in the built-in logo's pieces; an uploaded logo rises instead)", logoAnimations...),
+			"look":        pEnum("How the panel, the status page and users' pages look to people who have not picked a look themselves: romance (the default: blush paper, rose ink, a serif voice), umbrella (black, white and signal red, a laboratory's), the quiet tones ice, celadon, ink, paper, mist - or auto (Ice, Paper on light devices)", append(slices.Clone(siteTones), "auto")...),
 			"logo_svg":    pStr("A new logo as SVG markup"),
 			"logo_base64": pStr("A new logo as a base64 PNG, JPEG or WebP image"),
-			"reset_logo":  pBool("Use the built-in umbrella again"),
+			"reset_logo":  pBool("Use the built-in logo again (see mark)"),
 		},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
 			svg, _ := argStr(a, "logo_svg")
@@ -2196,9 +2198,12 @@ var mcpTools = []mcpTool{
 			if x, ok := argStr(a, "animation"); ok && x != "" {
 				change["logo_animation"] = x
 			}
+			if x, ok := argStr(a, "mark"); ok && x != "" {
+				change["logo_mark"] = x
+			}
 			if x, ok := argStr(a, "look"); ok && x != "" {
-				if x == "automatic" {
-					x = ""
+				if x == "automatic" { // what this was called before 1.3
+					x = "auto"
 				}
 				change["default_tone"] = x
 			}
@@ -2207,7 +2212,7 @@ var mcpTools = []mcpTool{
 					return nil, err
 				}
 			}
-			return map[string]any{"name": c.p.settings().SiteTitle, "logo": c.p.logoInfo(), "look": nz(c.p.settings().DefaultTone, "automatic")}, nil
+			return map[string]any{"name": c.p.settings().SiteTitle, "logo": c.p.logoInfo(), "look": c.p.settings().DefaultTone}, nil
 		}},
 	{Name: "set_server_on_status_page", Title: "A server on the status page", Write: true,
 		Description: "How a server appears on the status page: shown or hidden, the name shown there, and where it sits on the globe. IP databases often place data-centre addresses at the provider's office; set city to correct it.",

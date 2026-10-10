@@ -1,9 +1,10 @@
-# Meridian
+# Rosélune
 
-Meridian sets up VLESS, VMess, Trojan, Shadowsocks, Hysteria2 and WireGuard on your own Linux
-servers, gives every user a link for their apps and a page of their own, and shows every server on a
-live globe. It never pauses anyone or restarts a core on its own: limits raise alerts, and a restart
-waits for a button that says what it will do.
+Rosélune sets up VLESS, VMess, Trojan, Shadowsocks, Hysteria2, WireGuard, mieru and Snell on your own
+Linux servers, gives every user a link for their apps and a page of their own, and shows every server
+on a live globe. It never pauses anyone or restarts a core on its own: a user who uses up their data is
+off until it starts over, other limits raise alerts, and a restart waits for a button that says what
+it will do.
 
 **New to this? [Start with the guide](guide/before-you-begin.md)** - it goes one step at a time, from
 renting a server to the first person connected, and shows what you should see at every step.
@@ -26,7 +27,7 @@ panel then shows the one command that installs each server's agent.
 
 ## The demo
 
-[deep.losantos.space](https://deep.losantos.space) is a Meridian panel to look around in: eight
+[deep.losantos.space](https://deep.losantos.space) is a Rosélune panel to look around in: eight
 servers and sixteen people that do not exist, a month of history, and agents reporting live. You are
 let in without signing in, and nothing there can be changed.
 
@@ -35,7 +36,7 @@ let in without signing in, and nothing there can be changed.
 | | |
 |---|---|
 | **Runs the servers** | One command per server installs its agent. Forms accept only protocol combinations that work, and say which apps can use each one. Users, keys and settings change live; nobody is disconnected. |
-| **Never disruptive on its own** | Data limits, end dates and device limits raise alerts; only a person pauses. A change that needs a core restart waits for your click. |
+| **Never disruptive on its own** | A user who uses up their data is off until it starts over, then back by themselves; end dates and device limits raise alerts, and only a person pauses. A change that needs a core restart waits for your click. |
 | **Users see their own** | Each user has a page with the data they have left, their devices, and their link with a QR code and one-tap import for every app. A Telegram bot answers them too. |
 | **A status page** | Every server on a live globe, with its health, history and ping monitors, public or private. IP addresses stay hidden unless you show them; prices and users never appear. |
 | **Traffic splitting** | Sites, countries, ports or BitTorrent go directly, through another server, a provider's proxy or a load balancer, for every server or a few, applied live. |
@@ -43,25 +44,33 @@ let in without signing in, and nothing there can be changed.
 | **Accountable** | Every connecting address with its user, server, place and network; destinations per user; traffic counted exactly once per user, protocol and day. |
 | **Shared servers** | Lend a server to a friend's panel without your console. Reach servers whose address changes by their name, and IPv6-only servers wherever both ends can meet. |
 | **Automatable** | A REST API with scoped tokens, and an MCP server, so an AI assistant can answer "who is sharing their link?" and asks first before anything disruptive. |
-| **Yours to change** | Your name and logo, quiet tones or the Umbrella and Romance looks, your own CSS, and plugins that add pages, tools and filters. |
+| **Yours to change** | Your name and logo (the rose, the umbrella or your own), the Romance look or Umbrella or a quiet tone, your own CSS, and plugins that add pages, tools and filters. |
 
 ## See it
 
-![The status page: every server on a globe, availability for 30 days, servers, throughput and resources](img/umbrella-status.webp)
+![The status page: every server on a globe, availability for 30 days, servers, throughput and resources](img/romance-status.webp)
 
-*The status page, in the Umbrella look.*
+*The status page, in Romance - Rosélune's own look: blush paper, rose ink and a serif voice.*
 
-![The panel's overview: servers online, devices connected, throughput and traffic per day](img/umbrella-overview.webp)
+![The panel's overview: servers online, devices connected, throughput and traffic per day](img/romance-overview.webp)
 
 *The panel.*
 
-![A server's details: throughput now, resources, and charts of a month of history](img/umbrella-details.webp)
+![A server's details: throughput now, resources, and charts of a month of history](img/romance-details.webp)
 
 *A server's history.*
 
-![The status page in the Romance look: blush paper, rose ink and a serif voice](img/romance-status.webp)
+![The same status page in the Umbrella look: black glass, white type and one signal red](img/umbrella-status.webp)
 
-*The same status page in Romance. Five quieter tones are a click away in the palette menu.*
+*The same status page in Umbrella - with the umbrella as the logo, the other built-in one.*
+
+![The panel's overview in the Umbrella look](img/umbrella-overview.webp)
+
+*The panel in Umbrella.*
+
+![A server's details in the Umbrella look](img/umbrella-details.webp)
+
+*A server's history in Umbrella. Five quieter tones are a click away in the palette menu.*
 
 ## Protocols and apps
 
@@ -72,6 +81,7 @@ let in without signing in, and nothing there can be changed.
 | Shadowsocks | 2022 ciphers and classic AEAD, over TCP and UDP; SOCKS5 and HTTP with a password per user |
 | Hysteria2 | QUIC, with port hopping and obfuscation |
 | WireGuard | In the kernel, with the official apps |
+| mieru, Snell | A port and a small server of their own for every user, so usage, limits and cuts are exact; mieru for the mihomo apps and Stash, Snell for Surge, Stash, the mihomo apps and sing-box |
 
 | Apps | How users add their link |
 |---|---|
@@ -89,7 +99,7 @@ configurations, and tests check it with sing-box, mihomo and Xray themselves.
 
 ### What does it cost?
 
-Nothing. Meridian is free software under the AGPL-3.0: run it, read it, change it. If you offer a
+Nothing. Rosélune is free software under the AGPL-3.0: run it, read it, change it. If you offer a
 changed version to others over a network, share your changes too.
 
 ### What do I need?
@@ -105,7 +115,7 @@ does not manage.
 
 ### Who does it talk to?
 
-GitHub (Meridian's releases and the cores'), DB-IP (the free database of where addresses are), Let's
+GitHub (Rosélune's releases and the cores'), DB-IP (the free database of where addresses are), Let's
 Encrypt (certificates) and Cloudflare (to learn a server's public address). It talks to Telegram, a
 webhook or your backup storage only if you set them up. Everything goes over HTTPS, and nothing about
 your users leaves your servers.

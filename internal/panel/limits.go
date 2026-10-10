@@ -169,23 +169,26 @@ func (p *Panel) limitsFor(srv *Server, nodes []*Node, subs []*Sub, st *proto.Sta
 	return rules
 }
 
-// capHysteria has a user's Hysteria2 apps ask for no more than the user's speed limit where the
-// protocol has them declare a bandwidth: the server then sends no faster than that by itself, so the
-// agent's limit seldom has to drop anything. A protocol without one keeps it so - apps then adapt to
-// the line (and to the limit) by themselves, while a declared rate would be sent whatever the line.
+// capHysteria has a limited user's Hysteria2 apps declare a bandwidth a little below the user's
+// speed limit: the server then sends no faster than that by itself, and the agent's limit, which
+// drops what goes over, seldom has to. Without a declared rate (BBR) a Hysteria2 transfer stalls
+// completely under such a limit - tried in the lab, at 0.1 and at 40 ms - so the agent lets in only
+// sign-ins that declare one within the limit (agent hy/limits.go). Users without a limit keep what
+// the protocol says.
 func capHysteria(eps []subgen.Endpoint, mbps int) {
 	if mbps <= 0 {
 		return
 	}
+	limit := max(1, mbps*95/100)
 	for i := range eps {
 		if eps[i].Kind != subgen.KindHysteria2 {
 			continue
 		}
-		if eps[i].DownMbps > mbps {
-			eps[i].DownMbps = mbps
+		if eps[i].DownMbps == 0 || eps[i].DownMbps > limit {
+			eps[i].DownMbps = limit
 		}
-		if eps[i].UpMbps > mbps {
-			eps[i].UpMbps = mbps
+		if eps[i].UpMbps == 0 || eps[i].UpMbps > limit {
+			eps[i].UpMbps = limit
 		}
 	}
 }

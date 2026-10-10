@@ -451,6 +451,10 @@ func ensure(ctx context.Context, base, name, version, mirror string) (string, er
 		return EnsureHysteria(ctx, base, version, mirror)
 	case "realm":
 		return EnsureRealm(ctx, base, version, mirror)
+	case "mita":
+		return EnsureMita(ctx, base, version, mirror)
+	case "snell":
+		return EnsureSnell(ctx, base, version, mirror)
 	}
 	return "", fmt.Errorf("unknown core %q", name)
 }

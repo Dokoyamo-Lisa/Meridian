@@ -172,7 +172,7 @@ func (s *xraySettings) importDecryption(dec string) (note string, err error) {
 	}
 	parts := strings.Split(dec, ".")
 	if len(parts) < 4 || parts[0] != encHandshake || !slices.Contains(encModes, parts[1]) {
-		return "", errors.New("it uses a VLESS Encryption Meridian does not know - only mlkem768x25519plus with native, xorpub or random")
+		return "", errors.New("it uses a VLESS Encryption Rosélune does not know - only mlkem768x25519plus with native, xorpub or random")
 	}
 	if _, err := strconv.Atoi(strings.SplitN(strings.TrimSuffix(parts[2], "s"), "-", 2)[0]); err != nil {
 		return "", errors.New("its VLESS Encryption setting cannot be read")
@@ -186,7 +186,7 @@ func (s *xraySettings) importDecryption(dec string) (note string, err error) {
 		}
 	}
 	if len(keys) != 1 {
-		return "", errors.New("its VLESS Encryption has several keys (a relay chain) - Meridian supports one key per protocol")
+		return "", errors.New("its VLESS Encryption has several keys (a relay chain) - Rosélune supports one key per protocol")
 	}
 	client, err := vlessEncClientKey(keys[0])
 	if err != nil {
@@ -194,7 +194,7 @@ func (s *xraySettings) importDecryption(dec string) (note string, err error) {
 	}
 	s.Encryption, s.EncKey, s.EncClient, s.EncAuth = parts[1], keys[0], client, encAuthOf(keys[0])
 	if len(padding) > 0 || parts[2] != encTickets {
-		note = "its VLESS Encryption padding and session times become Meridian's (" + encTickets + " tickets) - devices keep working"
+		note = "its VLESS Encryption padding and session times become Rosélune's (" + encTickets + " tickets) - devices keep working"
 	}
 	return note, nil
 }

@@ -2,14 +2,14 @@
 
 Ten minutes, once. A Telegram bot of your own tells you when something needs you: a server stopped
 reporting, someone used up their data, someone signed in. It only tells - nothing is paused or
-changed by it.
+changed by a message.
 
 You need: Telegram on your phone or computer.
 
 ## 1. Make a bot
 
 1. In Telegram, open **@BotFather** (the official one, with the blue tick) and send `/newbot`.
-2. It asks for a **name** (anything, for example *My Meridian*) and a **username** that ends in
+2. It asks for a **name** (anything, for example *My Rosélune*) and a **username** that ends in
    `bot` (for example *mymeridian_alerts_bot*).
 3. It answers with a **token**, a long line like `123456789:AAH...`. Copy it.
 
@@ -39,7 +39,7 @@ Under **What is sent**, tick what you want to hear about:
 | | |
 |---|---|
 | **Servers** | Offline and back online, a machine that restarted, a configuration a server refused, a core that crashed. |
-| **Users** | Data used up, access ended or ending within 3 days, more devices than allowed. |
+| **Users** | Data used up (the servers stop serving that person until their data starts over), access ended or ending within 3 days, more devices than allowed. |
 | **Certificates** | Shared certificates that expire within 14 days. |
 | **Sign-ins and security** | Every sign-in and failed sign-in, passkeys added or removed, blocked networks, password and two-factor changes, new API tokens. |
 | **Health risks** | Signs of a break-in on a server: a crypto-miner, a new account or SSH key, a program run from a temporary folder. |

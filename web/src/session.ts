@@ -87,18 +87,19 @@ export function setAccount(a: Account) {
 
 // ---------------------------------------------------------------- tones
 
+// the looks, Rosélune's own first (web/public/boot.js knows the same)
 export const tones: { id: string; name: string; a: string; b: string }[] = [
+  { id: 'romance', name: 'Romance', a: '#c13a66', b: '#fbf0f2' },
+  { id: 'umbrella', name: 'Umbrella', a: '#d42a33', b: '#0a0a0b' },
   { id: 'ice', name: 'Ice', a: '#8cc0ff', b: '#07090d' },
   { id: 'celadon', name: 'Celadon', a: '#98c6bc', b: '#111413' },
   { id: 'ink', name: 'Ink', a: '#93bde3', b: '#13110f' },
   { id: 'paper', name: 'Paper', a: '#2c6aa3', b: '#f3efe6' },
   { id: 'mist', name: 'Mist', a: '#487d73', b: '#eef2f1' },
-  { id: 'umbrella', name: 'Umbrella', a: '#d42a33', b: '#0a0a0b' },
-  { id: 'romance', name: 'Romance', a: '#c2416b', b: '#fbf0f2' },
 ]
 
 export function currentTone(): string {
-  return document.documentElement.dataset.theme || 'ice'
+  return document.documentElement.dataset.theme || 'romance'
 }
 
 export function setTone(id: string) {
@@ -108,6 +109,9 @@ export function setTone(id: string) {
   } catch {
     /* private mode: the choice lasts for this visit */
   }
+  // the colour browsers paint around the page (boot.js set it for the first look)
+  const t = tones.find((x) => x.id === id)
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t ? t.b : '#fbf0f2')
   window.dispatchEvent(new Event('meridian:tone'))
 }
 

@@ -50,6 +50,41 @@ type State struct {
 	// Ping: addresses this server measures the way to, at fixed intervals (1.0 and later); the
 	// results come back in the batches, so a link that was down loses none of them.
 	Ping []PingTarget `json:"ping,omitempty"`
+	// Solo: protocols whose server takes one user per process - mieru (mita) and Snell: each user
+	// has their own process on their own port, so usage, cuts and limits are exact per user
+	// (Caps.Solo, 1.3 and later).
+	Solo []SoloNode `json:"solo,omitempty"`
+	// Grace: users taken off because their data ran out whose connections already open may stay
+	// until Until (the supervisor's loose mode); new ones are refused all the same. Any other user
+	// who is taken off a protocol has the connections still open there cut at once (Caps.Cut).
+	Grace []Grace `json:"grace,omitempty"`
+}
+
+// SoloNode is a protocol of the one-user-per-process kind on this server.
+type SoloNode struct {
+	NodeID    int64      `json:"node_id"`
+	Kind      string     `json:"kind"`                // mieru | snell
+	Transport string     `json:"transport,omitempty"` // mieru: tcp | udp
+	Bind      string     `json:"bind,omitempty"`      // the server address it listens on; empty = all
+	Users     []SoloUser `json:"users"`
+}
+
+// SoloUser is one user of a SoloNode: their own port and credentials.
+type SoloUser struct {
+	Sub    int64  `json:"s"`
+	Port   int    `json:"port"`
+	Name   string `json:"name,omitempty"` // mieru's user name
+	Secret string `json:"secret"`         // mieru's password, Snell's PSK
+}
+
+// SoloKinds are the protocols a SoloNode can be.
+var SoloKinds = []string{"mieru", "snell"}
+
+// Grace is one user's open connections allowed to finish: until Until (Unix seconds), unless the
+// state stops listing the user earlier.
+type Grace struct {
+	Sub   int64 `json:"s"`
+	Until int64 `json:"until"`
 }
 
 // PingTarget is one address a server pings: ICMP echo, or the time a TCP connection takes.
@@ -129,6 +164,8 @@ type Cores struct {
 	Xray     string `json:"xray,omitempty"`
 	Hysteria string `json:"hysteria,omitempty"`
 	Realm    string `json:"realm,omitempty"`
+	Mita     string `json:"mita,omitempty"`   // mieru's server
+	Snell    string `json:"snell,omitempty"`  // snell-server
 	Mirror   string `json:"mirror,omitempty"` // panel download mirror, tried before GitHub
 	// Digests are SHA-256 checksums of release files, keyed "core/version/asset". The panel takes
 	// them from GitHub over HTTPS; arriving in the signed state they let the agent verify a
@@ -443,6 +480,11 @@ type Caps struct {
 	Console bool `json:"console,omitempty"`
 	// Share: the agent can be shared with up to two more panels (ActionShareAdd; 1.0 and later).
 	Share bool `json:"share,omitempty"`
+	// Cut: a user taken off a protocol loses the connections they still had open there too, at once
+	// or when their State.Grace ends (1.3 and later); older agents only refuse new connections.
+	Cut bool `json:"cut,omitempty"`
+	// Solo: the agent runs mieru and Snell (State.Solo; 1.3 and later).
+	Solo bool `json:"solo,omitempty"`
 }
 
 // The console's WebSocket: the agent dials ConsolePath + the session's id; every message starts with

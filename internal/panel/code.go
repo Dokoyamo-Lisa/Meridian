@@ -125,7 +125,7 @@ func checkXrayCode(src string) (string, error) {
 	}
 	for _, k := range xrayOwned {
 		if _, ok := doc[k]; ok {
-			return "", errStatus(http.StatusBadRequest, fmt.Sprintf("%q is Meridian's own (its statistics and logs depend on it) - leave it out", k))
+			return "", errStatus(http.StatusBadRequest, fmt.Sprintf("%q is Rosélune's own (its statistics and logs depend on it) - leave it out", k))
 		}
 	}
 	if v, ok := doc["outbounds"]; ok {
@@ -295,7 +295,7 @@ func checkHyCode(src string) (string, json.RawMessage, error) {
 	}
 	for _, k := range hyOwned {
 		if _, ok := m[k]; ok {
-			return "", nil, errStatus(http.StatusBadRequest, fmt.Sprintf("%q is Meridian's own (users and traffic counting depend on it) - leave it out", k))
+			return "", nil, errStatus(http.StatusBadRequest, fmt.Sprintf("%q is Rosélune's own (users and traffic counting depend on it) - leave it out", k))
 		}
 	}
 	if acl, ok := m["acl"].(map[string]any); ok {
@@ -344,6 +344,8 @@ func nodeCode(kind string, in *string) (string, error) {
 		return code, err
 	case "wireguard":
 		return "", errStatus(http.StatusBadRequest, "WireGuard runs in the kernel and takes no configuration code")
+	case "mieru", "snell":
+		return "", errStatus(http.StatusBadRequest, "mieru and Snell take no configuration code: each user's server is set up by the agent")
 	}
 	return checkXrayNodeCode(*in)
 }
@@ -488,7 +490,7 @@ func (p *Panel) apiServerConfig(w http.ResponseWriter, r *http.Request, a *Accou
 				continue
 			}
 			if len(in.Clients) > 0 {
-				obj["settings"] = mergePatch(obj["settings"], map[string]any{"clients": fmt.Sprintf("%d users, managed by Meridian", len(in.Clients))})
+				obj["settings"] = mergePatch(obj["settings"], map[string]any{"clients": fmt.Sprintf("%d users, managed by Rosélune", len(in.Clients))})
 			}
 			ins = append(ins, obj)
 		}

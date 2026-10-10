@@ -1,5 +1,85 @@
 # Changelog
 
+## 1.3.0 - 2026-10-10
+
+**Meridian is now Rosélune - in the Romance look, with a rose of its own.** A panel still called
+Meridian takes the new name, the rose and the Romance look by itself (a look someone had picked
+stays); a panel with a name of its own keeps its name, the umbrella and the look it had. Either way
+the timeline says so, and Settings › Panel changes any of it. The programs, services, paths, settings
+files and this repository keep the name `meridian`, so nothing changes on the servers.
+
+**A user who uses up their data is now suspended by itself.** After the upgrade, anyone already over
+their quota stops being served at once, until their data starts over. Agents need no upgrade.
+
+- **Out of data**: once a user has used all of their quota, no server serves them - from the report
+  that used it up, on every server, live (nothing restarts, nobody else is touched). They are back
+  by themselves when their data starts over: at their next reset (now checked every minute, not
+  every hour), or at once when you raise their quota, reset their usage or start a new period on a
+  plan. A quota that never resets keeps them out until you do one of those. A pause stays yours:
+  nothing resumes a paused user.
+- **Strict or loose** (Settings › Panel › When a user's data runs out): **strict**, the default, cuts
+  everything they have open at once, on every protocol; **loose** refuses new connections at once and
+  lets what is open go on for at most 10 minutes or 5 GB more (both adjustable), whichever comes
+  first - then cuts it.
+- **Cut means cut, on every protocol.** A user taken off a server - out of data, paused, deleted, their
+  credentials reset, their access narrowed - loses what they still had open there too, within
+  seconds: their connections to VLESS, VMess, Trojan, Shadowsocks, SOCKS5 and HTTP are closed (only
+  theirs, even behind an address others share - the agent knows each connection's user from Xray's
+  log), Hysteria2 sessions are ended, WireGuard devices removed with the connections they had open
+  through the server. The server's own connections to the sites end with them. Before, connections
+  already open ran on until they ended by themselves. Needs agent 1.3 (Settings › Updates › Upgrade
+  all agents); older agents only refuse new connections.
+- **Traffic counted as it flows, everywhere.** Xray counted long VLESS Vision, SOCKS5 and HTTP
+  downloads only when they ended (its zero-copy relay), so a quota could not stop one in time. Agent
+  1.3 starts Xray so it counts everything as it flows. On a server whose Xray is already running this
+  waits for a restart, shown as **restart needed** - press it when it suits you.
+- Everyone sees it: a red **Out of data** in Users and on the user's page (with **Raise quota** and
+  **Reset usage…** right there), the count on the Overview, the alert *Sam used all of their 100 GB -
+  suspended, back on 1 Nov*, the notification, and the Telegram bot. The user's own page, their
+  link's page and `/usage` in Telegram tell them when they can connect again. Their link keeps
+  working, so their apps keep the profile and connect again the moment the data is back.
+- **mieru and Snell**: two new protocols. Each user gets their own port and a small server
+  process (mieru's server mita, from its GitHub releases; Surge's snell-server 5, from Surge's
+  site, checked against pinned checksums), so usage, speed limits, device limits and cuts are exact
+  per user. A protocol has room for 50 users by default (1-1000), on the ports from its port on.
+  Links: mieru for the mihomo apps (Clash Verge Rev, FlClash, Mihomo Party) and Stash; Snell, as
+  version 4, for Surge, Stash, the mihomo apps and sing-box. Tested end to end with mihomo and
+  sing-box: connecting, counting, the quota cut, live speed limits. mieru over UDP is left out for
+  users with a speed limit (it stalls under one). Needs agent 1.3 and nftables.
+- **Speed limits and Hysteria2**: a Hysteria2 transfer of a user with a speed limit stalled
+  completely (its apps declare no bandwidth by default, and their congestion control does not
+  survive a limit that drops what goes over). A limited user's Hysteria2 links now declare 95% of
+  the limit, and the server lets in only Hysteria2 apps that declare a rate within it - tested at 200
+  and 300 Mbps. After a limit is lowered, an app still on the old link is turned away until it takes
+  the new one, and the timeline says which user. Everything else follows a changed limit within
+  seconds, downloads already running included.
+- **Rosélune**: the name on every page, message, notification, guide page and help text, and the
+  name a new panel starts with.
+- **Romance, refined, is the default look** of the panel, the status page and users' pages: the name
+  in italic serif under a frosted top bar, navigation in the serif with a fading rose underline,
+  tables headed in small capitals, cushioned cards and windows over a softly blurred page, and a
+  sign-in on a card of frosted paper among falling petals (none with reduced motion). Text now reads
+  at 4.5:1 or more on the blush paper (the faintest, timestamps and chart labels, at 3:1), and the
+  accent is the rose of the logo.
+  Loading screens, the browser's bar on phones, subscription pages and the region notice follow the
+  site's look too (they were always dark Ice or Paper).
+- **The rose**, Rosélune's own logo: five rose petals, a blush bloom inside them and the moon at its
+  heart - its petals fly in while pages load, and signing in opens the page as a rising moon. The
+  umbrella stays one click away (Settings › Panel › Name and logo), and an uploaded logo works as
+  before.
+- **Follow the device**: a site's look can be Ice for devices set to dark and Paper for those set to
+  light - what pages opened with before 1.3 (`default_tone` `auto`).
+- API: a user's `status` can be `out_of_data`, and the overview counts `out_of_data`. Settings have
+  `logo_mark` (`rose` | `umbrella`); `default_tone` is `romance` by default and refuses an unknown look
+  with the list of looks. The MCP tool `set_branding` takes `mark`. The MCP tools and the assistant
+  skills describe the rules.
+- Fixed: the status page's globe stayed empty - not even the earth - while no server had a known
+  location.
+- Fixed: the sign-in page's title took the top bar's letter spacing in the Romance and Umbrella
+  looks.
+- Fixed: resetting the usage of a user whose limit on a protocol had stopped that protocol serves
+  them there again at once (the servers waited for the next change before).
+
 ## 1.2.0 - 2026-10-10
 
 **Upgrading keeps everything as it is.** Agents need no upgrade (nothing changed for them); the

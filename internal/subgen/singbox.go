@@ -104,6 +104,9 @@ func singboxOutbound(e Endpoint) (out omap, endpoint bool, why string) {
 	case KindShadowsocks:
 		return omap{}.set("type", "shadowsocks").set("tag", e.Name).set("server", e.Host).set("server_port", e.Port).
 			set("method", e.Method).set("password", e.Password), false, ""
+	case KindSnell: // sing-box 1.14 and later
+		return omap{}.set("type", "snell").set("tag", e.Name).set("server", e.Host).set("server_port", e.Port).
+			set("version", nzInt(e.Version, SnellVersion)).set("psk", e.Password), false, ""
 	case KindSOCKS:
 		return omap{}.set("type", "socks").set("tag", e.Name).set("server", e.Host).set("server_port", e.Port).
 			set("version", "5").set("username", e.Username).set("password", e.Password), false, ""

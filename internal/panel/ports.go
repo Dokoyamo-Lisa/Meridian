@@ -237,6 +237,12 @@ func (m portMap) unreachable(port int, tcp, udp bool) string {
 // reachNets are the networks devices need to reach a protocol: UDP for Hysteria2 and WireGuard,
 // TCP for the Xray protocols (their optional UDP is checked separately: see portIssues).
 func reachNets(kind string) (tcp, udp bool) {
+	if kind == subgen.KindMieru {
+		return true, true // its transport is the protocol's choice: either may be asked
+	}
+	if kind == subgen.KindSnell {
+		return true, false // TCP; its QUIC mode on UDP is a bonus
+	}
 	if kind == subgen.KindHysteria2 || kind == subgen.KindWireGuard {
 		return false, true
 	}

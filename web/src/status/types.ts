@@ -150,7 +150,8 @@ export interface PortalMe {
   id: number
   name: string
   username: string
-  status: 'active' | 'paused'
+  /** out_of_data: all of this cycle's data is used - the servers let the user in again at next_reset. */
+  status: 'active' | 'paused' | 'out_of_data'
   flags: string[]
   link: string
   clients: AppClient[]

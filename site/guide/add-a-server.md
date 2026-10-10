@@ -44,7 +44,7 @@ meridian-install.sh: OK
 Downloading meridian-agent (amd64) from https://panel.example.com
 Checking the connection to https://panel.example.com
 
-Meridian agent installed and running.
+Rosélune agent installed and running.
 The server shows up as online in the panel within a few seconds.
 Logs: journalctl -u meridian-agent -f
 ```

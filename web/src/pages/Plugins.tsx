@@ -120,7 +120,7 @@ export function Plugins() {
         <div class="callout warn">
           <Icon name="alert" size="sm" />
           <div>
-            <b>Only install plugins from people you trust.</b> A plugin that is on can do whatever it asks for - a program runs with the panel's rights and can read every key and password Meridian holds. New plugins arrive turned off, and turning one on lists what it may do. If a plugin keeps the panel from working, run <code>sudo -u meridian meridian plugins disable ID</code> on the panel's host, or start the panel with <code>MERIDIAN_NO_PLUGINS=1</code>.
+            <b>Only install plugins from people you trust.</b> A plugin that is on can do whatever it asks for - a program runs with the panel's rights and can read every key and password Rosélune holds. New plugins arrive turned off, and turning one on lists what it may do. If a plugin keeps the panel from working, run <code>sudo -u meridian meridian plugins disable ID</code> on the panel's host, or start the panel with <code>MERIDIAN_NO_PLUGINS=1</code>.
           </div>
         </div>
         {v.data.disabled && (

@@ -32,15 +32,15 @@ Type your panel's name after `--domain`:
 sudo bash install-panel.sh --domain panel.example.com
 ```
 
-It finds the newest Meridian, checks that the download is the real one, installs the panel and its
+It finds the newest Rosélune, checks that the download is the real one, installs the panel and its
 database (PostgreSQL) and starts it. This takes one or two minutes.
 
 **You should see** this (the version number may be newer):
 
 ```text
-Downloading Meridian 1.2.0 for amd64
+Downloading Rosélune 1.3.0 for amd64
 Checksum OK
-Installing Meridian 1.2.0
+Installing Rosélune 1.3.0
 Installing PostgreSQL
 The panel keeps its data in PostgreSQL (database meridian)
 Created symlink /etc/systemd/system/multi-user.target.wants/meridian.service → /etc/systemd/system/meridian.service.

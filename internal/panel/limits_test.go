@@ -37,12 +37,20 @@ func TestUserLimits(t *testing.T) {
 	if len(st.Speed) != 1 || st.Speed[0] != (proto.SpeedLimit{Sub: lim, Mbps: 200}) {
 		t.Errorf("speed: %+v", st.Speed)
 	}
-	// Hysteria2 apps of a limited user ask for no more than the limit
+	// Hysteria2 apps of a limited user declare a little less than the limit (without a declared rate
+	// a Hysteria2 transfer stalls under the limit); a user without one keeps what the protocol says
 	sub, _ := h.p.subByID(context.Background(), lim)
 	eps, _ := h.p.endpointsFor(context.Background(), sub)
 	for _, e := range eps {
-		if e.Kind == "hysteria2" && (e.DownMbps != 200 || e.UpMbps != 200) {
+		if e.Kind == "hysteria2" && (e.DownMbps != 190 || e.UpMbps != 190) {
 			t.Errorf("hysteria2 bandwidth for a 200 Mbps user: %d/%d", e.UpMbps, e.DownMbps)
+		}
+	}
+	fr, _ := h.p.subByID(context.Background(), free)
+	feps, _ := h.p.endpointsFor(context.Background(), fr)
+	for _, e := range feps {
+		if e.Kind == "hysteria2" && (e.DownMbps == 190 || e.UpMbps == 190) {
+			t.Errorf("hysteria2 bandwidth for a user without a limit: %d/%d", e.UpMbps, e.DownMbps)
 		}
 	}
 

@@ -1,7 +1,8 @@
-/* Two looks beyond the quiet tones: Umbrella and Romance. Each is a tone like the others (the
-   colour tokens the panel and the status page share, the globe's, the charts') plus a character of
-   its own - type, corners, light, a few details - written against the classes both pages have. No
-   image or font is loaded: everything here is drawn by CSS from system fonts. */
+/* Two looks beyond the quiet tones: Romance - Rosélune's own, the default - and Umbrella. Each is a
+   tone like the others (the colour tokens the panel and the status page share, the globe's, the
+   charts') plus a character of its own - type, corners, light, a few details - written against the
+   classes both pages have. No image or font is loaded: everything here is drawn by CSS from system
+   fonts. */
 
 /* ------------------------------------------------------------------ Umbrella
    A corporate laboratory after hours: black glass, white type, one signal red, clinical lines. */
@@ -69,7 +70,9 @@
 }
 
 /* ------------------------------------------------------------------ Romance
-   Letters on blush paper: rose ink, soft light, a serif voice, rounded and warm. */
+   Rosélune's own look. Letters on blush paper: rose ink, soft light from three corners, a serif voice,
+   rounded and warm. Text keeps 4.5:1 on the paper (WCAG AA), the faintest (--ink-4: timestamps, chart
+   labels) 3:1; the accent is the rose of the mark. */
 :root[data-theme="romance"] {
   color-scheme: light;
   --page: #fbf0f2;
@@ -80,37 +83,43 @@
   --line-2: rgba(122, 30, 64, .19);
   --ink: #3e1d2b;
   --ink-2: #6c4253;
-  --ink-3: #9b7383;
-  --ink-4: #c5a6b2;
-  --accent: #c2416b;
-  --accent-ink: #a6325a;
-  --accent-soft: rgba(194, 65, 107, .1);
+  --ink-3: #876071;
+  --ink-4: #a8808f;
+  --accent: #c13a66;
+  --accent-ink: #a12d55;
+  --accent-soft: rgba(193, 58, 102, .1);
   --on-accent: #ffffff;
   --grid: rgba(122, 30, 64, .07);
   --baseline: rgba(122, 30, 64, .2);
-  --good: #4b8b58;
-  --warn: #ad7418;
+  --good: #3d7a4b;
+  --warn: #96600e;
   --crit: #c03a3a;
-  --good-soft: rgba(75, 139, 88, .12);
-  --warn-soft: rgba(173, 116, 24, .12);
+  --good-soft: rgba(61, 122, 75, .12);
+  --warn-soft: rgba(150, 96, 14, .12);
   --crit-soft: rgba(192, 58, 58, .11);
-  --scrim: rgba(62, 29, 43, .28);
+  --scrim: rgba(62, 29, 43, .24);
   --shadow-pop: 0 30px 80px -24px rgba(122, 30, 64, .35), 0 0 0 1px rgba(122, 30, 64, .08);
   --pool: rgba(255, 210, 222, .75);
   --g-day: #6c4253;
   --g-night: #cdb0ba;
   --g-night-lum: .62;
   --g-rim: rgba(62, 29, 43, .16);
-  --g-halo: rgba(194, 65, 107, .06);
-  --g-arc: #c2416b;
+  --g-halo: rgba(193, 58, 102, .06);
+  --g-arc: #c13a66;
   --g-accent: #e07a9d;
   --g-hub: #3e1d2b;
   --g-client: #df8a5e;
   --g-back: .025;
   --font-d: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --num-weight: 400;
-  --c1: #c2416b; --c2: #8e6bbf; --c3: #df8a5e; --c4: #4f9d8f; --c5: #c99a16; --c6: #6f97c4; --c7: #e27a9e; --c8: #a68b96;
+  /* the rose of the primary actions: a little light from the top left */
+  --rose-btn: linear-gradient(135deg, #c6426e, #ad2f59); /* white on it: 4.8:1 and more */
+  --rose-btn-hover: linear-gradient(135deg, #bf3d69, #96264d);
+  --c1: #c13a66; --c2: #8e6bbf; --c3: #df8a5e; --c4: #4f9d8f; --c5: #c99a16; --c6: #6f97c4; --c7: #e27a9e; --c8: #a68b96;
+  scrollbar-color: rgba(122, 30, 64, .26) transparent;
+  caret-color: var(--accent);
 }
+:root[data-theme="romance"] ::selection { background: rgba(193, 58, 102, .2); color: inherit; }
 
 /* soft light: rose from one corner, peach from the other, a breath of lavender */
 :root[data-theme="romance"] body::before {
@@ -119,3 +128,37 @@
     radial-gradient(40vw 30vw at 102% 4%, rgba(226, 210, 255, .55), transparent 70%),
     radial-gradient(52vw 40vw at 96% 108%, rgba(255, 214, 190, .6), transparent 70%);
 }
+
+/* petals drifting down behind the sign-in pages - Romance only, never with reduced motion. Each <i>
+   of .petals is one, placed by its own --x, --s (size), --d (delay), --t (fall time) and --r (turn). */
+.petals { display: none; }
+:root[data-theme="romance"] .petals { display: block; position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.petals i {
+  position: absolute;
+  top: -40px;
+  left: var(--x);
+  width: var(--s);
+  height: calc(var(--s) * .78);
+  border-radius: 100% 0 100% 30%;
+  background: linear-gradient(135deg, rgba(246, 187, 205, .95), rgba(214, 96, 136, .55));
+  opacity: 0;
+  animation: petal-fall var(--t) linear var(--d) infinite, petal-sway calc(var(--t) / 3.2) ease-in-out var(--d) infinite alternate;
+}
+.petals i:nth-child(3n) { background: linear-gradient(135deg, rgba(253, 226, 233, .95), rgba(232, 150, 176, .6)); }
+.petals i:nth-child(1) { --x: 6%; --s: 13px; --d: -2s; --t: 19s; --r: 300deg; }
+.petals i:nth-child(2) { --x: 17%; --s: 9px; --d: -11s; --t: 23s; --r: -260deg; }
+.petals i:nth-child(3) { --x: 29%; --s: 15px; --d: -6s; --t: 21s; --r: 340deg; }
+.petals i:nth-child(4) { --x: 42%; --s: 10px; --d: -15s; --t: 26s; --r: -300deg; }
+.petals i:nth-child(5) { --x: 58%; --s: 12px; --d: -4s; --t: 20s; --r: 280deg; }
+.petals i:nth-child(6) { --x: 69%; --s: 8px; --d: -18s; --t: 24s; --r: -340deg; }
+.petals i:nth-child(7) { --x: 80%; --s: 14px; --d: -9s; --t: 22s; --r: 320deg; }
+.petals i:nth-child(8) { --x: 91%; --s: 10px; --d: -13s; --t: 25s; --r: -280deg; }
+.petals i:nth-child(9) { --x: 35%; --s: 7px; --d: -20s; --t: 27s; --r: 360deg; }
+@keyframes petal-fall {
+  0% { opacity: 0; transform: translateY(0) rotate(0); }
+  8% { opacity: .85; }
+  85% { opacity: .7; }
+  100% { opacity: 0; transform: translateY(calc(100vh + 80px)) rotate(var(--r)); }
+}
+@keyframes petal-sway { from { translate: -26px 0; } to { translate: 26px 0; } } /* composes with the fall's transform */
+@media (prefers-reduced-motion: reduce) { :root[data-theme="romance"] .petals { display: none; } }

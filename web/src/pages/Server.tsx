@@ -147,7 +147,7 @@ export function ServerPage(props: { id: number }) {
       title: `Delete ${srv.name}?`,
       body: (
         <p style="margin-top:0">
-          The agent removes everything Meridian set up on the server (protocols, forwards, firewall rules) and uninstalls itself. Everyone using this server is disconnected. History stays in
+          The agent removes everything Rosélune set up on the server (protocols, forwards, firewall rules) and uninstalls itself. Everyone using this server is disconnected. History stays in
           the panel.
         </p>
       ),

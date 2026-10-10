@@ -1,4 +1,4 @@
-/* Meridian - the same quiet language as the status page: one accent per tone, status colours only
+/* Rosélune - the same quiet language as the status page: one accent per tone, status colours only
    for state and always next to a word, hairline structure, tabular figures. */
 
 :root, :root[data-theme="ice"] {
@@ -288,6 +288,7 @@ table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
 @keyframes fade { from { opacity: 0; } }
 .modal { width: min(560px, 100%); max-height: calc(100vh - 40px); overflow: auto; background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-pop); animation: pop .35s var(--ease-out); }
 .modal.wide { width: min(780px, 100%); }
+.modal:focus-visible { outline: none; } /* the window takes focus for screen readers; it is not a control */
 @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 .modal-head { display: flex; align-items: center; gap: 10px; padding: 18px 20px 6px; }
 .modal-head h3 { margin: 0; font: 500 16px/1.3 var(--font-d); }
@@ -706,10 +707,11 @@ label.btn.disabled { opacity: .55; pointer-events: none; }
 .chip-pick:hover { color: var(--ink); }
 .chip-pick.on { color: var(--accent-ink); background: var(--accent-soft); border-color: transparent; }
 
-/* ------------------------------------------------------------------ the Umbrella and Romance looks
-   (their colour tokens are in themes.css) */
+/* ------------------------------------------------------------------ the Romance and Umbrella looks
+   (their colour tokens are in themes.css). The top bar's brand rules name .top: the sign-in page has a
+   brand of its own. */
 :root[data-theme="umbrella"] .top { box-shadow: 0 1px 0 rgba(212, 42, 51, .38); background: linear-gradient(#0a0a0b 82%, rgba(10, 10, 11, .55)); }
-:root[data-theme="umbrella"] .brand { font-weight: 600; letter-spacing: .42em; }
+:root[data-theme="umbrella"] .top .brand { font-weight: 600; letter-spacing: .42em; }
 :root[data-theme="umbrella"] .nav a { text-transform: uppercase; font-size: 11.5px; letter-spacing: .14em; }
 :root[data-theme="umbrella"] .nav a::after { height: 2px; }
 :root[data-theme="umbrella"] .page-head h1 { text-transform: uppercase; letter-spacing: .08em; font-weight: 500; font-size: 23px; }
@@ -722,26 +724,76 @@ label.btn.disabled { opacity: .55; pointer-events: none; }
 :root[data-theme="umbrella"] .btn.primary { text-transform: uppercase; letter-spacing: .13em; font-size: 11.5px; font-weight: 600; }
 :root[data-theme="umbrella"] .kpi .l { text-transform: uppercase; letter-spacing: .12em; font-size: 10.5px; }
 :root[data-theme="umbrella"] .modal { box-shadow: var(--shadow-pop); }
+:root[data-theme="umbrella"] .login-box .brand { text-transform: uppercase; letter-spacing: .22em; font-size: 20px; font-weight: 500; }
 
-:root[data-theme="romance"] .brand { font-family: var(--font-d); letter-spacing: .26em; font-size: 13.5px; }
-:root[data-theme="romance"] .nav a { font-family: var(--font-d); font-size: 14px; letter-spacing: .02em; }
-:root[data-theme="romance"] .nav a::after { height: 2px; border-radius: 2px; left: 16px; right: 16px; }
-:root[data-theme="romance"] .page-head h1 { font-style: italic; font-size: 32px; letter-spacing: 0; }
-:root[data-theme="romance"] .ph .h { font-family: var(--font-d); font-size: 16px; font-weight: 500; letter-spacing: .01em; }
-:root[data-theme="romance"] .pn { font: italic 400 13px/1 var(--font-d); }
+/* Romance: a frosted top bar over the blush paper, the name in italic serif */
+:root[data-theme="romance"] .top {
+  background: color-mix(in srgb, var(--page) 74%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 1px 0 rgba(122, 30, 64, .07);
+}
+:root[data-theme="romance"] .top .brand { gap: 9px; font: italic 400 19px/1 var(--font-d); letter-spacing: .01em; text-transform: none; color: var(--ink); }
+:root[data-theme="romance"] .top .brand :is(svg, .logo-img) { width: 22px; height: 22px; }
+:root[data-theme="romance"] .nav a { font-family: var(--font-d); font-size: 14.5px; letter-spacing: .015em; }
+:root[data-theme="romance"] .nav a::after { height: 2px; border-radius: 2px; left: 13px; right: 13px; background: linear-gradient(90deg, transparent, var(--accent) 24%, var(--accent) 76%, transparent); }
+/* the page's title in italics, its sections in the serif, numbered in rose */
+:root[data-theme="romance"] .page-head h1 { font-style: italic; font-size: 34px; letter-spacing: -.005em; }
+:root[data-theme="romance"] .ph .h { font-family: var(--font-d); font-size: 17px; font-weight: 500; letter-spacing: .005em; }
+:root[data-theme="romance"] .pn { font: italic 400 13px/1 var(--font-d); letter-spacing: .02em; }
 :root[data-theme="romance"] .panel { border-top-color: transparent; }
-:root[data-theme="romance"] .panel::before { content: ""; position: absolute; top: -1px; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, var(--line-2), rgba(194, 65, 107, .35) 35%, transparent); }
-:root[data-theme="romance"] :is(.btn, .seg, .seg button, .badge, .chip-pick, .icon-btn) { border-radius: 999px; }
-:root[data-theme="romance"] :is(.input, .callout, .toast, .code, .menu button, .menu a, .stack-key) { border-radius: 12px; }
-:root[data-theme="romance"] :is(.card, .modal, .menu, .proto, .step, .src-card, .proto-user, .subsection, .setup-step, .check-panel) { border-radius: 18px; }
-:root[data-theme="romance"] :is(.card, .proto, .src-card, .proto-user) { box-shadow: 0 18px 40px -30px rgba(122, 30, 64, .35); background: color-mix(in srgb, var(--raised) 75%, transparent); }
-:root[data-theme="romance"] .btn.primary { background: linear-gradient(135deg, #d65a83, #b8345f); border-color: transparent; box-shadow: 0 8px 18px -10px rgba(194, 65, 107, .65); }
-:root[data-theme="romance"] .btn.primary:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: linear-gradient(135deg, #c94a75, #a32b53); }
+:root[data-theme="romance"] .panel::before { content: ""; position: absolute; top: -1px; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, var(--line-2), rgba(193, 58, 102, .34) 32%, transparent); }
+:root[data-theme="romance"] :is(.api-group h3, .step b, .setup-step h3, .empty b) { font-family: var(--font-d); font-weight: 500; font-size: 15.5px; }
+/* rounded and soft: pills to press, cushions to fill in, cards like folded notes */
+:root[data-theme="romance"] :is(.btn, .seg, .seg button, .badge, .chip, .chip-pick, .icon-btn, .tone-opt, .cc-chip) { border-radius: 999px; }
+:root[data-theme="romance"] :is(.input, .callout, .toast, .code, .menu button, .menu a, .stack-key, .pick label, .preset, .app, .cc-pick button) { border-radius: 12px; }
+:root[data-theme="romance"] :is(.card, .modal, .menu, .proto, .step, .src-card, .proto-user, .subsection, .setup-step, .check-panel, .brand-preview, .proto-adv) { border-radius: 18px; }
+:root[data-theme="romance"] :is(.card, .proto, .src-card, .proto-user, .brand-preview) { box-shadow: 0 18px 40px -30px rgba(122, 30, 64, .35); background: color-mix(in srgb, var(--raised) 75%, transparent); }
+:root[data-theme="romance"] .proto { transition: border-color .25s, box-shadow .4s var(--ease-out), transform .4s var(--ease-out); }
+:root[data-theme="romance"] .proto:hover { transform: translateY(-1px); box-shadow: 0 24px 48px -30px rgba(122, 30, 64, .45); }
+:root[data-theme="romance"] .input { background: color-mix(in srgb, var(--raised) 84%, transparent); }
+:root[data-theme="romance"] .input::placeholder { color: var(--ink-4); }
+:root[data-theme="romance"] .btn.primary { background: var(--rose-btn); border-color: transparent; box-shadow: 0 8px 18px -10px rgba(193, 58, 102, .7), inset 0 1px 0 rgba(255, 255, 255, .16); }
+:root[data-theme="romance"] .btn.primary:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: var(--rose-btn-hover); }
+:root[data-theme="romance"] .btn.primary:is(:disabled, [aria-disabled="true"]) { background: var(--hover); border-color: var(--line-2); color: var(--ink-3); box-shadow: none; }
+:root[data-theme="romance"] .btn:not(.primary, .danger, .ghost):is(:enabled, a, label):not([aria-disabled="true"]):hover { background: rgba(193, 58, 102, .055); border-color: rgba(193, 58, 102, .32); }
+/* tables: small capitals in the serif over the rows */
+:root[data-theme="romance"] .t th { font: 500 12.5px/1.2 var(--font-d); font-variant-caps: all-small-caps; letter-spacing: .08em; }
+:root[data-theme="romance"] .t tbody tr.click:hover { background: rgba(193, 58, 102, .045); }
 :root[data-theme="romance"] .kpi .v { font-style: italic; }
+:root[data-theme="romance"] .brand-preview b { font-style: italic; font-size: 19px; }
+/* windows open over a blurred page, on a little more light */
+:root[data-theme="romance"] .scrim { background: var(--scrim); -webkit-backdrop-filter: blur(6px) saturate(1.1); backdrop-filter: blur(6px) saturate(1.1); }
+:root[data-theme="romance"] .modal { border-radius: 22px; background: linear-gradient(180deg, var(--raised), var(--surface) 160px); }
+:root[data-theme="romance"] .modal-head h3 { font: italic 400 21px/1.3 var(--font-d); }
+:root[data-theme="romance"] .menu { border-radius: 16px; }
+:root[data-theme="romance"] .menu .who b { font: italic 400 15px/1.2 var(--font-d); }
+:root[data-theme="romance"] .toast { border-radius: 14px; }
+:root[data-theme="romance"] .check-panel.good { background: rgba(61, 122, 75, .07); border-color: rgba(61, 122, 75, .16); }
+/* the sign-in: a card of frosted paper among falling petals, the name in italics over a rose rule */
+:root[data-theme="romance"] .login { position: relative; }
+:root[data-theme="romance"] .login-box {
+  position: relative;
+  z-index: 1;
+  width: min(380px, 100%);
+  padding: 36px 34px 30px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, .7);
+  border: 1px solid rgba(255, 255, 255, .75);
+  box-shadow: 0 40px 90px -46px rgba(122, 30, 64, .45), 0 0 0 1px rgba(122, 30, 64, .05);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  backdrop-filter: blur(16px) saturate(1.15);
+}
+:root[data-theme="romance"] .login-box .brand { font: italic 400 30px/1.2 var(--font-d); letter-spacing: 0; }
+:root[data-theme="romance"] .login-box .brand span::after { content: ""; display: block; width: 56px; height: 1px; margin: 15px auto 0; background: linear-gradient(90deg, transparent, var(--accent), transparent); }
+:root[data-theme="romance"] .login-box .lead { margin-top: -10px; }
 
 /* the site's look, in Settings › Panel */
 .tone-pick { display: flex; flex-wrap: wrap; gap: 6px; }
 .tone-opt { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 6px; border-radius: 15px; border: 1px solid var(--line-2); background: none; font-size: 12.5px; color: var(--ink-2); transition: color .2s, border-color .2s, background .2s; }
 .tone-opt:hover { color: var(--ink); background: var(--hover); }
 .tone-opt.on { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); }
-:root[data-theme="romance"] .btn.primary:is(:disabled, [aria-disabled="true"]) { background: var(--hover); border-color: var(--line-2); color: var(--ink-3); box-shadow: none; }
+.mark-opt .umb-mark { width: 18px; height: 18px; flex: none; }
+.muted-pick { opacity: .55; }
+/* a segmented control in a form is as wide as its choices, not the form */
+.field > .seg { align-self: flex-start; }

@@ -255,6 +255,17 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 			}
 		}
 	}
+	// their data used up: no server serves them now; in loose mode, what they have open goes once it
+	// used up the extra data too (outofdata.go)
+	if crossed, graceOver := p.quotaCrossed(ctx, srv.AccountID, counted); len(crossed) > 0 || graceOver {
+		for _, s := range crossed {
+			p.markOut(ctx, s)
+		}
+		p.touchAccount(srv.AccountID)
+		for _, s := range crossed {
+			p.quotaReached(ctx, s)
+		}
+	}
 	if recompile {
 		p.touchServers(srv.ID)
 	}
@@ -535,10 +546,23 @@ func (p *Panel) applyBatch(tx *sql.Tx, srv *Server, b *proto.Batch, set Settings
 		if lvl != "warn" && lvl != "crit" {
 			lvl = "info"
 		}
-		eventTx(tx, srv.AccountID, lvl, e.Kind, srv.ID, 0, srv.Name+": "+truncate(e.Message, 500))
+		msg, sub := e.Message, int64(0)
+		if e.Kind == "hy_over_speed" { // "... of user 5: ..." - named, and on the user's timeline
+			if m := agentUserRE.FindStringSubmatch(msg); m != nil {
+				id, _ := strconv.ParseInt(m[1], 10, 64)
+				var name string
+				if tx.QueryRow(`SELECT name FROM subs WHERE id = ? AND account_id = ?`, id, srv.AccountID).Scan(&name) == nil {
+					msg, sub = strings.Replace(msg, m[0], "of "+name, 1), id
+				}
+			}
+		}
+		eventTx(tx, srv.AccountID, lvl, e.Kind, srv.ID, sub, srv.Name+": "+truncate(msg, 500))
 	}
 	return nil
 }
+
+// agentUserRE finds the user an agent's event is about ("of user 5").
+var agentUserRE = regexp.MustCompile(`of user (\d+)`)
 
 // ---------------------------------------------------------------- IP limit alerts
 

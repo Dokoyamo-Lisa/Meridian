@@ -20,3 +20,5 @@ func (m *flowMonitor) stop() {}
 func (m *flowMonitor) collect(map[netip.Addr]struct{ sub, node int64 }, func(client, dst netip.Addr) string) []proto.DestSeen {
 	return nil
 }
+
+func dropFlows([]netip.Prefix) int { return 0 }
