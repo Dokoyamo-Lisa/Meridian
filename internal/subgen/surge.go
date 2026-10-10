@@ -102,6 +102,12 @@ func surgeLine(e Endpoint, i int) (line, section, why string) {
 			strings.Replace(tls, ", tls=true", "", 1), ws), "", ""
 	case KindSnell:
 		return fmt.Sprintf("%s = snell, %s, %d, psk=%s, version=%d", name, e.Host, e.Port, e.Password, nzInt(e.Version, SnellVersion)), "", ""
+	case KindAnyTLS: // Surge iOS 5.17.0 and Mac 6.4.3 and later; it takes Surge's shared TLS options
+		line = fmt.Sprintf("%s = anytls, %s, %d, password=%s, sni=%s", name, e.Host, e.Port, e.Password, e.SNI)
+		if e.selfSigned() {
+			line += ", server-cert-fingerprint-sha256=" + e.PinSHA256
+		}
+		return line, "", ""
 	case KindHysteria2:
 		if e.Obfs != "" {
 			return "", "", whyObfs

@@ -78,9 +78,18 @@ type Spec struct {
 	hops     []Hop
 	// Speed are users' speed limits (speed.go): their devices' addresses come with SetSpeedIPs
 	Speed []proto.SpeedLimit
-	// Solo are the ports of mieru and Snell users (solo.go): counted per port, and refusing new
+	// Solo are the ports of mieru, Snell and AnyTLS users (solo.go): counted per port, and refusing new
 	// connections while the user is in grace
 	Solo []SoloPort
+	// SoloUID is the account those users' servers run as (0 = none here): its new connections to
+	// this host and to private networks are refused like DirectMark's - except DNS to Resolvers, the
+	// name servers the host uses (often on loopback or the provider's private network)
+	SoloUID   int
+	Resolvers []string
+	// SSHBlocked are addresses refused on the SSH server's ports (SSHPorts; 22 when there are none):
+	// those that kept guessing passwords, blocked on the supervisor's request (agent/protect)
+	SSHBlocked []string
+	SSHPorts   []int
 }
 
 // GeoSpec limits who may reach the services, by address list: Allow = only these networks,
@@ -250,7 +259,7 @@ func (e *Engine) apply(spec Spec) error {
 func (e *Engine) applyOnce(spec Spec) error {
 	spec.Speed = speedOK(spec.Speed)
 	essential := len(spec.Forwards) > 0 || len(spec.WG) > 0 || len(spec.Blocked) > 0 || spec.Geo != nil || len(spec.hops) > 0 ||
-		len(spec.Speed) > 0
+		len(spec.Speed) > 0 || len(spec.SSHBlocked) > 0
 	if !essential && !Available() {
 		return nil // the loopback guard alone is a hardening extra, not worth an error without nft
 	}
@@ -439,6 +448,16 @@ func (e *Engine) render(spec Spec) string {
 	w("  set own_udp { type inet_service;%s }", elemsInt(ownUDP))
 	w("  set noreach4 { type ipv4_addr; flags interval;%s }", elems(append([]string{}, noReach4...)))
 	w("  set noreach6 { type ipv6_addr; flags interval;%s }", elems(append([]string{}, noReach6...)))
+	ssh4, ssh6 := splitAddrs(spec.SSHBlocked)
+	sshPorts := uniqPorts(spec.SSHPorts)
+	if len(sshPorts) == 0 {
+		sshPorts = []int{22}
+	}
+	if len(ssh4)+len(ssh6) > 0 {
+		w("  set sshblock4 { type ipv4_addr;%s }", elems(ssh4))
+		w("  set sshblock6 { type ipv6_addr;%s }", elems(ssh6))
+		w("  set ssh_ports { type inet_service;%s }", elemsInt(sshPorts))
+	}
 	speed := speedOK(spec.Speed)
 	renderSpeed(w, speed)
 	if spec.Geo != nil {
@@ -475,6 +494,10 @@ func (e *Engine) render(spec Spec) string {
 	// A connection a service starts itself is checked on its way out, where it is refused before
 	// it exists.
 	w("    ct direction reply return")
+	if len(ssh4)+len(ssh6) > 0 { // addresses that kept guessing SSH passwords, blocked on request
+		w("    ip saddr @sshblock4 tcp dport @ssh_ports counter drop comment \"ssh-block\"")
+		w("    ip6 saddr @sshblock6 tcp dport @ssh_ports counter drop comment \"ssh-block\"")
+	}
 	w("    ip saddr @block4 tcp dport @svc_tcp counter drop")
 	w("    ip saddr @block4 udp dport @svc_udp counter drop")
 	w("    ip6 saddr @block6 tcp dport @svc_tcp counter drop")
@@ -616,6 +639,7 @@ func (e *Engine) render(spec Spec) string {
 		}
 	}
 	w("  }")
+	soloOutChain(w, spec)
 	w("  chain output {")
 	w("    type filter hook output priority filter - 5; policy accept;")
 	if local := uniqPorts(spec.LocalOnly); len(local) > 0 {
@@ -625,6 +649,9 @@ func (e *Engine) render(spec Spec) string {
 	w("    meta mark 0x%08x oifname \"lo\" counter reject", DirectMark)
 	w("    meta mark 0x%08x ip daddr @noreach4 counter reject", DirectMark)
 	w("    meta mark 0x%08x ip6 daddr @noreach6 counter reject", DirectMark)
+	if spec.SoloUID > 0 { // the users' own servers, the same (solo.go); what they answer is not new
+		w("    meta skuid %d ct state new jump solo_out", spec.SoloUID)
+	}
 	for _, f := range spec.Forwards {
 		if f.Engine != "realm" {
 			continue

@@ -146,19 +146,19 @@ func (p *Panel) limitsFor(srv *Server, nodes []*Node, subs []*Sub, st *proto.Sta
 			continue
 		}
 		var emails []string
-		hy := false
+		byAddr := false // Hysteria2 refuses them at sign-in, the users' own servers (mieru, Snell, AnyTLS) on their port
 		for _, n := range nodes {
 			if !n.Enabled || len(usersOf([]*Sub{s}, n)) == 0 {
 				continue
 			}
 			switch k, _ := kindOf(n.Kind); {
-			case n.Kind == subgen.KindHysteria2:
-				hy = true
+			case n.Kind == subgen.KindHysteria2, isSolo(n.Kind):
+				byAddr = true
 			case k.Engine == "xray":
 				emails = append(emails, proto.Email(s.ID, n.ID))
 			}
 		}
-		if hy {
+		if byAddr {
 			st.Refuse = append(st.Refuse, proto.Refusal{Sub: s.ID, IPs: away})
 		}
 		if len(emails) > 0 {

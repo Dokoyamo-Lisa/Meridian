@@ -11,7 +11,8 @@ import (
 )
 
 // newHealth sets up the health check (internal/agent/health): a scan every few minutes for signs that
-// the server was broken into or is abused, reported to the panel. It only tells.
+// the server was broken into or is abused, reported to the panel. It only tells; what it offers to
+// do about a finding happens when the supervisor confirms it (protect/).
 func (a *Agent) newHealth() *health.Monitor {
 	m := &health.Monitor{Root: "/", File: filepath.Join(DataDir, "health.json"), Self: "/proc/self/exe", Own: a.healthOwn}
 	if service.Init() == "systemd" {
@@ -62,6 +63,9 @@ func (a *Agent) healthOwn() (health.Own, bool) {
 	}
 	for _, n := range st.Hysteria {
 		acme = acme || n.ACME != ""
+	}
+	for _, n := range st.Solo {
+		acme = acme || n.ACME != "" // AnyTLS
 	}
 	if acme {
 		add("tcp", 80)

@@ -1,10 +1,11 @@
 // Health checks: what each server's agent found that may be a break-in or abuse - a crypto-miner, a
 // program run from a temporary folder, a new port, account or SSH key, a changed scheduled task or
 // service, SSH sign-ins, traffic Rosélune does not account for, Rosélune's own programs changed - and
-// what was decided about each. Nothing is ever stopped or blocked because of a risk: it only tells.
+// what was decided about each. A risk may offer a protective step (stop it, remove the key, lock the
+// account ...): it happens only when the supervisor presses its button and confirms, and can be undone.
 
 import { useState } from 'preact/hooks'
-import { Risk, Server, ServerHealth, get, plural, post } from '../api'
+import { Protection, Risk, Server, ServerHealth, get, plural, post } from '../api'
 import { Icon } from '../icons'
 import { setQuery, useLocation } from '../router'
 import { Ago, Empty, ErrorBox, Loading, Modal, Seg, ask, errText, run, toast, useAsync, usePoll } from '../ui'
@@ -19,7 +20,8 @@ function Decisions() {
   return (
     <>
       <b>Acknowledge</b>: seen - it is flagged again if it happens again. <b>Expected</b>: it is yours - it is never flagged again, on its server or on every server.{' '}
-      <b>Open again</b> undoes either. Nothing is stopped or blocked because of a risk.
+      <b>Open again</b> undoes either. Nothing is stopped or blocked because of a risk by itself: where a server can do something about one, its button says
+      what, and it happens only after you confirm.
     </>
   )
 }
@@ -88,10 +90,64 @@ function ExpectModal(props: { risk: Risk; onClose: () => void; onDone: () => voi
 
 // RiskRow is one risk with what it says, when it was seen, what was decided, and the buttons to
 // decide about it.
+// stepWords says how a protective step went, in a few words.
+const stepWords: Record<Protection['state'], string> = {
+  pending: 'on its way to the server',
+  done: 'done',
+  failed: 'not done',
+  undoing: 'being undone',
+  undone: 'undone',
+}
+
 export function RiskRow(props: { risk: Risk; showServer?: boolean; onChanged: () => void }) {
   const r = props.risk
   const [busy, setBusy] = useState(false)
   const [expecting, setExpecting] = useState(false)
+  const st = r.step
+  const busyStep = st && (st.state === 'pending' || st.state === 'undoing')
+  // a protective step: nothing happens before the supervisor confirms exactly this
+  const protect = async () => {
+    const f = r.fix
+    if (!f) return
+    const ok = await ask({
+      title: `${f.label}?`,
+      body: (
+        <>
+          <p style="margin-top:0">
+            On <b>{r.server}</b>: {f.explain}
+          </p>
+          {f.addrs && f.addrs.length > 0 && <p class="mono" style="font-size:12px;overflow-wrap:anywhere">{f.addrs.join(', ')}</p>}
+          <p class="muted" style="font-size:12px;margin-bottom:0">
+            The server checks it all again before it acts: if what was found is gone or changed, it does nothing and says so.
+          </p>
+        </>
+      ),
+      confirm: f.label,
+      danger: true,
+    })
+    if (!ok) return
+    setBusy(true)
+    const done = await run(() => post(`/api/risks/${r.id}/protect`), 'Sent to the server')
+    setBusy(false)
+    if (done) props.onChanged()
+  }
+  const undo = async () => {
+    if (!st) return
+    const ok = await ask({
+      title: 'Undo it?',
+      body: (
+        <p style="margin-top:0">
+          On <b>{r.server}</b>, undo: {st.what}. What it changed is put back{st.kind === 'stop_process' ? ' (the program comes back from quarantine; the process stays stopped)' : ''}.
+        </p>
+      ),
+      confirm: 'Undo',
+    })
+    if (!ok) return
+    setBusy(true)
+    const done = await run(() => post(`/api/protections/${st.id}/undo`), 'Sent to the server')
+    setBusy(false)
+    if (done) props.onChanged()
+  }
   const decide = async (decision: 'acknowledged' | 'open') => {
     // a risk expected everywhere opens again everywhere: say so first
     const scope = r.expected_everywhere ? 'all' : 'server'
@@ -146,8 +202,26 @@ export function RiskRow(props: { risk: Risk; showServer?: boolean; onChanged: ()
             {r.key}
           </span>
         </div>
+        {st && (
+          <div class={'step-line ' + (st.state === 'failed' ? 'crit-ink' : st.state === 'done' ? 'good-ink' : 'muted')} style="margin-top:4px;font-size:12px;overflow-wrap:anywhere">
+            <Icon name="shield" size="sm" /> {sentence(st.what)}: {stepWords[st.state]}
+            {st.created_by && ` - asked by ${st.created_by}`} <Ago ts={st.state === 'undone' ? st.undone_at : st.done_at || st.created_at} />
+            {st.output && <span class="faint"> · {st.output}</span>}
+          </div>
+        )}
       </div>
       <div class="row wrap" style="gap:6px;flex:none;justify-content:flex-end">
+        {r.fix && (!st || st.state === 'failed' || st.state === 'undone') && (
+          <button type="button" class="btn sm danger" disabled={busy} onClick={() => void protect()} title={r.fix.explain}>
+            <Icon name="shield" size="sm" />
+            {r.fix.label}…
+          </button>
+        )}
+        {st && st.can_undo && (
+          <button type="button" class="btn sm ghost" disabled={busy || !!busyStep} onClick={() => void undo()} title="Put back what the step changed">
+            Undo
+          </button>
+        )}
         {r.status === 'open' && (
           <button type="button" class="btn sm" disabled={busy} onClick={() => void decide('acknowledged')} title="Seen - flagged again if it happens again">
             Acknowledge
@@ -176,6 +250,11 @@ export function RiskRow(props: { risk: Risk; showServer?: boolean; onChanged: ()
       )}
     </div>
   )
+}
+
+// sentence starts a line with a capital letter.
+function sentence(s: string) {
+  return s ? s[0].toUpperCase() + s.slice(1) : s
 }
 
 // agentChecks says whether a server's agent runs health checks (1.0 and later).

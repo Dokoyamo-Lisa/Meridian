@@ -21,6 +21,9 @@ const (
 	KindMieru = "mieru"
 	// one process and one port per user (Password is the PSK, Version the protocol version)
 	KindSnell = "snell"
+	// one process and one port per user (Password); always TLS: SNI, and PinSHA256 and CertPEM for a
+	// self-signed certificate
+	KindAnyTLS = "anytls"
 )
 
 // SnellVersion is the Snell protocol the links ask for: the servers run snell-server 5, which takes
@@ -124,6 +127,10 @@ type Info struct {
 	Expire    int64 // unix seconds, 0 = never
 	UpdateHrs int
 	Zone      *time.Location // the panel's time zone: dates shown in it (nil = UTC)
+	// SingBox is the sing-box version of the app asking (SingBoxOf its User-Agent): entries newer
+	// sing-box versions brought are left out for older apps, which would refuse the whole profile.
+	// "" = not known.
+	SingBox string
 }
 
 // transport returns the endpoint's transport, raw when unset.
@@ -147,6 +154,7 @@ func skipOf(e Endpoint, reason string) string { return e.Name + " (" + reason + 
 
 const (
 	whyNoPin         = "this app cannot check a self-signed certificate - use REALITY, a domain certificate or a CDN"
+	whyNoPinAnyTLS   = "this app cannot check a self-signed certificate - give the protocol a domain certificate (Let's Encrypt, your own or a shared one)"
 	whyTransport     = "this app does not support this transport"
 	whyProtocol      = "this app does not support this protocol"
 	whyObfs          = "this app does not support the obfuscation"

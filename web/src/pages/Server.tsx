@@ -202,6 +202,27 @@ export function ServerPage(props: { id: number }) {
                     Restart Xray…
                   </button>
                   {!srv.guest && (
+                    <button
+                      disabled={!srv.caps?.restart_all}
+                      title={srv.caps?.restart_all ? undefined : 'Needs agent 1.3.1 or later - upgrade the agent first (nobody is disconnected by that)'}
+                      onClick={() =>
+                        action(
+                          'restart_all',
+                          `Restart everything on ${srv.name}?`,
+                          disruptive(
+                            "Xray, Hysteria2, every user's own server (mieru, Snell, AnyTLS) and the realm forwards restart once - with everything that waited for a restart - and then the agent restarts too. Use it after upgrading the agent, so strict mode counts long connections as they happen.",
+                            'Everyone connected to this server',
+                          ),
+                          'Restart everything',
+                          true,
+                        )
+                      }
+                    >
+                      <Icon name="refresh" size="sm" />
+                      Restart everything…
+                    </button>
+                  )}
+                  {!srv.guest && (
                   <button onClick={() => action('upgrade_xray', 'Upgrade Xray?', disruptive(`${srv.name} switches to the Xray version set in Settings. Xray restarts once.`), 'Upgrade Xray', true)}>
                     <Icon name="download" size="sm" />
                     Upgrade Xray…

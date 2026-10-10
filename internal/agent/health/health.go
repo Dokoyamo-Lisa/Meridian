@@ -5,7 +5,8 @@
 //
 // The first scan only records what is normal on the server (the baseline, kept on disk); findings
 // are about what changed after it, plus things that are bad in themselves. Findings go to the panel
-// in reports. The check only tells: it never stops, blocks or changes anything.
+// in reports. The check only tells: it never stops, blocks or changes anything. A finding may offer
+// a fix (proto.Fix) - what agent/protect would do about it once the supervisor confirms it.
 //
 // It reads /proc and files and runs no shell; the one command it runs (journalctl) gets fixed
 // arguments and a cursor it checked. It runs at the lowest CPU and disk priority, hashes large files
@@ -26,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"meridian/internal/agent/sshd"
 	"meridian/internal/proto"
 )
 
@@ -50,6 +52,9 @@ type Monitor struct {
 	Self    string // the running agent's program, to hash ("/proc/self/exe"); "" = not checked
 	Cores   int    // processor cores (0 = runtime.NumCPU())
 	Now     func() time.Time
+	// SSHD reads the SSH server's effective settings (sshd -T); nil = sshd.Read on a server, nothing
+	// in tests that leave it out
+	SSHD func(ctx context.Context) (sshd.Settings, error)
 
 	mu       sync.Mutex
 	s        saved
@@ -82,7 +87,9 @@ type saved struct {
 	Cores      map[string]fileSum  `json:"cores"`            // Meridian's programs (the agent's and the cores') as last seen
 	Expect     string              `json:"expect,omitempty"` // the agent program the agent is upgrading itself to
 	SSH        sshPos              `json:"ssh"`
-	Active     map[string]int64    `json:"active"` // lasting findings that hold now, since when
+	SSHGood    map[string]int64    `json:"ssh_good,omitempty"` // addresses that signed in over SSH, and when last: never offered for blocking
+	Globs      []string            `json:"globs,omitempty"`    // the watched files' patterns the baseline covers
+	Active     map[string]int64    `json:"active"`             // lasting findings that hold now, since when
 	Pending    []proto.Finding     `json:"pending,omitempty"`
 }
 
@@ -293,6 +300,7 @@ func (m *Monitor) Scan(ctx context.Context) {
 	m.s.ScannedAt = t.Unix()
 	m.s.Files, m.s.Users, m.s.Shadow, m.s.Keys = n.Files, n.Users, n.Shadow, n.Keys
 	m.s.Services, m.s.Modules, m.s.Cores, m.s.SSH = n.Services, n.Modules, n.Cores, n.SSH
+	m.s.SSHGood, m.s.Globs = n.SSHGood, n.Globs
 	if first {
 		m.s.Ports = n.Ports
 	}
@@ -374,8 +382,26 @@ func (sc *scan) run(ctx context.Context) {
 	sc.checkSockets()
 	sc.checkBinaries()
 	sc.checkSSH(ctx)
+	sc.checkSSHSettings(ctx)
+	sc.checkSUID()
+	sc.checkReboot()
 	sc.checkLoad()
 	sc.checkTraffic()
+}
+
+// TrustedSSH are the addresses that signed in over SSH lately: protective steps never block them.
+func (m *Monitor) TrustedSSH() []string {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, 0, len(m.s.SSHGood))
+	for a := range m.s.SSHGood {
+		out = append(out, a)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // last records a lasting finding: it holds now.

@@ -157,6 +157,19 @@ func clashProxy(e Endpoint, stash bool) (omap, string) {
 	case KindSnell:
 		return m.set("type", "snell").set("server", e.Host).set("port", e.Port).set("psk", e.Password).
 			set("version", nzInt(e.Version, SnellVersion)).set("udp", true), ""
+	case KindAnyTLS: // mihomo pins a self-signed certificate; Stash documents no pinning for AnyTLS
+		if stash && e.selfSigned() {
+			return nil, whyNoPinAnyTLS
+		}
+		m = m.set("type", "anytls").set("server", e.Host).set("port", e.Port).set("password", e.Password).
+			set("udp", true).set("sni", e.SNI)
+		if !stash {
+			m = m.set("client-fingerprint", nz(e.Fingerprint, "chrome"))
+		}
+		if e.selfSigned() {
+			m = m.set(pinKey(false), e.PinSHA256) // pins the self-signed certificate
+		}
+		return m, ""
 	case KindShadowsocks:
 		return m.set("type", "ss").set("server", e.Host).set("port", e.Port).set("cipher", e.Method).
 			set("password", e.Password).set("udp", true), ""

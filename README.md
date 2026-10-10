@@ -19,7 +19,7 @@ servers and people; look around, nothing can be changed) · [Releases](https://g
 - **Never disruptive on its own.** A user who uses up their data is off every server until it starts
   over, then back by themselves; expiry dates and IP limits only raise alerts, and only you pause.
   Users, keys and settings change live through the cores' APIs; a core restarts only when you click
-  a button that says it will.
+  a button that says it will - one server's, or **Restart everything** on every server at once.
 - **Accountable.** Every connecting IP is recorded with its user, server, place and network;
   destinations are recorded per user; traffic is counted exactly once per user, protocol and day,
   and each user's usage is shown per protocol.
@@ -51,11 +51,17 @@ servers and people; look around, nothing can be changed) · [Releases](https://g
   working.
 - **Automatable.** A documented REST API with scoped tokens, and an MCP server so AI assistants can
   answer "who is sharing their link?" or add users - asking first before anything disruptive.
-- **Watches for break-ins.** Every few minutes each agent checks its server for crypto-miners,
-  programs run from temporary folders, ports nobody opened, new accounts and SSH keys, changed
-  scheduled tasks and services, SSH sign-ins, traffic Rosélune does not account for and Rosélune's
-  own programs changed. You mark each finding as yours or seen - here or on every server; nothing is
-  stopped on its own.
+- **Watches for break-ins, and helps you act.** Every few minutes each agent checks its server for
+  crypto-miners, programs run from temporary folders, ports nobody opened, new accounts and SSH
+  keys, accounts without a password, SSH that lets passwords in, changed sign-in rules (PAM),
+  start-up files, scheduled tasks and services, programs with administrator rights in temporary
+  folders, SSH sign-ins and password guessing, traffic Rosélune does not account for and Rosélune's
+  own programs changed. You mark each finding as yours or seen - here or on every server. Where the
+  server can do something about one, its button says what: **stop it** (its program goes into
+  quarantine), **remove this key**, **lock the account**, **turn the service off**, **move the file
+  to quarantine**, **SSH: keys only**, **block the addresses** guessing passwords. Nothing happens
+  until you press it and confirm in the browser - never from a token or an assistant -, the server
+  checks it all again first, and every step but stopping a process can be undone.
 - **A Telegram bot.** Notifications, a daily report (traffic per server and the top users,
   availability, what ends soon, data running out, health risks) and commands - `/status`,
   `/servers`, `/traffic`, `/users`, `/risks`, `/ping` and more - in your chat only; buttons to decide
@@ -95,8 +101,12 @@ files to edit; the API (`PUT /api/settings`, `PUT /api/settings/logo`) and the M
 | Hysteria2 | official Hysteria server | QUIC, port hopping, optional Salamander obfuscation, bandwidth limits |
 | WireGuard | Linux kernel | official apps; destinations logged per device |
 | mieru | mieru's server (mita) | TCP or UDP; one port and one small process per user, so usage, cuts and limits are exact per user |
-| Snell | Surge's snell-server 5 | apps speak version 4 (Surge, Stash, mihomo apps, sing-box); one port and one small process per user |
+| Snell | Surge's snell-server 5 | apps speak version 4 (Surge, Stash, mihomo apps, sing-box 1.14+); one port and one small process per user |
+| AnyTLS | sing-box | TLS with padding that hides TLS inside TLS · self-signed (pinned), Let's Encrypt, own or shared certificate; one port and one small process per user |
 | Port forwards | nftables (kernel) or realm | TCP/UDP relays with exact byte counts |
+
+Each user's own servers (mieru, Snell, AnyTLS) run as an account without any rights that the firewall
+keeps away from the server itself and from private networks, like the Xray protocols' traffic.
 
 TLS certificates are obtained from Let's Encrypt by the agent, pasted in, self-signed, or
 **shared**: kept once and replaced once for every server, with each server's copy checked - a

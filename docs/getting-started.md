@@ -120,6 +120,7 @@ only needs a panel address with IPv6 (an AAAA record) - the dialog says so when 
 | **SOCKS5 / HTTP proxy** | For apps that only speak a plain proxy. |
 | **mieru** | Looks like random data. mihomo apps (Clash Verge Rev, FlClash, Mihomo Party) and Stash. |
 | **Snell** | Surge's own protocol: Surge, Stash, mihomo apps and sing-box. |
+| **AnyTLS** | TLS that hides the TLS-inside-TLS pattern: mihomo apps, sing-box and Surge; with a domain certificate also Stash and Hiddify. |
 
 Each is only a starting point: change the protocol, transport (raw, WebSocket, gRPC, HTTPUpgrade,
 XHTTP), security (REALITY, TLS, none) and every other setting in the same form.
@@ -185,7 +186,19 @@ do instead. Below the form you see which apps can use the protocol as configured
   servers or be a proxy pass exit, and have no configuration as code. Users with a speed limit do
   not get mieru over UDP (a speed limit stalls it); mieru over TCP and Snell keep to limits.
   Links: mieru goes to the mihomo apps and Stash; Snell to Surge, Stash, the mihomo apps and
-  sing-box (SFI, SFA, SFM) as version 4.
+  sing-box (SFI, SFA, SFM, 1.14 and later: older sing-box apps would refuse the whole profile, so
+  theirs leaves it out) as version 4.
+- **AnyTLS** works the same way - one small server per user, on their own port - with sing-box
+  (from its GitHub releases, checksum checked; about 15-25 MB of memory per user) and TCP only. It
+  always runs over TLS: a **self-signed** certificate (no domain needed) is pinned by the mihomo
+  apps, sing-box and Surge (iOS 5.17, Mac 6.4.3 and later); with **Let's Encrypt**, your own or a
+  **shared** certificate, Stash and the Hiddify apps (Hiddify, NekoBox, Karing) can use it too. A
+  renewed certificate is read again without a restart. It needs agent 1.3.1 and nftables.
+- Every user's own server (mieru, Snell, AnyTLS) runs as the account `meridian-solo`, which has no
+  rights at all: the firewall refuses its new connections to the server itself and to private,
+  link-local and cloud-metadata networks (DNS to the server's own resolver excepted) - so what users
+  ask for reaches the public internet only, as with the Xray protocols. Servers started by agent 1.3.0
+  move to that account when you press **restart needed** (or **Restart everything**).
 
 **Already running Xray, V2Ray, x-ui, 3x-ui, sing-box or Hysteria2 on the server?** Use **Import
 existing setup** on the server page. The agent reads their configuration (it changes nothing), you

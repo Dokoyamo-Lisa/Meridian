@@ -365,7 +365,11 @@ scripts/wait-server.sh ID
 ```
 
 `upgrade_xray`, `restart_xray` and `restart_pending` disconnect users for a moment - only after the
-human says yes.
+human says yes. `restart_all` (agent 1.3.1) restarts everything that carries traffic on the server -
+Xray, Hysteria2, users' own mieru/Snell/AnyTLS servers, realm forwards - and then the agent;
+`scripts/api.sh POST /api/servers/restart-all` does it on every server (everyone reconnects once:
+only after the human's yes). Expected answer: `{"servers":["Tokyo"],"skipped":[{"name":"Old","why":"agent
+older than 1.3.1 - upgrade it first (nobody is disconnected by that)"}]}`.
 
 **Update the panel itself** (installs since 0.7.0 have the updater service): `scripts/api.sh GET /api/update`
 shows the newest release; `scripts/api.sh POST /api/update/install '{"agents":true}'` installs it (the

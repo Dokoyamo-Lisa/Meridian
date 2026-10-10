@@ -114,6 +114,35 @@ func IPv6Off() bool {
 	return strings.TrimSpace(readFile("/proc/sys/net/ipv6/conf/all/disable_ipv6")) == "1"
 }
 
+// Resolvers are the name servers the host asks (/etc/resolv.conf), without zones: at most eight.
+func Resolvers() []string { return resolvers(readFile("/etc/resolv.conf")) }
+
+func resolvers(conf string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, l := range strings.Split(conf, "\n") {
+		f := strings.Fields(l)
+		if len(f) < 2 || f[0] != "nameserver" {
+			continue
+		}
+		a, err := netip.ParseAddr(f[1])
+		if err != nil {
+			continue
+		}
+		if a = a.WithZone("").Unmap(); !seen[a.String()] {
+			seen[a.String()] = true
+			out = append(out, a.String())
+		}
+		if len(out) == 8 {
+			break
+		}
+	}
+	if len(out) == 0 { // none: programs ask the host itself
+		out = []string{"127.0.0.1", "::1"}
+	}
+	return out
+}
+
 // BootID tells boots apart: the kernel's counters start over with each one ("" off Linux).
 func BootID() string { return strings.TrimSpace(readFile("/proc/sys/kernel/random/boot_id")) }
 

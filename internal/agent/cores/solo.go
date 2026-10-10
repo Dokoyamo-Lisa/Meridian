@@ -15,8 +15,8 @@ import (
 	"strings"
 )
 
-// mieru's server (mita) comes from its GitHub releases, checked against the checksum the panel
-// vouched for or GitHub's own. snell-server is closed source and comes only from Surge's site
+// mieru's server (mita) and sing-box (AnyTLS's server) come from their GitHub releases, checked
+// against the checksum the panel vouched for or GitHub's own. snell-server is closed source and comes only from Surge's site
 // (dl.nssurge.com - the supervisor's choice): there is no checksum to ask anyone for, so each
 // version Meridian knows is pinned here (and by the panel), and any other file is refused.
 
@@ -33,6 +33,15 @@ func MitaAsset(version string) (string, error) {
 		return fmt.Sprintf("mita_%s_linux_%s.tar.gz", version, runtime.GOARCH), nil
 	}
 	return "", fmt.Errorf("no mieru server build for %s", runtime.GOARCH)
+}
+
+// SingBoxAsset is sing-box's archive for this machine (AnyTLS's server).
+func SingBoxAsset(version string) (string, error) {
+	switch runtime.GOARCH {
+	case "amd64", "arm64":
+		return fmt.Sprintf("sing-box-%s-linux-%s.tar.gz", version, runtime.GOARCH), nil
+	}
+	return "", fmt.Errorf("no sing-box build for %s", runtime.GOARCH)
 }
 
 // SnellAsset is snell-server's archive for this machine.
@@ -113,6 +122,68 @@ func EnsureMita(ctx context.Context, base, version, mirror string) (string, erro
 		}
 	}
 	return "", errors.New("the mieru server archive has no mita binary")
+}
+
+// EnsureSingBox makes sure sing-box version is unpacked and returns the binary's path: from its GitHub
+// releases, checked against the checksum the panel vouched for or GitHub's own.
+func EnsureSingBox(ctx context.Context, base, version, mirror string) (string, error) {
+	getMu.Lock()
+	defer getMu.Unlock()
+	if err := checkVersion("sing-box", version); err != nil {
+		return "", err
+	}
+	dir := Dir(base, "sing-box", version)
+	bin := filepath.Join(dir, "sing-box")
+	if _, err := os.Stat(bin); err == nil {
+		return bin, nil
+	}
+	asset, err := SingBoxAsset(version)
+	if err != nil {
+		return "", err
+	}
+	want := digestFor("sing-box", version, asset)
+	if want == "" { // the panel had none: ask GitHub directly, never the mirror
+		want = githubAssetDigest(ctx, "SagerNet/sing-box", "v"+version, asset)
+	}
+	if want == "" {
+		return "", errors.New("cannot verify the sing-box download: no checksum from the panel or GitHub")
+	}
+	var urls []string
+	if mirror != "" {
+		urls = append(urls, fmt.Sprintf("%s/sing-box/%s/%s", mirror, version, asset))
+	}
+	urls = append(urls, fmt.Sprintf("https://github.com/SagerNet/sing-box/releases/download/v%s/%s", version, asset))
+	gz, err := fetch(ctx, urls, 100<<20)
+	if err != nil {
+		return "", err
+	}
+	if err := checkSum(gz, want, "sing-box"); err != nil {
+		return "", err
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(gz))
+	if err != nil {
+		return "", err
+	}
+	tr := tar.NewReader(zr)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+		if filepath.Base(h.Name) == "sing-box" && h.Typeflag == tar.TypeReg {
+			if err := writeFile(bin, io.LimitReader(tr, 200<<20), 0o755); err != nil {
+				return "", err
+			}
+			return bin, nil
+		}
+	}
+	return "", errors.New("the sing-box archive has no sing-box binary")
 }
 
 // EnsureSnell makes sure snell-server version is unpacked and returns the binary's path. Only a

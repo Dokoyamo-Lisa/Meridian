@@ -84,3 +84,16 @@ func TestDetectVirt(t *testing.T) {
 		}
 	}
 }
+
+// TestResolvers: the host's name servers from resolv.conf, without zones or duplicates; none listed
+// means the host itself (as the C library and Go assume).
+func TestResolvers(t *testing.T) {
+	got := resolvers("# comment\nnameserver 127.0.0.53\noptions edns0 trust-ad\nnameserver fe80::1%eth0\nnameserver ::ffff:10.0.0.2\n" +
+		"nameserver 127.0.0.53\nnameserver nonsense\nsearch example.com\n")
+	if strings.Join(got, ",") != "127.0.0.53,fe80::1,10.0.0.2" {
+		t.Errorf("got %v", got)
+	}
+	if got := resolvers(""); strings.Join(got, ",") != "127.0.0.1,::1" {
+		t.Errorf("none listed: %v", got)
+	}
+}

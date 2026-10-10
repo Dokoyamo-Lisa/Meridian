@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// The ports of mieru and Snell users (each user has their own process and port, agent/solo). What
-// passes through a user's port is counted - their traffic, exactly - and, while they are in grace
-// after their data ran out, new connections to it are refused (what is open goes on).
+// The ports of mieru, Snell and AnyTLS users (each user has their own process and port, agent/solo).
+// What passes through a user's port is counted - their traffic, exactly - and, while they are in
+// grace after their data ran out, new connections to it are refused (what is open goes on).
 
 // SoloPort is one user's port.
 type SoloPort struct {
@@ -75,6 +75,27 @@ func soloRulesOut(w func(string, ...any), list []SoloPort) {
 			w("    meta nfproto ipv6 %s sport %d counter comment %q", l4, p.Port, soloComment(p, "down", "6", l4))
 		}
 	}
+}
+
+// soloOutChain is where the new connections of the users' servers' account go (Spec.SoloUID): to
+// the host itself or a private, link-local or metadata network they are refused - but for DNS to
+// the host's own name servers, which programs need to find what users ask for by name.
+func soloOutChain(w func(string, ...any), spec Spec) {
+	if spec.SoloUID <= 0 {
+		return
+	}
+	v4, v6 := splitAddrs(spec.Resolvers)
+	w("  chain solo_out {")
+	if len(v4) > 0 {
+		w("    meta l4proto { tcp, udp } th dport 53 ip daddr { %s } return", strings.Join(v4, ", "))
+	}
+	if len(v6) > 0 {
+		w("    meta l4proto { tcp, udp } th dport 53 ip6 daddr { %s } return", strings.Join(v6, ", "))
+	}
+	w("    oifname \"lo\" counter reject")
+	w("    ip daddr @noreach4 counter reject")
+	w("    ip6 daddr @noreach6 counter reject")
+	w("  }")
 }
 
 // splitAddrs keeps the plain addresses of a list, by family.

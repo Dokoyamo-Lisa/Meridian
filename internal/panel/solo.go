@@ -13,16 +13,18 @@ import (
 	"meridian/internal/subgen"
 )
 
-// mieru and Snell: their servers take one user each, so every user of such a protocol has their
-// own process on the server, on their own port - from the protocol's port on, as many ports as
+// mieru, Snell and AnyTLS: their servers take one user each, so every user of such a protocol has
+// their own process on the server, on their own port - from the protocol's port on, as many ports as
 // the protocol has room for (soloSettings.Users). A user keeps their port; it is stored the moment
 // they first need one (solo_ports) and freed when they lose the protocol. Usage, cuts and limits
 // are then exact per user: their traffic is what passes their port, cutting them is stopping their
 // process (agent solo/).
 
-func isSolo(kind string) bool { return kind == subgen.KindMieru || kind == subgen.KindSnell }
+func isSolo(kind string) bool {
+	return kind == subgen.KindMieru || kind == subgen.KindSnell || kind == subgen.KindAnyTLS
+}
 
-// soloSettings are mieru's and Snell's.
+// soloSettings are mieru's and Snell's - and the part of AnyTLS's (anytlsSettings) that is the same.
 type soloSettings struct {
 	Users     int    `json:"users"`               // ports in the range: users at most
 	Transport string `json:"transport,omitempty"` // mieru: tcp | udp
@@ -70,16 +72,20 @@ func soloRange(n *Node) (first, last int) {
 	return n.Port, n.Port + parseSolo(n.Settings).Users - 1
 }
 
-// soloNets says what a protocol listens on: mieru one transport, Snell both (QUIC mode on UDP).
+// soloNets says what a protocol listens on: mieru one transport, Snell both (QUIC mode on UDP),
+// AnyTLS TCP.
 func soloNets(kind string, raw json.RawMessage) (tcp, udp bool) {
-	if kind == subgen.KindSnell {
+	switch kind {
+	case subgen.KindSnell:
 		return true, true
+	case subgen.KindAnyTLS:
+		return true, false
 	}
 	return parseSolo(raw).Transport != "udp", parseSolo(raw).Transport == "udp"
 }
 
-// soloConflict says why port cannot be used because a mieru or Snell protocol's users' ports cover
-// it, or returns "".
+// soloConflict says why port cannot be used because a mieru, Snell or AnyTLS protocol's users'
+// ports cover it, or returns "".
 func soloConflict(port int, tcp, udp bool, bind string, nodes []*Node, skipNode int64) string {
 	for _, n := range nodes {
 		if n.ID == skipNode || !isSolo(n.Kind) {
@@ -97,7 +103,8 @@ func soloConflict(port int, tcp, udp bool, bind string, nodes []*Node, skipNode 
 	return ""
 }
 
-// checkSoloRange says why a mieru or Snell protocol cannot have its users' ports from port on.
+// checkSoloRange says why a mieru, Snell or AnyTLS protocol cannot have its users' ports from port
+// on.
 func checkSoloRange(kind string, raw json.RawMessage, port int, bind string, nodes []*Node, fwds []*Forward, skip int64, hostPorts []int) error {
 	users := parseSolo(raw).Users
 	if port < 1024 || port+users-1 > 65535 {
@@ -112,14 +119,14 @@ func checkSoloRange(kind string, raw json.RawMessage, port int, bind string, nod
 	return nil
 }
 
-// soloServes says whether a mieru or Snell protocol can serve a user at all. mieru over UDP cannot
-// keep to a speed limit - its transfers stall under one, tried in the lab - so users with a limit
-// do not get it (their links leave it out; mieru over TCP keeps to limits).
+// soloServes says whether a mieru, Snell or AnyTLS protocol can serve a user at all. mieru over UDP
+// cannot keep to a speed limit - its transfers stall under one, tried in the lab - so users with a
+// limit do not get it (their links leave it out; mieru over TCP keeps to limits).
 func soloServes(n *Node, s *Sub) bool {
 	return !(n.Kind == subgen.KindMieru && parseSolo(n.Settings).Transport == "udp" && s.SpeedLimit > 0)
 }
 
-// soloCreds are a user's name and secret on a mieru or Snell protocol.
+// soloCreds are a user's name and secret on a mieru, Snell or AnyTLS protocol.
 func soloCreds(n *Node, s *Sub) (name, secret string) {
 	return fmt.Sprintf("u%d", s.ID), derive(s.Secret, fmt.Sprintf("%s-n%d", n.Kind, n.ID))
 }
@@ -189,8 +196,8 @@ func (p *Panel) ensureSoloPorts(ctx context.Context, n *Node, subs []*Sub, allUs
 	return out, nil
 }
 
-// soloNode is a mieru or Snell protocol for a server's state: its users with their ports. The users
-// it has no room for are left out (and told about: soloFull).
+// soloNode is a mieru, Snell or AnyTLS protocol for a server's state: its users with their ports.
+// The users it has no room for are left out (and told about: soloFull).
 func (p *Panel) soloNode(ctx context.Context, n *Node, all, serving []*Sub) (proto.SoloNode, error) {
 	ss := parseSolo(n.Settings)
 	out := proto.SoloNode{NodeID: n.ID, Kind: n.Kind, Transport: ss.Transport, Bind: n.BindIP, Users: []proto.SoloUser{}}
@@ -212,15 +219,42 @@ func (p *Panel) soloNode(ctx context.Context, n *Node, all, serving []*Sub) (pro
 	return out, nil
 }
 
-// soloEndpoint is a user's entry for a mieru or Snell protocol, on their own port.
+// soloEndpoint is a user's entry for a mieru, Snell or AnyTLS protocol, on their own port.
 func soloEndpoint(n *Node, srv *Server, sub *Sub, port int, name string) subgen.Endpoint {
 	user, secret := soloCreds(n, sub)
 	e := subgen.Endpoint{NodeID: n.ID, Name: name, Kind: n.Kind, Server: srv.ShownName(), Country: srv.Country,
 		Host: linkHost(n, srv), Port: port, Password: secret}
-	if n.Kind == subgen.KindMieru {
+	switch n.Kind {
+	case subgen.KindMieru:
 		e.Username, e.Transport = user, parseSolo(n.Settings).Transport
-	} else {
+	case subgen.KindSnell:
 		e.Version = subgen.SnellVersion
+	case subgen.KindAnyTLS:
+		s := parseAnyTLS(n.Settings)
+		e.SNI, e.Fingerprint = s.SNI, "chrome"
+		if s.CertMode == certSelf || s.CertMode == "" { // apps that can pin it check exactly this certificate
+			e.PinSHA256, e.CertPEM = s.CertSHA256, s.CertPEM
+		}
 	}
 	return e
+}
+
+// anytlsCert is the certificate an AnyTLS protocol's users' servers present: its own PEMs (self-signed
+// or the operator's), a shared one's current version, or a Let's Encrypt certificate the agent keeps.
+// ok is false while a shared certificate is missing.
+func anytlsCert(n *Node, sn *proto.SoloNode, shared map[int64]*Cert) bool {
+	s := parseAnyTLS(n.Settings)
+	switch s.CertMode {
+	case certACME:
+		sn.ACME = s.SNI
+	case certShared:
+		c := shared[s.CertID]
+		if c == nil {
+			return false
+		}
+		sn.CertPEM, sn.KeyPEM = c.CertPEM, c.KeyPEM
+	default:
+		sn.CertPEM, sn.KeyPEM = s.CertPEM, s.KeyPEM
+	}
+	return true
 }

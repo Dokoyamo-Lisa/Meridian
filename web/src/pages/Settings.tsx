@@ -15,6 +15,7 @@ import { DynamicDNSSettings } from './DynamicDNS'
 import { MaintenanceSettings, TurnstileSettings } from './SignInGuard'
 import { CustomCSSSettings } from './CustomCSS'
 import { Backups } from './Backups'
+import { restartEverywhere } from './restartAll'
 import { addPasskey, passkeyError, passkeysWork } from '../passkeys'
 
 type Tab = 'general' | 'certs' | 'notify' | 'dns' | 'backups' | 'updates' | 'security' | 'api' | 'plugins'
@@ -395,6 +396,15 @@ function General() {
             Cutting what is open needs agent 1.3 or later on a server; older agents only refuse new connections (Settings › Updates › Upgrade all agents). WireGuard keeps no separate
             connections: its devices are cut at once in both modes.
           </div>
+        </div>
+        <div class="row wrap" style="gap:10px;margin-top:12px;align-items:center">
+          <button type="button" class="btn" onClick={() => void restartEverywhere()}>
+            <Icon name="refresh" size="sm" />
+            Restart everything on every server…
+          </button>
+          <span class="muted" style="font-size:12px">
+            After upgrading agents: until a server's proxies restart, a long connection's data is counted only when it ends, so strict mode cuts late there.
+          </span>
         </div>
       </section>
 

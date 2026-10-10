@@ -446,7 +446,7 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 				hn.Mode = "6"
 			}
 			st.Hysteria = append(st.Hysteria, hn)
-		case "solo": // mieru, Snell: each user's own process and port (solo.go)
+		case "solo": // mieru, Snell, AnyTLS: each user's own process and port (solo.go)
 			all, err := p.subsOf(ctx, srv.AccountID)
 			if err != nil {
 				continue
@@ -456,19 +456,28 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			}
 			sn, err := p.soloNode(ctx, n, all, servingOf(subs, n, stopped))
 			if err != nil {
-				slog.Error("mieru/snell users", "node", n.ID, "err", err)
+				slog.Error("mieru/snell/anytls users", "node", n.ID, "err", err)
 				continue
+			}
+			if n.Kind == subgen.KindAnyTLS && !anytlsCert(n, &sn, shared) {
+				continue // its shared certificate is gone: nothing to serve with
 			}
 			st.Solo = append(st.Solo, sn)
 			// the programs, and their checksums - only where they run, so other servers' states stay as they were
-			if st.Cores.Mita == "" {
+			versions := map[string]string{}
+			switch {
+			case n.Kind == subgen.KindAnyTLS && st.Cores.SingBox == "":
+				st.Cores.SingBox = set.SingBoxVersion
+				versions["sing-box"] = set.SingBoxVersion
+			case n.Kind != subgen.KindAnyTLS && st.Cores.Mita == "":
 				st.Cores.Mita, st.Cores.Snell = set.MitaVersion, set.SnellVersion
-				for k, v := range p.digests.forVersions(map[string]string{"mita": set.MitaVersion, "snell": set.SnellVersion}) {
-					if st.Cores.Digests == nil {
-						st.Cores.Digests = map[string]string{}
-					}
-					st.Cores.Digests[k] = v
+				versions["mita"], versions["snell"] = set.MitaVersion, set.SnellVersion
+			}
+			for k, v := range p.digests.forVersions(versions) {
+				if st.Cores.Digests == nil {
+					st.Cores.Digests = map[string]string{}
 				}
+				st.Cores.Digests[k] = v
 			}
 		case "wireguard":
 			peers, err := p.ensureWGPeers(ctx, n, servingOf(subs, n, stopped))

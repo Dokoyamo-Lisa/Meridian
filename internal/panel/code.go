@@ -344,8 +344,8 @@ func nodeCode(kind string, in *string) (string, error) {
 		return code, err
 	case "wireguard":
 		return "", errStatus(http.StatusBadRequest, "WireGuard runs in the kernel and takes no configuration code")
-	case "mieru", "snell":
-		return "", errStatus(http.StatusBadRequest, "mieru and Snell take no configuration code: each user's server is set up by the agent")
+	case "mieru", "snell", "anytls":
+		return "", errStatus(http.StatusBadRequest, "mieru, Snell and AnyTLS take no configuration code: each user's server is set up by the agent")
 	}
 	return checkXrayNodeCode(*in)
 }

@@ -123,6 +123,12 @@ func TestDumpRulesets(t *testing.T) {
 		LocalOnly: []int{50000, 50001},
 		Geo:       &GeoSpec{V4: []string{"1.0.1.0-1.0.3.255", "36.0.0.0/8"}, V6: []string{"2400:da00::/32"}, Except: []string{"5.5.5.5"}},
 		Speed:     []proto.SpeedLimit{{Sub: 7, Mbps: 200}, {Sub: 12, Mbps: 1000}},
+		Solo: []SoloPort{{Node: 11, Sub: 2, Port: 31000, TCP: true, UDP: true, NoNew: true, Refused: []string{"198.51.100.9"}},
+			{Node: 12, Sub: 3, Port: 31001, TCP: true}},
+		SoloUID:    997,
+		Resolvers:  []string{"127.0.0.53", "::1"},
+		SSHBlocked: []string{"198.51.100.70", "2001:db8::70"},
+		SSHPorts:   []int{22},
 	}
 	for name, spec := range map[string]Spec{
 		"report-only": {LocalOnly: []int{50000, 50001}}, // a server without protocols
@@ -196,8 +202,9 @@ func TestForwardPortsAsSourcePorts(t *testing.T) {
 	}
 }
 
-// TestSoloRules: a mieru or Snell user's port is counted both ways, per family, and while they are
-// in grace or a device is over their limit, new connections there are refused.
+// TestSoloRules: a mieru, Snell or AnyTLS user's port is counted both ways, per family, and while
+// they are in grace or a device is over their limit, new connections there are refused. The account
+// their servers run as reaches neither this host nor a private network.
 func TestSoloRules(t *testing.T) {
 	e := New()
 	out := e.render(Spec{TCPPorts: []int{31000}, UDPPorts: []int{31000}, Solo: []SoloPort{
@@ -217,6 +224,46 @@ func TestSoloRules(t *testing.T) {
 	}
 	if strings.Contains(out, "bad") {
 		t.Error("a malformed address reached the table")
+	}
+	if strings.Contains(out, "solo_out") {
+		t.Error("rules for an account that does not exist")
+	}
+	// the account the users' servers run as: no new connections to this host or private networks,
+	// but DNS to the host's own name servers
+	out = e.render(Spec{SoloUID: 997, Resolvers: []string{"127.0.0.53", "10.0.0.2", "fe80::1", "fe80::2%eth0", "bad"}})
+	for _, want := range []string{
+		"meta skuid 997 ct state new jump solo_out",
+		"meta l4proto { tcp, udp } th dport 53 ip daddr { 127.0.0.53, 10.0.0.2 } return",
+		"meta l4proto { tcp, udp } th dport 53 ip6 daddr { fe80::1 } return",
+		"  chain solo_out {\n",
+		`    oifname "lo" counter reject`,
+		"    ip daddr @noreach4 counter reject",
+		"    ip6 daddr @noreach6 counter reject",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(out, "bad") || strings.Contains(out, "eth0") {
+		t.Error("a malformed resolver reached the table")
+	}
+	if strings.Index(out, "chain solo_out") > strings.Index(out, "jump solo_out") {
+		t.Error("the chain must come before the rule that jumps to it")
+	}
+	// addresses blocked from SSH: on the SSH server's ports alone
+	out = e.render(Spec{SSHBlocked: []string{"198.51.100.7", "2001:db8::7", "bad"}, SSHPorts: []int{22, 2222}})
+	for _, want := range []string{
+		"set sshblock4 { type ipv4_addr; elements = { 198.51.100.7 }; }",
+		"set ssh_ports { type inet_service; elements = { 22, 2222 }; }",
+		`ip saddr @sshblock4 tcp dport @ssh_ports counter drop comment "ssh-block"`,
+		`ip6 saddr @sshblock6 tcp dport @ssh_ports counter drop comment "ssh-block"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	if strings.Contains(e.render(Spec{}), "sshblock") {
+		t.Error("SSH rules with nothing blocked")
 	}
 	e.soloCount("u11.2:up:40", 10_000, 10)
 	e.soloCount("u11.2:down:40", 2_000, 50) // only headers: nothing

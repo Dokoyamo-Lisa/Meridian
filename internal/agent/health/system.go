@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"meridian/internal/agent/service"
 	"meridian/internal/proto"
 )
 
@@ -69,25 +70,32 @@ func (sc *scan) checkAccounts() {
 		if a.UID == 0 && n != "root" {
 			sc.last(proto.Finding{Key: "uid0:" + n, Kind: proto.FindAccount, Severity: proto.SevCritical,
 				Title:  "A second administrator account: " + n,
-				Detail: n + " has uid 0 like root, so it has full control of the server. Remove it unless you made it."})
+				Detail: n + " has uid 0 like root, so it has full control of the server. Lock it, then remove it unless you made it.",
+				Fix:    lockFix(n)})
 		}
 		if sc.first {
 			continue
 		}
 		old, had := sc.prev.Users[n]
 		switch {
+		case !had && n == service.SoloAccount && a.UID != 0 && !a.canLogIn():
+			// the agent's own account for users' servers (mieru, Snell, AnyTLS): no shell, no rights
 		case !had:
 			sev, how := proto.SevWarning, "It has no login shell, so it cannot sign in."
 			if a.canLogIn() {
 				sev, how = proto.SevHigh, "It can sign in (shell "+a.Shell+")."
 			}
-			sc.event(proto.Finding{Key: "account:" + n, Kind: proto.FindAccount, Severity: sev,
+			f := proto.Finding{Key: "account:" + n, Kind: proto.FindAccount, Severity: sev,
 				Title:  "A new account was added: " + n,
-				Detail: fmt.Sprintf("uid %d, home %s. %s Remove it unless you or a program you installed made it.", a.UID, a.Home, how)})
+				Detail: fmt.Sprintf("uid %d, home %s. %s Remove it unless you or a program you installed made it.", a.UID, a.Home, how)}
+			if a.canLogIn() || a.UID == 0 {
+				f.Fix = lockFix(n)
+			}
+			sc.event(f)
 		case !old.canLogIn() && a.canLogIn():
 			sc.event(proto.Finding{Key: "account:" + n, Kind: proto.FindAccount, Severity: proto.SevHigh,
 				Title:  n + " can sign in now",
-				Detail: fmt.Sprintf("Its shell changed from %s to %s.", nz(old.Shell, "none"), a.Shell)})
+				Detail: fmt.Sprintf("Its shell changed from %s to %s.", nz(old.Shell, "none"), a.Shell), Fix: lockFix(n)})
 		}
 	}
 	sc.checkPasswords(users)
@@ -110,6 +118,18 @@ func (sc *scan) checkPasswords(users map[string]account) {
 		if usable(f[1]) {
 			sum := sha256.Sum256([]byte(f[1]))
 			state = hex.EncodeToString(sum[:12])
+		}
+		if a, ok := users[name]; ok && f[1] == "" && (a.canLogIn() || a.UID == 0) {
+			// no password at all: wherever passwords are asked for, nothing needs to be typed
+			fix := lockFix(name)
+			how := "Lock it, or give it a password."
+			if fix == nil {
+				how = "Give it a password: passwd " + name + "."
+			}
+			sc.last(proto.Finding{Key: "nopassword:" + name, Kind: proto.FindAccount, Severity: proto.SevCritical,
+				Title:  name + " has no password",
+				Detail: "Its password is empty: wherever a password is asked for - the console, SSH where it allows empty ones - nothing needs to be typed. " + how,
+				Fix:    fix})
 		}
 		sc.next.Shadow[name] = state
 		if len(sc.next.Shadow) == maxAccounts {
@@ -245,7 +265,8 @@ func (sc *scan) checkKeys() {
 			}
 			sc.event(proto.Finding{Key: "ssh_keys:" + user + ":" + k.fp, Kind: proto.FindSSHKeys, Severity: proto.SevHigh,
 				Title:  "A new SSH key can sign in as " + user,
-				Detail: "Added to " + p + ": " + k.text + ". Remove it unless it is yours."})
+				Detail: "Added to " + p + ": " + k.text + ". Remove it unless it is yours.",
+				Fix:    &proto.Fix{Kind: proto.FixRemoveKey, Path: p, Key: k.fp}})
 		}
 		if removed > 0 {
 			sc.event(proto.Finding{Key: "ssh_keys:" + user + ":removed", Kind: proto.FindSSHKeys, Severity: proto.SevInfo,
@@ -271,6 +292,7 @@ type watched struct {
 	title  string // "<title>: <path>"
 	lines  bool   // count the lines added and removed
 	lasted bool   // (ld.so.preload) a condition while the file is there
+	added  bool   // watched since 1.3.1: a baseline from before learns these files quietly
 }
 
 var watchedFiles = []watched{
@@ -293,6 +315,18 @@ var watchedFiles = []watched{
 	{glob: "/etc/ssh/sshd_config", kind: proto.FindSSH, sev: proto.SevWarning, title: "The SSH server's settings changed", lines: true},
 	{glob: "/etc/ssh/sshd_config.d/*", kind: proto.FindSSH, sev: proto.SevWarning, title: "The SSH server's settings changed", lines: true},
 	{glob: "/etc/ld.so.preload", kind: proto.FindPreload, sev: proto.SevCritical, lasted: true},
+	// how people sign in (PAM): a module added there can let anyone in, or record passwords
+	{glob: "/etc/pam.d/*", kind: proto.FindAccount, sev: proto.SevHigh, title: "The sign-in rules changed (PAM)", lines: true, added: true},
+	{glob: "/etc/security/*.conf", kind: proto.FindAccount, sev: proto.SevWarning, title: "The sign-in rules changed", lines: true, added: true},
+	// what every sign-in runs: where malware starts itself again
+	{glob: "/etc/profile", kind: proto.FindFile, sev: proto.SevWarning, title: "What every sign-in runs changed", lines: true, added: true},
+	{glob: "/etc/profile.d/*", kind: proto.FindFile, sev: proto.SevWarning, title: "What every sign-in runs changed", lines: true, added: true},
+	{glob: "/etc/bash.bashrc", kind: proto.FindFile, sev: proto.SevWarning, title: "What every sign-in runs changed", lines: true, added: true},
+	{glob: "/etc/environment", kind: proto.FindFile, sev: proto.SevWarning, title: "What every sign-in runs changed", lines: true, added: true},
+	{glob: "/root/.bashrc", kind: proto.FindFile, sev: proto.SevWarning, title: "What root's sign-ins run changed", lines: true, added: true},
+	{glob: "/root/.profile", kind: proto.FindFile, sev: proto.SevWarning, title: "What root's sign-ins run changed", lines: true, added: true},
+	{glob: "/root/.bash_profile", kind: proto.FindFile, sev: proto.SevWarning, title: "What root's sign-ins run changed", lines: true, added: true},
+	{glob: "/etc/ld.so.conf.d/*", kind: proto.FindPreload, sev: proto.SevWarning, title: "Where programs find their libraries changed", lines: true, added: true},
 }
 
 const maxWatched = 2000
@@ -302,6 +336,9 @@ const maxWatched = 2000
 func (sc *scan) checkFiles() {
 	sc.next.Files = map[string]fileSum{}
 	for _, w := range watchedFiles {
+		sc.next.Globs = append(sc.next.Globs, w.glob)
+		// patterns a baseline from an older agent did not cover: their files are learned quietly
+		learn := !sc.first && w.added && !slices.Contains(sc.prev.Globs, w.glob)
 		paths, _ := filepath.Glob(sc.m.path(w.glob))
 		sort.Strings(paths)
 		for _, full := range paths {
@@ -321,24 +358,28 @@ func (sc *scan) checkFiles() {
 			}
 			sc.next.Files[p] = sum
 			if w.lasted {
-				sc.preload(shown, content, had && old.SHA != sum.SHA)
+				sc.preload(shown, content, had && old.SHA != sum.SHA, quarantineFix(p, shown, sum.SHA))
 				continue
 			}
-			if sc.first || (had && old.SHA == sum.SHA) {
+			if sc.first || learn || (had && old.SHA == sum.SHA) {
 				continue
 			}
 			what := "A new file."
 			if had {
 				what = linesChanged(old.Lines, sum.Lines)
 			}
-			sc.event(proto.Finding{Key: "file:" + shown, Kind: w.kind, Severity: w.sev, Title: w.title + ": " + shown,
-				Detail: what + " Look at the file on the server unless you changed it."})
+			f := proto.Finding{Key: "file:" + shown, Kind: w.kind, Severity: w.sev, Title: w.title + ": " + shown,
+				Detail: what + " Look at the file on the server unless you changed it."}
+			if !had { // a new file of a kind malware plants may go into quarantine; a changed one is looked at
+				f.Fix = quarantineFix(p, shown, sum.SHA)
+			}
+			sc.event(f)
 		}
 	}
 }
 
 // preload: /etc/ld.so.preload makes every program load the libraries it lists - what rootkits use.
-func (sc *scan) preload(p string, content []byte, changed bool) {
+func (sc *scan) preload(p string, content []byte, changed bool, fix *proto.Fix) {
 	var libs []string
 	for _, l := range strings.Split(string(content), "\n") {
 		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
@@ -350,7 +391,8 @@ func (sc *scan) preload(p string, content []byte, changed bool) {
 	}
 	f := proto.Finding{Key: "preload", Kind: proto.FindPreload, Severity: proto.SevCritical,
 		Title:  p + " makes every program load a library",
-		Detail: "It lists " + cleanText(strings.Join(libs, ", "), 400) + ". Rootkits hide like this - remove the file unless you put it there."}
+		Detail: "It lists " + cleanText(strings.Join(libs, ", "), 400) + ". Rootkits hide like this - remove the file unless you put it there.",
+		Fix:    fix}
 	sc.last(f)
 	if changed && !sc.first {
 		sc.event(f) // changed while it was there: happened again
@@ -419,9 +461,9 @@ func (sc *scan) enabledServices() map[string]string {
 }
 
 // meridianUnitRE are the names of Meridian's own services: the agent, Xray, one Hysteria2 server or
-// realm forward per id (systemd meridian-hy2@22.service, OpenRC meridian-hy2.22), and one mieru or
-// Snell server per protocol and user (meridian-mita@11-2.service: protocol 11, user 2).
-var meridianUnitRE = regexp.MustCompile(`^meridian-(agent|xray|(hy2|realm)[@.][0-9]{1,12}|(mita|snell)[@.][0-9]{1,15}-[0-9]{1,15})(\.service)?$`)
+// realm forward per id (systemd meridian-hy2@22.service, OpenRC meridian-hy2.22), and one mieru,
+// Snell or AnyTLS server per protocol and user (meridian-mita@11-2.service: protocol 11, user 2).
+var meridianUnitRE = regexp.MustCompile(`^meridian-(agent|xray|(hy2|realm)[@.][0-9]{1,12}|(mita|snell|anytls)[@.][0-9]{1,15}-[0-9]{1,15})(\.service)?$`)
 
 // ownUnit says whether an enabled service is one of Meridian's: its name, and a link to Meridian's own
 // unit (or OpenRC script) - a look-alike name pointing elsewhere is not.
@@ -435,6 +477,20 @@ func ownUnit(name, target string) bool {
 		template = name[:at+1] + ".service" // meridian-hy2@22.service runs meridian-hy2@.service
 	}
 	return target == "" || base == name || base == template
+}
+
+// systemService says whether a service set to start at boot is the system's (not a person's own,
+// systemd --user): one systemctl or rc-update can turn off.
+func systemService(target string) bool {
+	if target == "" {
+		return true
+	}
+	for _, d := range []string{"/etc/systemd/system/", "/lib/systemd/system/", "/usr/lib/systemd/system/", "/run/systemd/system/", "/etc/init.d/"} {
+		if strings.HasPrefix(target, d) {
+			return true
+		}
+	}
+	return false
 }
 
 func (sc *scan) checkServices() {
@@ -456,9 +512,13 @@ func (sc *scan) checkServices() {
 		if t := cur[n]; t != "" {
 			detail = "It starts by itself whenever the server boots (" + t + ")."
 		}
-		sc.event(proto.Finding{Key: "service:" + n, Kind: proto.FindService, Severity: proto.SevWarning,
+		f := proto.Finding{Key: "service:" + n, Kind: proto.FindService, Severity: proto.SevWarning,
 			Title:  "A service was set to start at boot: " + n,
-			Detail: detail + " Malware stays on a server this way - disable it unless you installed it."})
+			Detail: detail + " Malware stays on a server this way - turn it off unless you installed it."}
+		if systemService(cur[n]) && !meridianUnitRE.MatchString(n) { // never one of Rosélune's own names
+			f.Fix = &proto.Fix{Kind: proto.FixDisableService, Unit: n}
+		}
+		sc.event(f)
 	}
 }
 

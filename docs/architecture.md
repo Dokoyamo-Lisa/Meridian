@@ -7,10 +7,12 @@
         ▼                                    │   ├─ Xray        (meridian-xray)      │
  ┌───────────────┐   long-poll state  ◄──────┤   ├─ Hysteria2   (meridian-hy2@N)     │
  │ meridian      │   signed + sealed         │   ├─ WireGuard   (kernel, wgctrl)     │
- │  panel        │                           │   ├─ nftables    (table inet meridian)│
- │  SQLite (WAL) │   reports (traffic, IPs,  │   ├─ realm       (meridian-realm@N)   │
- │  web UI       │ ◄─ destinations, health) ─┤   └─ ACME        (Let's Encrypt, :80) │
- └───────────────┘                           └──────────────────────────────────────┘
+ │  panel        │                           │   ├─ mieru/Snell/AnyTLS: one process  │
+ │  SQLite (WAL) │   reports (traffic, IPs,  │   │  per user, as meridian-solo       │
+ │  web UI       │ ◄─ destinations, health) ─┤   ├─ nftables    (table inet meridian)│
+ └───────────────┘                           │   ├─ realm       (meridian-realm@N)   │
+                                             │   └─ ACME        (Let's Encrypt, :80) │
+                                             └──────────────────────────────────────┘
 ```
 
 ## People
@@ -36,9 +38,9 @@ restart, so a server keeps serving even while the panel is unreachable.
 
 ## Protocols
 
-A protocol (a "node") is a kind - VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP, Hysteria2 or
-WireGuard - plus its settings: transport (raw, WebSocket, gRPC, HTTPUpgrade, XHTTP), security
-(REALITY, TLS, none) and the kind's own options. One function decides whether a combination is
+A protocol (a "node") is a kind - VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP, Hysteria2,
+WireGuard, mieru, Snell or AnyTLS - plus its settings: transport (raw, WebSocket, gRPC, HTTPUpgrade,
+XHTTP), security (REALITY, TLS, none) and the kind's own options. One function decides whether a combination is
 valid; the same code renders the server configuration and every subscription format, and the list
 of apps that support a protocol is computed by asking each format's renderer whether it can express
 it. So a combination the panel accepts always works on the server and in the apps it lists.
@@ -53,6 +55,16 @@ formats that cannot pin leave the protocol out; certificate checks are never tur
 the supervisor, or obtained by the agent from Let's Encrypt over HTTP-01 on port 80 and
 renewed by it; Xray reloads certificate files without a restart. REALITY can front the server's own
 website (`127.0.0.1:<port>`) instead of a public site.
+
+mieru, Snell and AnyTLS servers take one user each: every user gets their own port (`solo_ports`,
+from the protocol's port on) and their own process on the server (`internal/agent/solo`: mita,
+snell-server, sing-box), so their traffic is what passes their port (nftables counters), cutting
+them is stopping their process, and their devices are those on their port. The processes run as the
+system account `meridian-solo`, without capabilities; the agent's nftables table refuses that
+account's new connections to the host itself and to private, link-local and metadata networks
+(`solo_out`), DNS to the host's resolver excepted - as Xray's outbounds are kept from them by their
+socket mark. AnyTLS's certificate is written next to the users' configurations, readable by that
+account; sing-box reads it again when it changes.
 
 ## Applying without restarts
 
@@ -205,7 +217,18 @@ kept on the server until a report with them is acknowledged, so none is lost or 
 The panel keeps them as risks (`risks`, one per server and key), with the operator's decision:
 acknowledged (flagged again when it happens again), expected (never flagged again - on the server,
 or on every server through `risk_rules`) or open. High and critical risks are events of the
-"health" notification group and alerts on the overview. Nothing acts on them.
+"health" notification group and alerts on the overview. Nothing acts on them by itself.
+
+A finding may carry a **fix** (`proto.Fix`): what the agent could do about it - stop a process (and
+quarantine its program), remove an SSH key, lock an account, disable a service, quarantine a file,
+make SSH take keys only, block addresses on SSH. The panel stores it with the risk (`risks.fix`,
+checked by `cleanFix`) and shows its button; `POST /api/risks/{id}/protect` - browser sessions only -
+records a step (`protections`) and sends `ActionProtect` with the stored fix, never one the caller
+describes. The agent (`internal/agent/protect`) checks the target again (the process's start time
+and program, the file's hash, the account, the unit name against the system's and Rosélune's own),
+acts, and keeps what undoing needs in its own journal and quarantine
+(`/var/lib/meridian-agent/protect`, root only); `POST /api/protections/{id}/undo` sends the undo.
+Blocked SSH addresses go into the agent's nftables table (`sshblock4/6` on the SSH server's ports).
 
 ## Proxy pass
 
@@ -337,5 +360,8 @@ to-postgres / to-sqlite`), and backups are SQLite files either way. Main tables:
 | `internal/agent/acme` | Let's Encrypt certificates for TLS protocols |
 | `internal/agent/scan` | finding existing proxy setups |
 | `internal/agent/cores` | verified core downloads |
-| `internal/agent/health` | the health check: signs of a break-in or abuse |
+| `internal/agent/health` | the health check: signs of a break-in or abuse, and the fixes it offers |
+| `internal/agent/protect` | protective steps the supervisor confirmed (fixes), and undoing them |
+| `internal/agent/solo` | mieru, Snell and AnyTLS: one process per user, as the account `meridian-solo` |
+| `internal/agent/sshd` | the SSH server's effective settings (`sshd -T`) and authorized keys |
 | `web/` | the panel UI and the status page (Preact + Vite), embedded in the panel binary |

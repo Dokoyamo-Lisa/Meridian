@@ -216,7 +216,8 @@ func (sc *scan) checkSockets() {
 		}
 		sc.last(proto.Finding{Key: "port:" + l.key, Kind: proto.FindPort, Severity: proto.SevWarning,
 			Title:  fmt.Sprintf("A new port is open: %s/%s", port, netw),
-			Detail: detail + ". It was closed when the health check started and is not one of Rosélune's. Mark it expected if you opened it."})
+			Detail: detail + ". It was closed when the health check started and is not one of Rosélune's. Mark it expected if you opened it.",
+			Fix:    stopFix(owner)})
 	}
 	for _, s := range pools {
 		p := owners[s.inode]
@@ -230,7 +231,7 @@ func (sc *scan) checkSockets() {
 		}
 		sc.last(proto.Finding{Key: "pool:" + strings.ToLower(name), Kind: proto.FindMiner, Severity: sev,
 			Title:  name + " is connected to a mining pool port",
-			Detail: fmt.Sprintf("%s, connected to %s - a port crypto-mining pools use.", sc.describe(p), s.remote)})
+			Detail: fmt.Sprintf("%s, connected to %s - a port crypto-mining pools use.", sc.describe(p), s.remote), Fix: stopFix(p)})
 	}
 }
 

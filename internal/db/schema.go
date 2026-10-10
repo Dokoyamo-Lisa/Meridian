@@ -778,6 +778,30 @@ CREATE TABLE solo_ports (
   UNIQUE (node_id, port)
 );
 `,
+	// 27: protective steps (internal/panel/protect.go): the fix a risk offers, as its agent proposed it,
+	// and each step the supervisor confirmed - done, failed or undone, by whom
+	`
+ALTER TABLE risks ADD COLUMN fix TEXT NOT NULL DEFAULT '';
+CREATE TABLE protections (
+  id          INTEGER PRIMARY KEY,
+  account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  server_id   INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  risk_id     INTEGER NOT NULL DEFAULT 0,
+  kind        TEXT    NOT NULL,
+  title       TEXT    NOT NULL DEFAULT '',
+  fix         TEXT    NOT NULL,
+  state       TEXT    NOT NULL DEFAULT 'pending', -- pending | done | failed | undoing | undone
+  output      TEXT    NOT NULL DEFAULT '',
+  action_id   INTEGER NOT NULL DEFAULT 0,
+  undo_action INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  created_by  TEXT    NOT NULL DEFAULT '',
+  done_at     INTEGER NOT NULL DEFAULT 0,
+  undone_at   INTEGER NOT NULL DEFAULT 0,
+  undone_by   TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX protections_server ON protections(server_id, id);
+`,
 }
 
 // NextID is an SQL expression for the id of a new row of nodes or subs: above every id the table

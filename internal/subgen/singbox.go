@@ -1,6 +1,10 @@
 package subgen
 
-import "strings"
+import (
+	"regexp"
+	"strconv"
+	"strings"
+)
 
 // singboxTLS is the tls object of VLESS, VMess and Trojan outbounds; nil when there is no TLS.
 func singboxTLS(e Endpoint) omap {
@@ -107,6 +111,14 @@ func singboxOutbound(e Endpoint) (out omap, endpoint bool, why string) {
 	case KindSnell: // sing-box 1.14 and later
 		return omap{}.set("type", "snell").set("tag", e.Name).set("server", e.Host).set("server_port", e.Port).
 			set("version", nzInt(e.Version, SnellVersion)).set("psk", e.Password), false, ""
+	case KindAnyTLS: // sing-box 1.12 and later
+		tls := omap{}.set("enabled", true).set("server_name", e.SNI).
+			set("utls", omap{}.set("enabled", true).set("fingerprint", nz(e.Fingerprint, "chrome")))
+		if e.selfSigned() {
+			tls = tls.set("certificate", strings.TrimSpace(e.CertPEM)) // trust exactly this certificate
+		}
+		return omap{}.set("type", "anytls").set("tag", e.Name).set("server", e.Host).set("server_port", e.Port).
+			set("password", e.Password).set("tls", tls), false, ""
 	case KindSOCKS:
 		return omap{}.set("type", "socks").set("tag", e.Name).set("server", e.Host).set("server_port", e.Port).
 			set("version", "5").set("username", e.Username).set("password", e.Password), false, ""
@@ -139,11 +151,56 @@ func singboxOutbound(e Endpoint) (out omap, endpoint bool, why string) {
 	return nil, false, whyProtocol
 }
 
+// singboxSince is the sing-box version an outbound type came with, where that is newer than the
+// format's 1.12: an older app refuses a whole profile with an outbound type it does not know.
+var singboxSince = map[string]string{KindSnell: "1.14.0"}
+
+var singboxUARE = regexp.MustCompile(`(?i)sing-box[ /]v?([0-9]{1,3}\.[0-9]{1,3}(?:\.[0-9]{1,4})?)`)
+
+// SingBoxOf is the sing-box version in an app's User-Agent - "SFA (sing-box 1.12.4; language en_US)"
+// for the official apps (SFI, SFM and SFT alike) - or "".
+func SingBoxOf(ua string) string {
+	if m := singboxUARE.FindStringSubmatch(ua); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// versionLess compares dotted versions ("1.12" < "1.14.0"); pre-release suffixes are ignored.
+func versionLess(a, b string) bool {
+	num := func(v string) []int {
+		var out []int
+		for _, p := range strings.Split(v, ".") {
+			n, _ := strconv.Atoi(strings.SplitN(p, "-", 2)[0])
+			out = append(out, n)
+		}
+		for len(out) < 3 {
+			out = append(out, 0)
+		}
+		return out
+	}
+	x, y := num(a), num(b)
+	for i := range 3 {
+		if x[i] != y[i] {
+			return x[i] < y[i]
+		}
+	}
+	return false
+}
+
 // SingBox renders a complete sing-box profile (1.12 or newer) for the official apps.
 func SingBox(eps []Endpoint, info Info) ([]byte, []string) {
 	var outbounds, endpoints []omap
 	var names, skipped []string
 	for _, e := range eps {
+		if since := singboxSince[e.Kind]; since != "" && (info.SingBox == "" || versionLess(info.SingBox, since)) {
+			why := "this app's sing-box is older than " + strings.TrimSuffix(since, ".0") + " - update the app"
+			if info.SingBox == "" {
+				why = "it needs sing-box " + strings.TrimSuffix(since, ".0") + " or later, and this app did not say its version"
+			}
+			skipped = append(skipped, skipOf(e, why))
+			continue
+		}
 		o, isEndpoint, why := singboxOutbound(e)
 		if why != "" {
 			skipped = append(skipped, skipOf(e, why))

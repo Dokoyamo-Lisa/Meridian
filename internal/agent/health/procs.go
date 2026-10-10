@@ -117,7 +117,7 @@ func (sc *scan) isCore(p *proc) bool {
 }
 
 // meridianNames are Meridian's programs: busy by design, never a finding for their processor time.
-var meridianNames = []string{"meridian-agent", "xray", "hysteria", "realm", "mita", "snell"}
+var meridianNames = []string{"meridian-agent", "xray", "hysteria", "realm", "mita", "snell", "sing-box"}
 
 // systemNames are common system services: busy now and then, and listening by design.
 var systemNames = []string{
@@ -213,31 +213,33 @@ func (sc *scan) checkProcesses() {
 		case nameIs(p.comm, minerNames) || (p.exe != "" && nameIs(base, minerNames)):
 			sc.last(proto.Finding{Key: "miner:" + strings.ToLower(nz(p.comm, base)), Kind: proto.FindMiner, Severity: proto.SevCritical,
 				Title:  "A crypto-miner is running: " + nz(p.comm, base),
-				Detail: who + sc.pool(p) + ". Stop it, then look for how it got in: new SSH keys, accounts, scheduled tasks and services."})
+				Detail: who + sc.pool(p) + ". Stop it, then look for how it got in: new SSH keys, accounts, scheduled tasks and services.",
+				Fix:    stopFix(p)})
 		case sc.minerArgs(p):
 			sc.last(proto.Finding{Key: "miner:" + strings.ToLower(nz(p.comm, base)), Kind: proto.FindMiner, Severity: proto.SevCritical,
 				Title:  "A crypto-miner is running: " + nz(p.comm, base),
-				Detail: who + sc.pool(p) + " - its command line is a miner's. Stop it, then look for how it got in: new SSH keys, accounts, scheduled tasks and services."})
+				Detail: who + sc.pool(p) + " - its command line is a miner's. Stop it, then look for how it got in: new SSH keys, accounts, scheduled tasks and services.",
+				Fix:    stopFix(p)})
 		case p.exe != "" && nameIs(p.comm, kernelNames):
 			sc.last(proto.Finding{Key: "disguise:" + p.exe, Kind: proto.FindProcess, Severity: proto.SevHigh,
 				Title:  "A program poses as a kernel thread: " + p.comm,
-				Detail: who + ". Real kernel threads have no program file - malware hides like this."})
+				Detail: who + ". Real kernel threads have no program file - malware hides like this.", Fix: stopFix(p)})
 		case inTmp(p.exe):
 			sc.last(proto.Finding{Key: "tmp:" + p.exe, Kind: proto.FindProcess, Severity: proto.SevHigh,
 				Title:  "A program runs from a temporary folder: " + p.exe,
-				Detail: who + ". Programs are installed elsewhere; malware is often dropped in /tmp, /var/tmp or /dev/shm."})
+				Detail: who + ". Programs are installed elsewhere; malware is often dropped in /tmp, /var/tmp or /dev/shm.", Fix: stopFix(p)})
 		case p.deleted && p.exe != "" && !exists(sc.m.path(p.exe)):
 			// a file that is gone (not an upgrade that replaced it: the new file is then in place)
 			sc.last(proto.Finding{Key: "deleted:" + p.exe, Kind: proto.FindProcess, Severity: proto.SevHigh,
 				Title:  "A program runs whose file was deleted: " + nz(p.comm, base),
-				Detail: who + ". Its file " + p.exe + " no longer exists - malware deletes itself after it starts."})
+				Detail: who + ". Its file " + p.exe + " no longer exists - malware deletes itself after it starts.", Fix: stopFix(p)})
 		case !smp.hotFrom.IsZero() && sc.at.Sub(smp.hotFrom) >= hotFor && !exactName(p.comm, meridianNames) &&
 			!exactName(p.comm, systemNames) && !exactName(base, systemNames):
 			mins := int(sc.at.Sub(smp.hotFrom).Minutes())
 			sc.last(proto.Finding{Key: "cpu:" + strings.ToLower(nz(p.comm, base)), Kind: proto.FindCPU, Severity: proto.SevWarning,
 				Title: fmt.Sprintf("%s kept a processor busy for %d minutes", nz(p.comm, base), mins),
 				Detail: fmt.Sprintf("%s, using %.0f%% of a processor core. If you do not know this program, look at it: crypto-miners do this.",
-					who, busy*100)})
+					who, busy*100), Fix: stopFix(p)})
 		}
 	}
 	m.mu.Lock()

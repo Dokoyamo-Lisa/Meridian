@@ -512,7 +512,8 @@ func (p *Panel) apiPutSettings(w http.ResponseWriter, r *http.Request, a *Accoun
 	if s.LogoAnimation != "" && !slices.Contains(logoAnimations, s.LogoAnimation) {
 		return errStatus(http.StatusBadRequest, "logo_animation is "+strings.Join(logoAnimations, ", "))
 	}
-	for name, v := range map[string]string{"Xray": s.XrayVersion, "Hysteria": s.HysteriaVersion, "realm": s.RealmVersion, "mieru": s.MitaVersion} {
+	for name, v := range map[string]string{"Xray": s.XrayVersion, "Hysteria": s.HysteriaVersion, "realm": s.RealmVersion, "mieru": s.MitaVersion,
+		"sing-box": s.SingBoxVersion} {
 		if v = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(v), "app/"), "v"); v != "" && !versionRE.MatchString(v) {
 			return errStatus(http.StatusBadRequest, name+" version must look like 26.3.27")
 		}

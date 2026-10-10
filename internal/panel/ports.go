@@ -240,8 +240,8 @@ func reachNets(kind string) (tcp, udp bool) {
 	if kind == subgen.KindMieru {
 		return true, true // its transport is the protocol's choice: either may be asked
 	}
-	if kind == subgen.KindSnell {
-		return true, false // TCP; its QUIC mode on UDP is a bonus
+	if kind == subgen.KindSnell || kind == subgen.KindAnyTLS {
+		return true, false // TCP (Snell's QUIC mode on UDP is a bonus)
 	}
 	if kind == subgen.KindHysteria2 || kind == subgen.KindWireGuard {
 		return false, true
@@ -251,6 +251,12 @@ func reachNets(kind string) (tcp, udp bool) {
 
 // usesACME says whether a protocol gets its certificate from Let's Encrypt.
 func usesACME(kind string, raw json.RawMessage) string {
+	if kind == subgen.KindAnyTLS {
+		if s := parseAnyTLS(raw); s.CertMode == certACME {
+			return s.SNI
+		}
+		return ""
+	}
 	if kind == subgen.KindHysteria2 {
 		var s hy2Settings
 		if json.Unmarshal(raw, &s) == nil && s.CertMode == certACME {

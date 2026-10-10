@@ -70,9 +70,14 @@ func securityQuery(q url.Values, e Endpoint) {
 }
 
 // URI renders one endpoint as a share link (v2rayN / Shadowrocket / Hiddify / NekoBox style) for the
-// Xray-core apps. It returns "" for endpoints that have no safe link form.
+// Xray-core apps - an AnyTLS one for the sing-box apps (Hiddify, NekoBox, Karing), the apps that read
+// it. It returns "" for endpoints that have no safe link form.
 func URI(e Endpoint) string {
-	u, _ := uri(e, profileFull)
+	p := profileFull
+	if e.Kind == KindAnyTLS {
+		p = profileSingBox
+	}
+	u, _ := uri(e, p)
 	return u
 }
 
@@ -145,6 +150,20 @@ func uri(e Endpoint, p linkProfile) (string, string) {
 			q.Set("mport", from+"-"+to)
 		}
 		return "hysteria2://" + url.PathEscape(e.Password) + "@" + hostPort(e.Host, e.Port) + "/?" + q.Encode() + frag, ""
+	case KindAnyTLS:
+		// the official link form (anytls-go docs/uri_scheme.md) as Hiddify's reader takes it: no way to
+		// pin a certificate, so a self-signed one is not offered; Xray cannot speak AnyTLS, and
+		// Shadowrocket documents no AnyTLS links
+		if p != profileSingBox {
+			return "", whyProtocol
+		}
+		if e.selfSigned() {
+			return "", whyNoPinAnyTLS
+		}
+		q := url.Values{}
+		q.Set("sni", e.SNI)
+		q.Set("fp", nz(e.Fingerprint, "chrome"))
+		return "anytls://" + url.PathEscape(e.Password) + "@" + hostPort(e.Host, e.Port) + "/?" + q.Encode() + frag, ""
 	case KindShadowsocks:
 		user := base64.RawURLEncoding.EncodeToString([]byte(e.Method + ":" + e.Password))
 		return "ss://" + user + "@" + hostPort(e.Host, e.Port) + frag, ""

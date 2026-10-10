@@ -18,7 +18,8 @@ for its one supervisor account.
 2. **Never disrupt without an explicit yes.** Tools marked destructive (`pause_user`, `delete_user`,
    `rotate_user_link`, `reset_user_credentials`, `import_protocols`, `set_country_rule`,
    `set_protocol_enabled`, `remove_protocol`, `remove_forward`, `block_ip`, `server_action`,
-   `remove_external_node`) disconnect people, stop services, block traffic or cannot be undone.
+   `restart_all_servers`, `remove_external_node`) disconnect people, stop services, block traffic or
+   cannot be undone.
    Before calling one, tell the user exactly what will happen (who is disconnected, what stops
    working, how to undo it) and wait for them to confirm in this conversation. Only then pass
    `confirm=true`. A confirmation covers one action, not similar ones later. Some changes need it
@@ -51,9 +52,14 @@ for its one supervisor account.
    - `apply_error` - the server could not apply the latest change and keeps the previous working
      configuration. `get_server` shows the message ("the panel needs a newer agent" means: upgrade
      the agent with `server_action upgrade_agent` - nobody is disconnected).
-   - `restart_pending` - a change waits for one restart (of Xray, or of the Hysteria2 protocols it
-     names); nothing restarts until the user clicks **Restart now** (or confirms
-     `server_action restart_pending`, which restarts exactly what waits).
+   - `restart_pending` - a change waits for one restart (of Xray, of the Hysteria2 protocols it
+     names, or of users' own mieru and Snell servers moving to their account without rights);
+     nothing restarts until the user clicks **Restart now** (or confirms
+     `server_action restart_pending`, which restarts exactly what waits). To restart everything on a
+     server - Xray, Hysteria2, users' own servers, realm forwards, then the agent - after their yes:
+     `server_action {server_id, action: "restart_all", confirm: true}`; on every server at once:
+     `restart_all_servers {confirm: true}` (everyone reconnects once; servers with an agent older than
+     1.3.1 are left out and named). Strict mode needs it once after agents are upgraded.
    - `health_risk` - a server's health check found something high or critical that is still open (a
      crypto-miner, a new SSH key or account, a program run from a temporary folder...). See "Signs of a
      break-in" below.
@@ -106,10 +112,19 @@ judge whether use is acceptable, state facts and let the user decide.
 ## Signs of a break-in (health risks)
 
 Every agent (1.0 and later) checks its server every five minutes: crypto-miners, programs run from
-temporary folders, new ports, accounts and SSH keys, changed administrator rights, scheduled tasks and
-services, kernel modules, SSH sign-ins, traffic Rosélune does not account for, Rosélune's own programs
-changed. What it finds are *risks*. They only tell - nothing was stopped, and you cannot run commands
-on the server through the panel.
+temporary folders, new ports, accounts and SSH keys, accounts without a password, SSH that lets
+passwords in, changed administrator rights and sign-in rules, start-up files, scheduled tasks and
+services, programs with administrator rights in temporary folders, kernel modules, SSH sign-ins and
+password guessing, traffic Rosélune does not account for, Rosélune's own programs changed. What it
+finds are *risks*. They only tell - nothing was stopped, and you cannot run commands on the server
+through the panel.
+
+Many risks offer a **protective step** (`fix` in the list: `label`, what it does in `explain`,
+`undo`): stop the process, remove the key, lock the account, turn the service off, move the file to
+quarantine, SSH keys only, block the guessing addresses. **No tool can take it** - only the
+supervisor, signed in to the panel in a browser, pressing the risk's button and confirming. Tell
+them which button (the `label`), on which server, and what it does; `step` on a risk says how the last
+step went (`pending`, `done`, `failed` with the server's reason, `undone`).
 
 1. `list_risks` - the open risks, most serious first. Narrow it with `severity: "high"`, `server_id`,
    or see decided ones with `status: "all"`. Expected answer (an empty list `[]` means nothing is open):
@@ -144,7 +159,8 @@ on the server through the panel.
    - To undo either: `decision: "open"`.
 4. If it looks like a break-in, say so plainly and give the steps from the documentation (docs/health.md,
    "If a server was broken into"): stop the process, remove the SSH keys, accounts, scheduled tasks and
-   services it added, change passwords, turn SSH passwords off, and reinstall the server when unsure.
+   services it added, change passwords, turn SSH passwords off, and reinstall the server when unsure -
+   pointing at each risk's button where it has one (Monitor › Health, or the server's page).
 5. When it fails:
    - `decide_risk` is missing, or answers "This token is read-only" - the token cannot decide; the user
      needs a full-access token (Settings › API & MCP).

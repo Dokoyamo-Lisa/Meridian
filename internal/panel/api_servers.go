@@ -831,12 +831,15 @@ func (p *Panel) apiServerAction(w http.ResponseWriter, r *http.Request, a *Accou
 	if err := readJSON(r, &in); err != nil {
 		return err
 	}
-	if !slices.Contains([]string{proto.ActionRestartXray, proto.ActionRestartPending, proto.ActionUpgradeXray,
+	if !slices.Contains([]string{proto.ActionRestartXray, proto.ActionRestartPending, proto.ActionRestartAll, proto.ActionUpgradeXray,
 		proto.ActionUpgradeHysteria, proto.ActionUpgradeRealm, proto.ActionUpgradeAgent, proto.ActionCheckTarget}, in.Kind) {
 		return errStatus(http.StatusBadRequest, "unknown action")
 	}
 	if s.Guest && !guestActionKinds[in.Kind] { // sharing.go
 		return ownerOnly(s, "upgrading the agent and the cores")
+	}
+	if in.Kind == proto.ActionRestartAll && !s.caps().RestartAll {
+		return errStatus(http.StatusBadRequest, needRestartAll)
 	}
 	if in.Kind == proto.ActionRestartPending && !s.caps().RestartPending {
 		in.Kind = proto.ActionRestartXray // agents before 0.6.3: only Xray's settings ever wait
@@ -880,8 +883,11 @@ func (p *Panel) apiServerAction(w http.ResponseWriter, r *http.Request, a *Accou
 		}
 		aid, _ = res.LastInsertId()
 	}
-	p.event(s.AccountID, "info", "action", id, 0, a.ID, fmt.Sprintf("%s requested %s on %s", a.Username,
-		strings.ReplaceAll(in.Kind, "_", " "), s.Name), nil)
+	what := strings.ReplaceAll(in.Kind, "_", " ")
+	if in.Kind == proto.ActionRestartAll {
+		what = "restart everything"
+	}
+	p.event(s.AccountID, "info", "action", id, 0, a.ID, fmt.Sprintf("%s requested %s on %s", a.Username, what, s.Name), nil)
 	p.touchServers(id)
 	writeJSON(w, http.StatusAccepted, actionRef{ID: aid})
 	return nil
@@ -1011,7 +1017,7 @@ func portConflictAt(port int, tcp, udp bool, bind string, nodes []*Node, fwds []
 	if msg := hopConflict(port, udp, bind, nodes, skipNode); msg != "" {
 		return msg
 	}
-	if msg := soloConflict(port, tcp, udp, bind, nodes, skipNode); msg != "" { // mieru's and Snell's users' ports (solo.go)
+	if msg := soloConflict(port, tcp, udp, bind, nodes, skipNode); msg != "" { // mieru's, Snell's and AnyTLS's users' ports (solo.go)
 		return msg
 	}
 	if !ours && slices.Contains(hostPorts, port) {
@@ -1049,7 +1055,7 @@ func (p *Panel) hostPortsBut(id int64, own int) []int {
 // ---------------------------------------------------------------- nodes (protocols)
 
 type nodeInput struct {
-	Kind     string      `json:"kind" doc:"On create: vless | vmess | trojan | shadowsocks | hysteria2 | wireguard | socks | http"`
+	Kind     string      `json:"kind" doc:"On create: vless | vmess | trojan | shadowsocks | hysteria2 | wireguard | socks | http | mieru | snell | anytls"`
 	Name     *string     `json:"name" doc:"Optional label shown in apps"`
 	Port     *int        `json:"port" doc:"0 or omitted on create = pick a free common port"`
 	Enabled  *bool       `json:"enabled"`
@@ -1165,7 +1171,7 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	k, ok := kindOf(in.Kind)
 	if !ok {
-		return errStatus(http.StatusBadRequest, "unknown protocol - choose vless, vmess, trojan, shadowsocks, hysteria2, wireguard, socks, http, mieru or snell")
+		return errStatus(http.StatusBadRequest, "unknown protocol - choose vless, vmess, trojan, shadowsocks, hysteria2, wireguard, socks, http, mieru, snell or anytls")
 	}
 	nodes, err := p.nodesOf(r.Context(), id)
 	if err != nil {
@@ -1189,6 +1195,8 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 			return errStatus(http.StatusBadRequest, k.Label+" cannot run on a server another panel shares with you")
 		case s.FirstSeenAt > 0 && !caps.Solo:
 			return errStatus(http.StatusBadRequest, k.Label+" needs agent 1.3 or later on this server: upgrade its agent first (Settings › Updates › Upgrade all agents)")
+		case s.FirstSeenAt > 0 && in.Kind == subgen.KindAnyTLS && !caps.AnyTLS:
+			return errStatus(http.StatusBadRequest, "AnyTLS needs agent 1.3.1 or later on this server: upgrade its agent first (Settings › Updates › Upgrade all agents)")
 		case noNftables(s):
 			return errStatus(http.StatusBadRequest, k.Label+" needs nftables on this server (each user's traffic is counted on their port there): "+nftMissing)
 		}

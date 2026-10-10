@@ -60,7 +60,9 @@ func (p *Panel) renderSub(r *http.Request, s *Sub, client string) ([]byte, strin
 		}
 	}
 	link := p.subBase(r) + "/s/" + s.Token + "?client=" + format
-	body, ctype, skipped := subgen.Render(format, eps, p.subInfo(s), link)
+	info := p.subInfo(s)
+	info.SingBox = subgen.SingBoxOf(r.UserAgent()) // what an older sing-box app would refuse stays out
+	body, ctype, skipped := subgen.Render(format, eps, info, link)
 	body = p.plugins.filterSubscription(r.Context(), format, s.ID, ctype, body) // plugins with filter:subscription
 	return body, ctype, skipped, nil
 }

@@ -318,7 +318,7 @@ func (r *recorder) Write(b []byte) (int, error) {
 }
 
 func mcpInstructions(scope string) string {
-	s := `Rosélune (called Meridian before 1.3; its programs and services still are) manages proxy and VPN servers (Xray: VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP; Hysteria2; WireGuard; mieru; Snell; port forwards) and the users who connect through them.
+	s := `Rosélune (called Meridian before 1.3; its programs and services still are) manages proxy and VPN servers (Xray: VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP; Hysteria2; WireGuard; mieru; Snell; AnyTLS; port forwards) and the users who connect through them.
 
 How to work with it:
 - Start with "overview" to see what is running and what needs attention.
@@ -851,7 +851,7 @@ var mcpTools = []mcpTool{
 			return pick(v, "id", "ts", "level", "kind", "server_id", "user_id", "message"), err
 		}},
 	{Name: "list_risks", Title: "Health risks",
-		Description: "What the servers' health checks found that looks like a break-in or abuse: crypto-miners, programs run from temporary folders or deleted, new ports, new accounts and SSH keys, changed administrator rights, scheduled tasks and services, kernel modules, SSH sign-ins, traffic Rosélune does not account for, Rosélune's own programs changed. Each has a severity (info, warning, high, critical), when it was first and last seen, how often, whether it still holds, and a status: open, acknowledged (seen; flagged again if it happens again) or expected (never flagged again). Nothing is ever stopped or blocked because of a risk.",
+		Description: "What the servers' health checks found that looks like a break-in or abuse: crypto-miners, programs run from temporary folders or deleted, new ports, new accounts and SSH keys, changed administrator rights, scheduled tasks and services, kernel modules, SSH sign-ins, traffic Rosélune does not account for, Rosélune's own programs changed. Each has a severity (info, warning, high, critical), when it was first and last seen, how often, whether it still holds, and a status: open, acknowledged (seen; flagged again if it happens again) or expected (never flagged again). Some offer a protective step (fix: stop the process, remove the key, lock the account, turn the service off, quarantine the file, SSH keys only, block the guessing addresses) and say how the last one went (step). Those steps are taken only by the supervisor in the panel's browser page (Health, the risk's button, then confirm) - no tool can take them: tell the supervisor which button to press and what it will do. Nothing is ever stopped or blocked because of a risk by itself.",
 		Props: map[string]any{
 			"status":    pEnum("Which (default open)", "open", "acknowledged", "expected", "all"),
 			"severity":  pEnum("At least this serious", "info", "warning", "high", "critical"),
@@ -2254,10 +2254,10 @@ var mcpTools = []mcpTool{
 			return pick(m["server"], "id", "name", "public_name", "status_hidden", "city", "country", "lat", "lon", "loc_manual"), nil
 		}},
 	{Name: "server_action", Title: "Restart or upgrade", Write: true, Destructive: true,
-		Description: "Run a maintenance action on a server: restart_pending (restarts exactly what waits for a restart - the server's pending_restart - and disconnects those users for a moment), restart_xray or upgrade_xray (disconnects Xray users for a moment), upgrade_hysteria or upgrade_realm (switches to the version in Settings; those users reconnect), upgrade_agent (nobody is disconnected). Returns an action id for action_status.",
+		Description: "Run a maintenance action on a server: restart_pending (restarts exactly what waits for a restart - the server's pending_restart - and disconnects those users for a moment), restart_all (restarts everything that carries traffic - Xray, Hysteria2, each user's own server, realm forwards - and then the agent: everyone on the server reconnects once; agent 1.3.1 and later), restart_xray or upgrade_xray (disconnects Xray users for a moment), upgrade_hysteria or upgrade_realm (switches to the version in Settings; those users reconnect), upgrade_agent (nobody is disconnected). Returns an action id for action_status.",
 		Props: map[string]any{
 			"server_id": pInt("Server id"),
-			"action":    pEnum("What to do", "restart_pending", "restart_xray", "upgrade_xray", "upgrade_hysteria", "upgrade_realm", "upgrade_agent"),
+			"action":    pEnum("What to do", "restart_pending", "restart_all", "restart_xray", "upgrade_xray", "upgrade_hysteria", "upgrade_realm", "upgrade_agent"),
 		},
 		Required: []string{"server_id", "action"},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
@@ -2268,7 +2268,16 @@ var mcpTools = []mcpTool{
 			kind, _ := argStr(a, "action")
 			return c.api("POST", fmt.Sprintf("/api/servers/%d/actions", id), map[string]any{"kind": kind})
 		}},
+	restartAllTool,
 }
+
+// restartAllTool restarts everything on every server.
+var restartAllTool = mcpTool{Name: "restart_all_servers", Title: "Restart everything on every server", Write: true, Destructive: true,
+	Description: "Every online server with agent 1.3.1 or later restarts everything that carries traffic - Xray, Hysteria2, each user's own server (mieru, Snell, AnyTLS), realm forwards - with what waited for a restart, and then its agent. Everyone connected anywhere is disconnected once and reconnects by themselves within seconds. Use it after upgrading agents (strict mode then counts long connections as they happen) or when the supervisor asks for a clean start; one server alone: server_action restart_all. Says which servers restart and which were left out, and why.",
+	Props:       map[string]any{},
+	Run: func(c *mcpCall, a map[string]any) (any, error) {
+		return c.api("POST", "/api/servers/restart-all", nil)
+	}}
 
 var statusKeys = []string{"status_page", "status_domain", "status_about", "status_hub", "status_public", "status_ips", "status_overview", "status_events",
 	"status_charts"}
@@ -2310,12 +2319,12 @@ func kindNames() []string {
 func protocolProps(withServer bool) map[string]any {
 	m := map[string]any{
 		"kind":         pEnum("Protocol", kindNames()...),
-		"transport":    pEnum("Xray protocols: how it travels (default raw)", allTransports...),
+		"transport":    pEnum("Xray protocols: how it travels (default raw). mieru: tcp (default) or udp", append(append([]string{}, allTransports...), "tcp", "udp")...),
 		"security":     pEnum("Xray protocols: none, tls or reality (REALITY: VLESS and Trojan)", secNone, secTLS, secReality),
-		"sni":          pStr("TLS: the certificate's domain. REALITY: the camouflage site (default www.apple.com). Hysteria2: the certificate name"),
+		"sni":          pStr("TLS: the certificate's domain. REALITY: the camouflage site (default www.apple.com). Hysteria2 and AnyTLS: the certificate name"),
 		"target":       pStr("REALITY: where visitors who are not users go, host:port (default sni:443)"),
 		"own_site":     pBool("REALITY: the camouflage is your own website on this server; target is then 127.0.0.1:port"),
-		"cert_mode":    pEnum("TLS and Hysteria2 certificate: self (self-signed, pinned in apps that can), acme (Let's Encrypt, needs a domain pointing at the server and TCP port 80), custom (cert_pem and key_pem), shared (one of list_certificates, with cert_id)", certModes...),
+		"cert_mode":    pEnum("TLS, Hysteria2 and AnyTLS certificate: self (self-signed, pinned in apps that can), acme (Let's Encrypt, needs a domain pointing at the server and TCP port 80), custom (cert_pem and key_pem), shared (one of list_certificates, with cert_id)", certModes...),
 		"cert_id":      pInt("cert_mode shared: the certificate's id from list_certificates (it must cover sni)"),
 		"cert_pem":     pStr("cert_mode custom: the certificate chain (PEM)"),
 		"key_pem":      pStr("cert_mode custom: the private key (PEM)"),
@@ -2340,6 +2349,7 @@ func protocolProps(withServer bool) map[string]any {
 		"full_tunnel":  pBool("WireGuard: send all traffic through the VPN (default true)"),
 		"dns_logging":  pBool("WireGuard: clients use the server's resolver, which logs lookups (default true)"),
 		"ipv6":         pBool("WireGuard: route IPv6 through the tunnel too (default false: IPv4 only; needs IPv6 on the server and agent 0.6)"),
+		"users":        pInt("mieru, Snell and AnyTLS: room for how many users (1-1000, default 50) - each gets their own port and a small process, on that many ports from the protocol's port on"),
 	}
 	if withServer {
 		m["server_id"] = pInt("Server id")
@@ -2374,7 +2384,7 @@ func protocolSettingsArg(a map[string]any) map[string]any {
 			out[k] = v
 		}
 	}
-	for _, k := range []string{"cdn_port", "up_mbps", "down_mbps", "mtu", "cert_id"} {
+	for _, k := range []string{"cdn_port", "up_mbps", "down_mbps", "mtu", "cert_id", "users"} {
 		if v, ok := argInt(a, k); ok {
 			out[k] = v
 		}

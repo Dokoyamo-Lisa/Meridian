@@ -455,6 +455,8 @@ func ensure(ctx context.Context, base, name, version, mirror string) (string, er
 		return EnsureMita(ctx, base, version, mirror)
 	case "snell":
 		return EnsureSnell(ctx, base, version, mirror)
+	case "sing-box":
+		return EnsureSingBox(ctx, base, version, mirror)
 	}
 	return "", fmt.Errorf("unknown core %q", name)
 }

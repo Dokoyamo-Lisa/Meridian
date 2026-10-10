@@ -507,7 +507,7 @@ export function ProtocolCard(props: {
   ]
   facts.push(['Address', <span class="mono ellipsis">{st.cdn ? `${st.cdn_host}:${st.cdn_port} (CDN)` : host || '—'}{n.bind_ip ? <span class="faint"> · its own</span> : null}</span>])
   if (st.security === 'reality') facts.push(['Camouflage', <span class="ellipsis">{st.own_site ? `your site ${st.sni} (${st.target})` : st.sni}</span>])
-  if (st.security === 'tls' || n.kind === 'hysteria2')
+  if (st.security === 'tls' || n.kind === 'hysteria2' || n.kind === 'anytls')
     facts.push(['Certificate', <span class="ellipsis">{st.sni} <span class="faint">· {({ self: 'self-signed, pinned', acme: "Let's Encrypt", custom: 'your own', shared: 'shared' } as Record<string, string>)[st.cert_mode] || st.cert_mode}</span></span>])
   if (st.path) facts.push(['Path', <span class="mono ellipsis">{st.path}</span>])
   if (st.service_name) facts.push(['Service', <span class="mono ellipsis">{st.service_name}</span>])
@@ -522,12 +522,12 @@ export function ProtocolCard(props: {
   if (st.hop_ports) facts.push(['Port hopping', <span class="mono ellipsis">UDP {st.hop_ports}</span>])
   if (n.kind === 'shadowsocks') facts.push(['Cipher', <span class="ellipsis">{st.method}</span>])
   if (n.kind === 'wireguard') facts.push(['Network', <span class="mono ellipsis">{st.subnet4}</span>])
-  if (n.kind === 'mieru' || n.kind === 'snell')
+  if (solo(n.kind))
     facts.push([
       "Users' ports",
       <span class="mono ellipsis">
         {n.port} - {n.port + (Number(st.users) || 50) - 1}
-        <span class="faint"> · {n.kind === 'snell' ? 'TCP and UDP' : String(st.transport || 'tcp').toUpperCase()} · one each</span>
+        <span class="faint"> · {n.kind === 'snell' ? 'TCP and UDP' : n.kind === 'anytls' ? 'TCP' : String(st.transport || 'tcp').toUpperCase()} · one each</span>
       </span>,
     ])
   if (n.pass_node > 0 || n.pass_ext > 0)
@@ -667,7 +667,7 @@ interface Draft {
   enc_auth: string
   hop: boolean
   hop_ports: string
-  users: string // mieru, Snell: how many users it has room for (a port each)
+  users: string // mieru, Snell, AnyTLS: how many users it has room for (a port each)
   mtransport: 'tcp' | 'udp' // mieru
 }
 
@@ -712,6 +712,11 @@ function draftFrom(kind: string, st: Record<string, any> | undefined): Draft {
   }
 }
 
+// solo says whether a protocol runs one small server per user, each on their own port (mieru, Snell, AnyTLS).
+function solo(kind: string) {
+  return kind === 'mieru' || kind === 'snell' || kind === 'anytls'
+}
+
 // vision says whether the Vision flow can work: VLESS over raw TCP with TLS or REALITY, or VLESS Encryption
 function vision(kind: string, d: Draft) {
   return kind === 'vless' && (!!d.encryption || (d.transport === 'raw' && !d.cdn && d.security !== 'none'))
@@ -722,6 +727,13 @@ function settingsFor(kind: string, d: Draft, editing: boolean): Record<string, u
   if (kind === 'wireguard') return { mtu: Number(d.mtu) || 1420, dns_logging: d.dns_logging, full_tunnel: d.full_tunnel, keepalive: Number(d.keepalive) || 0, ipv6: d.ipv6 }
   if (kind === 'mieru') return { users: Number(d.users) || 50, transport: d.mtransport }
   if (kind === 'snell') return { users: Number(d.users) || 50 }
+  if (kind === 'anytls') {
+    const o: Record<string, unknown> = { users: Number(d.users) || 50, sni: d.sni.trim(), cert_mode: d.cert_mode }
+    if (d.cert_mode === 'custom' && (d.cert_pem || !editing)) o.cert_pem = d.cert_pem
+    if (d.cert_mode === 'custom' && d.key_pem) o.key_pem = d.key_pem
+    if (d.cert_mode === 'shared') o.cert_id = d.cert_id
+    return o
+  }
   if (kind === 'hysteria2') {
     const o: Record<string, unknown> = {
       sni: d.sni.trim(),
@@ -785,6 +797,7 @@ const presets: { id: string; title: string; text: string; kind: string; d: Parti
   { id: 'socks', title: 'SOCKS5 / HTTP proxy', text: 'For apps that only speak a plain proxy.', kind: 'socks', d: {} },
   { id: 'mieru', title: 'mieru', text: 'Looks like random data. Each user gets their own port. mihomo apps and Stash.', kind: 'mieru', d: { mtransport: 'tcp', users: '50' } },
   { id: 'snell', title: 'Snell', text: "Surge's own protocol. Each user gets their own port. Surge, Stash, mihomo apps, sing-box.", kind: 'snell', d: { users: '50' } },
+  { id: 'anytls', title: 'AnyTLS', text: 'TLS that hides the TLS-inside-TLS pattern. Each user gets their own port. mihomo apps, sing-box, Surge; with a domain also Stash and Hiddify.', kind: 'anytls', d: { users: '50', cert_mode: 'self' } },
 ]
 
 export function ProtocolEditor(props: { servers: Server[]; server?: Server; node?: NodeView; onClose: () => void; onSaved: () => void }) {
@@ -990,7 +1003,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
         .filter((x) => x.id !== serverId)
         .flatMap((x) =>
           x.nodes
-            .filter((e) => !['wireguard', 'mieru', 'snell'].includes(e.kind) && e.id !== n?.id && !mine.some((m) => m.server_id === x.id))
+            .filter((e) => e.kind !== 'wireguard' && !solo(e.kind) && e.id !== n?.id && !mine.some((m) => m.server_id === x.id))
             .flatMap((e) => {
               if (!e.pass_node) return [{ srv: x, node: e, then: '' }]
               const next = exitOf(e.pass_node)
@@ -1130,7 +1143,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                 <RealitySite d={d} set={set} sites={cat.data.reality_sites} pick={sitePick} setPick={setSitePick} server={server} />
               )}
 
-              {kind && ((xray && !d.cdn && d.security === 'tls') || kind === 'hysteria2') && <CertFields d={d} set={set} kind={kind} editing={editing} keepKey={editing && n?.settings?.cert_mode === 'custom'} />}
+              {kind && ((xray && !d.cdn && d.security === 'tls') || kind === 'hysteria2' || kind === 'anytls') && <CertFields d={d} set={set} kind={kind} editing={editing} keepKey={editing && n?.settings?.cert_mode === 'custom'} />}
 
               {kind && xray && ['ws', 'httpupgrade', 'xhttp'].includes(d.transport) && (
                 <div class="inline-fields">
@@ -1232,7 +1245,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                   </div>
                 </>
               )}
-              {(kind === 'mieru' || kind === 'snell') && (
+              {solo(kind) && (
                 <>
                   {kind === 'mieru' && (
                     <Field label="Runs over" hint="TCP works everywhere. UDP can be faster on long or lossy routes, where networks let UDP through.">
@@ -1249,7 +1262,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                   )}
                   <Field
                     label="Room for (users)"
-                    hint={`Each user gets their own port and a small process on the server: ${Number(d.users) || 50} ports from this protocol's port on. Open them for ${kind === 'snell' ? 'TCP and UDP' : d.mtransport.toUpperCase()} in the provider's firewall. 1-1000.`}
+                    hint={`Each user gets their own port and a small process on the server: ${Number(d.users) || 50} ports from this protocol's port on. Open them for ${kind === 'snell' ? 'TCP and UDP' : kind === 'anytls' ? 'TCP' : d.mtransport.toUpperCase()} in the provider's firewall. 1-1000.`}
                   >
                     <input class="input" inputMode="numeric" value={d.users} onInput={(e) => set({ users: e.currentTarget.value.replace(/[^0-9]/g, '') })} />
                   </Field>
@@ -1408,7 +1421,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                     hint={exitDirect ? 'The exit stays in users’ links as its own entry.' : 'The exit serves only proxy passes: it leaves users’ links and accepts only the pass.'}
                   />
                 )}
-                {kind && !['wireguard', 'mieru', 'snell'].includes(kind) && (
+                {kind && kind !== 'wireguard' && !solo(kind) && (
                   <Check
                     checked={passOnly}
                     onChange={setPassOnly}
@@ -1454,7 +1467,7 @@ function AdvancedPanel(props: {
   serverId: number
 }) {
   const { kind, xray } = props
-  const usable = !!kind && kind !== 'wireguard' && kind !== 'mieru' && kind !== 'snell'
+  const usable = !!kind && kind !== 'wireguard' && !solo(kind)
   return (
     <aside class={'proto-adv' + (usable && props.on ? ' on' : '')}>
       <div class="adv-head">
@@ -1468,7 +1481,7 @@ function AdvancedPanel(props: {
         <p class="muted">Choose a protocol first.</p>
       ) : !usable ? (
         <p class="muted">
-          {kind === 'wireguard' ? 'WireGuard runs in the Linux kernel and has no advanced settings' : 'mieru and Snell run one small server per user, set up by the agent: they have no advanced settings'}:
+          {kind === 'wireguard' ? 'WireGuard runs in the Linux kernel and has no advanced settings' : 'mieru, Snell and AnyTLS run one small server per user, set up by the agent: they have no advanced settings'}:
           everything is in the form.
         </p>
       ) : !props.on ? (

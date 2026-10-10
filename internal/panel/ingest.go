@@ -187,6 +187,9 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 				if kind == proto.ActionStopService {
 					finishTakeover(tx, srv, ar)
 				}
+				if kind == proto.ActionProtect {
+					finishProtect(tx, srv, ar)
+				}
 				ar := ar
 				msg, ok := firstLine(ar.Output), true
 				if kind == proto.ActionCheckTarget && ar.OK {

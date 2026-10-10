@@ -444,27 +444,36 @@ func (e *Engine) Pending() []string {
 // RestartPending writes the configuration of the nodes that wait for a restart and restarts them:
 // their devices reconnect by themselves. It says how many restarted.
 func (e *Engine) RestartPending(ctx context.Context) (int, error) {
+	return e.restart(func(id int64) bool { return e.pending[id] })
+}
+
+// restart restarts the nodes chosen (under e.mu), each with its configuration as it should be now -
+// what waited for a restart written first - and says how many restarted.
+func (e *Engine) restart(chosen func(id int64) bool) (int, error) {
 	e.mu.Lock()
 	e.init()
 	var nodes []proto.HyNode
-	for id := range e.pending {
-		if n, ok := e.nodes[id]; ok {
+	for id, n := range e.nodes {
+		if chosen(id) {
 			nodes = append(nodes, n)
 		}
 	}
 	e.mu.Unlock()
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].NodeID < nodes[j].NodeID })
 	var errs []string
 	done := 0
 	for _, n := range nodes {
 		e.mu.Lock()
-		pi := e.ports[n.NodeID]
+		pi, waits := e.ports[n.NodeID], e.pending[n.NodeID]
 		e.mu.Unlock()
-		body, err := e.render(n, pi)
-		if err != nil {
-			errs = append(errs, err.Error())
-			continue
+		if waits {
+			body, err := e.render(n, pi)
+			if err != nil {
+				errs = append(errs, err.Error())
+				continue
+			}
+			errs = append(errs, e.write(n, e.files(n, body), inputKey(n, pi, e.AuthPort))...)
 		}
-		errs = append(errs, e.write(n, e.files(n, body), inputKey(n, pi, e.AuthPort))...)
 		if err := service.Restart(unitName(n.NodeID)); err != nil {
 			errs = append(errs, err.Error())
 			continue
@@ -742,24 +751,10 @@ func clip(s string) string {
 	return s
 }
 
-// RestartAll restarts every Hysteria2 node (after an upgrade): their devices reconnect by themselves.
+// RestartAll restarts every Hysteria2 node (after an upgrade, or on the supervisor's request), with
+// whatever waited for a restart: their devices reconnect by themselves.
 func (e *Engine) RestartAll() (int, error) {
-	e.mu.Lock()
-	var ids []int64
-	for id := range e.nodes {
-		ids = append(ids, id)
-	}
-	e.mu.Unlock()
-	var errs []string
-	for _, id := range ids {
-		if err := service.Restart(unitName(id)); err != nil {
-			errs = append(errs, err.Error())
-		}
-	}
-	if len(errs) > 0 {
-		return len(ids) - len(errs), errors.New(strings.Join(errs, "; "))
-	}
-	return len(ids), nil
+	return e.restart(func(int64) bool { return true })
 }
 
 // kick ends the sessions of removed users (they were paused or deleted on purpose).

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"meridian/internal/agent/sshd"
 	"meridian/internal/proto"
 )
 
@@ -238,7 +239,8 @@ func TestBaselineThenChanges(t *testing.T) {
 	}
 
 	// what an intruder does
-	h.appendTo("etc/passwd", "backdoor:x:1001:1001::/home/backdoor:/bin/bash\nsvc:x:998:998::/var/lib/svc:/usr/sbin/nologin\n")
+	h.appendTo("etc/passwd", "backdoor:x:1001:1001::/home/backdoor:/bin/bash\nsvc:x:998:998::/var/lib/svc:/usr/sbin/nologin\n"+
+		"meridian-solo:x:997:997::/nonexistent:/usr/sbin/nologin\n") // the agent's own (users' servers)
 	h.write("etc/shadow", "root:$6$salt$hash2:19000:0:99999:7:::\ndaemon:*:19000:0:99999:7:::\nalice:$6$x$y:19000:0:99999:7:::\n")
 	h.appendTo("root/.ssh/authorized_keys", "command=\"/bin/true\" "+evilKey+"\n")
 	h.write("etc/sudoers.d/backdoor", "backdoor ALL=(ALL) NOPASSWD:ALL\n")
@@ -249,6 +251,7 @@ func TestBaselineThenChanges(t *testing.T) {
 	h.link("etc/systemd/system/multi-user.target.wants/meridian-hy2@22.service", "/etc/systemd/system/meridian-hy2@.service")
 	h.link("etc/systemd/system/multi-user.target.wants/meridian-mita@11-2.service", "/etc/systemd/system/meridian-mita@.service")
 	h.link("etc/systemd/system/multi-user.target.wants/meridian-snell@12-1.service", "/etc/systemd/system/meridian-snell@.service")
+	h.link("etc/systemd/system/multi-user.target.wants/meridian-anytls@13-1.service", "/etc/systemd/system/meridian-anytls@.service")
 	h.link("etc/systemd/system/multi-user.target.wants/meridian-snell@9-1.service", "/opt/.x/snell.service")
 	// a look-alike of Meridian's, and a change to what Xray's service runs
 	h.link("etc/systemd/system/multi-user.target.wants/meridian-update.service", "/etc/systemd/system/meridian-update.service")
@@ -340,6 +343,28 @@ func TestBaselineThenChanges(t *testing.T) {
 	}
 	if !got["port:tcp:31337"].Lasting || got["account:backdoor"].Lasting || !got["binary:hysteria:2.14.0"].Lasting {
 		t.Error("lasting and one-off findings mixed up")
+	}
+	// what each finding offers to do about it (only when the supervisor confirms it)
+	fixes := map[string]proto.Fix{
+		"account:backdoor":                   {Kind: proto.FixLockAccount, User: "backdoor"},
+		"ssh_keys:root:" + evilFP:            {Kind: proto.FixRemoveKey, Path: "/root/.ssh/authorized_keys", Key: evilFP},
+		"service:evil.service":               {Kind: proto.FixDisableService, Unit: "evil.service"},
+		"port:tcp:31337":                     {Kind: proto.FixStopProcess, PID: 400, Start: 4000, Path: "/usr/bin/backdoor"},
+		"file:/etc/sudoers.d/backdoor":       {Kind: proto.FixQuarantine, Path: "/etc/sudoers.d/backdoor", SHA256: sum("backdoor ALL=(ALL) NOPASSWD:ALL\n")},
+		"file:/var/spool/cron/crontabs/root": {Kind: proto.FixQuarantine, Path: "/var/spool/cron/crontabs/root", SHA256: sum("@reboot /tmp/.x/run\n")},
+		"service:meridian-update.service":    {Kind: proto.FixDisableService, Unit: "meridian-update.service"}, // a look-alike
+	}
+	for k, want := range fixes {
+		if f := got[k].Fix; f == nil || fmt.Sprint(*f) != fmt.Sprint(want) {
+			t.Errorf("%s: fix %+v, want %+v", k, f, want)
+		}
+	}
+	// a name of Rosélune's own (even pointing elsewhere) is never offered to be turned off from here
+	for _, k := range []string{"account:svc", "file:/etc/crontab", "password:root", "service:meridian-hy2@7.service", "ssh-login:root:" + opsFP,
+		"binary:xray:26.3.27", "service:meridian-snell@9-1.service"} {
+		if got[k].Fix != nil {
+			t.Errorf("%s offers a fix: %+v", k, *got[k].Fix)
+		}
 	}
 
 	// the same state again: events are not repeated, lasting conditions not reported again
@@ -660,5 +685,92 @@ func TestReadSmallFIFO(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("reading a FIFO blocked")
+	}
+}
+
+// TestGuardChecks: what 1.3.1 looks for besides - SSH that lets passwords in (offering keys only),
+// an account without a password (offering to lock it), a program with administrator rights in a
+// temporary folder (offering quarantine), updates waiting for a restart, sign-in rules (PAM) that
+// changed - learned quietly from a baseline an older agent made - and a burst of failed SSH
+// sign-ins that offers to block the addresses that tried most, never one that signed in.
+func TestGuardChecks(t *testing.T) {
+	h := newHost(t)
+	h.write("etc/pam.d/sshd", "@include common-auth\n")
+	h.write("etc/ssh/sshd_config", "Include /etc/ssh/sshd_config.d/*.conf\nPermitRootLogin prohibit-password\n")
+	m := h.monitor(filepath.Join(t.TempDir(), "health.json"))
+	settings := sshd.Settings{"passwordauthentication": {"no"}, "permitrootlogin": {"prohibit-password"}, "port": {"22"}}
+	m.SSHD = func(context.Context) (sshd.Settings, error) { return settings, nil }
+	step(t, h, m, 0)
+	// a baseline from an agent before 1.3.1: the sign-in rules were not watched then
+	m.mu.Lock()
+	m.s.Globs = nil
+	m.mu.Unlock()
+	if got := step(t, h, m, 5*time.Minute); len(got) != 0 {
+		t.Fatalf("learning the files watched since 1.3.1 reported: %v", keys(got))
+	}
+
+	settings["passwordauthentication"] = []string{"yes"}
+	settings["permitemptypasswords"] = []string{"yes"}
+	h.appendTo("etc/passwd", "guest:x:1002:1002::/home/guest:/bin/bash\n")
+	h.write("etc/shadow", "root:$6$salt$hash1:19000:0:99999:7:::\ndaemon:*:19000:0:99999:7:::\nalice:!:19000:0:99999:7:::\nguest::19000:0:99999:7:::\n")
+	h.write("tmp/.x/rootsh", "ELF")
+	if err := os.Chmod(h.path("tmp/.x/rootsh"), 0o755|os.ModeSetuid); err != nil {
+		t.Fatal(err)
+	}
+	h.write("var/run/reboot-required", "*** System restart required ***\n")
+	h.write("var/run/reboot-required.pkgs", "linux-image-7.0.0-35-generic\nlibc6\nlibc6\n")
+	h.write("etc/pam.d/sshd", "@include common-auth\nauth sufficient pam_permit.so\n")
+	var log strings.Builder
+	for i := range 40 {
+		fmt.Fprintf(&log, "Oct  9 12:0%d:00 box sshd[9]: Failed password for root from 198.51.100.66 port %d ssh2\n", i%10, 1000+i)
+		fmt.Fprintf(&log, "Oct  9 12:0%d:01 box sshd[9]: Failed password for invalid user admin from 203.0.113.99 port %d ssh2\n", i%10, 2000+i)
+	}
+	log.WriteString("Oct  9 12:09:00 box sshd[9]: Accepted publickey for root from 203.0.113.99 port 3000 ssh2: ED25519 " + opsFP + "\n")
+	for i := range 3 {
+		fmt.Fprintf(&log, "Oct  9 12:09:0%d box sshd[9]: Failed password for root from 192.0.2.10 port %d ssh2\n", i, 4000+i)
+	}
+	h.appendTo("var/log/auth.log", log.String())
+	got := step(t, h, m, 5*time.Minute)
+	want := map[string]struct {
+		sev string
+		fix proto.Fix
+	}{
+		"ssh-passwords":           {proto.SevWarning, proto.Fix{Kind: proto.FixKeysOnly}},
+		"ssh-empty-passwords":     {proto.SevCritical, proto.Fix{Kind: proto.FixKeysOnly}},
+		"nopassword:guest":        {proto.SevCritical, proto.Fix{Kind: proto.FixLockAccount, User: "guest"}},
+		"suid:/tmp/.x/rootsh":     {proto.SevHigh, proto.Fix{Kind: proto.FixQuarantine, Path: "/tmp/.x/rootsh", SHA256: sum("ELF")}},
+		"reboot-required":         {proto.SevInfo, proto.Fix{}},
+		"file:/etc/pam.d/sshd":    {proto.SevHigh, proto.Fix{}},
+		"account:guest":           {proto.SevHigh, proto.Fix{Kind: proto.FixLockAccount, User: "guest"}},
+		"ssh-failed":              {proto.SevWarning, proto.Fix{Kind: proto.FixBlockSSH, Addrs: []string{"198.51.100.66"}}},
+		"ssh-login:root:" + opsFP: {proto.SevInfo, proto.Fix{}},
+	}
+	for k, w := range want {
+		f, ok := got[k]
+		if !ok {
+			t.Errorf("not found: %s", k)
+			continue
+		}
+		var fix proto.Fix
+		if f.Fix != nil {
+			fix = *f.Fix
+		}
+		if f.Severity != w.sev || fmt.Sprint(fix) != fmt.Sprint(w.fix) {
+			t.Errorf("%s: %s %+v, want %s %+v", k, f.Severity, fix, w.sev, w.fix)
+		}
+	}
+	for k := range got {
+		if _, ok := want[k]; !ok {
+			t.Errorf("unexpected finding %s: %s", k, got[k].Title)
+		}
+	}
+	if d := got["reboot-required"].Detail; !strings.Contains(d, "linux-image-7.0.0-35-generic, libc6 are") {
+		t.Errorf("reboot detail: %s", d)
+	}
+	if d := got["ssh-passwords"].Detail; strings.Contains(d, "First:") {
+		t.Errorf("keys only is ready here (root has a key, the settings read the folder): %s", d)
+	}
+	if !contains(m.TrustedSSH(), "203.0.113.99") {
+		t.Errorf("an address that signed in is not trusted: %v", m.TrustedSSH())
 	}
 }

@@ -2,15 +2,20 @@
 
 Every few minutes each server's agent looks for signs that the server was broken into or is being
 abused: a crypto-miner, a program running from a temporary folder, a port nobody opened, a new
-account or SSH key, a changed scheduled task or service, SSH sign-ins, traffic Rosélune does not
-account for, Rosélune's own programs changed. What it finds becomes a **risk** in the panel, and you
-decide about each one.
+account or SSH key, an account without a password, SSH that lets passwords in, changed sign-in
+rules, start-up files, scheduled tasks or services, SSH sign-ins and password guessing, traffic
+Rosélune does not account for, Rosélune's own programs changed. What it finds becomes a **risk** in
+the panel, and you decide about each one.
 
-Health checks only tell. Nothing is ever stopped, blocked or paused because of a risk - if a server
-runs a miner, you stop it.
+Health checks only tell. Nothing is ever stopped, blocked or paused because of a risk by itself.
+Where the server can do something about a risk, the risk has a button that says what - **Stop it**,
+**Remove this key**, **Lock** the account, **Turn it off**, **Move to quarantine**, **SSH: keys
+only**, **Block** the addresses - and it happens only when you press it and confirm (see
+[Protective steps](#protective-steps)).
 
 Agents 1.0 and later run the checks; an older agent shows "Health checks need agent 1.0 or later" on
-its server page (**More actions › Upgrade agent** - nobody is disconnected).
+its server page (**More actions › Upgrade agent** - nobody is disconnected). The checks marked
+*1.3.1* below and the protective steps need agent 1.3.1.
 
 ## How it works
 
@@ -25,7 +30,11 @@ its server page (**More actions › Upgrade agent** - nobody is disconnected).
   full rights (uid 0).
 - **It is light.** It reads `/proc` and a few files, at the lowest processor and disk priority, and
   hashes Rosélune's programs only when they change (and once a day). It runs no shell; the only
-  program it starts is `journalctl`, to read the SSH server's messages.
+  programs it starts are `journalctl`, to read the SSH server's messages, and `sshd -T`, to read the
+  SSH server's settings (both with fixed arguments).
+- **An upgrade adds without noise.** Files a newer agent watches that an older one did not (the
+  sign-in rules, start-up files) are learned quietly at the first check after the upgrade; only
+  changes after that are reported.
 - **It sends little.** Each finding is a title and a short detail. Command lines, file contents and
   password hashes never leave the server: a changed file is described by how many lines were added
   and removed; a password change is noticed from a digest of the hash.
@@ -49,6 +58,14 @@ its server page (**More actions › Upgrade agent** - nobody is disconnected).
 | A new SSH key in `authorized_keys` of root or any account that can sign in - one finding per key | high |
 | SSH keys removed | info |
 | `/etc/ld.so.preload` with anything in it (every program then loads that library - how rootkits hide) | critical |
+| An account that can sign in has no password at all (an empty password field) - *1.3.1* | critical |
+| SSH lets passwords sign in (`PasswordAuthentication` or keyboard-interactive on) - *1.3.1* | warning |
+| SSH lets accounts without a password sign in (`PermitEmptyPasswords yes`) - *1.3.1* | critical |
+| The sign-in rules changed: `/etc/pam.d/`, `/etc/security/*.conf` - *1.3.1* | high (warning for `/etc/security`) |
+| What every sign-in runs changed: `/etc/profile`, `/etc/profile.d/`, `/etc/bash.bashrc`, `/etc/environment`, root's `.bashrc`, `.profile`, `.bash_profile` - *1.3.1* | warning |
+| Where programs find their libraries changed: `/etc/ld.so.conf.d/` - *1.3.1* | warning |
+| A program with administrator rights (setuid or setgid) in `/tmp`, `/var/tmp` or `/dev/shm` - *1.3.1* | high |
+| Updates installed that take effect only after a restart of the server (`/var/run/reboot-required`, Debian and Ubuntu) - *1.3.1* | info |
 | Scheduled tasks changed: `/etc/crontab`, `/etc/cron.d/` and `cron.hourly` ... `cron.monthly`, `/etc/anacrontab` | warning |
 | A person's own scheduled tasks changed (`crontab -e`: `/var/spool/cron`) | high |
 | A service set to start at boot (systemd or OpenRC), a service's settings changed (`/etc/systemd/system/*.d/`), `/etc/rc.local` changed | warning |
@@ -93,6 +110,44 @@ same risk. Keys are specific, so *expected* covers exactly one thing:
 Some risks *still hold* (a process runs, a port is open): the panel shows "still so" until the
 agent no longer sees it. Others happened once (a sign-in, a changed file).
 
+## Protective steps
+
+A risk that the server can do something about shows a button. Pressing it opens a confirmation that
+says exactly what will happen, on which server, and whether it can be undone; nothing happens until
+you confirm. The server's agent then checks everything again before it acts - the process, file,
+key or account as it is now - and does nothing (and says why) if what was found is gone or changed.
+
+| Button | On | What happens | Undo |
+| --- | --- | --- | --- |
+| **Stop it** | a crypto-miner, a program from a temporary folder or one whose file was deleted, one posing as a kernel thread, a busy or listening program | stops that process at once (the same one: its number, start time and program must match); where its program sits outside the system folders (a temporary folder, a home, `/opt` ...) every process running it is stopped too and the program goes into **quarantine** | the program comes back from quarantine; the process stays stopped |
+| **Remove this key** | a new SSH key | takes that key out of that `authorized_keys` file | the key goes back in |
+| **Lock** *account* | a new account that can sign in, a second uid 0 account, an account without a password | locks its password and expires the account (no SSH key gets in either), and stops what it runs - not for a uid 0 account, whose processes cannot be told from root's | unlocked, with the expiry it had |
+| **Turn it off** | a service set to start at boot | stops it and keeps it from starting at boot | on again (and started, if it ran) |
+| **Move to quarantine** | a new file in `/etc/cron.d`, `cron.hourly`...`cron.monthly`, a user's crontab, `/etc/sudoers.d`, `/etc/profile.d`, `/etc/rc.local`, a service's settings in `/etc/systemd/system/*.d/`; `/etc/ld.so.preload`; a program with administrator rights in a temporary folder | moves the file - only the file as it was found - into the agent's quarantine, where nothing can use it | put back, unless something else is in its place by then |
+| **SSH: keys only** | SSH that lets passwords (or empty passwords) in | writes `PasswordAuthentication no`, `KbdInteractiveAuthentication no` and `PermitEmptyPasswords no` to `/etc/ssh/sshd_config.d/00-meridian-keys-only.conf`, checks it with `sshd -t` and `sshd -T`, and lets SSH read it again - sessions already open stay | the file is removed and SSH reads its own settings again |
+| **Block** *n addresses* | many failed SSH sign-ins | refuses the addresses that tried most (10 failures or more) on the SSH server's ports, with nftables | the addresses may reach SSH again |
+
+What it never does:
+
+- **Nothing happens by itself.** Only a person signed in to the panel in a browser can take a step:
+  API tokens, assistants (MCP) and the Telegram bot cannot - they can only tell you which button to
+  press. The rule is in the panel and in the agent's design: the agent acts only on a step the panel
+  sends for a confirmed click.
+- **It never locks you out.** *SSH: keys only* is refused unless an account that may sign in over SSH
+  has a key, and unless the server's SSH settings read `/etc/ssh/sshd_config.d` - make sure one of
+  those keys is yours. *Remove this key* keeps the last key of root while SSH takes no passwords.
+  *Block* never blocks a private address, an address that signed in over SSH in the last 90 days, or
+  the address you use the panel from.
+- **It never touches what is not its business.** Rosélune's own programs, services and files, root,
+  the system's own services (SSH, systemd, the network, cron, the firewall ...) and program files in
+  system folders are refused; files are moved only from the places listed above.
+- **What undoing needs stays on the server**, readable by root only (`/var/lib/meridian-agent/protect`):
+  the quarantined files and the lines of a removed key never travel to the panel.
+
+A step that is done marks its risk acknowledged by whoever asked for it. The risk shows how the step
+went - *on its way to the server*, *done*, *not done* with the server's reason, *undone* - and who
+asked; the timeline has each request and its result.
+
 ## Where you see them
 
 - **Monitor › Health**: every server's risks, open ones first, with filters by status, severity and
@@ -112,8 +167,11 @@ agent no longer sees it. Others happened once (a sign-in, a changed file).
 | --- | --- |
 | `GET /api/risks?status=open&severity=high&server=3` | risks, most serious first (`status`: open - the default -, acknowledged, expected or all) |
 | `POST /api/risks/{id}/decide` | `{"decision": "expected" \| "acknowledged" \| "open", "scope": "server" \| "all"}` |
+| `POST /api/risks/{id}/protect` | take the protective step the risk offers - browser sessions only |
+| `POST /api/protections/{id}/undo` | undo a step - browser sessions only |
+| `GET /api/protections?server=3` | the steps taken, newest first, and how each went |
 | `GET /api/servers/{id}/health` | when the server's check last ran, and everything it found |
-| MCP `list_risks` | the same list, for an assistant |
+| MCP `list_risks` | the same list, for an assistant - with each risk's protective step (`fix`) and how the last one went (`step`); the assistant can only tell you to press the button |
 | MCP `decide_risk` | a decision; expected on every server needs `confirm=true` |
 
 Read-only tokens can list risks but not decide. Details are in the API reference (Settings › API &
@@ -125,9 +183,10 @@ The check tells you something is wrong; it cannot tell you everything an intrude
 risk looks real (a miner, a key or account you did not add, `ld.so.preload`):
 
 1. Do not mark it expected. Look at what it names on the server (`ps -fp <pid>`, the file, the key).
-2. Stop what runs (`kill`), remove what keeps bringing it back - SSH keys, accounts, scheduled
-   tasks, services - and change the passwords of the accounts that can sign in.
-3. Turn password sign-ins off (`PasswordAuthentication no` in `/etc/ssh/sshd_config`) and let SSH be
-   reached only from your own addresses.
+2. Stop what runs (**Stop it**), remove what keeps bringing it back - **Remove this key**, **Lock**
+   the accounts, **Turn it off** for services, **Move to quarantine** for scheduled tasks - and change
+   the passwords of the accounts that can sign in.
+3. Turn password sign-ins off (**SSH: keys only**), **Block** the addresses that keep guessing, and
+   let SSH be reached only from your own addresses.
 4. If the server's own programs were changed, or you are not sure you found everything, move its
    users to another server and reinstall the system - then add it to the panel again.

@@ -1,5 +1,59 @@
 # Changelog
 
+## 1.3.1 - 2026-10-10
+
+**Security: upgrade every server's agent, then press restart needed.** In 1.3.0, the users of mieru
+and Snell could reach the server itself and the private network behind it through their own
+server: their processes ran as root and lacked the guard Xray's traffic has - tested: a Snell user
+opened a page that listened only on the server's loopback, and SSH on a private address. Agent 1.3.1
+runs every user's own server (mieru, Snell and the new AnyTLS) as the account `meridian-solo`,
+without any rights, and nftables refuses that account's new connections to the server itself and to
+private, link-local and cloud-metadata networks (DNS to the server's own resolver excepted) - what
+users ask for reaches the public internet only. New and changed servers start that way at once;
+those already running move over when you press **restart needed** on the server (or **Restart
+everything**). Servers without mieru or Snell were never affected.
+
+- **AnyTLS**: a new protocol - TLS whose padding hides the tell-tale pattern of TLS inside TLS. Like
+  mieru and Snell, each user gets their own port and a small server (sing-box 1.14.2, from its GitHub
+  releases, checked against its checksum; about 15-25 MB of memory each), so usage, speed limits,
+  device limits and cuts are exact per user. The certificate is self-signed (no domain; pinned by
+  the mihomo apps, sing-box and Surge - iOS 5.17, Mac 6.4.3 and later), from Let's Encrypt, your own,
+  or a shared one (then Stash and the Hiddify apps - Hiddify, NekoBox, Karing - can use it too); a
+  renewed certificate is read again without a restart. Tested end to end with mihomo and sing-box:
+  connecting, a wrong pin refused, the server's own and private addresses out of reach, counting,
+  the quota cut and coming back. Needs agent 1.3.1 and nftables.
+- **Restart everything** - on a server (**More actions**), on every server at once (**Servers**, and
+  Settings › When a user's data runs out): Xray, Hysteria2, every user's own server and the realm
+  forwards restart once, with whatever waited for a restart, then the agent - after a confirmation
+  that says everyone reconnects. Use it after upgrading agents: until Xray restarts, a long
+  connection's data is counted only when it ends, so strict mode cuts late there. Never automatic.
+  Needs agent 1.3.1 (older ones are named and left out). The assistant has it too
+  (`restart_all_servers`, `server_action restart_all`), only after your yes.
+- **The health check looks further**: SSH that lets passwords sign in (or accounts without a
+  password), accounts with an empty password, programs with administrator rights in `/tmp`,
+  `/var/tmp` or `/dev/shm`, changed sign-in rules (`/etc/pam.d`, `/etc/security`), start-up files
+  (`/etc/profile`, `/etc/profile.d`, `bash.bashrc`, `/etc/environment`, root's `.bashrc` and
+  `.profile`), library paths (`/etc/ld.so.conf.d`), and updates waiting for a restart of the server.
+  Files newly watched are learned quietly at the first check after the upgrade.
+- **Protective steps**: where the server can do something about a risk, the risk has a button that
+  says what - **Stop it** (the process; its program goes into quarantine when it sits outside the
+  system folders), **Remove this key**, **Lock** the account (its processes stop too), **Turn it
+  off** (a service started at boot), **Move to quarantine** (a planted scheduled task, sudoers or
+  profile file, `ld.so.preload`, a program with administrator rights in a temporary folder), **SSH:
+  keys only**, **Block** the addresses that keep guessing SSH passwords. Nothing happens until you
+  press it and confirm - in the browser only: tokens, assistants and the bot cannot. The server
+  checks everything again first (the same process, the file as it was found), refuses Rosélune's own
+  and the system's own, never removes the last way in (keys only needs an account with a key; never
+  blocks your own address, a private one or one that signed in), and every step but stopping a
+  process can be undone from the risk. Each request, its result and who asked are in the timeline.
+  Needs agent 1.3.1.
+- **Fixed**: a device limit was not enforced for mieru and Snell users unless they also had Hysteria2
+  on the same server - devices over it are now turned away on their own servers too.
+- **Fixed**: sing-box apps before 1.14 refused a whole subscription that contained Snell (an outbound
+  type sing-box 1.14 brought); Snell now goes only to sing-box apps that say they run 1.14 or later.
+- The assistant can set how many users mieru, Snell and AnyTLS have room for (`users`) and mieru's
+  transport (`transport: tcp` or `udp`).
+
 ## 1.3.0 - 2026-10-10
 
 **Meridian is now Rosélune - in the Romance look, with a rose of its own.** A panel still called

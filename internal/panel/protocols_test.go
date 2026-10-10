@@ -82,6 +82,12 @@ func combos() []protocolDraft {
 	out = append(out, protocolDraft{Kind: subgen.KindSnell, Settings: &protoInput{}},
 		protocolDraft{Kind: subgen.KindMieru, Settings: &protoInput{Transport: str("quic")}}, // refused
 		protocolDraft{Kind: subgen.KindSnell, Settings: &protoInput{Users: intp(5000)}})      // refused
+	// AnyTLS: a self-signed certificate (pinned) or Let's Encrypt; anything of Xray's is refused
+	out = append(out, protocolDraft{Kind: subgen.KindAnyTLS, Settings: &protoInput{}},
+		protocolDraft{Kind: subgen.KindAnyTLS, Settings: &protoInput{CertMode: str(certACME), SNI: str("any.example.com"), Users: intp(10)}},
+		protocolDraft{Kind: subgen.KindAnyTLS, Settings: &protoInput{CertMode: str(certACME)}},                              // refused: no domain
+		protocolDraft{Kind: subgen.KindAnyTLS, Settings: &protoInput{Transport: str("ws")}},                                 // refused
+		protocolDraft{Kind: subgen.KindAnyTLS, Settings: &protoInput{CertMode: str(certShared), SNI: str("a.example.com")}}) // refused: which one
 	out = append(out, protocolDraft{Kind: subgen.KindWireGuard, Settings: &protoInput{}},
 		protocolDraft{Kind: subgen.KindVLESS, Settings: &protoInput{Security: str(secReality), OwnSite: &yes,
 			SNI: str("www.example.com"), Target: str("127.0.0.1:8443")}},

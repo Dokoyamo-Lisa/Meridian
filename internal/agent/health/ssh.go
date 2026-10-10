@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"meridian/internal/agent/protect"
 	"meridian/internal/proto"
 )
 
@@ -101,6 +102,7 @@ func Journal(ctx context.Context, cursor string, since time.Time) ([]string, str
 // and the address.
 func (sc *scan) checkSSH(ctx context.Context) {
 	lines := sc.sshLines(ctx)
+	sc.goodSSH(lines) // addresses that signed in: never offered for blocking
 	if sc.first {
 		return
 	}
@@ -223,13 +225,67 @@ func (sc *scan) checkSSH(ctx context.Context) {
 			}
 		}
 		detail := fmt.Sprintf("%d failed sign-ins in the last %s", total, minutes(window))
-		if top != "" {
+		switch {
+		case top != "" && len(fails) == 1:
+			detail += fmt.Sprintf(", all from %s", top)
+		case top != "":
 			detail += fmt.Sprintf(", from %d addresses - most from %s (%d)", len(fails), top, topN)
 		}
-		sc.last(proto.Finding{Key: "ssh-failed", Kind: proto.FindSSH, Severity: proto.SevWarning,
+		f := proto.Finding{Key: "ssh-failed", Kind: proto.FindSSH, Severity: proto.SevWarning,
 			Title:  "Many failed SSH sign-ins",
-			Detail: detail + ". Someone is guessing passwords: use SSH keys and turn passwords off, or let only your own addresses reach SSH."})
+			Detail: detail + ". Someone is guessing passwords: use SSH keys and turn passwords off, or let only your own addresses reach SSH."}
+		// the addresses that tried most - none that ever signed in - may be refused on SSH
+		sort.SliceStable(ips, func(i, j int) bool { return fails[ips[i]] > fails[ips[j]] })
+		var worst []string
+		for _, ip := range ips {
+			if fails[ip] < blockMin || len(worst) == maxBlock {
+				break
+			}
+			if _, ok := sc.next.SSHGood[ip]; !ok && protect.Public(netip.MustParseAddr(ip)) {
+				worst = append(worst, ip)
+			}
+		}
+		if len(worst) > 0 {
+			f.Fix = &proto.Fix{Kind: proto.FixBlockSSH, Addrs: worst}
+		}
+		sc.last(f)
 	}
+}
+
+const (
+	blockMin = 10  // failed sign-ins from an address before blocking it is offered
+	maxBlock = 20  // addresses one finding offers to block
+	maxGood  = 200 // addresses that signed in, kept
+	goodDays = 90  // days an address that signed in stays known
+)
+
+// goodSSH keeps the addresses that signed in over SSH (the last goodDays days, the newest maxGood).
+func (sc *scan) goodSSH(lines []string) {
+	cut := sc.at.Add(-goodDays * 24 * time.Hour).Unix()
+	next := map[string]int64{}
+	for a, t := range sc.prev.SSHGood {
+		if t >= cut {
+			next[a] = t
+		}
+	}
+	for _, l := range lines {
+		if m := acceptedRE.FindStringSubmatch(l); m != nil {
+			if a, err := netip.ParseAddr(m[3]); err == nil {
+				next[a.Unmap().String()] = sc.at.Unix()
+			}
+		}
+	}
+	if len(next) > maxGood {
+		addrs := make([]string, 0, len(next))
+		for a := range next {
+			addrs = append(addrs, a)
+		}
+		sort.Slice(addrs, func(i, j int) bool { return next[addrs[i]] > next[addrs[j]] })
+		for _, a := range addrs[maxGood:] {
+			delete(next, a)
+		}
+	}
+	sc.next.SSHGood = next
 }
 
 // minutes says how long a span is, in whole minutes or hours.

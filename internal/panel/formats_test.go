@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,9 +103,16 @@ func TestFormatsInRealClients(t *testing.T) {
 	}
 	var checks []check
 	counts := map[string]int{}
-	checkSingBox := func(label string, body []byte) {
+	// each sing-box checks the profile an app with its version gets (what came later is left out)
+	checkSingBox := func(label string, eps []subgen.Endpoint, info subgen.Info) {
 		for _, bin := range singbox {
-			checks = append(checks, check{label + " / " + filepath.Base(filepath.Dir(bin)), func() error {
+			dir := filepath.Base(filepath.Dir(bin)) // sing-box-1.14.3
+			info.SingBox = strings.TrimPrefix(dir, "sing-box-")
+			body, skipped := subgen.SingBox(eps, info)
+			if len(skipped) == len(eps) {
+				continue // nothing for this version
+			}
+			checks = append(checks, check{label + " / " + dir, func() error {
 				return runCore(t, body, "json", bin, "check", "-c", "{file}")
 			}})
 			counts["sing-box"]++
@@ -133,21 +141,20 @@ func TestFormatsInRealClients(t *testing.T) {
 	for _, c := range formatCases(t) {
 		e := c.e
 		if subgen.WhyNot(subgen.FormatSingBox, e) == "" {
-			body, _ := subgen.SingBox([]subgen.Endpoint{e}, subgen.Info{Title: "Lab"})
-			checkSingBox(c.label, body)
+			checkSingBox(c.label, []subgen.Endpoint{e}, subgen.Info{Title: "Lab"})
 		}
 		if subgen.WhyNot(subgen.FormatClash, e) == "" {
 			body, _ := subgen.Clash([]subgen.Endpoint{e}, subgen.Info{Title: "Lab"}, false)
 			checkMihomo(c.label, body)
 		}
-		if c.kind != subgen.KindWireGuard {
-			if k, _ := kindOf(c.kind); k.Engine == "xray" && c.first {
-				in, err := xrayInbound(c.node, []*Sub{{ID: 7, UUID: "00000000-0000-4000-8000-000000000007", Secret: "secret"}}, nil, nil)
-				if err != nil {
-					t.Fatalf("%s: %v", c.label, err)
-				}
-				checkXray(c.label, "server", serverXray(t, c.srv, in, cert, key))
+		if k, _ := kindOf(c.kind); k.Engine == "xray" && c.first {
+			in, err := xrayInbound(c.node, []*Sub{{ID: 7, UUID: "00000000-0000-4000-8000-000000000007", Secret: "secret"}}, nil, nil)
+			if err != nil {
+				t.Fatalf("%s: %v", c.label, err)
 			}
+			checkXray(c.label, "server", serverXray(t, c.srv, in, cert, key))
+		}
+		if canExit(c.kind) { // what a proxy pass through it gives Xray (not WireGuard, mieru, Snell, AnyTLS)
 			ob, err := subgen.XrayOutbound(e, "proxy")
 			if err != nil {
 				t.Fatalf("%s: %v", c.label, err)
@@ -161,9 +168,8 @@ func TestFormatsInRealClients(t *testing.T) {
 	}
 	for _, host := range formatHosts {
 		info := subgen.Info{Title: `Lab "subscription": ` + host, Upload: 1 << 30, Download: 2 << 30, Total: 100 << 30, Expire: 1893456000}
-		body, _, _ := subgen.Render(subgen.FormatSingBox, whole[host], info, "")
-		checkSingBox(host+" whole subscription", body)
-		body, _, _ = subgen.Render(subgen.FormatClash, whole[host], info, "")
+		checkSingBox(host+" whole subscription", whole[host], info)
+		body, _, _ := subgen.Render(subgen.FormatClash, whole[host], info, "")
 		checkMihomo(host+" whole subscription", body)
 	}
 
@@ -223,6 +229,12 @@ func TestShareLinksRoundTrip(t *testing.T) {
 				if err := strictAuthority(link, c.e); err != nil {
 					t.Errorf("%s %s: %v\n%s", c.label, f, err, link)
 				}
+				if c.kind == subgen.KindAnyTLS { // the reader takes what Xray can reach, which AnyTLS is not
+					if err := anytlsLink(link, c.e); err != nil {
+						t.Errorf("%s %s: %v\n%s", c.label, f, err, link)
+					}
+					continue
+				}
 				got, err := subgen.ParseLink(link)
 				if err != nil {
 					t.Errorf("%s %s: %v\n%s", c.label, f, err, link)
@@ -238,6 +250,25 @@ func TestShareLinksRoundTrip(t *testing.T) {
 		t.Fatalf("only %d links checked", links)
 	}
 	t.Logf("%d links read back", links)
+}
+
+// anytlsLink checks an AnyTLS link the way Hiddify's reader (ray2sing) takes it: the password as the
+// user, the address and port, the certificate's name in sni - and nothing that turns checks off.
+func anytlsLink(link string, e subgen.Endpoint) error {
+	u, err := url.Parse(link)
+	if err != nil {
+		return err
+	}
+	q := u.Query()
+	switch {
+	case u.Scheme != "anytls" || u.User.Username() != e.Password:
+		return fmt.Errorf("scheme or password: %s", u.Redacted())
+	case u.Hostname() != strings.Trim(e.Host, "[]") || u.Port() != fmt.Sprint(e.Port):
+		return fmt.Errorf("address %s:%s", u.Hostname(), u.Port())
+	case q.Get("sni") != e.SNI || q.Has("insecure") || q.Has("allowinsecure"):
+		return fmt.Errorf("sni %q or a check turned off: %s", q.Get("sni"), u.RawQuery)
+	}
+	return nil
 }
 
 // strictAuthority checks the address part of a link the way strict URI readers (.NET's Uri in

@@ -4,7 +4,8 @@ package panel
 // is abused (internal/agent/health) and reports what it finds. The panel keeps each finding as a
 // risk, recognised again by its key, and the operator decides about every one: expected (this is
 // mine - never flag it again, on this server or on all), acknowledged (seen - flag it again if it
-// happens again) or open again. Nothing is ever paused or blocked because of a risk: it only tells.
+// happens again) or open again. Nothing is ever paused or blocked because of a risk by itself: a
+// risk may offer a protective step (protect.go), which happens only when the supervisor confirms it.
 
 import (
 	"context"
@@ -31,7 +32,7 @@ func sevRank(s string) int { return slices.Index(severities, s) }
 
 var findKinds = []string{proto.FindMiner, proto.FindProcess, proto.FindCPU, proto.FindPort, proto.FindAccount, proto.FindSSHKeys,
 	proto.FindPreload, proto.FindCron, proto.FindService, proto.FindModule, proto.FindSSH, proto.FindTraffic, proto.FindLoad,
-	proto.FindBinary}
+	proto.FindBinary, proto.FindFile, proto.FindUpdate}
 
 var riskStatuses = []string{"open", "acknowledged", "expected"}
 
@@ -41,7 +42,7 @@ type riskView struct {
 	ServerID   int64  `json:"server_id"`
 	Server     string `json:"server" doc:"The server's name"`
 	Key        string `json:"key" doc:"What was found, in a form that stays the same when it is found again, e.g. port:tcp:31337 or ssh-login:root:203.0.113.5"`
-	Kind       string `json:"kind" doc:"miner, process, cpu, port, account, ssh_keys, preload, cron, service, module, ssh, traffic, load or binary"`
+	Kind       string `json:"kind" doc:"miner, process, cpu, port, account, ssh_keys, preload, cron, service, module, ssh, traffic, load, binary, file or update"`
 	Severity   string `json:"severity" doc:"info | warning | high | critical"`
 	Title      string `json:"title"`
 	Detail     string `json:"detail" doc:"What exactly, and what to do"`
@@ -53,6 +54,11 @@ type riskView struct {
 	DecidedBy  string `json:"decided_by" doc:"Who decided the status, empty when nobody did"`
 	DecidedAt  int64  `json:"decided_at"`
 	Everywhere bool   `json:"expected_everywhere" doc:"This key is expected on every server"`
+	// what can be done about it (protect.go): offered by the agent, done only when the supervisor
+	// confirms it in the browser
+	Fix  *fixView        `json:"fix,omitempty" doc:"A protective step the server offers: done only when the supervisor confirms it in the panel"`
+	Step *protectionView `json:"step,omitempty" doc:"The last protective step taken about it, and how it went"`
+	fix  string          // the fix as stored (JSON)
 }
 
 type riskDecision struct {
@@ -75,7 +81,7 @@ type serverHealth struct {
 
 const riskCols = `r.id, r.account_id, r.server_id, s.name, r.key, r.kind, r.severity, r.title, r.detail, r.first_seen, r.last_seen,
 r.count, r.active, r.status, r.decided_by, r.decided_at,
-EXISTS(SELECT 1 FROM risk_rules x WHERE x.account_id = r.account_id AND x.key = r.key)`
+EXISTS(SELECT 1 FROM risk_rules x WHERE x.account_id = r.account_id AND x.key = r.key), r.fix`
 
 const riskOrder = ` ORDER BY CASE r.status WHEN 'open' THEN 0 WHEN 'acknowledged' THEN 1 ELSE 2 END,
 CASE r.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END, r.last_seen DESC, r.id DESC`
@@ -83,7 +89,10 @@ CASE r.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'warning' THEN 2 
 func scanRisk(row interface{ Scan(...any) error }) (*riskView, error) {
 	v := &riskView{}
 	err := row.Scan(&v.ID, &v.AccountID, &v.ServerID, &v.Server, &v.Key, &v.Kind, &v.Severity, &v.Title, &v.Detail, &v.FirstSeen,
-		&v.LastSeen, &v.Count, &v.Active, &v.Status, &v.DecidedBy, &v.DecidedAt, &v.Everywhere)
+		&v.LastSeen, &v.Count, &v.Active, &v.Status, &v.DecidedBy, &v.DecidedAt, &v.Everywhere, &v.fix)
+	if f := storedFix(v.fix); f != nil {
+		v.Fix = describeFix(*f)
+	}
 	return v, err
 }
 
@@ -129,7 +138,11 @@ func (p *Panel) risks(ctx context.Context, f riskFilter) ([]*riskView, error) {
 		}
 		out = append(out, v)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	return out, p.attachSteps(ctx, out)
 }
 
 func (p *Panel) riskByID(ctx context.Context, id int64) (*riskView, error) {
@@ -325,6 +338,9 @@ func cleanFinding(f *proto.Finding) bool {
 	}
 	f.Title = cleanName(f.Title, 200)
 	f.Detail = cleanNote(f.Detail, 1000)
+	if f.Fix != nil && !cleanFix(f.Fix) {
+		f.Fix = nil // something this panel would not send back to the agent
+	}
 	return f.Title != ""
 }
 
@@ -424,8 +440,8 @@ func (p *Panel) applyFinding(tx *sql.Tx, srv *Server, f proto.Finding) error {
 			status, decidedBy, decidedAt = "expected", rule.String, f.At
 		}
 		res, err := tx.Exec(`INSERT INTO risks (account_id, server_id, key, kind, severity, title, detail, first_seen, last_seen,
-			count, active, status, decided_by, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
-			srv.AccountID, srv.ID, f.Key, f.Kind, f.Severity, f.Title, f.Detail, f.At, f.At, f.Lasting, status, decidedBy, decidedAt)
+			count, active, status, decided_by, decided_at, fix) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+			srv.AccountID, srv.ID, f.Key, f.Kind, f.Severity, f.Title, f.Detail, f.At, f.At, f.Lasting, status, decidedBy, decidedAt, fixJSON(f.Fix))
 		if err != nil {
 			return err
 		}
@@ -446,8 +462,8 @@ func (p *Panel) applyFinding(tx *sql.Tx, srv *Server, f proto.Finding) error {
 		status, decidedBy, decidedAt = "open", "", 0 // it happened again
 	}
 	if _, err := tx.Exec(`UPDATE risks SET kind = ?, severity = ?, title = ?, detail = ?, last_seen = MAX(last_seen, ?), count = count + 1,
-		status = ?, decided_by = ?, decided_at = ? WHERE id = ?`,
-		f.Kind, f.Severity, f.Title, f.Detail, f.At, status, decidedBy, decidedAt, id); err != nil {
+		status = ?, decided_by = ?, decided_at = ?, fix = ? WHERE id = ?`,
+		f.Kind, f.Severity, f.Title, f.Detail, f.At, status, decidedBy, decidedAt, fixJSON(f.Fix), id); err != nil {
 		return err
 	}
 	if status == "open" && (was != "open" || now()-notified >= 3600 || sevRank(f.Severity) > sevRank(sev)) {

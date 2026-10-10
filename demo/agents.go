@@ -60,7 +60,8 @@ func (g *demoAgent) hello() *proto.Hello {
 		CPUModel: m.CPU, CPUCores: m.Cores, MemTotal: uint64(m.MemGB * gb), DiskTotal: uint64(m.DiskGB * 1e9),
 		IPv4: m.IPv4, IPv6: m.IPv6, IPv6Gone: m.IPv6 == "", BootTime: g.boot, StartedAt: g.started, Addrs: addrs, Virt: m.Virt,
 		Caps: proto.Caps{Systemd: systemd, WireGuard: true, Conntrack: true, Nftables: true, Iptables: true, Certs: true,
-			APIPort: g.apiPort, RestartPending: true, Relay: true, PortHop: true, Limits: true, NoIPv6: false, WG6: m.IPv6 != ""},
+			APIPort: g.apiPort, RestartPending: true, Relay: true, PortHop: true, Limits: true, NoIPv6: false, WG6: m.IPv6 != "",
+			Cut: true, Solo: true, AnyTLS: true, RestartAll: true, Protect: true},
 	}
 }
 

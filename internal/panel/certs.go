@@ -140,6 +140,12 @@ func (c *Cert) covers(name string) bool {
 // certName is the name a protocol with a shared certificate presents (its SNI), or "" when it does
 // not use one.
 func certName(kind string, raw json.RawMessage) (id int64, sni string) {
+	if kind == subgen.KindAnyTLS {
+		if s := parseAnyTLS(raw); s.CertMode == certShared {
+			return s.CertID, s.SNI
+		}
+		return 0, ""
+	}
 	if kind == subgen.KindHysteria2 {
 		var s hy2Settings
 		if json.Unmarshal(raw, &s) == nil && s.CertMode == certShared {
@@ -322,7 +328,8 @@ func (p *Panel) certStateOn(srv *Server, n *Node, c *Cert) (string, string) {
 		if st.Installed != c.SHA256 {
 			return "pending", "the server still holds an earlier version"
 		}
-		if n.Kind == subgen.KindHysteria2 { // Hysteria2 restarts with a new certificate: held is served
+		// Hysteria2 restarts with a new certificate, AnyTLS's sing-box reads it again: held is served
+		if n.Kind == subgen.KindHysteria2 || n.Kind == subgen.KindAnyTLS {
 			return "live", ""
 		}
 		for _, sv := range st.Served {

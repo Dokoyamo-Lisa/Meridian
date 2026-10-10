@@ -38,6 +38,9 @@ var coreReleases = map[string]coreAssets{
 	// mieru's server; "{v}" is the version
 	"mita": {repo: "enfein/mieru", tag: func(v string) string { return "v" + v },
 		assets: []string{"mita_{v}_linux_amd64.tar.gz", "mita_{v}_linux_arm64.tar.gz"}},
+	// AnyTLS's server
+	"sing-box": {repo: "SagerNet/sing-box", tag: func(v string) string { return "v" + v },
+		assets: []string{"sing-box-{v}-linux-amd64.tar.gz", "sing-box-{v}-linux-arm64.tar.gz"}},
 }
 
 // files are a release's asset names for one version.
@@ -141,7 +144,8 @@ func (p *Panel) maintainDigests(ctx context.Context) {
 	for {
 		changed := false
 		set := p.settings()
-		for core, v := range map[string]string{"xray": set.XrayVersion, "hysteria": set.HysteriaVersion, "realm": set.RealmVersion, "mita": set.MitaVersion} {
+		for core, v := range map[string]string{"xray": set.XrayVersion, "hysteria": set.HysteriaVersion, "realm": set.RealmVersion, "mita": set.MitaVersion,
+			"sing-box": set.SingBoxVersion} {
 			if v == "" || p.digests.complete(core, v) {
 				continue
 			}

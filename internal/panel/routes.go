@@ -71,6 +71,10 @@ func (p *Panel) Handler() http.Handler {
 	handle("DELETE /api/routing/balancers/{id}", p.authed(p.apiDeleteBalancer))
 	handle("GET /api/risks", p.authed(p.apiRisks)) // health checks
 	handle("POST /api/risks/{id}/decide", p.authed(p.apiDecideRisk))
+	// protective steps: a person confirms each in the browser - never a token or an assistant (protect.go)
+	handle("POST /api/risks/{id}/protect", p.sessionOnly(p.apiProtect))
+	handle("POST /api/protections/{id}/undo", p.sessionOnly(p.apiUndoProtection))
+	handle("GET /api/protections", p.authed(p.apiProtections))
 	handle("GET /api/servers/{id}/health", p.authed(p.apiServerHealth))
 	handle("GET /api/blocks", p.authed(p.apiBlocks))
 	handle("POST /api/blocks", p.authed(p.apiCreateBlock))
@@ -87,6 +91,7 @@ func (p *Panel) Handler() http.Handler {
 	handle("POST /api/servers/{id}/shares", p.authed(p.apiShareServer))
 	handle("DELETE /api/servers/{id}/shares", p.authed(p.apiUnshareServer))
 	handle("POST /api/agents/upgrade", p.authed(p.apiUpgradeAgents))
+	handle("POST /api/servers/restart-all", p.authed(p.apiRestartAll))
 	handle("GET /api/servers/{id}/metrics", p.authed(p.apiServerMetrics))
 	handle("GET /api/servers/{id}/series", p.authed(p.apiServerSeries)) // the details' charts (pingmon.go)
 	handle("GET /api/ping-monitors", p.authed(p.apiPingMonitors))

@@ -30,6 +30,7 @@ type Settings struct {
 	RealmVersion    string `json:"realm_version" doc:"realm version new servers install"`
 	MitaVersion     string `json:"mita_version" doc:"mieru server (mita) version servers install for mieru"`
 	SnellVersion    string `json:"snell_version" doc:"snell-server version servers install for Snell - one Rosélune can verify (5.0.1)"`
+	SingBoxVersion  string `json:"singbox_version" doc:"sing-box version servers install for AnyTLS"`
 	Mirror          bool   `json:"mirror" doc:"Agents may download cores through the panel"`
 	AutoUpdate      bool   `json:"auto_update" doc:"Install new Rosélune releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts"`
 	AutoRelay       int64  `json:"auto_relay" doc:"A server that keeps losing the panel (see panel_trouble on servers) is switched to reach it through this server, once - by itself, with an event; switch it back on its page at any time. 0 = off: the panel only tells"`
@@ -75,6 +76,7 @@ func defaultSettings() Settings {
 		RealmVersion:    "2.9.6",
 		MitaVersion:     "3.38.0",
 		SnellVersion:    "5.0.1",
+		SingBoxVersion:  "1.14.2",
 		Mirror:          true,
 		StatusPage:      "off",
 		StatusPublic:    true,
@@ -150,6 +152,9 @@ func (s *Settings) normalize() {
 	}
 	if s.MitaVersion == "" {
 		s.MitaVersion = d.MitaVersion
+	}
+	if s.SingBoxVersion == "" {
+		s.SingBoxVersion = d.SingBoxVersion
 	}
 	if !slices.Contains(snellVersions(), s.SnellVersion) {
 		s.SnellVersion = d.SnellVersion

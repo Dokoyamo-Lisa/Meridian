@@ -63,10 +63,15 @@ type State struct {
 // SoloNode is a protocol of the one-user-per-process kind on this server.
 type SoloNode struct {
 	NodeID    int64      `json:"node_id"`
-	Kind      string     `json:"kind"`                // mieru | snell
+	Kind      string     `json:"kind"`                // mieru | snell | anytls
 	Transport string     `json:"transport,omitempty"` // mieru: tcp | udp
 	Bind      string     `json:"bind,omitempty"`      // the server address it listens on; empty = all
 	Users     []SoloUser `json:"users"`
+	// AnyTLS's certificate (sing-box): its PEMs - a self-signed, an own or a shared one - or ACME, the
+	// domain of a Let's Encrypt certificate the agent keeps instead (and passes on as PEMs)
+	CertPEM string `json:"cert_pem,omitempty"`
+	KeyPEM  string `json:"key_pem,omitempty"`
+	ACME    string `json:"acme,omitempty"`
 }
 
 // SoloUser is one user of a SoloNode: their own port and credentials.
@@ -74,11 +79,11 @@ type SoloUser struct {
 	Sub    int64  `json:"s"`
 	Port   int    `json:"port"`
 	Name   string `json:"name,omitempty"` // mieru's user name
-	Secret string `json:"secret"`         // mieru's password, Snell's PSK
+	Secret string `json:"secret"`         // mieru's and AnyTLS's password, Snell's PSK
 }
 
 // SoloKinds are the protocols a SoloNode can be.
-var SoloKinds = []string{"mieru", "snell"}
+var SoloKinds = []string{"mieru", "snell", "anytls"}
 
 // Grace is one user's open connections allowed to finish: until Until (Unix seconds), unless the
 // state stops listing the user earlier.
@@ -164,9 +169,10 @@ type Cores struct {
 	Xray     string `json:"xray,omitempty"`
 	Hysteria string `json:"hysteria,omitempty"`
 	Realm    string `json:"realm,omitempty"`
-	Mita     string `json:"mita,omitempty"`   // mieru's server
-	Snell    string `json:"snell,omitempty"`  // snell-server
-	Mirror   string `json:"mirror,omitempty"` // panel download mirror, tried before GitHub
+	Mita     string `json:"mita,omitempty"`    // mieru's server
+	Snell    string `json:"snell,omitempty"`   // snell-server
+	SingBox  string `json:"singbox,omitempty"` // sing-box, AnyTLS's server
+	Mirror   string `json:"mirror,omitempty"`  // panel download mirror, tried before GitHub
 	// Digests are SHA-256 checksums of release files, keyed "core/version/asset". The panel takes
 	// them from GitHub over HTTPS; arriving in the signed state they let the agent verify a
 	// download from the (possibly plain-HTTP) mirror.
@@ -315,7 +321,14 @@ const (
 	// ActionRestartPending restarts exactly what waits for a restart: Xray when settings wait, and
 	// each Hysteria2 protocol whose configuration waits (agents 0.6.3 and later, Caps.RestartPending)
 	ActionRestartPending = "restart_pending"
-	ActionUpgradeXray    = "upgrade_xray"
+	// ActionRestartAll restarts everything that carries traffic, once, with what it should run now
+	// (what waited for a restart included): Xray, every Hysteria2 server, every user's own server
+	// (mieru, Snell, AnyTLS), the realm forwards - and then the agent itself, which never touches
+	// traffic (Caps.RestartAll, 1.3.1 and later)
+	ActionRestartAll  = "restart_all"
+	ActionUpgradeXray = "upgrade_xray"
+	// ActionProtect does a finding's fix the supervisor confirmed, or undoes it (Protect; Caps.Protect)
+	ActionProtect = "protect"
 	// ActionUpgradeHysteria / ActionUpgradeRealm switch the server to the version in the panel's
 	// settings and restart those cores (agents 0.7 and later); until then a server keeps its version
 	ActionUpgradeHysteria = "upgrade_hysteria"
@@ -485,6 +498,13 @@ type Caps struct {
 	Cut bool `json:"cut,omitempty"`
 	// Solo: the agent runs mieru and Snell (State.Solo; 1.3 and later).
 	Solo bool `json:"solo,omitempty"`
+	// AnyTLS: the agent runs AnyTLS with sing-box (a SoloNode kind; 1.3.1 and later).
+	AnyTLS bool `json:"anytls,omitempty"`
+	// RestartAll: the agent understands ActionRestartAll (1.3.1 and later).
+	RestartAll bool `json:"restart_all,omitempty"`
+	// Protect: the agent offers fixes with its findings and does them on request (ActionProtect;
+	// 1.3.1 and later).
+	Protect bool `json:"protect,omitempty"`
 }
 
 // The console's WebSocket: the agent dials ConsolePath + the session's id; every message starts with
@@ -668,6 +688,46 @@ type Finding struct {
 	// Lasting: a condition that holds until it stops (a process, an open port), listed in Active
 	// while it does; otherwise a one-off event (a changed file, a sign-in)
 	Lasting bool `json:"lasting,omitempty"`
+	// Fix is what the agent can do about it once the supervisor confirms (ActionProtect; 1.3.1 and
+	// later): nothing happens without that click
+	Fix *Fix `json:"fix,omitempty"`
+}
+
+// Fix is a protective step a finding offers: what to do, and exactly to what - as the agent saw it,
+// so that it acts on that and nothing else (a process that is gone, or a file that changed since,
+// is left alone). The agent checks it all again before it does anything.
+type Fix struct {
+	Kind   string   `json:"kind"`             // Fix...
+	PID    int      `json:"pid,omitempty"`    // stop_process: the process, and when it started (a reused pid is another one)
+	Start  uint64   `json:"start,omitempty"`  // ... in clock ticks since boot (/proc/<pid>/stat)
+	Path   string   `json:"path,omitempty"`   // stop_process: its program; remove_key: the authorized_keys file; quarantine: the file
+	SHA256 string   `json:"sha256,omitempty"` // quarantine: the file as it was found
+	Key    string   `json:"key,omitempty"`    // remove_key: the key's fingerprint, SHA256:...
+	User   string   `json:"user,omitempty"`   // lock_account
+	Unit   string   `json:"unit,omitempty"`   // disable_service
+	Addrs  []string `json:"addrs,omitempty"`  // block_ssh: the addresses to refuse on the SSH server's port
+}
+
+// Kinds of fixes.
+const (
+	FixStopProcess    = "stop_process"    // stop the process; its program file goes to quarantine where such files do not belong
+	FixRemoveKey      = "remove_key"      // take an SSH key out of an authorized_keys file
+	FixLockAccount    = "lock_account"    // lock an account (no password, no SSH key gets in) and end what it runs
+	FixDisableService = "disable_service" // stop a service and keep it from starting at boot
+	FixQuarantine     = "quarantine"      // move a file into the agent's quarantine
+	FixKeysOnly       = "ssh_keys_only"   // SSH takes keys only: no passwords, no empty passwords
+	FixBlockSSH       = "block_ssh"       // refuse addresses on the SSH server's port
+)
+
+// FixKinds are the kinds of fixes.
+var FixKinds = []string{FixStopProcess, FixRemoveKey, FixLockAccount, FixDisableService, FixQuarantine, FixKeysOnly, FixBlockSSH}
+
+// Protect is ActionProtect's argument: do a finding's fix - ID is the panel's id for it, under which
+// the agent keeps what undoing it needs - or undo the fix done under ID.
+type Protect struct {
+	ID   int64 `json:"id"`
+	Fix  *Fix  `json:"fix,omitempty"`
+	Undo bool  `json:"undo,omitempty"`
 }
 
 // Severities of findings, least serious first.
@@ -694,6 +754,8 @@ const (
 	FindTraffic = "traffic"  // far more sent than Meridian carries
 	FindLoad    = "load"     // load average above twice the cores
 	FindBinary  = "binary"   // Meridian's own programs changed
+	FindFile    = "file"     // where malware stays: shell start-up files, programs with administrator rights in temporary folders (1.3.1)
+	FindUpdate  = "update"   // updates installed that take a restart of the server (1.3.1)
 )
 
 // ---------------------------------------------------------------- identities

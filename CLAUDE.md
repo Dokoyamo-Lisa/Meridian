@@ -2,7 +2,7 @@
 
 Rosélune (called Meridian until 1.3) is a Go panel + Go agent + Preact UI for running proxy/VPN
 servers (Xray: VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP over every transport with REALITY/TLS;
-Hysteria2; WireGuard; mieru; Snell; nftables/realm forwards). The product name in everything people
+Hysteria2; WireGuard; mieru; Snell; AnyTLS; nftables/realm forwards). The product name in everything people
 read is Rosélune; what machines and scripts know keeps `meridian`: the binaries, systemd units and
 their descriptions, paths, `MERIDIAN_*` variables, the Go module, the repository, release assets, the
 `X-Meridian` header, the plugin APIs (`window.Meridian`) and User-Agent strings.
@@ -19,10 +19,18 @@ step-by-step procedures.
   by themselves (`outofdata.go`). Servers and protocols never stop on their own.
 - **No needless restarts.** Apply changes through live APIs (Xray HandlerService, Hysteria HTTP auth,
   wgctrl, atomic nftables). Anything that would restart a core becomes "pending restart" and waits
-  for an explicit click. Agent restarts and upgrades must never touch traffic.
+  for an explicit click (one server's, or **Restart everything**). Agent restarts and upgrades must
+  never touch traffic.
+- **Protective steps only on a person's click.** A health finding may offer a fix (`proto.Fix`:
+  stop a process, remove a key, lock an account ...); it runs only from `POST /api/risks/{id}/protect`,
+  a browser session after a confirmation - never by itself, never from a token, MCP or the bot. The
+  agent (`internal/agent/protect`) checks the target again, refuses Rosélune's own and the system's
+  own, never locks the supervisor out, and keeps what undoing needs on the server.
 - **English only** in UI, messages, subscription group names and docs. Plain words, no jargon in
   user-facing text; error messages say what to do.
 - **Disruptive actions ask first**: UI confirms with what will happen; MCP tools need `confirm=true`.
+- **Users' own servers (mieru, Snell, AnyTLS) run as `meridian-solo`**, an account without rights that
+  nftables keeps from the host and private networks (`solo_out`) - like Xray's outbounds (`DirectMark`).
 - **Security bar is "zero known vulnerabilities"**: validate input where it enters (panel) and again
   where it is used (agent: nft, paths, systemd); never log secrets; every route checks ownership
   (`ownServer`/`ownSub`/`ownNode`); user sessions reach only `/api/portal/*`; the dashboard data

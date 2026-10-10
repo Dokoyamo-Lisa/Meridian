@@ -32,10 +32,12 @@ import (
 	"meridian/internal/agent/health"
 	"meridian/internal/agent/hy"
 	"meridian/internal/agent/nft"
+	"meridian/internal/agent/protect"
 	"meridian/internal/agent/realm"
 	"meridian/internal/agent/scan"
 	"meridian/internal/agent/service"
 	"meridian/internal/agent/solo"
+	"meridian/internal/agent/sshd"
 	"meridian/internal/agent/sys"
 	"meridian/internal/agent/wg"
 	"meridian/internal/agent/xray"
@@ -133,7 +135,9 @@ type Agent struct {
 	actions     string          // the actions file (empty: in DataDir; tests keep their own)
 	actionsMu   sync.Mutex      // one write of the actions file at a time
 	health      *health.Monitor // signs of a break-in or abuse, reported to the panel
-	solo        *solo.Engine    // mieru and Snell: one process per user (solo/)
+	solo        *solo.Engine    // mieru, Snell and AnyTLS: one process per user (solo/)
+	protect     *protect.Engine // fixes of health findings the supervisor confirmed (protect/)
+	resolvers   []string        // the host's name servers the nftables table lets that account ask
 	pub         publicAddrs     // the public addresses between hellos (publicaddr.go)
 
 	// the panels the server is shared with (share.go): their links, and the state the host runs -
@@ -177,8 +181,11 @@ func New(cfg *Config) (*Agent, error) {
 	a.hy = &hy.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "hy2"), RunDir: RunDir, AuthPort: cfg.APIPort + 1,
 		Events: a.event}
 	a.realm = &realm.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "realm")}
-	a.solo = &solo.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "solo"), RunDir: filepath.Join(RunDir, "solo"), Events: a.event}
+	// the users' own servers' control sockets: the account's to write, outside RunDir (root's alone)
+	a.solo = &solo.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "solo"), RunDir: filepath.Join(filepath.Dir(RunDir), "meridian-solo"),
+		Events: a.event}
 	a.health = a.newHealth()
+	a.protect = &protect.Engine{Root: "/", Dir: filepath.Join(DataDir, "protect"), Own: ownPath, Trusted: a.health.TrustedSSH}
 	a.restoreBaselines()
 	a.certs = &acme.Manager{Dir: filepath.Join(DataDir, "certs"), Directory: cfg.ACMEDirectory, CAFile: cfg.ACMECAFile,
 		Events: a.event, OnChange: a.reapply}
@@ -239,7 +246,7 @@ func (a *Agent) reapply() {
 
 // withCerts resolves Let's Encrypt certificates: inbounds and Hysteria2 nodes whose certificate is
 // ready get the files, the others are left out until it is (they are listed in waiting).
-func (a *Agent) withCerts(st *proto.State) (*proto.Xray, []proto.HyNode, []string) {
+func (a *Agent) withCerts(st *proto.State) (*proto.Xray, []proto.HyNode, []proto.SoloNode, []string) {
 	var domains, waiting []string
 	installed := a.shared.install(st.Certs)
 	if st.Xray != nil {
@@ -250,6 +257,11 @@ func (a *Agent) withCerts(st *proto.State) (*proto.Xray, []proto.HyNode, []strin
 		}
 	}
 	for _, n := range st.Hysteria {
+		if n.ACME != "" {
+			domains = append(domains, n.ACME)
+		}
+	}
+	for _, n := range st.Solo {
 		if n.ACME != "" {
 			domains = append(domains, n.ACME)
 		}
@@ -296,25 +308,42 @@ func (a *Agent) withCerts(st *proto.State) (*proto.Xray, []proto.HyNode, []strin
 			xr.Inbounds = append(xr.Inbounds, in)
 		}
 	}
+	// Hysteria2 and AnyTLS take the certificate itself
+	pems := func(domain string) (string, string, bool) {
+		if !acme.ValidDomain(domain) || !a.certs.Ready(domain) {
+			wait(domain)
+			return "", "", false
+		}
+		cert, key := a.certs.Paths(domain)
+		cb, err1 := os.ReadFile(cert)
+		kb, err2 := os.ReadFile(key)
+		if err1 != nil || err2 != nil {
+			wait(domain)
+			return "", "", false
+		}
+		return string(cb), string(kb), true
+	}
 	var hys []proto.HyNode
 	for _, n := range st.Hysteria {
 		if n.ACME != "" {
-			if !acme.ValidDomain(n.ACME) || !a.certs.Ready(n.ACME) {
-				wait(n.ACME)
+			var ok bool
+			if n.CertPEM, n.KeyPEM, ok = pems(n.ACME); !ok {
 				continue
 			}
-			cert, key := a.certs.Paths(n.ACME)
-			cb, err1 := os.ReadFile(cert)
-			kb, err2 := os.ReadFile(key)
-			if err1 != nil || err2 != nil {
-				wait(n.ACME)
-				continue
-			}
-			n.CertPEM, n.KeyPEM = string(cb), string(kb)
 		}
 		hys = append(hys, n)
 	}
-	return xr, hys, waiting
+	var solos []proto.SoloNode
+	for _, n := range st.Solo {
+		if n.ACME != "" {
+			var ok bool
+			if n.CertPEM, n.KeyPEM, ok = pems(n.ACME); !ok {
+				continue
+			}
+		}
+		solos = append(solos, n)
+	}
+	return xr, hys, solos, waiting
 }
 
 func strconvQuote(s string) string {
@@ -473,7 +502,7 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 	} else {
 		// a core that could not be downloaded keeps running as it is; everything else applies
 		ready := a.prepare(ctx, st)
-		xr, hys, waiting := a.withCerts(full)
+		xr, hys, solos, waiting := a.withCerts(full)
 		grace := graceOf(full.Grace) // users taken off whose open connections may stay a while
 		a.xray.SetGrace(grace)
 		a.hy.SetGrace(grace)
@@ -498,7 +527,8 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 			pending = append(pending, a.hy.Pending()...)
 		}
 		note("wireguard", a.wg.Apply(full.WireGuard))
-		note("mieru and Snell", a.solo.Apply(ctx, full.Solo, st.Cores.Mita, st.Cores.Snell, st.Cores.Mirror))
+		note("mieru, Snell and AnyTLS", a.solo.Apply(ctx, solos, st.Cores))
+		pending = append(pending, a.solo.Pending()...) // users' servers still running as root
 		if ready.realm != nil {
 			note("download", ready.realm)
 		} else {
@@ -510,6 +540,9 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 			spec := a.nftSpec(full)
 			spec.Geo = geo
 			note("nftables", a.nft.Apply(spec))
+			a.mu.Lock()
+			a.resolvers = spec.Resolvers // what the users' servers' account may ask (nft solo_out)
+			a.mu.Unlock()
 		}
 	}
 	note("relay for other servers", a.relay.Apply(st.Relay, a.relayTaken(full)))
@@ -686,7 +719,16 @@ func (a *Agent) nftSpec(st *proto.State) nft.Spec {
 	}
 	spec.UDPPorts = append(spec.UDPPorts, hy.Ports(st.Hysteria)...)
 	spec.Hysteria = st.Hysteria // their port hopping ranges
-	// mieru and Snell users' own ports - those in grace too, refusing new connections (solo/)
+	// mieru, Snell and AnyTLS users' own ports - those in grace too, refusing new connections - and
+	// the account their servers run as, kept from this host and private networks (solo/)
+	spec.SoloUID = a.solo.UID()
+	spec.Resolvers = sys.Resolvers()
+	// addresses that kept guessing SSH passwords, blocked on the supervisor's request (protect/)
+	if spec.SSHBlocked = a.protect.Blocked(); len(spec.SSHBlocked) > 0 {
+		if s, err := sshd.Read(context.Background()); err == nil {
+			spec.SSHPorts = s.Ports()
+		}
+	}
 	running, noNew := a.solo.Running(solo.Wanted(st.Solo))
 	refused := map[int64][]string{}
 	for _, r := range st.Refuse {
@@ -748,14 +790,47 @@ func (a *Agent) runAction(ctx context.Context, st *proto.State, act proto.Action
 			a.event("core_restarted", "warn", fmt.Sprintf("Hysteria2 restarted on request to apply the configuration that waited (%d protocol(s))", n))
 			done = append(done, fmt.Sprintf("%d Hysteria2 protocol(s)", n))
 		}
+		ns, serr := a.solo.RestartPending()
+		if ns > 0 {
+			who := fmt.Sprintf("%d users' own servers", ns)
+			if ns == 1 {
+				who = "1 user's own server"
+			}
+			a.event("core_restarted", "warn", who+" (mieru, Snell) restarted on request: they run without root rights now")
+			done = append(done, who)
+		}
 		a.reapply()
-		if err != nil {
+		if err = errors.Join(err, serr); err != nil {
 			return strings.Join(done, " and "), err
 		}
 		if len(done) == 0 {
 			return "nothing waited for a restart", nil
 		}
 		return strings.Join(done, " and ") + " restarted", nil
+	case proto.ActionRestartAll:
+		return a.restartAll(ctx)
+	case proto.ActionProtect:
+		var p proto.Protect
+		if err := json.Unmarshal(act.Args, &p); err != nil {
+			return "", errors.New("unreadable fix")
+		}
+		out, err := a.protect.Do(ctx, p)
+		what := "a fix"
+		if p.Fix != nil {
+			what = strings.ReplaceAll(p.Fix.Kind, "_", " ")
+		}
+		if p.Undo {
+			what = fmt.Sprintf("undo %d", p.ID)
+		}
+		if err != nil {
+			a.event("protect", "warn", "Protective step not done ("+what+"): "+err.Error())
+		} else {
+			a.event("protect", "warn", "Protective step on request ("+what+"): "+out)
+		}
+		if (p.Fix != nil && p.Fix.Kind == proto.FixBlockSSH) || p.Undo {
+			a.reapply() // nftables follows the addresses blocked from SSH
+		}
+		return out, err
 	case proto.ActionUpgradeXray:
 		v, _ := args["version"].(string)
 		if v == "" {
@@ -932,6 +1007,69 @@ func (a *Agent) upgradeSelf(ctx context.Context, want string) (string, error) {
 	return "agent upgraded; restarting the agent (traffic is not affected)", nil
 }
 
+// restartAll restarts everything that carries traffic, on the supervisor's request: Xray, every
+// Hysteria2 server and every user's own server (mieru, Snell, AnyTLS), each with what it should run
+// now - whatever waited for a restart included - and the realm forwards; then the agent itself, once
+// the result is on its way (that restart touches no traffic). Devices reconnect by themselves.
+func (a *Agent) restartAll(ctx context.Context) (string, error) {
+	var done, errs []string
+	if a.xray.Installed() {
+		if err := a.xray.Restart(ctx); err != nil {
+			errs = append(errs, "Xray: "+err.Error())
+		} else {
+			done = append(done, "Xray")
+		}
+	}
+	count := func(one, many string, n int, err error) {
+		if err != nil {
+			errs = append(errs, many+": "+err.Error())
+		}
+		switch {
+		case n == 1:
+			done = append(done, "1 "+one)
+		case n > 1:
+			done = append(done, fmt.Sprintf("%d %s", n, many))
+		}
+	}
+	n, err := a.hy.RestartAll()
+	count("Hysteria2 server", "Hysteria2 servers", n, err)
+	n, err = a.solo.RestartAll()
+	count("user's own server (mieru, Snell, AnyTLS)", "users' own servers (mieru, Snell, AnyTLS)", n, err)
+	n, err = a.realm.RestartAll()
+	count("realm forward", "realm forwards", n, err)
+	what := "nothing carried traffic"
+	if len(done) > 0 {
+		what = strings.Join(done, ", ")
+	}
+	a.event("core_restarted", "warn", "Restarted on request: "+what+"; the agent restarts too")
+	a.reapply()
+	go func() {
+		time.Sleep(3 * time.Second) // let the result reach the panel first
+		if service.Init() == "openrc" {
+			os.Exit(0) // supervise-daemon starts it again (see upgradeSelf)
+		}
+		_ = service.Restart(Unit)
+	}()
+	if len(errs) > 0 {
+		return what + " restarted; the agent restarts too", errors.New(strings.Join(errs, "; "))
+	}
+	return what + " restarted; the agent restarts too", nil
+}
+
+// ownPath says whether a path is Rosélune's own on this server: the agent, its data (cores, state)
+// and its settings. Protective steps never touch those.
+func ownPath(p string) bool {
+	if p == BinPath || p == BinPath+".new" {
+		return true
+	}
+	for _, d := range []string{DataDir, ConfDir, RunDir} {
+		if p == d || strings.HasPrefix(p, d+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // ---------------------------------------------------------------- reports
 
 func (a *Agent) reportLoop(ctx context.Context) {
@@ -1104,10 +1242,18 @@ func (a *Agent) report(ctx context.Context) {
 	caps.PortHop = true // redirects Hysteria2's port hopping ranges
 	caps.Limits = true  // enforces users' speed limits and turns away devices over a limit
 	caps.Console = consoleAllowed()
-	caps.Share = true // can be shared with other panels (share.go)
-	caps.Cut = true   // cuts the open connections of users taken off (xray/cuts.go, hy)
-	caps.Solo = true  // runs mieru and Snell, one process per user (solo/)
+	caps.Share = true      // can be shared with other panels (share.go)
+	caps.Cut = true        // cuts the open connections of users taken off (xray/cuts.go, hy)
+	caps.Solo = true       // runs mieru and Snell, one process per user (solo/)
+	caps.AnyTLS = true     // and AnyTLS, with sing-box
+	caps.RestartAll = true // restarts everything on request (restartAll)
+	caps.Protect = true    // offers fixes with findings and does them on request (protect/)
 	addrs := sys.LocalAddrs()
+	// the host's name servers changed: the users' servers' account may ask the new ones (nft solo_out)
+	if a.resolvers != nil && !slices.Equal(a.resolvers, sys.Resolvers()) {
+		a.resolvers = nil
+		defer a.reapply()
+	}
 	sendHello := time.Since(a.lastHello) > 10*time.Minute || caps != a.lastCaps || !slices.Equal(addrs, a.lastAddrs) || a.pub.moved()
 	a.mu.Unlock()
 

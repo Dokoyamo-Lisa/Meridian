@@ -1,6 +1,33 @@
 # Meridian status
 
-Last updated 2026-10-10 (version 1.2.0).
+Last updated 2026-10-10 (version 1.3.1).
+
+## Tested for 1.3.1 (local panel; Ubuntu 26.04 VMs, real clients in a network namespace)
+
+- **The 1.3.0 hole, shown and closed**: with agent 1.3.0, a Snell user reached a page that listened
+  only on the server's loopback and SSH on a private address through their own Snell server; VLESS
+  did not. After the upgrade to 1.3.1 the account `meridian-solo` appeared (no shell, no home), the
+  running Snell servers kept running as root and the panel showed **restart needed**; pressed, they
+  ran as `meridian-solo`, and the same probe was refused for the loopback and the private address
+  while public sites by name loaded (204, 200) - DNS through the server's own resolver. mieru (mita)
+  and AnyTLS (sing-box) the same. The health check did not flag the new account.
+- **AnyTLS**: two users' sing-box 1.14.2 processes (checksum checked), each on its own port, the
+  self-signed certificate pinned: sing-box (the PEM) and mihomo 1.19.32 (the SHA-256) connected
+  (204); a wrong pin was refused by both. 50 MB at about 13.5 MB/s, counted per user (50.3 MB with
+  TLS). Strict mode: the user's data ran out mid-download, the download was cut and new connections
+  refused, their mieru and Snell servers stopped too; a higher quota brought them back by
+  themselves. Every subscription format checked with sing-box 1.12.25 and 1.14.3 and mihomo 1.19.32.
+- **Restart everything**: Xray, two Snell, two mieru and two AnyTLS processes got new process ids,
+  then the agent restarted, and the result reached the panel.
+- **Protective steps, on a staged break-in** (a "miner" run from `/tmp`, an SSH key added for root,
+  an account that can sign in, a service started at boot, a cron file, a setuid program in `/tmp`,
+  SSH passwords on, 80 failed sign-ins from one public address): the check found all of it, each
+  with the right button; each step was done and checked on the server (process gone and its
+  program in quarantine, key out, account locked and its processes stopped, service off, files in
+  quarantine, `sshd -T` saying keys only - the SSH session in use kept working -, the address in
+  nftables' SSH block), then each was undone and checked again (all back; the stopped process stays
+  stopped).
+- **PostgreSQL 18.6**: the panel, database and backup suites.
 
 ## Tested for 1.3 (local panel; three Ubuntu 26.04 VMs on one shared network)
 

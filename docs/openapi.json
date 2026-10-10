@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rosélune API",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -1494,7 +1494,7 @@
           "Servers"
         ],
         "summary": "Restart or upgrade",
-        "description": "Queues an explicit maintenance action. restart_pending restarts exactly what waits for a restart (the server's pending_restart) and disconnects those users for a moment; restart_xray and upgrade_xray disconnect Xray users for a moment; upgrade_hysteria and upgrade_realm switch the server to the version in Settings and restart those cores (their users reconnect); upgrade_agent disconnects nobody.",
+        "description": "Queues an explicit maintenance action. restart_pending restarts exactly what waits for a restart (the server's pending_restart) and disconnects those users for a moment; restart_all restarts everything that carries traffic - Xray, Hysteria2, each user's own server (mieru, Snell, AnyTLS), realm forwards - and then the agent, so everyone on the server reconnects once (agent 1.3.1 and later); restart_xray and upgrade_xray disconnect Xray users for a moment; upgrade_hysteria and upgrade_realm switch the server to the version in Settings and restart those cores (their users reconnect); upgrade_agent disconnects nobody.",
         "operationId": "postServersIdActions",
         "parameters": [
           {
@@ -5068,6 +5068,146 @@
         }
       }
     },
+    "/api/risks/{id}/protect": {
+      "post": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Take the protective step a risk offers",
+        "description": "Does what the risk's fix says (stop a process and quarantine its program, remove an SSH key, lock an account, turn a service off, move a file into quarantine, make SSH take keys only, block addresses from SSH) - the fix as the server's agent proposed it, which checks it all again before it acts. A person confirms it in the panel: browser sessions only, never an API token. A step done marks the risk acknowledged. Poll the step (GET /api/protections) for how it went.",
+        "operationId": "postRisksIdProtect",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtectionView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/protections/{id}/undo": {
+      "post": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Undo a protective step",
+        "description": "Puts back what the step changed: a file or program from quarantine, the SSH key, the account unlocked, the service on again, SSH taking passwords, the addresses allowed. A stopped process stays stopped. Browser sessions only.",
+        "operationId": "postProtectionsIdUndo",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtectionView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/protections": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Protective steps taken, newest first",
+        "operationId": "getProtections",
+        "parameters": [
+          {
+            "description": "Only this server's",
+            "in": "query",
+            "name": "server",
+            "schema": {
+              "type": ""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProtectionView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
     "/api/risks/{id}/decide": {
       "post": {
         "tags": [
@@ -6406,6 +6546,38 @@
         }
       }
     },
+    "/api/servers/restart-all": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Restart everything on every server",
+        "description": "Each online server with agent 1.3.1 or later restarts everything that carries traffic - Xray, Hysteria2, each user's own server (mieru, Snell, AnyTLS), realm forwards - with what waited for a restart, and then its agent. Everyone connected anywhere is disconnected once and reconnects by themselves within seconds. Use it after upgrading agents so strict mode counts long connections as they happen. Servers left out are named with the reason (skipped).",
+        "operationId": "postServersRestartAll",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestartAllResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
     "/api/agents/upgrade": {
       "post": {
         "tags": [
@@ -7227,7 +7399,7 @@
             "type": "string"
           },
           "engine": {
-            "description": "xray | hysteria | wireguard | solo (mieru, Snell: a process and a port per user)",
+            "description": "xray | hysteria | wireguard | solo (mieru, Snell, AnyTLS: a process and a port per user)",
             "type": "string"
           },
           "blurb": {
@@ -8530,6 +8702,15 @@
           },
           "solo": {
             "type": "boolean"
+          },
+          "anytls": {
+            "type": "boolean"
+          },
+          "restart_all": {
+            "type": "boolean"
+          },
+          "protect": {
+            "type": "boolean"
           }
         }
       },
@@ -8811,7 +8992,7 @@
         "type": "object",
         "properties": {
           "kind": {
-            "description": "restart_pending | restart_xray | upgrade_xray | upgrade_hysteria | upgrade_realm | upgrade_agent",
+            "description": "restart_pending | restart_all | restart_xray | upgrade_xray | upgrade_hysteria | upgrade_realm | upgrade_agent",
             "type": "string"
           },
           "args": {
@@ -9176,7 +9357,7 @@
         "type": "object",
         "properties": {
           "kind": {
-            "description": "vless | vmess | trojan | shadowsocks | hysteria2 | wireguard | socks | http",
+            "description": "vless | vmess | trojan | shadowsocks | hysteria2 | wireguard | socks | http | mieru | snell | anytls",
             "type": "string"
           },
           "settings": {
@@ -9242,7 +9423,7 @@
             "type": "string"
           },
           "sni": {
-            "description": "TLS: certificate name. REALITY: the camouflage site. Hysteria2: certificate name",
+            "description": "TLS: certificate name. REALITY: the camouflage site. Hysteria2 and AnyTLS: certificate name",
             "type": "string"
           },
           "fingerprint": {
@@ -9266,7 +9447,7 @@
             "type": "boolean"
           },
           "cert_mode": {
-            "description": "TLS and Hysteria2: self | acme | custom | shared",
+            "description": "TLS, Hysteria2 and AnyTLS: self | acme | custom | shared",
             "type": "string"
           },
           "cert_id": {
@@ -9339,7 +9520,7 @@
             "type": "integer"
           },
           "users": {
-            "description": "mieru and Snell: how many people the protocol has room for - each gets their own port, from the protocol's port on (1-1000, default 50)",
+            "description": "mieru, Snell and AnyTLS: how many people the protocol has room for - each gets their own port, from the protocol's port on (1-1000, default 50)",
             "type": "integer"
           }
         }
@@ -9422,7 +9603,7 @@
         "type": "object",
         "properties": {
           "kind": {
-            "description": "On create: vless | vmess | trojan | shadowsocks | hysteria2 | wireguard | socks | http",
+            "description": "On create: vless | vmess | trojan | shadowsocks | hysteria2 | wireguard | socks | http | mieru | snell | anytls",
             "type": "string"
           },
           "name": {
@@ -12596,7 +12777,7 @@
             "type": "string"
           },
           "kind": {
-            "description": "miner, process, cpu, port, account, ssh_keys, preload, cron, service, module, ssh, traffic, load or binary",
+            "description": "miner, process, cpu, port, account, ssh_keys, preload, cron, service, module, ssh, traffic, load, binary, file or update",
             "type": "string"
           },
           "severity": {
@@ -12641,6 +12822,115 @@
           "expected_everywhere": {
             "description": "This key is expected on every server",
             "type": "boolean"
+          },
+          "fix": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FixView"
+              }
+            ],
+            "description": "A protective step the server offers: done only when the supervisor confirms it in the panel"
+          },
+          "step": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProtectionView"
+              }
+            ],
+            "description": "The last protective step taken about it, and how it went"
+          }
+        }
+      },
+      "FixView": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "stop_process | remove_key | lock_account | disable_service | quarantine | ssh_keys_only | block_ssh",
+            "type": "string"
+          },
+          "label": {
+            "description": "The button: what it does, in a few words",
+            "type": "string"
+          },
+          "explain": {
+            "description": "What exactly happens, and whether it can be undone: what the confirmation says",
+            "type": "string"
+          },
+          "target": {
+            "description": "What it acts on: a program, a file, an account, a service or a key",
+            "type": "string"
+          },
+          "addrs": {
+            "description": "block_ssh: the addresses",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "undo": {
+            "description": "It can be undone afterwards",
+            "type": "boolean"
+          }
+        }
+      },
+      "ProtectionView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server": {
+            "type": "string"
+          },
+          "risk_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "title": {
+            "description": "The risk it was about",
+            "type": "string"
+          },
+          "what": {
+            "description": "What was asked, in plain words",
+            "type": "string"
+          },
+          "state": {
+            "description": "pending (on its way to the server) | done | failed | undoing | undone",
+            "type": "string"
+          },
+          "output": {
+            "description": "What the server said",
+            "type": "string"
+          },
+          "can_undo": {
+            "description": "Done, and of a kind that can be undone",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "string"
+          },
+          "done_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "undone_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "undone_by": {
+            "type": "string"
           }
         }
       },
@@ -12795,6 +13085,10 @@
           },
           "snell_version": {
             "description": "snell-server version servers install for Snell - one Rosélune can verify (5.0.1)",
+            "type": "string"
+          },
+          "singbox_version": {
+            "description": "sing-box version servers install for AnyTLS",
             "type": "string"
           },
           "mirror": {
@@ -13607,18 +13901,18 @@
           }
         }
       },
-      "AgentsUpgraded": {
+      "RestartAllResult": {
         "type": "object",
         "properties": {
           "servers": {
-            "description": "The servers whose agent upgrades now",
+            "description": "The servers that restart everything now",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "skipped": {
-            "description": "Servers with an older agent that were left out, and why: an upgrade to these binaries already waits for them (offline) or is under way (sent in the last 15 minutes). An upgrade that waits with other binaries, or has shown no sign of life for longer, is replaced instead",
+            "description": "Servers left out, each with the reason (offline, an older agent, shared with you)",
             "items": {
               "$ref": "#/components/schemas/AgentSkipped"
             },
@@ -13636,6 +13930,25 @@
           "why": {
             "description": "Why its agent was left out, in plain words",
             "type": "string"
+          }
+        }
+      },
+      "AgentsUpgraded": {
+        "type": "object",
+        "properties": {
+          "servers": {
+            "description": "The servers whose agent upgrades now",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "description": "Servers with an older agent that were left out, and why: an upgrade to these binaries already waits for them (offline) or is under way (sent in the last 15 minutes). An upgrade that waits with other binaries, or has shown no sign of life for longer, is replaced instead",
+            "items": {
+              "$ref": "#/components/schemas/AgentSkipped"
+            },
+            "type": "array"
           }
         }
       },

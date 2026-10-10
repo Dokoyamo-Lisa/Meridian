@@ -68,7 +68,7 @@ type kindInfo struct {
 	Kind       string   `json:"kind"`
 	Label      string   `json:"label"`
 	Short      string   `json:"short"`
-	Engine     string   `json:"engine" doc:"xray | hysteria | wireguard | solo (mieru, Snell: a process and a port per user)"`
+	Engine     string   `json:"engine" doc:"xray | hysteria | wireguard | solo (mieru, Snell, AnyTLS: a process and a port per user)"`
 	Blurb      string   `json:"blurb"`
 	Transports []string `json:"transports,omitempty" doc:"Transports this protocol can run over"`
 	Securities []string `json:"securities,omitempty" doc:"Security layers: none, tls, reality"`
@@ -103,6 +103,8 @@ var kindList = []kindInfo{
 		Blurb: "Looks like random data, with no pattern to spot. Each user gets their own port and a small process on the server. Apps: Clash Verge Rev, FlClash, Mihomo Party and other mihomo apps, Stash."},
 	{Kind: subgen.KindSnell, Label: "Snell", Short: "Snell", Engine: "solo",
 		Blurb: "Surge's own protocol, fast and light (server 5, apps speak version 4). Each user gets their own port and a small process on the server. Apps: Surge, Stash, mihomo apps, sing-box."},
+	{Kind: subgen.KindAnyTLS, Label: "AnyTLS", Short: "AnyTLS", Engine: "solo",
+		Blurb: "TLS with padding that hides the tell-tale pattern of TLS inside TLS. A domain certificate works in every app with AnyTLS; a self-signed one (pinned) in mihomo apps, sing-box and Surge. Each user gets their own port and a small process on the server. Apps: Clash Verge Rev, FlClash, Mihomo Party, sing-box, Surge, Stash, Hiddify."},
 }
 
 func kindOf(kind string) (kindInfo, bool) {
@@ -183,6 +185,51 @@ type hy2Settings struct {
 	HopPorts string `json:"hop_ports,omitempty"`
 }
 
+// anytlsSettings are AnyTLS's: room for users like mieru and Snell (a port and a process each), and
+// the certificate its users' servers present.
+type anytlsSettings struct {
+	Users int    `json:"users"`
+	SNI   string `json:"sni"`
+	certSettings
+}
+
+func (s *anytlsSettings) apply(in *protoInput) error {
+	room := soloSettings{Users: s.Users}
+	if err := room.apply(subgen.KindAnyTLS, in); err != nil {
+		return err
+	}
+	s.Users = room.Users
+	oldSNI, oldMode := s.SNI, s.CertMode
+	if in.SNI != nil {
+		h, err := optionalHost(*in.SNI, "the certificate name")
+		if err != nil {
+			return err
+		}
+		if h != "" {
+			s.SNI = h
+		}
+	}
+	if in.CertMode != nil {
+		s.CertMode = trimLower(in.CertMode)
+	}
+	if s.CertMode == "" {
+		s.CertMode = certSelf
+	}
+	if err := s.certSettings.settle(in, s.SNI, oldSNI, oldMode); err != nil {
+		return err
+	}
+	return s.certSettings.check(s.SNI)
+}
+
+func parseAnyTLS(raw json.RawMessage) anytlsSettings {
+	var s anytlsSettings
+	_ = json.Unmarshal(raw, &s)
+	if s.Users < 1 {
+		s.Users = soloDefaultUsers
+	}
+	return s
+}
+
 type wgSettings struct {
 	PrivateKey string `json:"private_key"`
 	PublicKey  string `json:"public_key"`
@@ -207,13 +254,13 @@ type protoInput struct {
 	XHTTPMode   *string `json:"xhttp_mode" doc:"xhttp: auto | packet-up | stream-up | stream-one"`
 	Security    *string `json:"security" doc:"none | tls | reality"`
 	Flow        *string `json:"flow" doc:"VLESS over raw with TLS or REALITY, or VLESS with VLESS Encryption: xtls-rprx-vision, or empty"`
-	SNI         *string `json:"sni" doc:"TLS: certificate name. REALITY: the camouflage site. Hysteria2: certificate name"`
+	SNI         *string `json:"sni" doc:"TLS: certificate name. REALITY: the camouflage site. Hysteria2 and AnyTLS: certificate name"`
 	Fingerprint *string `json:"fingerprint" doc:"Browser fingerprint clients present: chrome, firefox, safari, ..."`
 	Target      *string `json:"target" doc:"REALITY: where unauthenticated visitors go, host:port"`
 	Encryption  *string `json:"encryption" doc:"VLESS: VLESS Encryption (post-quantum) - none, native, xorpub or random: how the traffic looks (native with TLS or REALITY, random without)"`
 	EncAuth     *string `json:"enc_auth" doc:"VLESS Encryption: how the server proves itself - x25519 (default, short links) or mlkem768 (post-quantum too, links about 1.6 KB longer)"`
 	OwnSite     *bool   `json:"own_site" doc:"REALITY: the target is your own website on this server (127.0.0.1:port)"`
-	CertMode    *string `json:"cert_mode" doc:"TLS and Hysteria2: self | acme | custom | shared"`
+	CertMode    *string `json:"cert_mode" doc:"TLS, Hysteria2 and AnyTLS: self | acme | custom | shared"`
 	CertID      *int64  `json:"cert_id" doc:"With cert_mode shared: the shared certificate (GET /api/certs)"`
 	CertPEM     *string `json:"cert_pem" doc:"cert_mode custom: the certificate chain (PEM)"`
 	KeyPEM      *string `json:"key_pem" doc:"cert_mode custom: the private key (PEM)"`
@@ -231,7 +278,7 @@ type protoInput struct {
 	FullTunnel  *bool   `json:"full_tunnel" doc:"WireGuard: send all traffic through the VPN"`
 	IPv6        *bool   `json:"ipv6" doc:"WireGuard: route IPv6 through the VPN too (needs IPv6 on the server and agent 0.6); off = IPv4 only, and full tunnels leave ::/0 out"`
 	Keepalive   *int    `json:"keepalive" doc:"WireGuard: seconds, 0 = off"`
-	Users       *int    `json:"users" doc:"mieru and Snell: how many people the protocol has room for - each gets their own port, from the protocol's port on (1-1000, default 50)"`
+	Users       *int    `json:"users" doc:"mieru, Snell and AnyTLS: how many people the protocol has room for - each gets their own port, from the protocol's port on (1-1000, default 50)"`
 }
 
 // applies lists the input fields a protocol accepts.
@@ -255,6 +302,11 @@ func (in *protoInput) unknownFor(kind string) []string {
 			in.Flow != nil || in.Fingerprint != nil || in.Target != nil || in.OwnSite != nil || in.CDN != nil || in.CDNHost != nil ||
 			in.CDNPort != nil || in.Method != nil || in.UDP != nil || in.Encryption != nil || in.EncAuth != nil
 		note(otherXray || certish || (kind == subgen.KindSnell && in.Transport != nil), "transport and TLS options")
+		note(hyOnly, "Hysteria2 options")
+		note(wgOnly, "WireGuard options")
+		return bad
+	case subgen.KindAnyTLS: // its users and its certificate
+		note(xrayOnly, "transport options")
 		note(hyOnly, "Hysteria2 options")
 		note(wgOnly, "WireGuard options")
 		return bad
@@ -306,6 +358,13 @@ func newSettings(kind string, in *protoInput, siblings []*Node) (json.RawMessage
 	case subgen.KindMieru, subgen.KindSnell:
 		s := soloSettings{Users: soloDefaultUsers}
 		if err := s.apply(kind, in); err != nil {
+			return nil, errStatus(400, err.Error())
+		}
+		return json.Marshal(s)
+	case subgen.KindAnyTLS:
+		s := anytlsSettings{Users: soloDefaultUsers, SNI: defaultSelfSignedName}
+		s.CertMode = certSelf
+		if err := s.apply(in); err != nil {
 			return nil, errStatus(400, err.Error())
 		}
 		return json.Marshal(s)
@@ -411,6 +470,12 @@ func updateSettings(kind string, old json.RawMessage, in *protoInput) (json.RawM
 	case subgen.KindMieru, subgen.KindSnell:
 		s := parseSolo(old)
 		if err := s.apply(kind, in); err != nil {
+			return nil, errStatus(400, err.Error())
+		}
+		return json.Marshal(s)
+	case subgen.KindAnyTLS:
+		s := parseAnyTLS(old)
+		if err := s.apply(in); err != nil {
 			return nil, errStatus(400, err.Error())
 		}
 		return json.Marshal(s)
@@ -1829,6 +1894,8 @@ func protocolLabel(kind string, raw json.RawMessage) string {
 		return "mieru"
 	case subgen.KindSnell:
 		return "Snell"
+	case subgen.KindAnyTLS:
+		return "AnyTLS"
 	}
 	switch kind {
 	case subgen.KindHysteria2:
@@ -1900,7 +1967,7 @@ type fieldHelp struct {
 // checkProtocol validates a protocol draft and reports where it works.
 func checkProtocol(kind string, in *protoInput) supportView {
 	if _, ok := kindOf(kind); !ok {
-		return supportView{Error: "unknown protocol - choose one of vless, vmess, trojan, shadowsocks, hysteria2, wireguard, socks, http"}
+		return supportView{Error: "unknown protocol - choose one of vless, vmess, trojan, shadowsocks, hysteria2, wireguard, socks, http, mieru, snell, anytls"}
 	}
 	raw, err := newSettings(kind, in, nil)
 	return supportOf(kind, raw, err)
@@ -1975,6 +2042,23 @@ func protocolNotes(kind string, raw json.RawMessage, acmePort int) []string {
 			out = append(out, "Users with a speed limit do not get mieru over UDP - it stalls under a limit; their links leave it out. Give them mieru over TCP, which keeps to limits.")
 		}
 		return out
+	case subgen.KindAnyTLS:
+		s := parseAnyTLS(raw)
+		out := []string{
+			fmt.Sprintf("Every user gets their own port and a small process (sing-box, about 15-25 MB of memory each): room for %d users, on the %d ports from this protocol's port on. Open that range for TCP in the server provider's firewall.", s.Users, s.Users),
+			"Each user's usage, speed limit and cut are exact: their port is theirs alone.",
+		}
+		switch s.CertMode {
+		case certACME:
+			out = append(out, fmt.Sprintf("Point %s at this server and %s: the agent gets and renews the certificate there.", s.SNI, port80))
+		case certSelf:
+			out = append(out, "Self-signed certificate: mihomo apps, sing-box and Surge pin it and check it exactly; Stash and the Hiddify apps cannot pin one and leave this protocol out - give it a domain certificate for them.")
+		case certCustom:
+			if why := publicTrust(s.CertPEM); why != "" {
+				out = append(out, "Apps will refuse its certificate: "+why+". Links never turn certificate checks off.")
+			}
+		}
+		return out
 	}
 	s, err := parseXray(raw)
 	if err != nil {
@@ -2030,6 +2114,15 @@ func hy2Password(sub *Sub) string { return sub.Secret }
 
 // regenKeys replaces a protocol's key material and keeps every choice the admin made.
 func regenKeys(kind string, raw json.RawMessage) (json.RawMessage, error) {
+	if kind == subgen.KindAnyTLS { // a new self-signed certificate; each user's key comes from their secret
+		s := parseAnyTLS(raw)
+		if s.CertMode == certSelf || s.CertMode == "" {
+			if err := s.certSettings.settle(nil, s.SNI, "", ""); err != nil {
+				return nil, err
+			}
+		}
+		return json.Marshal(s)
+	}
 	if isSolo(kind) { // nothing of its own: each user's key comes from their secret
 		return raw, nil
 	}

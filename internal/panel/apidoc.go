@@ -92,7 +92,7 @@ type installResult struct {
 }
 
 type actionInput struct {
-	Kind string          `json:"kind" doc:"restart_pending | restart_xray | upgrade_xray | upgrade_hysteria | upgrade_realm | upgrade_agent"`
+	Kind string          `json:"kind" doc:"restart_pending | restart_all | restart_xray | upgrade_xray | upgrade_hysteria | upgrade_realm | upgrade_agent"`
 	Args json.RawMessage `json:"args,omitempty"`
 }
 
@@ -193,7 +193,7 @@ var apiOps = []opDoc{
 		Desc: "What that panel ran on the server is removed and its users there are disconnected. A panel the server is shared with leaves by removing the server on its side.",
 		Body: shareRemoveInput{}, Resp: actionRef{}, Status: 202},
 	{Method: "POST", Path: "/api/servers/{id}/actions", Tag: "Servers", Summary: "Restart or upgrade",
-		Desc: "Queues an explicit maintenance action. restart_pending restarts exactly what waits for a restart (the server's pending_restart) and disconnects those users for a moment; restart_xray and upgrade_xray disconnect Xray users for a moment; upgrade_hysteria and upgrade_realm switch the server to the version in Settings and restart those cores (their users reconnect); upgrade_agent disconnects nobody.",
+		Desc: "Queues an explicit maintenance action. restart_pending restarts exactly what waits for a restart (the server's pending_restart) and disconnects those users for a moment; restart_all restarts everything that carries traffic - Xray, Hysteria2, each user's own server (mieru, Snell, AnyTLS), realm forwards - and then the agent, so everyone on the server reconnects once (agent 1.3.1 and later); restart_xray and upgrade_xray disconnect Xray users for a moment; upgrade_hysteria and upgrade_realm switch the server to the version in Settings and restart those cores (their users reconnect); upgrade_agent disconnects nobody.",
 		Body: actionInput{}, Resp: actionRef{}, Status: 202},
 	{Method: "GET", Path: "/api/actions/{id}", Tag: "Servers", Summary: "Result of an action", Resp: actionStatus{}},
 	{Method: "GET", Path: "/api/servers/{id}/metrics", Tag: "Servers", Summary: "Load history",
@@ -394,6 +394,14 @@ var apiOps = []opDoc{
 		Query: []paramDoc{{Name: "status", Type: "string", Desc: "Which (default open)", Enum: []string{"open", "acknowledged", "expected", "all"}},
 			{Name: "severity", Type: "string", Desc: "At least this serious", Enum: []string{"info", "warning", "high", "critical"}}, qServer},
 		Resp: []riskView{}},
+	{Method: "POST", Path: "/api/risks/{id}/protect", Tag: "Health", Scope: "session", Summary: "Take the protective step a risk offers",
+		Desc: "Does what the risk's fix says (stop a process and quarantine its program, remove an SSH key, lock an account, turn a service off, move a file into quarantine, make SSH take keys only, block addresses from SSH) - the fix as the server's agent proposed it, which checks it all again before it acts. A person confirms it in the panel: browser sessions only, never an API token. A step done marks the risk acknowledged. Poll the step (GET /api/protections) for how it went.",
+		Resp: protectionView{}, Status: 202},
+	{Method: "POST", Path: "/api/protections/{id}/undo", Tag: "Health", Scope: "session", Summary: "Undo a protective step",
+		Desc: "Puts back what the step changed: a file or program from quarantine, the SSH key, the account unlocked, the service on again, SSH taking passwords, the addresses allowed. A stopped process stays stopped. Browser sessions only.",
+		Resp: protectionView{}, Status: 202},
+	{Method: "GET", Path: "/api/protections", Tag: "Health", Summary: "Protective steps taken, newest first",
+		Query: []paramDoc{{Name: "server", Desc: "Only this server's"}}, Resp: []protectionView{}},
 	{Method: "POST", Path: "/api/risks/{id}/decide", Tag: "Health", Summary: "Decide about a risk",
 		Desc: "expected: this is yours - it is never flagged again on this server (scope all: on any server, future ones included). acknowledged: seen - it is flagged again if it happens again. open: flag it again. Who decided and when is kept.",
 		Body: riskDecision{}, Resp: riskDecided{}},
@@ -471,6 +479,9 @@ var apiOps = []opDoc{
 	{Method: "POST", Path: "/api/update/install", Tag: "Settings", Summary: "Install the newest release",
 		Desc: "The panel downloads the release, checks its signature (Rosélune's release key) and checksum, backs up the database and hands it to the updater service, which checks it again and installs it. Proxies keep running; the panel restarts once. With agents (the default), every server's agent is upgraded afterwards - nobody is disconnected. Needs a panel installed with install-panel.sh.",
 		Body: updateInstallInput{}, Resp: updateView{}},
+	{Method: "POST", Path: "/api/servers/restart-all", Tag: "Servers", Summary: "Restart everything on every server",
+		Desc: "Each online server with agent 1.3.1 or later restarts everything that carries traffic - Xray, Hysteria2, each user's own server (mieru, Snell, AnyTLS), realm forwards - with what waited for a restart, and then its agent. Everyone connected anywhere is disconnected once and reconnects by themselves within seconds. Use it after upgrading agents so strict mode counts long connections as they happen. Servers left out are named with the reason (skipped).",
+		Resp: restartAllResult{}, Status: 202},
 	{Method: "POST", Path: "/api/agents/upgrade", Tag: "Servers", Summary: "Upgrade every server's agent to this panel's version",
 		Desc: "Only servers whose agent differs from the panel's are upgraded; offline ones as soon as they connect. Agents restart themselves; the proxies keep running and nobody is disconnected. An upgrade that still waits with other binaries is replaced; servers left out are named with the reason (skipped).",
 		Resp: agentsUpgraded{}},

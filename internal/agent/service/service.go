@@ -31,6 +31,7 @@ type Spec struct {
 	Caps         []string          // capabilities it keeps (CAP_NET_BIND_SERVICE, ...); empty = those of root
 	NoFile       int               // open files limit (0 = the default)
 	Unprivileged bool              // run as a throwaway unprivileged user (systemd DynamicUser; nobody on OpenRC)
+	User         string            // run as this system account and its group (EnsureSystemUser); "" = root
 	Log          string            // a file both output streams are appended to ("" = the system log)
 	Sandbox      bool              // systemd: ProtectSystem=full, ProtectHome, PrivateTmp
 	RestartSec   int               // pause before a restart after a crash (default 2)
@@ -285,12 +286,16 @@ func systemdUnit(s Spec) string {
 	if s.Unprivileged {
 		w("DynamicUser=yes")
 	}
+	if s.User != "" {
+		w("User=%s", s.User)
+		w("Group=%s", s.User)
+	}
 	if len(s.Caps) > 0 {
 		caps := strings.Join(s.Caps, " ")
 		w("CapabilityBoundingSet=%s", caps)
 		w("AmbientCapabilities=%s", caps)
 	}
-	if len(s.Caps) > 0 || s.Unprivileged {
+	if len(s.Caps) > 0 || s.Unprivileged || s.User != "" {
 		w("NoNewPrivileges=true")
 	}
 	if s.Sandbox {
@@ -362,16 +367,19 @@ func openrcScript(s Spec) string {
 	if s.Unprivileged {
 		w(`command_user="nobody:nobody"`)
 	}
+	if s.User != "" {
+		w(`command_user="%s:%s"`, s.User, s.User)
+	}
 	// as root, OpenRC's capabilities add without taking anything away, so root services run as root
 	// with no_new_privs; an unprivileged user gets exactly the capabilities it needs
-	if s.Unprivileged && len(s.Caps) > 0 {
+	if (s.Unprivileged || s.User != "") && len(s.Caps) > 0 {
 		caps := make([]string, len(s.Caps))
 		for i, c := range s.Caps {
 			caps[i] = "^" + strings.ToLower(c)
 		}
 		w("capabilities=%s", openrcQuote(strings.Join(caps, ",")))
 	}
-	if len(s.Caps) > 0 || s.Unprivileged {
+	if len(s.Caps) > 0 || s.Unprivileged || s.User != "" {
 		w(`no_new_privs="yes"`)
 	}
 	if s.NoFile > 0 {

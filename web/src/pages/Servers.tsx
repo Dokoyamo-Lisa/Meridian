@@ -7,6 +7,7 @@ import { Check, Empty, ErrorBox, Field, Loading, Meter, Modal, PageHead, Search,
 import { upgradedText } from './agentUpgrades'
 import { DynamicDNSFields, PanelIPv6Note, confirmCloudflare } from './DynamicDNS'
 import { openConsole } from './Console'
+import { restartEverywhere } from './restartAll'
 
 export function statusDot(status: string) {
   return status === 'online' ? 'good' : status === 'offline' ? 'crit' : ''
@@ -67,6 +68,12 @@ export function Servers() {
               <button type="button" class="btn" onClick={() => void upgradeAll()} title={`${older.length} server(s) run an older agent than the panel (${version})`}>
                 <Icon name="download" size="sm" />
                 Upgrade all agents ({older.length})
+              </button>
+            )}
+            {online > 0 && (
+              <button type="button" class="btn" onClick={() => void restartEverywhere()} title="Restart Xray, Hysteria2, users' own servers, realm forwards and the agents on every online server">
+                <Icon name="refresh" size="sm" />
+                Restart everything
               </button>
             )}
             <button class="btn primary" onClick={() => setQuery('add', '1')}>

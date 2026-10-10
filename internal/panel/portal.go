@@ -487,7 +487,7 @@ func (p *Panel) apiProtocolCatalog(w http.ResponseWriter, r *http.Request, a *Ac
 }
 
 type protocolDraft struct {
-	Kind     string      `json:"kind" doc:"vless | vmess | trojan | shadowsocks | hysteria2 | wireguard | socks | http"`
+	Kind     string      `json:"kind" doc:"vless | vmess | trojan | shadowsocks | hysteria2 | wireguard | socks | http | mieru | snell | anytls"`
 	Settings *protoInput `json:"settings"`
 	NodeID   int64       `json:"node_id,omitempty" doc:"Editing: the protocol being changed. The draft is checked as a change to it - omitted fields and keys keep their stored values, as saving does"`
 	ServerID int64       `json:"server_id,omitempty" doc:"Adding: the server it is for, so what depends on the server (its IP version, shared certificates) is checked too"`

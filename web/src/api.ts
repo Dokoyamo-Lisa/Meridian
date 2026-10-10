@@ -282,6 +282,12 @@ export interface Server {
     console?: boolean
     /** The agent can be shared with other panels (1.0 and later). */
     share?: boolean
+    /** Runs mieru and Snell, one process per user (1.3 and later). */
+    solo?: boolean
+    /** Runs AnyTLS (1.3.1 and later). */
+    anytls?: boolean
+    /** Restarts everything on request (1.3.1 and later). */
+    restart_all?: boolean
   }
   desired_rev?: string
   limits?: string[]
@@ -342,6 +348,13 @@ export interface PanelAddress {
   ipv6: string[]
   /** What a server with IPv6 only needs, when the panel's address has no IPv6. */
   note?: string
+}
+
+/** What POST /api/servers/restart-all did. */
+export interface RestartedAll {
+  servers: string[]
+  /** Servers left out, and why (offline, an agent older than 1.3.1, shared with you). */
+  skipped: { name: string; why: string }[]
 }
 
 /** What POST /api/agents/upgrade did. */
@@ -936,6 +949,42 @@ export interface Risk {
   decided_at: number
   /** This kind of finding is expected on every server. */
   expected_everywhere: boolean
+  /** A protective step the server offers: done only when the supervisor confirms it. */
+  fix?: RiskFix
+  /** The last protective step taken about it. */
+  step?: Protection
+}
+
+/** What a risk's protective step does: its button, and what the confirmation says. */
+export interface RiskFix {
+  kind: 'stop_process' | 'remove_key' | 'lock_account' | 'disable_service' | 'quarantine' | 'ssh_keys_only' | 'block_ssh'
+  label: string
+  explain: string
+  target?: string
+  addrs?: string[]
+  undo: boolean
+}
+
+/** A protective step the supervisor confirmed. */
+export interface Protection {
+  id: number
+  server_id: number
+  server: string
+  risk_id: number
+  kind: string
+  /** The risk it was about. */
+  title: string
+  /** What was asked, in plain words. */
+  what: string
+  state: 'pending' | 'done' | 'failed' | 'undoing' | 'undone'
+  /** What the server said. */
+  output: string
+  can_undo: boolean
+  created_at: number
+  created_by: string
+  done_at: number
+  undone_at: number
+  undone_by: string
 }
 
 /** A server's health check: when it last scanned, and what it found. */
