@@ -1,0 +1,65 @@
+{{define "head"}}<!doctype html>
+<html lang="en" data-theme="umbrella">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{.Title}}</title>
+<meta name="description" content="{{.Description}}">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="{{asset .Root "mark.svg"}}" type="image/svg+xml">
+<link rel="stylesheet" href="{{asset .Root "site.css"}}">
+<script src="{{asset .Root "tone.js"}}"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+{{end}}
+
+{{define "mark"}}<svg class="mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 12L16.02 2.3L7.98 2.3Z" fill="#d8232a" style="--i:0"/><path d="M12 12L21.7 7.98L16.02 2.3Z" fill="#f5f3ef" style="--i:1"/><path d="M12 12L21.7 16.02L21.7 7.98Z" fill="#d8232a" style="--i:2"/><path d="M12 12L16.02 21.7L21.7 16.02Z" fill="#f5f3ef" style="--i:3"/><path d="M12 12L7.98 21.7L16.02 21.7Z" fill="#d8232a" style="--i:4"/><path d="M12 12L2.3 16.02L7.98 21.7Z" fill="#f5f3ef" style="--i:5"/><path d="M12 12L2.3 7.98L2.3 16.02Z" fill="#d8232a" style="--i:6"/><path d="M12 12L7.98 2.3L2.3 7.98Z" fill="#f5f3ef" style="--i:7"/></svg>{{end}}
+
+{{define "top"}}
+<header class="top">
+  <a class="brand" href="{{.Root}}index.html" aria-label="Meridian, the front page">{{template "mark"}}<span>Meridian</span></a>
+  <button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav">{{icon "more"}}</button>
+  <nav class="nav" id="nav" aria-label="Main">
+    <a href="{{.Root}}index.html"{{if eq .Nav "overview"}} aria-current="page"{{end}}>Overview</a>
+    <a href="{{.Root}}guide/getting-started.html"{{if eq .Nav "guide"}} aria-current="page"{{end}}>Guide</a>
+    <a href="{{.Root}}guide/changelog.html">Changelog</a>
+    <a href="{{.Demo}}" rel="noopener">Demo {{icon "external"}}</a>
+    <a href="{{.Repo}}/releases" rel="noopener">Download</a>
+    <a href="{{.Repo}}" rel="noopener">GitHub {{icon "external"}}</a>
+  </nav>
+  <div class="tools">
+    <button class="search-btn" type="button" data-search aria-label="Search the guide">{{icon "search"}}<span>Search</span><kbd>/</kbd></button>
+    <div class="tone">
+      <button class="icon-btn" type="button" aria-label="Look" aria-haspopup="true" aria-expanded="false" data-tone-btn>{{icon "palette"}}</button>
+      <div class="tone-pop" role="menu" aria-label="Look" hidden>
+        <button type="button" role="menuitemradio" data-tone="umbrella"><i class="sw" style="--a:#d42a33;--b:#0a0a0b"></i>Umbrella</button>
+        <button type="button" role="menuitemradio" data-tone="romance"><i class="sw" style="--a:#c2416b;--b:#fbf0f2"></i>Romance</button>
+      </div>
+    </div>
+  </div>
+</header>
+<div class="search" role="dialog" aria-modal="true" aria-label="Search the guide" hidden data-root="{{.Root}}">
+  <div class="search-box">
+    <label class="search-field">{{icon "search"}}<input type="search" placeholder="Search the guide - protocols, backups, Telegram…" aria-label="Search" autocomplete="off" spellcheck="false"></label>
+    <ol class="search-hits" aria-live="polite"></ol>
+    <p class="search-foot"><kbd>↑</kbd><kbd>↓</kbd> to choose · <kbd>Enter</kbd> to open · <kbd>Esc</kbd> to close</p>
+  </div>
+</div>
+{{end}}
+
+{{define "foot"}}
+<footer class="foot">
+  <div class="foot-in">
+    <div class="foot-brand">{{template "mark"}}<div><b>Meridian</b><span>Free software under the AGPL-3.0. Linux, amd64 and arm64.</span></div></div>
+    <div class="foot-cols">
+      <div><h4>Guide</h4><a href="{{.Root}}guide/getting-started.html">Getting started</a><a href="{{.Root}}guide/operations.html">Running the panel</a><a href="{{.Root}}guide/api.html">API</a></div>
+      <div><h4>Project</h4><a href="{{.Repo}}" rel="noopener">Source code</a><a href="{{.Repo}}/releases" rel="noopener">Releases</a><a href="{{.Demo}}" rel="noopener">The demo</a><a href="{{.Repo}}/blob/main/SECURITY.md" rel="noopener">Security</a></div>
+      <div><h4>Help</h4><a href="{{.Repo}}/issues" rel="noopener">Questions and bugs</a><a href="{{.Root}}guide/changelog.html">What changed</a></div>
+    </div>
+  </div>
+</footer>
+<script src="{{asset .Root "site.js"}}" defer></script>
+</body>
+</html>
+{{end}}

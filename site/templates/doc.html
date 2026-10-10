@@ -1,0 +1,23 @@
+{{define "doc.html"}}{{template "head" .}}{{template "top" .}}
+<div class="doc-wrap">
+  <aside class="side" aria-label="The guide">
+    {{range groups .Pages}}<div class="side-g"><h4>{{(index . 0).Group}}</h4>{{range .}}<a href="{{pageURL $.Base $.Root .}}"{{if eq .Slug $.Page.Slug}} aria-current="page"{{end}}>{{.Nav}}</a>{{end}}</div>{{end}}
+  </aside>
+  <main id="main" class="doc">
+    <header class="doc-h">
+      {{if ne .Page.Slug "index"}}<p class="crumb"><a href="{{.Root}}index.html">Meridian</a> <span>›</span> {{.Page.Group}}</p>{{else}}<p class="crumb">Version {{.Version}} · free software</p>{{end}}
+      <h1>{{.Page.Title}}</h1>
+      <p class="doc-blurb">{{.Page.Blurb}}</p>
+    </header>
+    <article class="prose">{{.Page.Body}}</article>
+    <nav class="pager" aria-label="Next and previous">
+      {{with .Page.Prev}}<a class="prev" href="{{pageURL $.Base $.Root .}}"><small>Previous</small><b>{{icon "back"}} {{.Nav}}</b></a>{{else}}<span></span>{{end}}
+      {{with .Page.Next}}<a class="next" href="{{pageURL $.Base $.Root .}}"><small>Next</small><b>{{.Nav}} {{icon "forward"}}</b></a>{{end}}
+    </nav>
+    <p class="edit"><a href="{{.Repo}}/blob/main/{{.Page.Source}}" rel="noopener">Improve this page on GitHub {{icon "external"}}</a></p>
+  </main>
+  <aside class="toc" aria-label="On this page">
+    {{if .Page.TOC}}<h4>On this page</h4>{{range .Page.TOC}}<a href="#{{.ID}}" class="l{{.Level}}">{{.Text}}</a>{{end}}{{end}}
+  </aside>
+</div>
+{{template "foot" .}}{{end}}

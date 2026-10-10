@@ -1,0 +1,40 @@
+# Meridian's demo: the panel (see demo/README.md). An ordinary release with its own user, data and
+# port; the reverse proxy in front lets visitors in read-only.
+[Unit]
+Description=Meridian demo panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=meridian-demo
+Group=meridian-demo
+Environment=MERIDIAN_ADMIN_USER=demo MERIDIAN_NO_PLUGINS=1 MERIDIAN_NO_UPDATE_CHECK=1 MERIDIAN_NO_GEO_DOWNLOAD=1 MERIDIAN_TRUSTED_PROXIES=127.0.0.1/32
+ExecStart=/usr/local/lib/meridian-demo/meridian serve --listen 127.0.0.1:8090 --data /var/lib/meridian-demo
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/meridian-demo
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+MemoryMax=400M
+CPUQuota=60%
+
+[Install]
+WantedBy=multi-user.target

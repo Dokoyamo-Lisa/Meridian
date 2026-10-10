@@ -1,0 +1,40 @@
+# Meridian's demo: the agents of servers that do not exist (see demo/README.md). MERIDIAN_TOKEN, a
+# read-only API token of the demo panel, is in /etc/meridian-demo/agents.env (root only).
+[Unit]
+Description=Meridian demo agents
+After=meridian-demo-panel.service
+Wants=meridian-demo-panel.service
+
+[Service]
+User=meridian-demo
+Group=meridian-demo
+EnvironmentFile=/etc/meridian-demo/agents.env
+ExecStart=/usr/local/lib/meridian-demo/meridian-demo run -panel http://127.0.0.1:8090 -state /var/lib/meridian-demo/agents.json -data /var/lib/meridian-demo
+Restart=always
+RestartSec=10
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/meridian-demo
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+MemoryMax=150M
+CPUQuota=30%
+
+[Install]
+WantedBy=multi-user.target

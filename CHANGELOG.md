@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+Nothing in the panel or the agents changed; the repository gained two things around them.
+
+- **The guide as a website**: [doc.losantos.space](https://doc.losantos.space), built from these very
+  documents (`site/`: `cd site && go run ./build`), in the Umbrella look or Romance, with search.
+- **A public demo**: [deep.losantos.space](https://deep.losantos.space) - eight servers and sixteen
+  people that do not exist, a month of history and agents reporting live, on an ordinary 1.1.0 panel
+  that visitors may look around in and nobody can change. `demo/` is the kit to run one: it fills a
+  new panel through the API, plays the agents through their own protocol, and its reverse proxy lets
+  visitors in read-only without recording their addresses.
+
 ## 1.1.0 - 2026-10-09
 
 **Upgrading keeps everything as it is.** Nothing changed for agents: 1.0.0 agents keep working, and

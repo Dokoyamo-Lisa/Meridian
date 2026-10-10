@@ -6,6 +6,9 @@ A panel for running proxy and VPN servers for a team or a small company. One sup
 servers and protocols and creates users; each user gets a subscription link for their apps and a
 sign-in to see their own usage; the supervisor watches every server on a live globe.
 
+**[The guide](https://doc.losantos.space)** · **[Try the demo](https://deep.losantos.space)** (made-up
+servers and people; look around, nothing can be changed) · [Releases](https://github.com/Dokoyamo-Lisa/Meridian/releases)
+
 - **Simple to run.** One command installs the panel with HTTPS; one command (copied from the panel)
   installs the agent on each server. Protocols are added from guided forms that only accept
   combinations that work, and show which apps can use each one. The panel updates itself (only to

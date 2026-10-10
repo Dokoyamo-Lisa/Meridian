@@ -13,8 +13,8 @@ root:
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing
-tar xzf meridian-0.4.0-linux-amd64.tar.gz
-cd meridian-0.4.0-linux-amd64
+tar xzf meridian-*-linux-amd64.tar.gz
+cd meridian-*-linux-amd64/
 sudo ./install-panel.sh --domain panel.example.com --email you@example.com
 ```
 
