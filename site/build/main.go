@@ -33,8 +33,12 @@ import (
 
 const repoURL = "https://github.com/Dokoyamo-Lisa/Meridian"
 
-// demoURL is the public demo: a panel anyone may look around in and nobody can change.
-const demoURL = "https://deep.losantos.space"
+// demoURL is the public demo: a panel anyone may look around in and nobody can change; statusDemoURL
+// is its status page.
+const (
+	demoURL       = "https://deep.losantos.space/overview"
+	statusDemoURL = "https://deep.losantos.space/"
+)
 
 // page is one document of the guide.
 type page struct {
@@ -177,7 +181,7 @@ func main() {
 		if r.Group == "Reference" {
 			nav = "reference"
 		}
-		data := map[string]any{"Root": "../", "Base": "", "Nav": nav, "Page": r, "Pages": pages, "Repo": repoURL, "Demo": demoURL,
+		data := map[string]any{"Root": "../", "Base": "", "Nav": nav, "Page": r, "Pages": pages, "Repo": repoURL, "Demo": demoURL, "StatusDemo": statusDemoURL,
 			"Title": r.Title + " · Rosélune", "Description": r.Blurb, "Version": version}
 		file := filepath.Join(out, "guide", r.Slug+".html")
 		if r.Slug == "index" {

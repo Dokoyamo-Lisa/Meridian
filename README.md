@@ -9,8 +9,9 @@ sign-in to see their own usage; the supervisor watches every server on a live gl
 Rosélune was called Meridian until 1.3. Its programs, services, paths and this repository keep the
 old name (`meridian`, `meridian-agent`, `/var/lib/meridian`), so nothing changes on your servers.
 
-**[The guide](https://doc.losantos.space)** · **[Try the demo](https://deep.losantos.space)** (made-up
-servers and people; look around, nothing can be changed) · [Releases](https://github.com/Dokoyamo-Lisa/Meridian/releases)
+**[The guide](https://doc.losantos.space)** · **Try the demo: [the panel](https://deep.losantos.space/overview)
+· [the status page](https://deep.losantos.space/)** (made-up servers and people; look around, nothing can
+be changed) · [Releases](https://github.com/Dokoyamo-Lisa/Meridian/releases)
 
 - **Simple to run.** One command installs the panel with HTTPS; one command (copied from the panel)
   installs the agent on each server. Protocols are added from guided forms that only accept
