@@ -5,8 +5,10 @@ servers, gives every user a link for their apps and a page of their own, and sho
 live globe. It never pauses anyone or restarts a core on its own: limits raise alerts, and a restart
 waits for a button that says what it will do.
 
-**[Get started](../docs/getting-started.md)** · [Try the demo](https://deep.losantos.space) ·
-[Releases](https://github.com/Dokoyamo-Lisa/Meridian/releases) ·
+**New to this? [Start with the guide](guide/before-you-begin.md)** - it goes one step at a time, from
+renting a server to the first person connected, and shows what you should see at every step.
+
+[Try the demo](https://deep.losantos.space) · [Releases](https://github.com/Dokoyamo-Lisa/Meridian/releases) ·
 [Source on GitHub](https://github.com/Dokoyamo-Lisa/Meridian)
 
 ## Install
@@ -20,7 +22,7 @@ sudo bash install-panel.sh --domain panel.example.com
 
 The installer checks the release, sets up HTTPS and PostgreSQL, and prints your first sign-in. The
 panel then shows the one command that installs each server's agent.
-[Getting started](../docs/getting-started.md) goes through every step.
+[Install the panel](guide/install.md) goes through every step, with what you should see.
 
 ## The demo
 

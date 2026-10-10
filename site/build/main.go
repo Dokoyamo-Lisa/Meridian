@@ -41,19 +41,33 @@ type page struct {
 	Slug, Source, Title, Group, Blurb string
 }
 
+// pages: the user guide first - step by step, for someone doing it for the first time (site/guide/) -
+// then the reference: the repository's own documents, for everything in detail.
 var pages = []page{
-	{"index", "site/front.md", "Meridian", "Start", "Proxy and VPN servers for your team, run from one quiet panel"},
-	{"getting-started", "docs/getting-started.md", "Getting started", "Start", "Install the panel, add a server, protocols and users"},
-	{"operations", "docs/operations.md", "Running the panel", "Start", "The database, backups, upgrades, moving hosts"},
-	{"routing", "docs/routing.md", "Traffic splitting", "Features", "Sites, countries and apps through the exits you choose"},
-	{"health", "docs/health.md", "Health checks", "Features", "Signs of a break-in or abuse, flagged for you to decide"},
-	{"telegram", "docs/telegram.md", "Telegram", "Features", "Notifications, commands, users' links and the Mini App"},
-	{"ipv6-and-dynamic-dns", "docs/ipv6-and-dynamic-dns.md", "IPv6 and dynamic DNS", "Features", "Servers whose address changes, and IPv6-only servers"},
-	{"plugins", "docs/plugins.md", "Plugins", "Extending", "Looks, pages, API routes and filters of your own"},
-	{"api", "docs/api.md", "API", "Extending", "Tokens, scopes and every endpoint"},
-	{"mcp", "docs/mcp.md", "AI assistants", "Extending", "The MCP server: what assistants may do, and ask first"},
-	{"architecture", "docs/architecture.md", "How it works", "Extending", "Panel, agents, cores and the data in between"},
-	{"changelog", "CHANGELOG.md", "Changelog", "Project", "Every release, in plain words"},
+	{"index", "site/front.md", "Meridian", "Start here", "Proxy and VPN servers for your team, run from one quiet panel"},
+	{"before-you-begin", "site/guide/before-you-begin.md", "Before you begin", "Start here", "What you need, and how to check you have it"},
+	{"install", "site/guide/install.md", "Install the panel", "Start here", "One command on your server, about five minutes"},
+	{"first-sign-in", "site/guide/first-sign-in.md", "Sign in the first time", "Start here", "Your password, two-factor sign-in, and a quick look around"},
+	{"add-a-server", "site/guide/add-a-server.md", "Add a server", "Start here", "Connect a server to the panel with one pasted command"},
+	{"add-a-protocol", "site/guide/add-a-protocol.md", "Add a protocol", "Start here", "What people's apps connect to - one click for the usual choice"},
+	{"add-users", "site/guide/add-users.md", "Add users", "Start here", "A person, their limits, and their link"},
+	{"connect-devices", "site/guide/connect-devices.md", "Connect a phone or computer", "Start here", "For the people you give links to - every platform, step by step"},
+	{"check-it-works", "site/guide/check-it-works.md", "Check that it works", "Start here", "See people online, and what to look at if they are not"},
+	{"everyday", "site/guide/everyday.md", "Everyday tasks", "Day to day", "Limits and alerts, pausing, renewing, plans and the status page"},
+	{"updates-and-backups", "site/guide/updates-and-backups.md", "Updates and backups", "Day to day", "Keep the panel current and your data safe"},
+	{"telegram-alerts", "site/guide/telegram-alerts.md", "Alerts on Telegram", "Day to day", "A bot that tells you when something needs you"},
+	{"troubleshooting", "site/guide/troubleshooting.md", "When something goes wrong", "Fix a problem", "What you see, why, and what to do"},
+	{"getting-started", "docs/getting-started.md", "Setup in detail", "Reference", "Every option of the panel, servers, protocols and users"},
+	{"operations", "docs/operations.md", "Running the panel", "Reference", "The database, backups, upgrades, moving hosts"},
+	{"routing", "docs/routing.md", "Traffic splitting", "Reference", "Sites, countries and apps through the exits you choose"},
+	{"health", "docs/health.md", "Health checks", "Reference", "Signs of a break-in or abuse, flagged for you to decide"},
+	{"telegram", "docs/telegram.md", "Telegram in detail", "Reference", "Notifications, commands, users' links and the Mini App"},
+	{"ipv6-and-dynamic-dns", "docs/ipv6-and-dynamic-dns.md", "IPv6 and dynamic DNS", "Reference", "Servers whose address changes, and IPv6-only servers"},
+	{"plugins", "docs/plugins.md", "Plugins", "Reference", "Looks, pages, API routes and filters of your own"},
+	{"api", "docs/api.md", "API", "Reference", "Tokens, scopes and every endpoint"},
+	{"mcp", "docs/mcp.md", "AI assistants", "Reference", "The MCP server: what assistants may do, and ask first"},
+	{"architecture", "docs/architecture.md", "How it works", "Reference", "Panel, agents, cores and the data in between"},
+	{"changelog", "CHANGELOG.md", "Changelog", "Reference", "Every release, in plain words"},
 }
 
 // Nav is how the sidebar and the pager name a page.
@@ -141,7 +155,11 @@ func main() {
 		index = append(index, entries...)
 	}
 	for _, r := range all {
-		data := map[string]any{"Root": "../", "Base": "", "Nav": "guide", "Page": r, "Pages": pages, "Repo": repoURL, "Demo": demoURL,
+		nav := "guide"
+		if r.Group == "Reference" {
+			nav = "reference"
+		}
+		data := map[string]any{"Root": "../", "Base": "", "Nav": nav, "Page": r, "Pages": pages, "Repo": repoURL, "Demo": demoURL,
 			"Title": r.Title + " · Meridian", "Description": r.Blurb, "Version": version}
 		file := filepath.Join(out, "guide", r.Slug+".html")
 		if r.Slug == "index" {
@@ -200,6 +218,10 @@ func render(md goldmark.Markdown, src []byte, p page, base, root string) (render
 					cur.Text = cur.Text[:400]
 				}
 			}
+		case *ast.Blockquote:
+			if kind := calloutKind(x, src); kind != "" {
+				x.SetAttributeString("class", []byte("callout "+kind))
+			}
 		case *ast.Link:
 			x.Destination = []byte(rewriteLink(string(x.Destination), p.Source, base, root))
 		case *ast.Image:
@@ -218,6 +240,32 @@ func render(md goldmark.Markdown, src []byte, p page, base, root string) (render
 	html = strings.ReplaceAll(html, "</table>", "</table></div>")
 	r.Body = template.HTML(html)
 	return r, entries
+}
+
+// calloutKind makes a quote that starts with a bold label a box of its kind: "Tip:", "Note:",
+// "Warning:", "Stop:" or "If it fails:" (> **Tip:** ...).
+func calloutKind(q *ast.Blockquote, src []byte) string {
+	par, ok := q.FirstChild().(*ast.Paragraph)
+	if !ok {
+		return ""
+	}
+	em, ok := par.FirstChild().(*ast.Emphasis)
+	if !ok || em.Level != 2 {
+		return ""
+	}
+	switch strings.TrimSuffix(strings.ToLower(plain(em, src)), ":") {
+	case "tip":
+		return "tip"
+	case "note", "good to know":
+		return "note"
+	case "warning", "careful":
+		return "warn"
+	case "stop", "never":
+		return "stop"
+	case "if it fails", "if something goes wrong":
+		return "fail"
+	}
+	return ""
 }
 
 // plain is a node's text.

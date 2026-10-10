@@ -22,8 +22,8 @@
   <button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav">{{icon "more"}}</button>
   <nav class="nav" id="nav" aria-label="Main">
     <a href="{{.Root}}index.html"{{if eq .Nav "overview"}} aria-current="page"{{end}}>Overview</a>
-    <a href="{{.Root}}guide/getting-started.html"{{if eq .Nav "guide"}} aria-current="page"{{end}}>Guide</a>
-    <a href="{{.Root}}guide/changelog.html">Changelog</a>
+    <a href="{{.Root}}guide/before-you-begin.html"{{if eq .Nav "guide"}} aria-current="page"{{end}}>Guide</a>
+    <a href="{{.Root}}guide/getting-started.html"{{if eq .Nav "reference"}} aria-current="page"{{end}}>Reference</a>
     <a href="{{.Demo}}" rel="noopener">Demo {{icon "external"}}</a>
     <a href="{{.Repo}}/releases" rel="noopener">Download</a>
     <a href="{{.Repo}}" rel="noopener">GitHub {{icon "external"}}</a>
@@ -53,9 +53,9 @@
   <div class="foot-in">
     <div class="foot-brand">{{template "mark"}}<div><b>Meridian</b><span>Free software under the AGPL-3.0. Linux, amd64 and arm64.</span></div></div>
     <div class="foot-cols">
-      <div><h4>Guide</h4><a href="{{.Root}}guide/getting-started.html">Getting started</a><a href="{{.Root}}guide/operations.html">Running the panel</a><a href="{{.Root}}guide/api.html">API</a></div>
+      <div><h4>Guide</h4><a href="{{.Root}}guide/before-you-begin.html">Before you begin</a><a href="{{.Root}}guide/install.html">Install the panel</a><a href="{{.Root}}guide/troubleshooting.html">When something goes wrong</a></div>
       <div><h4>Project</h4><a href="{{.Repo}}" rel="noopener">Source code</a><a href="{{.Repo}}/releases" rel="noopener">Releases</a><a href="{{.Demo}}" rel="noopener">The demo</a><a href="{{.Repo}}/blob/main/SECURITY.md" rel="noopener">Security</a></div>
-      <div><h4>Help</h4><a href="{{.Repo}}/issues" rel="noopener">Questions and bugs</a><a href="{{.Root}}guide/changelog.html">What changed</a></div>
+      <div><h4>Help</h4><a href="{{.Repo}}/issues" rel="noopener">Questions and bugs</a><a href="{{.Root}}guide/changelog.html">What changed</a><a href="{{.Root}}guide/getting-started.html">Reference</a></div>
     </div>
   </div>
 </footer>

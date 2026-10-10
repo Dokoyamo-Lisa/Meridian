@@ -1,5 +1,5 @@
-// Meridian's guide: the look menu, the menu on phones, copy buttons, search over the guide, and the
-// page's contents following the reading.
+// Meridian's guide: the look menu, the menu on phones, copy buttons, search over the guide, the
+// page's contents following the reading, and screenshots full size on a click.
 ;(function () {
   'use strict'
   var root = document.documentElement
@@ -162,6 +162,25 @@
     }, { rootMargin: '-70px 0px -70% 0px' })
     heads.forEach(function (h) { io.observe(h) })
   }
+
+  // ---------------------------------------------------------------- screenshots, full size on a click
+  var zoom = null
+  function closeZoom() { if (zoom) { zoom.remove(); zoom = null } }
+  $$('.prose img').forEach(function (img) {
+    img.addEventListener('click', function () {
+      zoom = document.createElement('div')
+      zoom.className = 'zoom'
+      zoom.setAttribute('role', 'dialog')
+      zoom.setAttribute('aria-label', img.alt || 'Screenshot')
+      var big = document.createElement('img')
+      big.src = img.currentSrc || img.src
+      big.alt = img.alt
+      zoom.appendChild(big)
+      zoom.addEventListener('click', closeZoom)
+      document.body.appendChild(zoom)
+    })
+  })
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeZoom() })
 
   apply(chosen())
 })()
