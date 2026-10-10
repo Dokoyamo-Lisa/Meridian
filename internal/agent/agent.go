@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -118,7 +119,7 @@ type Agent struct {
 	state       *proto.State
 	applied     *proto.Applied
 	results     []proto.ActionResult
-	done        map[int64]bool
+	done        map[int64]int64 // actions started: id -> when the panel made it (0: not known)
 	events      []proto.AgentEvent
 	lastHello   time.Time
 	limitWarned time.Time  // when a speed limit failure was last logged (limits.go)
@@ -173,7 +174,7 @@ func New(cfg *Config) (*Agent, error) {
 		_ = os.Chmod(d, mode)
 	}
 	a := &Agent{cfg: cfg, client: c, nft: nft.New(), wg: wg.New(), sampler: &sys.Sampler{}, ping: newPinger(), runCtx: context.Background(),
-		out: loadOutbox(filepath.Join(DataDir, "outbox.json")), started: time.Now(), done: map[int64]bool{},
+		out: loadOutbox(filepath.Join(DataDir, "outbox.json")), started: time.Now(), done: map[int64]int64{},
 		kick: make(chan struct{}, 1), cores: map[string]proto.CoreStatus{}}
 	a.xray = &xray.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "xray"), RunDir: RunDir, APIPort: cfg.APIPort,
 		Events: a.event, Reserved: func() []int { return append([]int{cfg.APIPort}, a.hy.LocalPorts()...) }}
@@ -585,8 +586,10 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 func (a *Agent) runActions(st *proto.State, acts []proto.Action) {
 	for _, act := range acts {
 		a.mu.Lock()
-		done := a.done[act.ID]
-		a.done[act.ID] = true
+		at, seen := a.done[act.ID]
+		// the same action: the same id - and the same time the panel made it, where both are known
+		done := seen && (at == act.At || at == 0 || act.At == 0)
+		a.done[act.ID] = act.At
 		a.mu.Unlock()
 		if done {
 			continue
@@ -1349,10 +1352,11 @@ func (a *Agent) donePath() string {
 }
 
 // actionsFile is what the agent keeps of actions: the ids it started (each runs once, across restarts
-// too - an upgrade restarts the agent) and the results the panel has not acknowledged yet, so a
-// result outlives a restart before the next report (an upgrade's always does).
+// too - an upgrade restarts the agent), when the panel made each, and the results the panel has not
+// acknowledged yet, so a result outlives a restart before the next report (an upgrade's always does).
 type actionsFile struct {
 	Done    []int64              `json:"done"`
+	At      map[string]int64     `json:"at,omitempty"` // id -> Action.At
 	Results []proto.ActionResult `json:"results,omitempty"`
 }
 
@@ -1370,7 +1374,7 @@ func (a *Agent) loadDone() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, id := range f.Done {
-		a.done[id] = true
+		a.done[id] = f.At[strconv.FormatInt(id, 10)]
 	}
 	a.results = append(a.results, f.Results...)
 }
@@ -1379,14 +1383,21 @@ func (a *Agent) saveDone() {
 	a.actionsMu.Lock()
 	defer a.actionsMu.Unlock()
 	a.mu.Lock()
-	f := actionsFile{Done: make([]int64, 0, len(a.done)), Results: slices.Clone(a.results)}
-	for id := range a.done {
+	f := actionsFile{Done: make([]int64, 0, len(a.done)), At: map[string]int64{}, Results: slices.Clone(a.results)}
+	at := map[int64]int64{}
+	for id, t := range a.done {
 		f.Done = append(f.Done, id)
+		at[id] = t
 	}
 	a.mu.Unlock()
 	slices.Sort(f.Done)
 	if len(f.Done) > 1000 { // the newest: ids only grow
 		f.Done = f.Done[len(f.Done)-1000:]
+	}
+	for _, id := range f.Done {
+		if at[id] != 0 {
+			f.At[strconv.FormatInt(id, 10)] = at[id]
+		}
 	}
 	b, _ := json.Marshal(f)
 	tmp := a.donePath() + ".tmp"

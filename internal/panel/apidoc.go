@@ -523,7 +523,7 @@ var tagDocs = []struct{ Name, Desc string }{
 	{"Protocols", "VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP, Hysteria2 and WireGuard, over raw TCP, WebSocket, gRPC, HTTPUpgrade or XHTTP with TLS, REALITY or a CDN - only combinations that work. Includes proxy pass."},
 	{"Import", "Bring over protocols and users from Xray, V2Ray, 3x-ui, x-ui, sing-box or Hysteria2 already running on a server."},
 	{"Forwards", "Port forwards through nftables (kernel) or realm."},
-	{"Certificates", "Shared certificates: kept once, used by TLS and Hysteria2 protocols on any server, replaced once for all of them."},
+	{"Certificates", "Shared certificates: kept once, used by TLS, Hysteria2 and AnyTLS protocols on any server, replaced once for all of them."},
 	{"Users", "The people you serve: each has a subscription link and can sign in to see their own usage. A used-up quota suspends a user until their data starts over; other limits raise alerts."},
 	{"User page", "What a signed-in user sees. Uses its own session cookie; the admin API does not accept it."},
 	{"Status page", "The public status page: which servers are up and where. Chosen and shaped in the settings."},

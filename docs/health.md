@@ -154,7 +154,7 @@ asked; the timeline has each request and its result.
   server, and the buttons to decide.
 - **The server page**: a line under the numbers - "Health · nothing needs you · checked 2m ago" -
   that opens into the server's risks (by itself when something serious is open).
-- **The overview**: open high and critical risks are in **Needs you**.
+- **The overview**: open high and critical risks are in **Needs attention**.
 - **Notifications** (Settings › Notifications): the **Health risks** group sends high and critical
   risks as they are found; it is on by default.
 - **Telegram**: with the bot answering commands and changes allowed, each high or critical risk

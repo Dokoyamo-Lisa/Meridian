@@ -192,4 +192,4 @@ curl -H "Authorization: Bearer $TOKEN" https://panel.example.com/api/actions/41
 | MCP | `POST /mcp` - see [mcp.md](mcp.md) |
 
 The agent endpoints under `/agent/v1/` are internal and signed per server; see
-[architecture.md](architecture.md#panel--agent-channel).
+[architecture.md](architecture.md#panel---agent-channel).

@@ -1,6 +1,21 @@
 # Meridian status
 
-Last updated 2026-10-10 (version 1.3.1).
+Last updated 2026-10-10 (version 1.3.2).
+
+## Tested for 1.3.2 (local panels; Ubuntu 26.04 VMs)
+
+- **A new panel's actions after a reinstall**: an agent that had run actions 27-31 for one panel was
+  installed again for a brand-new panel at the same address and as the same server number - its
+  record of done actions stays - and that panel's action 31, a restart, ran (Xray got a new process
+  id); before, it was skipped as done. Installed then for a third panel at another address, the
+  agent dropped its old record (written the way agents up to 1.3.1 did, without times) and its old
+  state; that panel's action 27 ran too.
+- **Upgrade from 1.3.1**: both lab servers' agents upgraded from the panel; Xray and the six users'
+  own servers (Snell, mieru, AnyTLS) kept their process ids. The upgrade action ran once; the first
+  action after it was recorded with its time.
+- **IPv6-only note**: a panel reached at an IPv4 address asks for a domain name with an AAAA record,
+  and no note suggests a relay.
+- **PostgreSQL 18.6**: the panel, database and backup suites. `make check` clean.
 
 ## Tested for 1.3.1 (local panel; Ubuntu 26.04 VMs, real clients in a network namespace)
 

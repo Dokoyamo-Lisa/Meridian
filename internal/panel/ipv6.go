@@ -81,9 +81,19 @@ func (p *Panel) panelAddr(ctx context.Context, wait bool) panelAddress {
 		}
 	}
 	if known && len(out.IPv6) == 0 {
-		out.Note = fmt.Sprintf("%s has no IPv6 address (no AAAA record), so a server with IPv6 only cannot reach the panel to install its agent or report - unless its provider carries IPv6 to IPv4 for it (NAT64). Give %s an AAAA record for the panel's IPv6 address, or let such a server reach the panel through another server that has both (a relay).", host, host)
+		// no relay: a server learns of one from the panel, so it must have reached the panel first
+		out.Note = noIPv6Note(host, "a server with IPv6 only cannot reach the panel to install its agent or report")
 	}
 	return out
+}
+
+// noIPv6Note says what a server with IPv6 only needs when the panel's address (host) has no IPv6:
+// an AAAA record for a name - or a name at all, when the panel is reached at an IPv4 address.
+func noIPv6Note(host, what string) string {
+	if _, err := netip.ParseAddr(host); err == nil {
+		return fmt.Sprintf("The panel is reached at the IPv4 address %s, so %s - unless its provider carries IPv6 to IPv4 for it (NAT64). Give the panel a domain name with an AAAA record for its IPv6 address (Settings › Panel › Public URL).", host, what)
+	}
+	return fmt.Sprintf("%s has no IPv6 address (no AAAA record), so %s - unless its provider carries IPv6 to IPv4 for it (NAT64). Give %s an AAAA record for the panel's IPv6 address.", host, what, host)
 }
 
 // panelIPv6Issue is the note for the page of a server without IPv4 that has not reached the panel
@@ -97,7 +107,8 @@ func (p *Panel) panelIPv6Issue(ctx context.Context, s *Server) string {
 	if pa.Note == "" {
 		return ""
 	}
-	return fmt.Sprintf("This server has no IPv4, and the panel's address %s has no IPv6 (no AAAA record): its agent cannot reach the panel, unless the provider carries IPv6 to IPv4 for it (NAT64). Give %s an AAAA record for the panel's IPv6 address, or let this server reach the panel through another server that has both (a relay).", pa.Host, pa.Host)
+	// no relay: the agent learns of one from the panel, which it cannot reach
+	return noIPv6Note(pa.Host, "this server, which has no IPv4, cannot reach the panel")
 }
 
 func (p *Panel) apiPanelAddress(w http.ResponseWriter, r *http.Request, a *Account) error {

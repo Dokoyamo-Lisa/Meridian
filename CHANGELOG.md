@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.3.2 - 2026-10-10
+
+Fixes; upgrade the panel, then the agents (**Settings › Updates** - nobody is disconnected).
+
+- **An agent installed again for another panel no longer skips that panel's first actions.** Agents
+  remembered which actions they had done by number only, and a new panel numbers its actions from 1
+  again: an agent reinstalled for a new panel (or a panel restored from an older backup) ignored
+  restarts and upgrades whose numbers it had seen before. Actions now carry when they were made, and
+  an install for another panel or server forgets the old panel's actions, its state and the relay it
+  reached that panel through. Tested: a new panel's action 31 and another's action 27 both ran on an
+  agent that had done actions 27-31 for an earlier panel.
+- **The note for servers with IPv6 only** (the **Add a server** dialog, and the page of such a server
+  that cannot reach the panel) no longer suggests a relay, which such a server could never learn of,
+  and makes sense when the panel is reached at an IPv4 address: it asks for a domain name with an
+  AAAA record.
+- **Certificates**: the page now says that AnyTLS uses them too and reads a replaced one at once.
+- The guide covers every feature: more protocols, a port for each person (mieru, Snell, AnyTLS),
+  certificates, the server's page, servers in special places, importing a setup, sharing servers,
+  traffic splitting, a person's page, limits, monitoring, health checks and protective steps,
+  country rules, sign-in safety, the status page, branding, the Telegram bot, and automation.
+
 ## 1.3.1 - 2026-10-10
 
 **Security: upgrade every server's agent, then press restart needed.** In 1.3.0, the users of mieru

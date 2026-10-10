@@ -89,7 +89,8 @@ usage back to zero: **⋯ › Reset usage…**.
 ## Plans: the same limits for many people
 
 **Users › Plans** keeps templates: a quota, how long it lasts, a device limit, a price for your own
-records. Pick a plan in the **New user** form, and the person gets all of it at once.
+records. Pick a plan in the **New user** form, and the person gets all of it at once. Every limit, in
+detail: [Limits in detail](limits.md).
 
 ## A new password or a new link for someone
 
@@ -113,4 +114,4 @@ records. Pick a plan in the **New user** form, and the person gets all of it at 
 ![The status page settings](../img/guide/settings-status-page.webp)
 
 > **Good to know:** The status page never shows your users, prices, protocols or keys, and shows IP
-> addresses only if you turn that on.
+> addresses only if you turn that on. Everything it can show: [The status page](status-page.md).

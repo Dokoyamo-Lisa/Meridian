@@ -79,7 +79,7 @@ func TestSharedTaken(t *testing.T) {
 // TestGuestActions: a guest panel may restart the cores and check sites on the internet, nothing
 // that reaches the host itself.
 func TestGuestActions(t *testing.T) {
-	a := &Agent{done: map[int64]bool{}, kick: make(chan struct{}, 1), actions: filepath.Join(t.TempDir(), "a.json")}
+	a := &Agent{done: map[int64]int64{}, kick: make(chan struct{}, 1), actions: filepath.Join(t.TempDir(), "a.json")}
 	g := &guest{slot: 1, link: ShareLink{Panel: "https://guest.example.com"}, done: map[int64]bool{}}
 	ctx := context.Background()
 	for kind, want := range map[string]string{
@@ -110,7 +110,7 @@ func TestShareAdd(t *testing.T) {
 	ConfDir, ConfPath, DataDir = dir, filepath.Join(dir, "agent.json"), dir
 	t.Cleanup(func() { ConfDir, ConfPath, DataDir = oldDir, oldConf, oldData })
 	homeTok := seal.Token(1, seal.NewSecret())
-	a := &Agent{cfg: &Config{Panel: "https://home.example.com", Token: homeTok, APIPort: 50000}, done: map[int64]bool{}, kick: make(chan struct{}, 1)}
+	a := &Agent{cfg: &Config{Panel: "https://home.example.com", Token: homeTok, APIPort: 50000}, done: map[int64]int64{}, kick: make(chan struct{}, 1)}
 	tok := seal.Token(9, seal.NewSecret())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

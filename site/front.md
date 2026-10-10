@@ -1,13 +1,17 @@
 # Rosélune
 
-Rosélune sets up VLESS, VMess, Trojan, Shadowsocks, Hysteria2, WireGuard, mieru and Snell on your own
-Linux servers, gives every user a link for their apps and a page of their own, and shows every server
+Rosélune sets up VLESS, VMess, Trojan, Shadowsocks, Hysteria2, WireGuard, mieru, Snell and AnyTLS on
+your own Linux servers, gives every user a link for their apps and a page of their own, and shows every server
 on a live globe. It never pauses anyone or restarts a core on its own: a user who uses up their data is
 off until it starts over, other limits raise alerts, and a restart waits for a button that says what
 it will do.
 
 **New to this? [Start with the guide](guide/before-you-begin.md)** - it goes one step at a time, from
-renting a server to the first person connected, and shows what you should see at every step.
+renting a server to the first person connected, and shows what you should see at every step. Then
+every feature has a page of its own: [protocols](guide/more-protocols.md),
+[people and limits](guide/limits.md), [keeping servers safe](guide/keep-servers-safe.md),
+[sending traffic elsewhere](guide/send-traffic-elsewhere.md), [the status page](guide/status-page.md)
+and more - all in the menu.
 
 [Try the demo](https://deep.losantos.space) · [Releases](https://github.com/Dokoyamo-Lisa/Meridian/releases) ·
 [Source on GitHub](https://github.com/Dokoyamo-Lisa/Meridian)
@@ -40,7 +44,7 @@ let in without signing in, and nothing there can be changed.
 | **Users see their own** | Each user has a page with the data they have left, their devices, and their link with a QR code and one-tap import for every app. A Telegram bot answers them too. |
 | **A status page** | Every server on a live globe, with its health, history and ping monitors, public or private. IP addresses stay hidden unless you show them; prices and users never appear. |
 | **Traffic splitting** | Sites, countries, ports or BitTorrent go directly, through another server, a provider's proxy or a load balancer, for every server or a few, applied live. |
-| **Health checks** | Every few minutes each agent looks for miners, new accounts and SSH keys, programs started from temporary folders, ports nobody opened and changed services, and asks you about them. |
+| **Health checks** | Every few minutes each agent looks for miners, new accounts and SSH keys, programs started from temporary folders, SSH that takes passwords, ports nobody opened and changed services, and asks you about them. Where the server can act - stop a miner, remove a key, lock an account, keys-only SSH - a button does it, only after you confirm, and can undo it. |
 | **Accountable** | Every connecting address with its user, server, place and network; destinations per user; traffic counted exactly once per user, protocol and day. |
 | **Shared servers** | Lend a server to a friend's panel without your console. Reach servers whose address changes by their name, and IPv6-only servers wherever both ends can meet. |
 | **Automatable** | A REST API with scoped tokens, and an MCP server, so an AI assistant can answer "who is sharing their link?" and asks first before anything disruptive. |
@@ -81,7 +85,7 @@ let in without signing in, and nothing there can be changed.
 | Shadowsocks | 2022 ciphers and classic AEAD, over TCP and UDP; SOCKS5 and HTTP with a password per user |
 | Hysteria2 | QUIC, with port hopping and obfuscation |
 | WireGuard | In the kernel, with the official apps |
-| mieru, Snell | A port and a small server of their own for every user, so usage, limits and cuts are exact; mieru for the mihomo apps and Stash, Snell for Surge, Stash, the mihomo apps and sing-box |
+| mieru, Snell, AnyTLS | A port and a small server of their own for every user, so usage, limits and cuts are exact; mieru for the mihomo apps and Stash, Snell for Surge, Stash, the mihomo apps and sing-box, AnyTLS for the mihomo apps, sing-box and Surge (with a domain certificate also Stash and Hiddify) |
 
 | Apps | How users add their link |
 |---|---|

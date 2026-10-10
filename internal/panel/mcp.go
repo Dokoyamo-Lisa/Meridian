@@ -1293,7 +1293,7 @@ var mcpTools = []mcpTool{
 			return pick(v, "id", "kind", "label", "port", "code", "notes"), err
 		}},
 	{Name: "list_certificates", Title: "Shared certificates",
-		Description: "The shared certificates (kept once, used by TLS and Hysteria2 protocols on any server): names, domains, expiry, and for each protocol using one whether its server serves it yet (live), holds it (installed, Xray loads it within ten minutes), has not taken it (pending), is offline or needs agent 0.6. Private keys are never shown.",
+		Description: "The shared certificates (kept once, used by TLS, Hysteria2 and AnyTLS protocols on any server): names, domains, expiry, and for each protocol using one whether its server serves it yet (live), holds it (installed, Xray loads it within ten minutes), has not taken it (pending), is offline or needs agent 0.6. Private keys are never shown.",
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
 			v, err := c.api("GET", "/api/certs", nil)
 			return pick(v, "id", "name", "domains", "not_after", "sha256", "uses", "live"), err

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rosélune API",
-    "version": "1.3.1",
+    "version": "1.3.2",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -35,7 +35,7 @@
       "name": "Forwards"
     },
     {
-      "description": "Shared certificates: kept once, used by TLS and Hysteria2 protocols on any server, replaced once for all of them.",
+      "description": "Shared certificates: kept once, used by TLS, Hysteria2 and AnyTLS protocols on any server, replaced once for all of them.",
       "name": "Certificates"
     },
     {

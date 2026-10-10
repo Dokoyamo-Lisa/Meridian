@@ -75,7 +75,8 @@ func TestUpgradeFrom074(t *testing.T) {
 }
 
 // normState leaves out what changes with every version by design: the revision and the version
-// agents are told is the newest (their own upgrade is separate), and the cores' download digests.
+// agents are told is the newest (their own upgrade is separate), the cores' download digests, and
+// when each pending action was made (1.3.2 and later: it only tells the agent which action it is).
 func normState(t *testing.T, raw []byte) map[string]any {
 	t.Helper()
 	var m map[string]any
@@ -88,6 +89,13 @@ func normState(t *testing.T, raw []byte) map[string]any {
 	}
 	if c, ok := m["cores"].(map[string]any); ok {
 		delete(c, "digests")
+	}
+	if acts, ok := m["actions"].([]any); ok {
+		for _, x := range acts {
+			if a, ok := x.(map[string]any); ok {
+				delete(a, "at")
+			}
+		}
 	}
 	return m
 }

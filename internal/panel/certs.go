@@ -21,7 +21,7 @@ import (
 )
 
 // Shared certificates: one certificate - a wildcard, or one your own ACME client renews - kept in
-// the panel and used by TLS and Hysteria2 protocols on any number of servers. Updating it once (here,
+// the panel and used by TLS, Hysteria2 and AnyTLS protocols on any number of servers. Updating it once (here,
 // or with one API call from a renewal hook) sends it to every server that uses it; each server
 // reports the certificate it holds and the one its TLS ports serve, so the panel shows where the new
 // one is live.

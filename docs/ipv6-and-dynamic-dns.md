@@ -82,8 +82,9 @@ Set **IP version** to **IPv6 only** on the server (Edit). Then:
 
 An IPv6-only server installs its agent from the panel and reports to it, so the panel's address must
 have IPv6 (an AAAA record for the panel's domain). The **Add a server** dialog says so when the panel's
-address has none. If you cannot give the panel IPv6, the server can reach it through another server
-that has both - a relay (see [Operations](operations.md#a-server-that-keeps-losing-the-panel)).
+address has none, or is an IPv4 address. A relay cannot stand in for it: a server learns of its relay
+from the panel, so it has to reach the panel first. (A server that has IPv4 now and is going to lose it
+can be moved to a relay beforehand - see [Operations](operations.md#a-server-that-keeps-losing-the-panel).)
 
 Xray, Hysteria and realm are downloaded from the panel's own mirror first, so GitHub having no IPv6
 does not matter.

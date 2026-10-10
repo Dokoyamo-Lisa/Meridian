@@ -314,6 +314,9 @@ type Action struct {
 	ID   int64           `json:"id"`
 	Kind string          `json:"kind"`
 	Args json.RawMessage `json:"args,omitempty"`
+	// At is when the panel made it: with the id, what the agent knows a done action by - a new panel's
+	// first actions have the ids an earlier panel's had (1.3.2 and later; 0 from older panels)
+	At int64 `json:"at,omitempty"`
 }
 
 const (

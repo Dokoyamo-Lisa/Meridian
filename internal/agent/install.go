@@ -76,14 +76,20 @@ func Install(panel, token string, apiPort int) error {
 		return fmt.Errorf("the token looks wrong - copy the whole command from the panel (%v)", err)
 	}
 	cfg, err := LoadConfig()
+	moved := false // another panel, or another server of it, than the agent here served
 	if err != nil {
 		start := DefaultAPIPort
 		if apiPort != 0 {
 			start = apiPort
 		}
 		cfg = &Config{APIPort: freePort(start)}
-	} else if apiPort != 0 && apiPort != cfg.APIPort {
-		fmt.Printf("Keeping this agent's local ports %d and %d (moving them would restart Xray and Hysteria2).\n", cfg.APIPort, cfg.APIPort+1)
+	} else {
+		if apiPort != 0 && apiPort != cfg.APIPort {
+			fmt.Printf("Keeping this agent's local ports %d and %d (moving them would restart Xray and Hysteria2).\n", cfg.APIPort, cfg.APIPort+1)
+		}
+		oldID, _, _ := seal.ParseToken(cfg.Token)
+		newID, _, _ := seal.ParseToken(token)
+		moved = strings.TrimRight(cfg.Panel, "/") != panel || oldID != newID
 	}
 	cfg.Panel, cfg.Token = panel, token
 
@@ -92,7 +98,7 @@ func Install(panel, token string, apiPort int) error {
 	if err != nil {
 		return err
 	}
-	if st := (&Agent{}).loadState(); st != nil { // a reinstall: through the relay this server used, if any
+	if st := (&Agent{}).loadState(); st != nil && !moved { // a reinstall: through the relay this server used, if any
 		c.follow(st)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -112,6 +118,12 @@ func Install(panel, token string, apiPort int) error {
 		default:
 			return fmt.Errorf("cannot reach the panel at %s: %v", panel, err)
 		}
+	}
+	if moved {
+		// what the agent did and ran for the panel before is not this one's: its actions' ids would
+		// shadow the new panel's, its state would serve another panel's protocols until the first poll
+		os.Remove(filepath.Join(DataDir, "actions-done.json"))
+		os.Remove(filepath.Join(DataDir, "state.json"))
 	}
 	if err := cfg.Save(); err != nil {
 		return err

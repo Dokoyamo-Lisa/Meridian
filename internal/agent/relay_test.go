@@ -342,11 +342,13 @@ func TestRelayPortIsNeverFiltered(t *testing.T) {
 }
 
 // TestActionResultsSurviveRestart: an action's result is on disk until the panel has it, so an agent
-// that restarts first (an upgrade does) sends it after the restart; the old file format still loads.
+// that restarts first (an upgrade does) sends it after the restart; an action runs once, also after a
+// restart - but a new panel's action with an id an earlier panel used is another action (the time
+// the panel made it tells them apart); the old file formats still load.
 func TestActionResultsSurviveRestart(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "actions.json")
-	a := &Agent{done: map[int64]bool{}, kick: make(chan struct{}, 1), actions: file}
-	a.runActions(&proto.State{}, []proto.Action{{ID: 7, Kind: "nothing-like-this"}})
+	a := &Agent{done: map[int64]int64{}, kick: make(chan struct{}, 1), actions: file}
+	a.runActions(&proto.State{}, []proto.Action{{ID: 7, Kind: "nothing-like-this", At: 1000}})
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		b, _ := os.ReadFile(file)
@@ -358,14 +360,14 @@ func TestActionResultsSurviveRestart(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	b := &Agent{done: map[int64]bool{}, actions: file}
+	b := &Agent{done: map[int64]int64{}, actions: file}
 	b.loadDone()
-	if !b.done[7] || len(b.results) != 1 || b.results[0].ID != 7 || b.results[0].OK || !strings.Contains(b.results[0].Output, "unknown action") {
+	if b.done[7] != 1000 || len(b.results) != 1 || b.results[0].ID != 7 || b.results[0].OK || !strings.Contains(b.results[0].Output, "unknown action") {
 		t.Fatalf("after a restart: done %v, results %+v", b.done, b.results)
 	}
 	// started once, never twice - also after the restart
 	b.kick = make(chan struct{}, 1)
-	b.runActions(&proto.State{}, []proto.Action{{ID: 7, Kind: "nothing-like-this"}})
+	b.runActions(&proto.State{}, []proto.Action{{ID: 7, Kind: "nothing-like-this", At: 1000}})
 	time.Sleep(50 * time.Millisecond)
 	b.mu.Lock()
 	n := len(b.results)
@@ -373,11 +375,32 @@ func TestActionResultsSurviveRestart(t *testing.T) {
 	if n != 1 {
 		t.Errorf("the action ran again: %d results", n)
 	}
-	// what agents before 1.0 wrote
+	// a new panel's first action has id 7 too, made at another time: it runs
+	b.runActions(&proto.State{}, []proto.Action{{ID: 7, Kind: "nothing-like-this", At: 2000}})
+	deadline = time.Now().Add(3 * time.Second)
+	for {
+		b.mu.Lock()
+		n = len(b.results)
+		b.mu.Unlock()
+		if n == 2 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n != 2 {
+		t.Errorf("a new panel's action with an old id did not run: %d results", n)
+	}
+	// what agents before 1.0 wrote, and 1.0 to 1.3.1 (ids alone): those ids count as done
 	os.WriteFile(file, []byte("[1,2,3]"), 0o600)
-	c := &Agent{done: map[int64]bool{}, actions: file}
+	c := &Agent{done: map[int64]int64{}, actions: file}
 	c.loadDone()
-	if !c.done[1] || !c.done[3] || len(c.results) != 0 {
+	if _, ok := c.done[3]; !ok || len(c.results) != 0 {
 		t.Errorf("the old format: %v %v", c.done, c.results)
+	}
+	os.WriteFile(file, []byte(`{"done":[4,5]}`), 0o600)
+	d := &Agent{done: map[int64]int64{}, actions: file}
+	d.loadDone()
+	if _, ok := d.done[5]; !ok {
+		t.Errorf("the 1.0 format: %v", d.done)
 	}
 }

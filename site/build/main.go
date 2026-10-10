@@ -56,6 +56,24 @@ var pages = []page{
 	{"everyday", "site/guide/everyday.md", "Everyday tasks", "Day to day", "Limits and alerts, pausing, renewing, plans and the status page"},
 	{"updates-and-backups", "site/guide/updates-and-backups.md", "Updates and backups", "Day to day", "Keep the panel current and your data safe"},
 	{"telegram-alerts", "site/guide/telegram-alerts.md", "Alerts on Telegram", "Day to day", "A bot that tells you when something needs you"},
+	{"telegram-bot", "site/guide/telegram-bot.md", "The Telegram bot and webhooks", "Day to day", "Commands, a daily report, buttons, your users' bot, Slack and Discord"},
+	{"more-protocols", "site/guide/more-protocols.md", "More protocols", "Servers and protocols", "Hysteria2, Cloudflare CDN, Trojan, VMess, Shadowsocks, WireGuard, SOCKS5"},
+	{"per-user-protocols", "site/guide/per-user-protocols.md", "A port for each person", "Servers and protocols", "mieru, Snell and AnyTLS: one port and one small server per user"},
+	{"certificates", "site/guide/certificates.md", "Certificates", "Servers and protocols", "Self-signed, Let's Encrypt, your own, or one shared by many servers"},
+	{"server-page", "site/guide/server-page.md", "Your server's page", "Servers and protocols", "Restarts, Restart everything, upgrades, the console, port forwards"},
+	{"special-servers", "site/guide/special-servers.md", "Servers in special places", "Servers and protocols", "NAT ports, changing addresses, IPv6 only, several IPs, a poor route"},
+	{"import-existing", "site/guide/import-existing.md", "Bring an existing setup", "Servers and protocols", "Take over Xray, x-ui, 3x-ui, sing-box or Hysteria2 with the same keys"},
+	{"sharing", "site/guide/sharing.md", "Share a server with another panel", "Servers and protocols", "Two panels, one server: each with its own protocols and users"},
+	{"send-traffic-elsewhere", "site/guide/send-traffic-elsewhere.md", "Send traffic elsewhere", "Servers and protocols", "Proxy passes, traffic rules, load balancers and external nodes"},
+	{"users-page", "site/guide/users-page.md", "A person's page", "People", "Their link, their sign-in, their devices, and what you can do for them"},
+	{"limits", "site/guide/limits.md", "Limits in detail", "People", "Data, devices, speed, single protocols, end dates and plans"},
+	{"monitor", "site/guide/monitor.md", "Watch who connects", "Watch and protect", "Online now, IP history, destinations, events, blocking and ping"},
+	{"keep-servers-safe", "site/guide/keep-servers-safe.md", "Keep your servers safe", "Watch and protect", "Health checks, and protective steps that run only on your click"},
+	{"country-rules", "site/guide/country-rules.md", "Country rules", "Watch and protect", "Keep countries away from your servers - or let in only some"},
+	{"sign-in-security", "site/guide/sign-in-security.md", "Sign-in and the panel's safety", "Watch and protect", "Passkeys, two-factor, Turnstile, who may open the site, maintenance"},
+	{"status-page", "site/guide/status-page.md", "The status page", "Make it yours", "Where it is, what it shows, and each server's place on the globe"},
+	{"branding", "site/guide/branding.md", "Your name, logo and looks", "Make it yours", "Your service's name and logo everywhere, colours and your own styles"},
+	{"automation", "site/guide/automation.md", "Scripts, AI assistants and plugins", "Make it yours", "API tokens, MCP for assistants, the REST API and plugins"},
 	{"troubleshooting", "site/guide/troubleshooting.md", "When something goes wrong", "Fix a problem", "What you see, why, and what to do"},
 	{"getting-started", "docs/getting-started.md", "Setup in detail", "Reference", "Every option of the panel, servers, protocols and users"},
 	{"operations", "docs/operations.md", "Running the panel", "Reference", "The database, backups, upgrades, moving hosts"},
@@ -165,7 +183,7 @@ func main() {
 		if r.Slug == "index" {
 			data["Root"], data["Base"], data["Nav"], file = "", "guide/", "overview", filepath.Join(out, "index.html")
 			data["Title"] = "Rosélune - proxy and VPN servers for your team, from one quiet panel"
-			data["Description"] = "Rosélune sets up VLESS, VMess, Trojan, Shadowsocks, Hysteria2, WireGuard, mieru and Snell on your own Linux servers, gives every user a link and a page of their own, and shows every server on a live globe."
+			data["Description"] = "Rosélune sets up VLESS, VMess, Trojan, Shadowsocks, Hysteria2, WireGuard, mieru, Snell and AnyTLS on your own Linux servers, gives every user a link and a page of their own, and shows every server on a live globe."
 		}
 		var b bytes.Buffer
 		check(tpl.ExecuteTemplate(&b, "doc.html", data))

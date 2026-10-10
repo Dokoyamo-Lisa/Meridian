@@ -43,7 +43,7 @@ export function Certificates() {
           </span>
         </div>
         <p class="muted" style="margin-top:0">
-          A certificate kept once and used by TLS and Hysteria2 protocols on any server - a wildcard, or one your own ACME client renews. Replace it here (or with one API call) and every server that uses it gets the new one: Xray loads it within ten minutes without disconnecting anyone, Hysteria2 restarts briefly. Each server reports what it holds and serves.
+          A certificate kept once and used by TLS, Hysteria2 and AnyTLS protocols on any server - a wildcard, or one your own ACME client renews. Replace it here (or with one API call) and every server that uses it gets the new one: Xray loads it within ten minutes without disconnecting anyone, AnyTLS reads it again at once, Hysteria2 restarts briefly. Each server reports what it holds and serves.
         </p>
         {list.data.length === 0 ? (
           <Empty title="No shared certificates yet">Add one, then choose “Shared certificate” in a protocol’s settings.</Empty>

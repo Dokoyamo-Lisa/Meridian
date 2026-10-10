@@ -562,7 +562,7 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 		brow.Close()
 	}
 
-	rows, err := p.db.QueryContext(ctx, `SELECT id, kind, args FROM actions WHERE server_id = ? AND status = 'pending'
+	rows, err := p.db.QueryContext(ctx, `SELECT id, kind, args, created_at FROM actions WHERE server_id = ? AND status = 'pending'
 		ORDER BY id`, id)
 	if err != nil {
 		return nil, err
@@ -570,7 +570,7 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 	for rows.Next() {
 		var a proto.Action
 		var args string
-		if rows.Scan(&a.ID, &a.Kind, &args) == nil {
+		if rows.Scan(&a.ID, &a.Kind, &args, &a.At) == nil {
 			a.Args = json.RawMessage(args)
 			st.Actions = append(st.Actions, a)
 		}
