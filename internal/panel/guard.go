@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"regexp"
@@ -16,23 +17,34 @@ import (
 	"time"
 )
 
-// Guarding the sign-in pages against guessing, besides the per-attempt limits in handleLogin:
+// Guarding the sign-in pages against guessing, besides the per-attempt limits in signinGate:
 //
-//   - an address that keeps failing is shut out of signing in, for longer each time it comes back
-//     (15 minutes, an hour, four, then a day);
-//   - a username that many addresses fail at gets one try a minute - except from addresses that signed
-//     in to it in the last 30 days, so nobody can lock the supervisor out by failing on purpose;
+//   - an address that fails three times in 15 minutes is shut out of signing in, for longer each time
+//     it comes back (15 minutes, an hour, four, then a day);
+//   - a username that fails five times from addresses it does not know gets one try a minute from
+//     those - addresses that signed in to it in the last 30 days are never slowed down or shut out by
+//     their network, so nobody can lock the supervisor out by failing on purpose;
+//   - a network that fails ten times in an hour - the IPv4 /24 or the IPv6 /24 the addresses are in -
+//     cannot sign in for a day, whichever of its addresses tries next (a right password does not
+//     reset its count; only time lifts the ban);
+//   - passkeys are never held back by these: they cannot be guessed, and they are the way in for the
+//     supervisor while their own network is banned;
 //   - Cloudflare Turnstile, when the operator turns it on, has every sign-in prove it is a person, on
 //     the panel's own pages (never Cloudflare's challenge page); MERIDIAN_NO_TURNSTILE=1 on the
 //     panel's host switches it off again;
 //   - maintenance mode keeps everyone but the supervisor out while the servers go on serving.
 
 const (
-	guardWindow   = 15 * 60 // seconds failures are counted in
-	guardIPFails  = 10      // failures from one address in the window that shut it out
-	guardUserFail = 10      // failures at one username, from addresses it does not know, before it slows down
-	guardUserGap  = 60      // ...to one try a minute from those
-	guardForget   = 24 * 3600
+	guardWindow    = 15 * 60 // seconds failures are counted in
+	guardIPFails   = 3       // failures from one address in the window that shut it out (also: tries per address)
+	guardUserFail  = 5       // failures at one username, from addresses it does not know, before it slows down (also: tries)
+	guardUserGap   = 60      // ...to one try a minute from those
+	guardForget    = 24 * 3600
+	guardNetFails  = 10        // failures from one network...
+	guardNetWindow = 3600      // ...within an hour...
+	guardNetBan    = 24 * 3600 // ...keep the whole network from signing in for a day
+	guardNetBits4  = 24        // the network of an IPv4 address: its /24
+	guardNetBits6  = 24        // the network of an IPv6 address: its /24
 )
 
 type ipStrikes struct {
@@ -40,6 +52,29 @@ type ipStrikes struct {
 	until   int64 // shut out until
 	level   int   // how many times it was shut out (decays after guardForget quiet)
 	lastBan int64
+}
+
+type netStrikes struct {
+	fails []int64
+	until int64
+}
+
+// netOf is the network an address counts toward ("" for something that is not an address).
+func netOf(ip string) string {
+	a, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ""
+	}
+	a = a.Unmap()
+	bits := guardNetBits6
+	if a.Is4() {
+		bits = guardNetBits4
+	}
+	pfx, err := a.Prefix(bits)
+	if err != nil {
+		return ""
+	}
+	return pfx.String()
 }
 
 type userStrikes struct {
@@ -51,6 +86,7 @@ type signinGuard struct {
 	mu    sync.Mutex
 	ips   map[string]*ipStrikes
 	users map[string]*userStrikes
+	nets  map[string]*netStrikes
 }
 
 func recent(list []int64, t int64) []int64 {
@@ -71,6 +107,17 @@ func (g *signinGuard) shutOut(ip string, t int64) int64 {
 		return s.until
 	}
 	return 0
+}
+
+// netBanned says until when the network of an address may not sign in (0 = it may), and the network.
+func (g *signinGuard) netBanned(ip string, t int64) (int64, string) {
+	n := netOf(ip)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if s := g.nets[n]; s != nil && s.until > t {
+		return s.until, n
+	}
+	return 0, n
 }
 
 // slowed says whether a try at username user from an address it does not know must wait, and how long.
@@ -95,12 +142,38 @@ func (g *signinGuard) slowed(user string, known bool, t int64) int64 {
 	return 0
 }
 
-// failed counts a failed sign-in; it says until when the address is shut out now (0 = not).
-func (g *signinGuard) failed(ip, user string, known bool, t int64) int64 {
+// failed counts a failed sign-in. It says until when the address is shut out now (0 = not), and the
+// network when this failure banned it (its ban ends guardNetBan from now).
+func (g *signinGuard) failed(ip, user string, known bool, t int64) (int64, string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.ips == nil {
-		g.ips, g.users = map[string]*ipStrikes{}, map[string]*userStrikes{}
+		g.ips, g.users, g.nets = map[string]*ipStrikes{}, map[string]*userStrikes{}, map[string]*netStrikes{}
+	}
+	banned := ""
+	if n := netOf(ip); n != "" {
+		if len(g.nets) > 100_000 { // a flood of networks: forget the quiet ones
+			for k, s := range g.nets {
+				if s.until < t && (len(s.fails) == 0 || t-s.fails[len(s.fails)-1] > guardNetWindow) {
+					delete(g.nets, k)
+				}
+			}
+		}
+		s := g.nets[n]
+		if s == nil {
+			s = &netStrikes{}
+			g.nets[n] = s
+		}
+		keep := s.fails[:0]
+		for _, x := range s.fails {
+			if t-x < guardNetWindow {
+				keep = append(keep, x)
+			}
+		}
+		s.fails = append(keep, t)
+		if len(s.fails) >= guardNetFails && s.until <= t {
+			s.until, s.fails, banned = t+guardNetBan, nil, n
+		}
 	}
 	if len(g.ips) > 100_000 { // a flood of addresses: forget the quiet ones
 		for k, s := range g.ips {
@@ -138,12 +211,13 @@ func (g *signinGuard) failed(ip, user string, known bool, t int64) int64 {
 		u.fails = append(recent(u.fails, t), t)
 	}
 	if s.until > t {
-		return s.until
+		return s.until, banned
 	}
-	return 0
+	return 0, banned
 }
 
-// succeeded clears an address's failures (its earlier shut-outs still count if it starts again).
+// succeeded clears an address's failures (its earlier shut-outs still count if it starts again; its
+// network keeps its count).
 func (g *signinGuard) succeeded(ip string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

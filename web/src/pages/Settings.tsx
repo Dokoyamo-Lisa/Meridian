@@ -15,6 +15,7 @@ import { DynamicDNSSettings } from './DynamicDNS'
 import { MaintenanceSettings, TurnstileSettings } from './SignInGuard'
 import { CustomCSSSettings } from './CustomCSS'
 import { Backups } from './Backups'
+import { addPasskey, passkeyError, passkeysWork } from '../passkeys'
 
 type Tab = 'general' | 'certs' | 'notify' | 'dns' | 'backups' | 'updates' | 'security' | 'api' | 'plugins'
 
@@ -469,6 +470,7 @@ interface SessionRow {
   last_seen_at: number
   ip: string
   ua: string
+  via?: string
   current: boolean
 }
 
@@ -561,9 +563,10 @@ function Security() {
           )}
         </section>
       </div>
+      <Passkeys />
       <section class="panel">
         <div class="ph">
-          <span class="pn">03</span>
+          <span class="pn">04</span>
           <h2 class="h">Signed-in browsers</h2>
           <span class="pm">
             <button class="btn sm" onClick={revokeOthers}>
@@ -580,6 +583,7 @@ function Security() {
                 <span class={'dot ' + (x.current ? 'good' : '')} />
                 <span class="grow">
                   {browserName(x.ua)} <span class="faint">· {x.ip}</span>
+                  {x.via === 'passkey' && <span class="badge" style="margin-left:8px">passkey</span>}
                   {x.current && <span class="badge good" style="margin-left:8px">this browser</span>}
                 </span>
                 <span class="when">
@@ -642,6 +646,105 @@ function Disable2FA(props: { onClose: () => void }) {
         </Field>
       </form>
     </Modal>
+  )
+}
+
+type PasskeyRow = { id: number; name: string; created_at: number; last_used_at: number; last_used_ip: string; synced: boolean }
+
+/** Passkeys: sign in with the device's own lock instead of the password and the code (passkeys.ts). */
+function Passkeys() {
+  const s = useSession()
+  const list = useAsync(() => get<PasskeyRow[]>('/api/me/passkeys'))
+  const [name, setName] = useState(browserName(navigator.userAgent))
+  const [busy, setBusy] = useState(false)
+  const works = passkeysWork()
+
+  const add = async (e: Event) => {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      await addPasskey(name.trim())
+      toast('Passkey added - you can sign in with it now')
+      void list.reload()
+    } catch (err) {
+      toastError(passkeyError(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async (p: PasskeyRow) => {
+    const left = s.account?.totp ? 'your password and a code' : 'your password'
+    if (
+      await ask({
+        title: `Remove the passkey “${p.name}”?`,
+        body: <p style="margin-top:0">It cannot sign in any more. You can still sign in with {left}, and add a passkey again at any time.</p>,
+        confirm: 'Remove',
+        danger: true,
+      })
+    )
+      if (await run(() => del(`/api/me/passkeys/${p.id}`), 'Passkey removed')) void list.reload()
+  }
+
+  return (
+    <section class="panel">
+      <div class="ph">
+        <span class="pn">03</span>
+        <h2 class="h">Passkeys</h2>
+        <span class="pm">{list.data && list.data.length > 0 ? <span class="badge good">{list.data.length}</span> : <span class="badge">None</span>}</span>
+      </div>
+      <p class="muted" style="margin-top:0">
+        Sign in with your phone’s or computer’s own lock - Face ID, a fingerprint, Windows Hello or a security key - instead of your password and code. A passkey cannot be guessed, and
+        it works only on this panel, so a fake sign-in page gets nothing.
+      </p>
+      {works ? (
+        <form class="row" style="gap:8px;align-items:flex-end;flex-wrap:wrap" onSubmit={add}>
+          <Field label="Name" hint="Which device or password manager it is on, so you know which one to remove later.">
+            <input class="input" maxLength={64} value={name} onInput={(e) => setName(e.currentTarget.value)} />
+          </Field>
+          <button class="btn primary" disabled={busy}>
+            {busy ? <span class="spin" /> : <Icon name="key" size="sm" />}
+            Add a passkey
+          </button>
+        </form>
+      ) : (
+        <div class="callout">
+          <Icon name="info" size="sm" />
+          <div>Passkeys work when the panel is opened at its own name over HTTPS, such as https://panel.example.com - not at an IP address.</div>
+        </div>
+      )}
+      {!list.data ? (
+        list.error ? <ErrorBox error={list.error} retry={list.reload} /> : <Loading />
+      ) : (
+        list.data.length > 0 && (
+          <div class="list" style="margin-top:12px">
+            {list.data.map((p) => (
+              <div class="li">
+                <Icon name="key" size="sm" />
+                <span class="grow">
+                  {p.name}
+                  {p.synced && <span class="badge" style="margin-left:8px" title="Backed up by its provider: it works on your other devices too">synced</span>}
+                  <span class="faint" style="margin-left:8px">
+                    added <Ago ts={p.created_at} />
+                    {p.last_used_at ? (
+                      <>
+                        {' '}
+                        · used <Ago ts={p.last_used_at} />
+                      </>
+                    ) : (
+                      ' · not used yet'
+                    )}
+                  </span>
+                </span>
+                <button class="btn sm ghost" onClick={() => remove(p)}>
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </section>
   )
 }
 

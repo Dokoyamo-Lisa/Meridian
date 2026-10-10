@@ -21,6 +21,12 @@ func (p *Panel) Handler() http.Handler {
 	// session
 	handle("POST /api/login", p.handleLogin)
 	handle("POST /api/logout", p.handleLogout)
+	handle("POST /api/login/passkey/begin", p.handlePasskeyLoginBegin) // passkeys (passkeys.go)
+	handle("POST /api/login/passkey/finish", p.handlePasskeyLoginFinish)
+	handle("GET /api/me/passkeys", p.sessionOnly(p.apiPasskeys))
+	handle("POST /api/me/passkeys/begin", p.sessionOnly(p.apiPasskeyBegin))
+	handle("POST /api/me/passkeys/finish", p.sessionOnly(p.apiPasskeyFinish))
+	handle("DELETE /api/me/passkeys/{id}", p.sessionOnly(p.apiPasskeyDelete))
 	handle("GET /api/meta", p.apiMeta)
 	handle("GET /api/me", p.authed(p.apiMe))
 	handle("POST /api/me/password", p.sessionOnly(p.apiChangePassword))

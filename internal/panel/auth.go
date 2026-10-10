@@ -242,13 +242,8 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if len(user) > 64 {
 		user = user[:64]
 	}
-	t0 := now()
-	if until := p.signin.shutOut(ip, t0); until > 0 {
-		writeErr(w, errStatus(http.StatusTooManyRequests, "too many failed sign-ins from your address - try again in "+waitWords(until-t0)))
-		return
-	}
-	if !p.limiter.allow("ip:"+ip, 10, 15*time.Minute) || !p.limiter.allow("user:"+user, 20, 15*time.Minute) {
-		writeErr(w, errStatus(http.StatusTooManyRequests, "too many attempts - wait a few minutes"))
+	known := p.knownAddr(r.Context(), user, ip)
+	if !p.signinGate(w, ip, user, known) {
 		return
 	}
 	if c := p.turnstile(); c.On && c.SiteKey != "" && c.Secret != "" {
@@ -256,11 +251,6 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, errStatus(http.StatusForbidden, err.Error()))
 			return
 		}
-	}
-	known := p.knownAddr(r.Context(), user, ip)
-	if wait := p.signin.slowed(user, known, t0); wait > 0 {
-		writeErr(w, errStatus(http.StatusTooManyRequests, "this username had many failed sign-ins - from an address it does not know, it takes one try a minute: wait "+waitWords(wait)))
-		return
 	}
 	a, err := p.accountByName(r.Context(), user)
 	if err != nil || a == nil {
@@ -291,7 +281,7 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		step, ok := totpMatch(a.TOTPSecret, req.Code, time.Now())
 		if !ok {
-			p.signin.failed(ip, user, known, now())
+			p.countFailure(ip, user, known)
 			p.event(a.ID, "warn", "login_failed", 0, 0, a.ID, fmt.Sprintf("Wrong two-factor code for %s from %s", a.Username, ip), nil)
 			writeErr(w, errStatus(http.StatusUnauthorized, "wrong two-factor code - check the time on your phone"))
 			return
@@ -312,14 +302,18 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	p.limiter.reset("user:" + user)
-	p.signin.succeeded(ip)
+	p.signinSucceeded(ip, user)
+	p.startSession(w, r, a, ip, "", "")
+}
+
+// startSession signs an account in - a session and its cookie - and records it. via is how the session
+// was made ("" = a password, "passkey"); how says it in the event ("with a passkey").
+func (p *Panel) startSession(w http.ResponseWriter, r *http.Request, a *Account, ip, via, how string) {
 	tok := randToken(32)
 	t := now()
-	_, err = p.db.Exec1(`INSERT INTO sessions (token_hash, account_id, created_at, expires_at, last_seen_at, ip, ua)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, tokenHash(tok), a.ID, t, t+int64(sessionTTL.Seconds()), t, ip,
-		truncate(r.UserAgent(), 200))
-	if err != nil {
+	if _, err := p.db.Exec1(`INSERT INTO sessions (token_hash, account_id, created_at, expires_at, last_seen_at, ip, ua, via)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, tokenHash(tok), a.ID, t, t+int64(sessionTTL.Seconds()), t, ip,
+		truncate(r.UserAgent(), 200), via); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -330,14 +324,65 @@ func (p *Panel) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: tok, Path: "/", HttpOnly: true,
 		Secure: p.isHTTPS(r), SameSite: http.SameSiteLaxMode, MaxAge: int(sessionTTL.Seconds())})
-	p.event(a.ID, "info", "login", 0, 0, a.ID, fmt.Sprintf("%s signed in from %s", a.Username, ip), nil)
+	msg := fmt.Sprintf("%s signed in from %s", a.Username, ip)
+	if how != "" {
+		msg = fmt.Sprintf("%s signed in %s from %s", a.Username, how, ip)
+	}
+	p.event(a.ID, "info", "login", 0, 0, a.ID, msg, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"kind": "admin", "account": a})
 }
 
-// signinFailed answers a wrong username or password: the failure counts against the address (and,
-// from an address the username does not know, against the username), and is recorded.
+// signinGate holds back a sign-in try that must wait - from a shut-out address or a banned network
+// (unless the address signed in to this username before), past the tries an address or a username
+// gets, or at a slowed-down username - and answers it. It says whether the try may go on.
+func (p *Panel) signinGate(w http.ResponseWriter, ip, user string, known bool) bool {
+	t0 := now()
+	if until := p.signin.shutOut(ip, t0); until > 0 {
+		writeErr(w, errStatus(http.StatusTooManyRequests, "too many failed sign-ins from your address - try again in "+waitWords(until-t0)))
+		return false
+	}
+	if until, network := p.signin.netBanned(ip, t0); until > 0 && !known {
+		writeErr(w, errStatus(http.StatusTooManyRequests, "too many failed sign-ins from your network ("+network+") - try again in "+waitWords(until-t0)))
+		return false
+	}
+	// tries, right or wrong, until one succeeds: per address, and per username from addresses it does
+	// not know (an address it knows is never held back by others failing at it)
+	if !p.limiter.allow("ip:"+ip, guardIPFails, guardWindow*time.Second) ||
+		(!known && !p.limiter.allow("user:"+user, guardUserFail, guardWindow*time.Second)) {
+		writeErr(w, errStatus(http.StatusTooManyRequests, "too many attempts - wait a few minutes"))
+		return false
+	}
+	if wait := p.signin.slowed(user, known, t0); wait > 0 {
+		writeErr(w, errStatus(http.StatusTooManyRequests, "this username had many failed sign-ins - from an address it does not know, it takes one try a minute: wait "+waitWords(wait)))
+		return false
+	}
+	return true
+}
+
+// signinSucceeded forgets an address's and a username's tries after a sign-in worked. The address's
+// network keeps its count: only time lifts a network's ban.
+func (p *Panel) signinSucceeded(ip, user string) {
+	p.limiter.reset("user:" + user)
+	p.limiter.reset("ip:" + ip)
+	p.signin.succeeded(ip)
+}
+
+// countFailure counts a failed sign-in against the address, its network and (from an address the
+// username does not know) the username. It says until when the address is shut out now (0 = not),
+// and records a network's ban when this failure started one.
+func (p *Panel) countFailure(ip, user string, known bool) int64 {
+	until, banned := p.signin.failed(ip, user, known, now())
+	if banned != "" {
+		p.event(0, "warn", "signin_blocked", 0, 0, 0, fmt.Sprintf("Sign-ins from %s are blocked for a day after %d failed sign-ins from it within an hour - "+
+			"addresses that signed in to an account before still get in, and passkeys always do", banned, guardNetFails), nil)
+	}
+	return until
+}
+
+// signinFailed answers a wrong username or password: the failure counts against the address, its
+// network and (from an address the username does not know) the username, and is recorded.
 func (p *Panel) signinFailed(w http.ResponseWriter, ip, user string, known bool, msg string) {
-	if until := p.signin.failed(ip, user, known, now()); until > 0 {
+	if until := p.countFailure(ip, user, known); until > 0 {
 		p.event(0, "warn", "login_failed", 0, 0, 0, fmt.Sprintf("%s - the address cannot sign in for %s now", msg, waitWords(until-now())), nil)
 	} else {
 		p.event(0, "warn", "login_failed", 0, 0, 0, msg, nil)
@@ -413,6 +458,7 @@ type sessionRow struct {
 	LastSeen int64  `json:"last_seen_at"`
 	IP       string `json:"ip"`
 	UA       string `json:"ua"`
+	Via      string `json:"via" doc:"How it signed in: empty = a password, passkey, or telegram (the Mini App)"`
 	Current  bool   `json:"current"`
 }
 
@@ -421,7 +467,7 @@ func (p *Panel) apiSessions(w http.ResponseWriter, r *http.Request, a *Account) 
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		cur = tokenHash(c.Value)
 	}
-	rows, err := p.db.QueryContext(r.Context(), `SELECT token_hash, created_at, last_seen_at, ip, ua FROM sessions
+	rows, err := p.db.QueryContext(r.Context(), `SELECT token_hash, created_at, last_seen_at, ip, ua, via FROM sessions
 		WHERE account_id = ? AND expires_at > ? ORDER BY last_seen_at DESC`, a.ID, now())
 	if err != nil {
 		return err
@@ -431,7 +477,7 @@ func (p *Panel) apiSessions(w http.ResponseWriter, r *http.Request, a *Account) 
 	for rows.Next() {
 		var h string
 		var s sessionRow
-		if err := rows.Scan(&h, &s.Created, &s.LastSeen, &s.IP, &s.UA); err != nil {
+		if err := rows.Scan(&h, &s.Created, &s.LastSeen, &s.IP, &s.UA, &s.Via); err != nil {
 			return err
 		}
 		s.ID, s.Current = h[:16], h == cur

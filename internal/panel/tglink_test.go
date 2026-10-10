@@ -205,8 +205,12 @@ func TestTelegramMiniApp(t *testing.T) {
 	if code, _, _ := app.do("POST", "/api/tg/session", map[string]any{"init_data": initData(badToken, carol, now())}); code != 401 {
 		t.Errorf("forged launch data: %d", code)
 	}
-	// wrong passwords: five an hour per Telegram account
+	// wrong passwords: five an hour per Telegram account (the address's own limits, which are
+	// tighter, are cleared between the tries: this is about the Telegram account's)
 	for i := 0; i < 5; i++ {
+		h.p.limiter.reset("ip:127.0.0.1")
+		h.p.limiter.reset("user:carol")
+		h.p.signin = signinGuard{}
 		if code, _, _ := app.do("POST", "/api/tg/link", map[string]any{"init_data": initData(botToken, carol, now()), "username": "carol",
 			"password": fmt.Sprint("wrong-password-", i)}); code != 401 {
 			t.Fatalf("a wrong password: %d", code)

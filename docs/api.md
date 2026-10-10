@@ -168,7 +168,7 @@ curl -H "Authorization: Bearer $TOKEN" https://panel.example.com/api/actions/41
 
 | Area | Endpoints |
 | --- | --- |
-| Session | `POST /api/login`, `POST /api/logout`, `GET /api/me`, `GET /api/meta`, password, two-factor, sessions |
+| Session | `POST /api/login`, `POST /api/logout`, `GET /api/me`, `GET /api/meta`, password, two-factor, passkeys (`/api/login/passkey/*`, `/api/me/passkeys`), sessions |
 | API tokens | `GET/POST /api/tokens`, `DELETE /api/tokens/{id}` (browser session only) |
 | Monitoring | `GET /api/overview`, `/api/live`, `/api/ips`, `/api/dests`, `/api/events` |
 | Servers | `GET/POST /api/servers`, `GET/PATCH/DELETE /api/servers/{id}`, `rotate-token`, `actions`, `metrics`, `GET /api/actions/{id}` |

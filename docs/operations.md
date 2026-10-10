@@ -178,9 +178,19 @@ fix or turn off Turnstile in **Settings › Security**, then remove the line and
 
 ### Too many failed sign-ins
 
-An address that keeps failing to sign in is shut out for a while (15 minutes at first, longer if it
-keeps on); the message says how long. A name that many addresses fail at takes one try a minute from
-new addresses - your own usual address is never slowed down. Restarting the panel clears both.
+Sign-ins are held back in three ways, and the message says which and for how long:
+
+- **"too many attempts - wait a few minutes"**: three tries from one address, or five at one username
+  from addresses it does not know, within 15 minutes. A sign-in that works resets the count.
+- **"too many failed sign-ins from your address"**: three wrong passwords in 15 minutes shut the
+  address out - for 15 minutes, then an hour, four hours and a day if it comes back.
+- **"too many failed sign-ins from your network"**: ten wrong passwords from one network within an
+  hour - its IPv4 /24, or its IPv6 /24 - keep the whole network out for a day.
+
+Addresses that signed in to the account in the last 30 days are never slowed down at its username or
+held back by their network, so failing on purpose cannot lock you out. **A passkey always signs in**:
+it cannot be guessed, so none of these limits apply to it. Restarting the panel
+(`sudo systemctl restart meridian` - proxies keep running) clears them all.
 
 ### A plugin keeps the panel from working
 

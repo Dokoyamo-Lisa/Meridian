@@ -97,8 +97,7 @@ func (p *Panel) userLogin(w http.ResponseWriter, r *http.Request, user, password
 		writeErr(w, errStatus(http.StatusUnauthorized, "wrong username or password"))
 		return
 	}
-	p.limiter.reset("user:" + user)
-	p.signin.succeeded(ip)
+	p.signinSucceeded(ip, user)
 	tok := randToken(32)
 	t := now()
 	err = p.db.Write(r.Context(), func(tx *sql.Tx) error {

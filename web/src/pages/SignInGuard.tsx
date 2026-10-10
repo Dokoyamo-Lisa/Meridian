@@ -86,7 +86,7 @@ export function TurnstileSettings() {
   return (
     <section class="panel">
       <div class="ph">
-        <span class="pn">03</span>
+        <span class="pn">05</span>
         <h2 class="h">Sign-in check (Cloudflare Turnstile)</h2>
         <span class="pm">{d.on && !d.disabled_on_host ? <span class="badge good">On</span> : <span class="badge">Off</span>}</span>
       </div>
@@ -181,7 +181,7 @@ export function MaintenanceSettings() {
   return (
     <section class="panel">
       <div class="ph">
-        <span class="pn">04</span>
+        <span class="pn">06</span>
         <h2 class="h">Maintenance mode</h2>
         <span class="pm">{on ? <span class="badge warn">On</span> : <span class="badge">Off</span>}</span>
       </div>

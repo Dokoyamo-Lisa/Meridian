@@ -63,12 +63,13 @@ type Panel struct {
 	routeMu    sync.Mutex
 	routeNotes map[int64][]string // per server: traffic rules that cannot be used there as they stand
 
-	relays  relayCache  // servers that keep losing the panel (relay.go)
-	bot     botState    // the Telegram bot (telegram.go)
-	plugins *pluginHost // the operator's plugins (plugins.go)
-	devices deviceState // devices turned away over a device limit (limits.go)
-	signin  signinGuard // addresses and usernames that keep failing to sign in (guard.go)
-	css     cssCache    // the operator's own style sheets (customcss.go)
+	relays   relayCache        // servers that keep losing the panel (relay.go)
+	bot      botState          // the Telegram bot (telegram.go)
+	plugins  *pluginHost       // the operator's plugins (plugins.go)
+	devices  deviceState       // devices turned away over a device limit (limits.go)
+	signin   signinGuard       // addresses and usernames that keep failing to sign in (guard.go)
+	passkeys passkeyCeremonies // passkey challenges handed out and not yet answered (passkeys.go)
+	css      cssCache          // the operator's own style sheets (customcss.go)
 
 	backupMu    sync.Mutex  // one backup at a time (backups.go)
 	console     consoleHub  // the supervisor's consoles (console.go)

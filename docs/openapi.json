@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Meridian API",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -159,6 +159,84 @@
           }
         ],
         "x-scope": "session"
+      }
+    },
+    "/api/login/passkey/begin": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Start a passkey sign-in",
+        "description": "A challenge for any of this panel's passkeys: pass options.publicKey to navigator.credentials.get() and send the answer to finish within five minutes. Needs the X-Meridian: 1 header, and the panel opened at its own name (passkeys do not work at an IP address).",
+        "operationId": "postLoginPasskeyBegin",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyBegun"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [],
+        "x-scope": "public"
+      }
+    },
+    "/api/login/passkey/finish": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Sign in with a passkey",
+        "description": "Signs the passkey's account in, without a two-factor code: a passkey checks the person (user verification) and the device. A passkey whose counter went back - perhaps copied - is refused. Needs the X-Meridian: 1 header.",
+        "operationId": "postLoginPasskeyFinish",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyLoginInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [],
+        "x-scope": "public"
       }
     },
     "/api/meta": {
@@ -374,6 +452,179 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/me/passkeys": {
+      "get": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Your passkeys",
+        "operationId": "getMePasskeys",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PasskeyView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/me/passkeys/begin": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Start adding a passkey",
+        "description": "Options for navigator.credentials.create() (options.publicKey): a passkey kept on the device or by its provider, with user verification. At most 20 per account.",
+        "operationId": "postMePasskeysBegin",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyBegun"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/me/passkeys/finish": {
+      "post": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Add the passkey the browser made",
+        "operationId": "postMePasskeysFinish",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyFinishInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/me/passkeys/{id}": {
+      "delete": {
+        "tags": [
+          "Session"
+        ],
+        "summary": "Remove a passkey",
+        "description": "It cannot sign in any more.",
+        "operationId": "deleteMePasskeysId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6901,6 +7152,30 @@
           }
         }
       },
+      "PasskeyBegun": {
+        "type": "object",
+        "properties": {
+          "ceremony": {
+            "description": "Send it back with the passkey's answer, within five minutes; it works once",
+            "type": "string"
+          },
+          "options": {
+            "description": "For the browser: navigator.credentials.create() or .get() takes options.publicKey (binary fields are base64url)"
+          }
+        }
+      },
+      "PasskeyLoginInput": {
+        "type": "object",
+        "properties": {
+          "ceremony": {
+            "description": "From begin",
+            "type": "string"
+          },
+          "credential": {
+            "description": "What navigator.credentials.get() returned, as JSON (PublicKeyCredential.toJSON())"
+          }
+        }
+      },
       "MetaResult": {
         "type": "object",
         "properties": {
@@ -7045,6 +7320,52 @@
           }
         }
       },
+      "PasskeyView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "description": "What the supervisor called it, e.g. the device it is on",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_used_at": {
+            "description": "Its last sign-in (Unix seconds); 0 = never",
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_used_ip": {
+            "description": "Where its last sign-in came from",
+            "type": "string"
+          },
+          "synced": {
+            "description": "Backed up by its provider (iCloud Keychain, Google Password Manager, a password manager): it works on the person's other devices too",
+            "type": "boolean"
+          }
+        }
+      },
+      "PasskeyFinishInput": {
+        "type": "object",
+        "properties": {
+          "ceremony": {
+            "description": "From begin",
+            "type": "string"
+          },
+          "name": {
+            "description": "What to call it, e.g. the device it is on (empty = \"Passkey\")",
+            "type": "string"
+          },
+          "credential": {
+            "description": "What navigator.credentials.create() returned, as JSON (PublicKeyCredential.toJSON())"
+          }
+        }
+      },
       "Session": {
         "type": "object",
         "properties": {
@@ -7063,6 +7384,10 @@
             "type": "string"
           },
           "ua": {
+            "type": "string"
+          },
+          "via": {
+            "description": "How it signed in: empty = a password, passkey, or telegram (the Mini App)",
             "type": "string"
           },
           "current": {

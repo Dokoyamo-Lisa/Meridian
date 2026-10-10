@@ -13,7 +13,7 @@ Report vulnerabilities privately - through the repository's private security adv
 
 | Asset | Threat | Main protections |
 | --- | --- | --- |
-| The supervisor account | password guessing, phishing, session theft | bcrypt (cost 12), rate limits, TOTP two-factor with replay protection, HttpOnly + SameSite cookies, CSRF header, sign-out everywhere |
+| The supervisor account | password guessing, phishing, session theft | passkeys (WebAuthn, user verification required), bcrypt (cost 12), rate limits and network bans, TOTP two-factor with replay protection, HttpOnly + SameSite cookies, CSRF header, sign-out everywhere |
 | Users' sign-ins | guessing, a user reaching the panel or another user's data | separate cookie and session table, SameSite=Strict, rate limits, the panel's API refuses user sessions and the user API refuses everything else; covered by tests |
 | Servers (root via the agent) | a forged or replayed panel message, tampered downloads | per-server 256-bit secret, signed requests, sealed replies bound to each request, checksum-pinned installer, agent and cores |
 | Subscription credentials | link sharing, copied configs | 144-bit link tokens, new link / new credentials actions, per-IP online limits and alerts |
@@ -34,12 +34,21 @@ Report vulnerabilities privately - through the repository's private security adv
   the status page's own domain, if you set one). With HTTPS the panel sends HSTS and marks session
   cookies `Secure`. The UI warns while it is on plain HTTP.
 - Passwords: 10-72 bytes, bcrypt cost 12. Failed sign-ins take the same time whether or not the
-  name exists, and are limited three ways: attempts per address and per name (15 minutes); an
-  address that fails 10 times in 15 minutes is shut out of signing in for 15 minutes, then an hour,
-  four hours and a day if it comes back; a name that 10 addresses fail at takes one try a minute from
-  addresses it does not know - but never from an address that signed in to it in the last 30 days,
-  so failing on purpose cannot lock the supervisor out. Every failure is in the timeline and the
-  *security* notifications.
+  name exists, and are limited four ways: three tries per address and five per name from addresses
+  it does not know (15 minutes, reset by a sign-in that works); an address that fails 3 times in 15
+  minutes is shut out of signing in for 15 minutes, then an hour, four hours and a day if it comes
+  back; a name that fails 5 times from addresses it does not know takes one try a minute from those;
+  a network that fails 10 times within an hour - its IPv4 /24 or IPv6 /24 - cannot sign in for a day.
+  An address that signed in to the account in the last 30 days is never slowed down at its name or
+  held back by its network, so failing on purpose cannot lock the supervisor out. Every failure, and
+  every network ban, is in the timeline and the *security* notifications.
+- Passkeys (WebAuthn) for the panel's accounts: discoverable credentials with user verification
+  required, no attestation kept; the relying party is the panel's own name (never an IP address) and
+  only its origin is accepted, so a look-alike site cannot use them. Challenges are random, used once
+  and expire in five minutes; a passkey whose signature counter goes back (perhaps copied) is refused
+  and reported. A passkey counts as both factors, so it signs in without a TOTP code, and the
+  guessing limits above never hold it back. Each account has a random 32-byte WebAuthn user handle,
+  never its id; adding and removing passkeys needs a browser session and is notified.
 - Cloudflare Turnstile (optional, Settings › Security): every sign-in to the panel and to users'
   pages must carry a token Cloudflare accepts for this site's hostname; the panel checks it with
   Cloudflare (HTTPS, no redirects followed) before it looks at the password. The secret is never
@@ -249,8 +258,8 @@ ignored.
 
 - **Use HTTPS for the panel.** Over plain HTTP the agent channel is still safe, but browser sessions,
   users' passwords and the install commands you copy are not.
-- **Protect the supervisor account** with a long password and two-factor sign-in. Whoever controls
-  the panel controls every server - by design.
+- **Protect the supervisor account** with a passkey, or a long password and two-factor sign-in.
+  Whoever controls the panel controls every server - by design.
 - **Treat backups as secrets.** The database holds every key and credential; `meridian backup`
   writes files only the owner can read.
 - **Keep cores current.** Meridian pins Xray, Hysteria and realm versions; set newer ones in

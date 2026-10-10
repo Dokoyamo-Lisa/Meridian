@@ -44,7 +44,7 @@ const groupList: [string, string, string][] = [
   ['servers', 'Servers', 'Offline and back online, a machine that restarted, a configuration a server refused, a core that crashed.'],
   ['users', 'Users', 'Data used up, access ended or ending within 3 days, more devices than allowed. Nobody is paused by this - only you pause.'],
   ['certificates', 'Certificates', 'Shared certificates that expire within 14 days.'],
-  ['security', 'Sign-ins and security', 'Every sign-in and failed sign-in, password and two-factor changes, new API tokens.'],
+  ['security', 'Sign-ins and security', 'Every sign-in and failed sign-in, networks blocked after failed sign-ins, passkeys added or removed, password and two-factor changes, new API tokens.'],
   ['health', 'Health risks', "High and critical findings of the servers' health checks: a crypto-miner, a new account or SSH key, a program run from a temporary folder, Meridian's own programs changed. Nothing is stopped by them."],
 ]
 

@@ -3,6 +3,7 @@ import { Account, post } from '../api'
 import { Icon, LogoMark } from '../icons'
 import { Check, CheckState, startCheck } from '../turnstile'
 import { openInto } from '../mark'
+import { passkeyError, passkeySignIn, passkeysWork } from '../passkeys'
 import { applySession, fetchSession, loadSession, useSession } from '../session'
 import { ErrorBox, errText } from '../ui'
 
@@ -40,6 +41,26 @@ export function Login() {
     }
   }, [sitekey])
 
+  // the panel opens out of the umbrella - after a password, or a passkey
+  const enter = async () => {
+    await openInto(mark.current, fetchSession(), async (x) => {
+      applySession(x)
+      await new Promise((ok) => setTimeout(ok, 0)) // let the panel render inside the transition
+    }).catch(() => loadSession())
+  }
+
+  const withPasskey = async () => {
+    setBusy(true)
+    setErr('')
+    try {
+      await passkeySignIn()
+      await enter()
+    } catch (e) {
+      setErr(passkeyError(e))
+      setBusy(false)
+    }
+  }
+
   const submit = async (e: Event) => {
     e.preventDefault()
     setBusy(true)
@@ -64,11 +85,7 @@ export function Login() {
         location.href = '/me'
         return
       }
-      // the umbrella opens and the panel spreads out of it
-      await openInto(mark.current, fetchSession(), async (x) => {
-        applySession(x)
-        await new Promise((ok) => setTimeout(ok, 0)) // let the panel render inside the transition
-      }).catch(() => loadSession())
+      await enter()
     } catch (e) {
       check.current?.reset()
       setErr(errText(e))
@@ -127,6 +144,15 @@ export function Login() {
         <button class="btn primary" style="width:100%;height:36px;margin-top:6px" disabled={busy}>
           {busy ? <span class="spin" /> : needCode ? 'Verify' : 'Sign in'}
         </button>
+        {!needCode && passkeysWork() && (
+          <>
+            <div class="login-or">or</div>
+            <button type="button" class="btn" style="width:100%;height:36px" disabled={busy} onClick={withPasskey}>
+              <Icon name="key" size="sm" />
+              Sign in with a passkey
+            </button>
+          </>
+        )}
         {needCode && (
           <button
             type="button"

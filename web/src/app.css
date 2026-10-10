@@ -364,6 +364,8 @@ pre.code { max-height: 420px; overflow: auto; white-space: pre; word-break: norm
 /* login */
 .login { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
 .login-box { width: min(340px, 100%); }
+.login-or { display: flex; align-items: center; gap: 10px; margin: 14px 0 10px; color: var(--ink-3); font-size: 12px; }
+.login-or::before, .login-or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 /* the sign-in: the umbrella assembling over the name, then the form - the same as the status page's */
 .login-box .brand { flex-direction: column; gap: 16px; margin-bottom: 26px; font: 400 26px/1.2 var(--font-d); letter-spacing: .02em; text-transform: none; }
 .login-box .brand svg, .login-box .brand .logo-img { width: 64px; height: 64px; }

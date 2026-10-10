@@ -28,7 +28,9 @@ The installer prints the supervisor's first sign-in (user `admin` and a generate
 is one supervisor account: it runs the panel. The people who use the servers are **users** - they
 get links and their own page, never the panel. Sign in, then right away:
 
-1. **Settings › Security**: change the password and turn on two-factor sign-in.
+1. **Settings › Security**: change the password, then add a passkey (Face ID, a fingerprint, Windows
+   Hello or a security key - the panel needs its own name over HTTPS for passkeys) or turn on
+   two-factor sign-in.
 2. **Settings › Panel**: check the public URL (servers use it to reach the panel) and the timezone
    (days and monthly resets follow it).
 

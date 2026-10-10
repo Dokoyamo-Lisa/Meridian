@@ -116,7 +116,7 @@ function Shell() {
             <div class="sep" />
             <button onClick={() => navigate('/settings?tab=security')}>
               <Icon name="shield" size="sm" />
-              Password &amp; two-factor
+              Passkeys &amp; password
             </button>
             <button onClick={() => navigate('/settings?tab=api')}>
               <Icon name="key" size="sm" />

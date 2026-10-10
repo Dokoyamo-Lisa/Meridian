@@ -32,8 +32,9 @@ var notifyGroups = map[string][]string{
 		"backup_failed", "backup_restored", "ext_source_failed"},
 	"users":        {"quota_reached", "node_quota_reached", "user_expired", "user_expiring", "over_ip_limit", "user_no_access"},
 	"certificates": {"cert_expiring"},
-	"security":     {"login_failed", "login", "password_changed", "totp_disabled", "token_created", "console_opened", "telegram_panel_linked"},
-	"health":       {"risk_critical", "risk_high"}, // health checks' high and critical findings (health.go)
+	"security": {"login_failed", "login", "password_changed", "totp_disabled", "token_created", "console_opened", "telegram_panel_linked",
+		"signin_blocked", "passkey_added", "passkey_removed"},
+	"health": {"risk_critical", "risk_high"}, // health checks' high and critical findings (health.go)
 }
 
 var defaultNotifyGroups = []string{"servers", "users", "certificates", "health"}

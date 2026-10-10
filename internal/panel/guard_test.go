@@ -70,6 +70,52 @@ func TestSigninGuard(t *testing.T) {
 	}
 }
 
+// TestSigninNetworkBan: ten failed sign-ins from one network within an hour - an IPv4 /24 or an
+// IPv6 /24, from any of its addresses - keep the whole network out for a day, also with the right
+// password; an address that signed in to the account before still gets in; other networks do not
+// notice; the ban is recorded for the supervisor.
+func TestSigninNetworkBan(t *testing.T) {
+	h := newHarness(t)
+	if code, _, _ := loginFrom(t, h, "203.0.113.5", "owner", "owner-password-1", ""); code != 200 {
+		t.Fatalf("the owner's own address: %d", code)
+	}
+	for i := 0; i < guardNetFails; i++ { // one try each from ten addresses: no address is shut out alone
+		if code, _, _ := loginFrom(t, h, fmt.Sprintf("203.0.113.%d", 100+i), fmt.Sprint("nobody", i), "wrong-password-1", ""); code != http.StatusUnauthorized {
+			t.Fatalf("failure %d: %d", i, code)
+		}
+	}
+	if code, body, _ := loginFrom(t, h, "203.0.113.200", "owner", "owner-password-1", ""); code != http.StatusTooManyRequests ||
+		!strings.Contains(body, "from your network (203.0.113.0/24)") {
+		t.Errorf("a new address in the banned network signed in: %d %s", code, body)
+	}
+	if code, body, _ := loginFrom(t, h, "203.0.113.5", "owner", "owner-password-1", ""); code != 200 {
+		t.Errorf("the owner's known address in the banned network: %d %s", code, body)
+	}
+	if code, _, _ := loginFrom(t, h, "198.51.100.20", "owner", "owner-password-1", ""); code != 200 {
+		t.Errorf("another network: %d", code)
+	}
+	var n int
+	h.p.db.QueryRow(`SELECT COUNT(*) FROM events WHERE kind = 'signin_blocked' AND message LIKE 'Sign-ins from 203.0.113.0/24 are blocked%'`).Scan(&n)
+	if n != 1 {
+		t.Errorf("ban events: %d", n)
+	}
+
+	// IPv6: the /24 around the addresses (2001:db8:: is in 2001:d00::/24)
+	for i := 0; i < guardNetFails; i++ {
+		loginFrom(t, h, fmt.Sprintf("2001:db8:%x::1", i+1), fmt.Sprint("somebody", i), "wrong-password-1", "")
+	}
+	if code, body, _ := loginFrom(t, h, "2001:db8:ffff::5", "owner", "owner-password-1", ""); code != http.StatusTooManyRequests ||
+		!strings.Contains(body, "2001:d00::/24") {
+		t.Errorf("a new address in the banned IPv6 network: %d %s", code, body)
+	}
+	if code, _, _ := loginFrom(t, h, "2001:4860::8888", "owner", "owner-password-1", ""); code != 200 {
+		t.Errorf("an IPv6 address in another /24: %d", code)
+	}
+	if got := netOf("::ffff:203.0.113.9"); got != "203.0.113.0/24" {
+		t.Errorf("an IPv4-mapped address counts toward %q", got)
+	}
+}
+
 // TestTurnstile: once on, every sign-in needs a token Cloudflare accepts for this site; turning it on
 // needs a token too (wrong keys never lock the sign-in); only the browser may change it; the host's
 // switch turns it off; the page allows Cloudflare's script only while it is on.

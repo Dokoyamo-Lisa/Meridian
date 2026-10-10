@@ -440,21 +440,14 @@ func (p *Panel) apiTgLink(w http.ResponseWriter, r *http.Request) {
 	if len(user) > 64 {
 		user = user[:64]
 	}
-	// the sign-in pages' guard: shut-out addresses, a slowed-down username, and per Telegram account
-	t0 := now()
-	if until := p.signin.shutOut(ip, t0); until > 0 {
-		writeErr(w, errStatus(http.StatusTooManyRequests, "too many failed sign-ins from your address - try again in "+waitWords(until-t0)))
-		return
-	}
+	// the sign-in pages' guard (signinGate), and tries per Telegram account
 	tgKey := "tglink:" + strconv.FormatInt(u.ID, 10)
-	if !p.limiter.allow("ip:"+ip, 10, 15*time.Minute) || !p.limiter.allow("user:"+user, 20, 15*time.Minute) ||
-		p.limiter.exceeded(tgKey, 5, time.Hour) {
+	if p.limiter.exceeded(tgKey, 5, time.Hour) {
 		writeErr(w, errStatus(http.StatusTooManyRequests, "too many attempts - wait a while and try again"))
 		return
 	}
 	known := p.knownAddr(r.Context(), user, ip)
-	if wait := p.signin.slowed(user, known, t0); wait > 0 {
-		writeErr(w, errStatus(http.StatusTooManyRequests, "this username had many failed sign-ins - wait "+waitWords(wait)))
+	if !p.signinGate(w, ip, user, known) {
 		return
 	}
 	fail := func() {
@@ -510,8 +503,7 @@ func (p *Panel) apiTgLink(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	p.limiter.reset("user:" + user)
-	p.signin.succeeded(ip)
+	p.signinSucceeded(ip, user)
 	if err := p.linkTelegram(r.Context(), u, sub, account); err != nil {
 		writeErr(w, err)
 		return

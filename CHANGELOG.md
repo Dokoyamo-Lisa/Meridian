@@ -1,16 +1,30 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 - 2026-10-10
 
-Nothing in the panel or the agents changed; the repository gained two things around them.
+**Upgrading keeps everything as it is.** Agents need no upgrade (nothing changed for them); the
+panel's database gets one new table for passkeys.
+
+- **Passkeys**: sign in to the panel with Face ID, a fingerprint, Windows Hello or a security key
+  instead of the password and code - **Settings › Security › Passkeys**, then **Sign in with a
+  passkey** on the sign-in page. A passkey cannot be guessed or phished, works only at the panel's
+  own address, and counts as both factors (no two-factor code). Passwords keep working beside it.
+  Adding and removing passkeys is notified with the other sign-in events.
+- **Tighter sign-in limits**: three tries per address and five per username from new addresses
+  within 15 minutes; three wrong passwords shut an address out (15 minutes, longer if it comes
+  back); ten from one network - its IPv4 /24 or IPv6 /24 - within an hour keep the whole network out
+  for a day, and the supervisor is told. Addresses that signed in to the account before are never
+  held back by their network or slowed down at their own username, and passkeys always get in.
+- The account menu's **Passkeys & password** opens Settings › Security, whose sections are numbered
+  in order again (two were both 03). Signed-in browsers show which ones signed in with a passkey.
+
+Also in the repository, outside the panel and the agents:
 
 - **The guide as a website**: [doc.losantos.space](https://doc.losantos.space), built from these very
-  documents (`site/`: `cd site && go run ./build`), in the Umbrella look or Romance, with search.
+  documents (`site/`: `cd site && go run ./build`).
 - **A public demo**: [deep.losantos.space](https://deep.losantos.space) - eight servers and sixteen
-  people that do not exist, a month of history and agents reporting live, on an ordinary 1.1.0 panel
-  that visitors may look around in and nobody can change. `demo/` is the kit to run one: it fills a
-  new panel through the API, plays the agents through their own protocol, and its reverse proxy lets
-  visitors in read-only without recording their addresses.
+  people that do not exist, a month of history and agents reporting live, on a panel visitors may
+  look around in and nobody can change. `demo/` is the kit to run one.
 
 ## 1.1.0 - 2026-10-09
 

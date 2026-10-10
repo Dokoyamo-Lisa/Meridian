@@ -1,6 +1,22 @@
 # Meridian status
 
-Last updated 2026-10-09 (version 1.1.0).
+Last updated 2026-10-10 (version 1.2.0).
+
+## Tested for 1.2 (local panel; a fresh Ubuntu 24.04 VM)
+
+- **Passkeys**: added and used in Chrome with its virtual authenticator - on a local panel and on a
+  VM panel upgraded from 1.1.0 with `install-panel.sh --upgrade` (PostgreSQL, migration 24): the
+  passkey made at Settings › Security signs in from the sign-in page without the two-factor code;
+  the session list marks it. Tests with a software authenticator cover a used or foreign challenge,
+  another origin, no user verification, a counter going back, a turned-off account, a removed
+  passkey, API tokens, IP addresses and another name than the panel's.
+- **Sign-in limits**: the guard and network-ban tests (3 failures per address, 5 per username from
+  new addresses, 10 per IPv4 /24 or IPv6 /24 within an hour); known addresses and passkeys get in.
+- **The user guide** (doc.losantos.space) was written from a rehearsal on a fresh VM: the installer
+  (with its errors for a missing root and a wrong DNS record), the first sign-in, a password change,
+  two-factor sign-in, a server added with the pasted command, a VLESS · REALITY protocol, two users,
+  their own page on a phone, a real client connecting with the link (204 and a 5 MB download), the
+  user online in the panel, pausing and resuming, a command-line backup and a password reset.
 
 ## Tested for 1.1 (local panel)
 

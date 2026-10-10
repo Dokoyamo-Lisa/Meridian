@@ -129,8 +129,8 @@ and the tests check every combination with sing-box, mihomo and Xray themselves
    [releases](https://github.com/Dokoyamo-Lisa/Meridian/releases), then
    `sha256sum -c SHA256SUMS --ignore-missing`, unpack, and run `sudo ./install-panel.sh --domain ...`.
 
-   It prints the supervisor's first sign-in. Change the password and turn on two-factor sign-in
-   (Settings › Security).
+   It prints the supervisor's first sign-in. Change the password, then add a passkey or turn on
+   two-factor sign-in (Settings › Security).
 
 2. **Add a server** (Servers › Add server) and paste the command it shows on that server as root.
    The guide on the server page follows along until the server is connected.

@@ -746,6 +746,23 @@ CREATE INDEX tg_unlinks_sub ON tg_unlinks(sub_id);
 ALTER TABLE sessions ADD COLUMN via TEXT NOT NULL DEFAULT '';
 ALTER TABLE user_sessions ADD COLUMN via TEXT NOT NULL DEFAULT '';
 `,
+	// 24: passkeys - the panel's accounts sign in with a passkey (WebAuthn) instead of a password and a
+	// code. A passkey carries a random handle for its account (webauthn_id), never the account's id;
+	// credential is the passkey's public key and counters as the WebAuthn library keeps them (JSON).
+	`
+CREATE TABLE passkeys (
+  id            INTEGER PRIMARY KEY,
+  account_id    INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  name          TEXT    NOT NULL,
+  credential_id TEXT    NOT NULL UNIQUE,
+  credential    TEXT    NOT NULL,
+  created_at    INTEGER NOT NULL,
+  last_used_at  INTEGER NOT NULL DEFAULT 0,
+  last_used_ip  TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX passkeys_account ON passkeys(account_id);
+ALTER TABLE accounts ADD COLUMN webauthn_id TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // NextID is an SQL expression for the id of a new row of nodes or subs: above every id the table
