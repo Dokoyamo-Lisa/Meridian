@@ -795,9 +795,9 @@ const presets: { id: string; title: string; text: string; kind: string; d: Parti
   { id: 'ss', title: 'Shadowsocks 2022', text: 'Simple and supported everywhere. TCP + UDP.', kind: 'shadowsocks', d: {} },
   { id: 'wg', title: 'WireGuard', text: 'A full VPN for laptops and phones.', kind: 'wireguard', d: {} },
   { id: 'socks', title: 'SOCKS5 / HTTP proxy', text: 'For apps that only speak a plain proxy.', kind: 'socks', d: {} },
-  { id: 'mieru', title: 'mieru', text: 'Looks like random data. Each user gets their own port. mihomo apps and Stash.', kind: 'mieru', d: { mtransport: 'tcp', users: '50' } },
+  { id: 'mieru', title: 'mieru', text: 'Looks like random data. Each user gets their own port. mihomo apps, Stash and Shadowrocket.', kind: 'mieru', d: { mtransport: 'tcp', users: '50' } },
   { id: 'snell', title: 'Snell', text: "Surge's own protocol. Each user gets their own port. Surge, Stash, mihomo apps, sing-box.", kind: 'snell', d: { users: '50' } },
-  { id: 'anytls', title: 'AnyTLS', text: 'TLS that hides the TLS-inside-TLS pattern. Each user gets their own port. mihomo apps, sing-box, Surge; with a domain also Stash and Hiddify.', kind: 'anytls', d: { users: '50', cert_mode: 'self' } },
+  { id: 'anytls', title: 'AnyTLS', text: 'TLS that hides the TLS-inside-TLS pattern. Each user gets their own port. mihomo apps, sing-box, Surge and Loon; with a domain also Stash, Hiddify and Shadowrocket.', kind: 'anytls', d: { users: '50', cert_mode: 'self' } },
 ]
 
 export function ProtocolEditor(props: { servers: Server[]; server?: Server; node?: NodeView; onClose: () => void; onSaved: () => void }) {
@@ -1177,7 +1177,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                       set({ encryption: v ? (d.security === 'none' && !d.cdn ? 'random' : 'native') : '', flow: v || vision(kind, { ...d, encryption: '' }) ? 'xtls-rprx-vision' : '' })
                     }
                     label="VLESS Encryption (post-quantum)"
-                    hint="VLESS encrypts by itself, with a key exchange quantum computers cannot break: it works without TLS, and behind a CDN the CDN cannot read the traffic. Only the Xray-based apps, Clash Meta apps (Clash Verge Rev, FlClash, Mihomo Party) and Stash support it."
+                    hint="VLESS encrypts by itself, with a key exchange quantum computers cannot break: it works without TLS, and behind a CDN the CDN cannot read the traffic. The Xray-based apps, Clash Meta apps (Clash Verge Rev, FlClash, Mihomo Party), Stash and Shadowrocket support it."
                   />
                   {d.encryption && (
                     <div class="inline-fields">

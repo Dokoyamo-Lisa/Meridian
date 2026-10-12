@@ -118,9 +118,9 @@ only needs a panel address with IPv6 (an AAAA record) - the dialog says so when 
 | **Shadowsocks 2022** | Simple and supported everywhere, TCP and UDP - including Surge and Quantumult X. |
 | **WireGuard** | A full VPN for laptops, phones and offices. |
 | **SOCKS5 / HTTP proxy** | For apps that only speak a plain proxy. |
-| **mieru** | Looks like random data. mihomo apps (Clash Verge Rev, FlClash, Mihomo Party) and Stash. |
+| **mieru** | Looks like random data. mihomo apps (Clash Verge Rev, FlClash, Mihomo Party), Stash and Shadowrocket (2.2.81 and later). |
 | **Snell** | Surge's own protocol: Surge, Stash, mihomo apps and sing-box. |
-| **AnyTLS** | TLS that hides the TLS-inside-TLS pattern: mihomo apps, sing-box and Surge; with a domain certificate also Stash and Hiddify. |
+| **AnyTLS** | TLS that hides the TLS-inside-TLS pattern: mihomo apps, sing-box, Surge and Loon; with a domain certificate also Stash, Hiddify and Shadowrocket. |
 
 Each is only a starting point: change the protocol, transport (raw, WebSocket, gRPC, HTTPUpgrade,
 XHTTP), security (REALITY, TLS, none) and every other setting in the same form.
@@ -141,9 +141,10 @@ do instead. Below the form you see which apps can use the protocol as configured
   cannot, so VLESS with REALITY stays the better default.
 - **VLESS Encryption** (VLESS): VLESS encrypts by itself with a post-quantum key exchange (ML-KEM-768
   with X25519; the panel makes the keys). It works without TLS - then choose the *random* look, which
-  looks like random data - and behind a CDN the CDN cannot read the traffic. Only the Xray-based
-  apps, the Clash Meta apps and Stash can use it; the protocol page lists the others as not
-  supported. *How the server proves itself*: X25519 keeps links short; ML-KEM-768 is post-quantum
+  looks like random data - and behind a CDN the CDN cannot read the traffic. The Xray-based apps, the
+  Clash Meta apps, Stash and Shadowrocket (2.2.78 and later) can use it. sing-box 1.14 has no field
+  for it, so Hiddify, NekoBox, Karing, Surge, Loon and Quantumult X are left out; the protocol page
+  lists them. *How the server proves itself*: X25519 keeps links short; ML-KEM-768 is post-quantum
   too but makes every link and QR code about 1.6 KB longer. Turning it on or off, or changing it,
   means its devices must refresh their subscription.
 - **Port hopping** (Hysteria2): apps change the UDP port they send to every half minute, within a
@@ -185,14 +186,15 @@ do instead. Below the form you see which apps can use the protocol as configured
   takes about 10-15 MB of memory. They need agent 1.3 and nftables, cannot pass through other
   servers or be a proxy pass exit, and have no configuration as code. Users with a speed limit do
   not get mieru over UDP (a speed limit stalls it); mieru over TCP and Snell keep to limits.
-  Links: mieru goes to the mihomo apps and Stash; Snell to Surge, Stash, the mihomo apps and
-  sing-box (SFI, SFA, SFM, 1.14 and later: older sing-box apps would refuse the whole profile, so
-  theirs leaves it out) as version 4.
+  Links: mieru goes to the mihomo apps, Stash and Shadowrocket (2.2.81 and later, as mieru's simple
+  link); Snell to Surge, Stash, the mihomo apps and sing-box (SFI, SFA, SFM, 1.14 and later: older
+  sing-box apps would refuse the whole profile, so theirs leaves it out) as version 4.
 - **AnyTLS** works the same way - one small server per user, on their own port - with sing-box
   (from its GitHub releases, checksum checked; about 15-25 MB of memory per user) and TCP only. It
   always runs over TLS: a **self-signed** certificate (no domain needed) is pinned by the mihomo
-  apps, sing-box and Surge (iOS 5.17, Mac 6.4.3 and later); with **Let's Encrypt**, your own or a
-  **shared** certificate, Stash and the Hiddify apps (Hiddify, NekoBox, Karing) can use it too. A
+  apps, sing-box, Surge (iOS 5.17, Mac 6.4.3 and later) and Loon (Build 945 and later); with
+  **Let's Encrypt**, your own or a **shared** certificate, Stash, the Hiddify apps (Hiddify, NekoBox,
+  Karing) and Shadowrocket (2.2.65 and later) can use it too. A
   renewed certificate is read again without a restart. It needs agent 1.3.1 and nftables.
 - Every user's own server (mieru, Snell, AnyTLS) runs as the account `meridian-solo`, which has no
   rights at all: the firewall refuses its new connections to the server itself and to private,
