@@ -145,16 +145,16 @@ func uri(e Endpoint, p linkProfile) (string, string) {
 			q.Set("obfs-password", e.ObfsPassword)
 		}
 		// port hopping: v2rayN, v2rayNG and NekoBox read the range from "mport"; apps that do not read
-		// it use the port of the link. Shadowrocket documents nothing, so its links leave it out.
+		// it use the port of the link. Shadowrocket documents no "mport", so its links leave it out.
 		if from, to, ok := e.hop(); ok && p != profileRocket {
 			q.Set("mport", from+"-"+to)
 		}
 		return "hysteria2://" + url.PathEscape(e.Password) + "@" + hostPort(e.Host, e.Port) + "/?" + q.Encode() + frag, ""
 	case KindAnyTLS:
-		// the official link form (anytls-go docs/uri_scheme.md) as Hiddify's reader takes it: no way to
-		// pin a certificate, so a self-signed one is not offered; Xray cannot speak AnyTLS, and
-		// Shadowrocket documents no AnyTLS links
-		if p != profileSingBox {
+		// the official link form (anytls-go docs/uri_scheme.md). Hiddify's reader takes it, and
+		// Shadowrocket has taken AnyTLS since 2.2.65. There is no way to pin a certificate, so a
+		// self-signed one is not offered. Xray cannot speak AnyTLS.
+		if p != profileSingBox && p != profileRocket {
 			return "", whyProtocol
 		}
 		if e.selfSigned() {
@@ -194,8 +194,47 @@ func uri(e Endpoint, p linkProfile) (string, string) {
 			q.Set("dns", strings.Join(e.WG.DNS, ","))
 		}
 		return "wireguard://" + url.PathEscape(e.WG.PrivateKey) + "@" + hostPort(e.Host, e.Port) + "?" + q.Encode() + frag, ""
+	case KindMieru:
+		// Shadowrocket 2.2.81 reads mieru's simple share link (mieru docs, client-install: the port
+		// is a query parameter, not part of the host). Other share-link apps do not speak mieru.
+		// mihomo and Stash get it in their YAML instead.
+		if p != profileRocket {
+			return "", whyProtocol
+		}
+		return mierusLink(e)
 	}
 	return "", whyProtocol
+}
+
+// mieruMTU is the MTU mita is given (internal/agent/solo). mieruMux is the client multiplexing
+// Clash Meta is given; the server does not choose it.
+const (
+	mieruMTU = "1400"
+	mieruMux = "MULTIPLEXING_LOW"
+)
+
+// mierusLink is one mieru simple share link: mierus://user:password@host?profile=&mtu=&port=&protocol=
+func mierusLink(e Endpoint) (string, string) {
+	if e.Username == "" || e.Password == "" || e.Host == "" || e.Port <= 0 {
+		return "", whyProtocol
+	}
+	proto := "TCP"
+	if strings.EqualFold(e.Transport, "udp") {
+		proto = "UDP"
+	}
+	q := url.Values{}
+	q.Set("profile", e.Name)
+	q.Set("mtu", mieruMTU)
+	q.Set("multiplexing", mieruMux)
+	q.Set("port", strconv.Itoa(e.Port))
+	q.Set("protocol", proto)
+	host := strings.Trim(e.Host, "[]")
+	if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+		host = "[" + host + "]"
+	}
+	// QueryEscape writes a space as "+". A profile name is shown as-is, so use %20.
+	raw := strings.ReplaceAll(q.Encode(), "+", "%20")
+	return "mierus://" + url.UserPassword(e.Username, e.Password).String() + "@" + host + "?" + raw, ""
 }
 
 // URIList renders every endpoint the apps of a profile can use as a link, one per line.

@@ -6,9 +6,9 @@ limit, their devices and cutting them off are exact - their port is theirs alone
 
 | | What it is | Their apps |
 |---|---|---|
-| **mieru** | Traffic that looks like random data, with no pattern to spot | mihomo apps (Clash Verge Rev, FlClash, Mihomo Party), Stash |
+| **mieru** | Traffic that looks like random data, with no pattern to spot | mihomo apps (Clash Verge Rev, FlClash, Mihomo Party), Stash, Shadowrocket (2.2.81 and later) |
 | **Snell** | Surge's own protocol, fast and light | Surge, Stash, mihomo apps, sing-box (1.14 and later) |
-| **AnyTLS** | TLS whose padding hides the tell-tale pattern of TLS inside TLS | mihomo apps, sing-box, Surge (iOS 5.17, Mac 6.4.3 and later); with a domain certificate also Stash and the Hiddify apps (Hiddify, NekoBox, Karing) |
+| **AnyTLS** | TLS whose padding hides the tell-tale pattern of TLS inside TLS | mihomo apps, sing-box, Surge (iOS 5.17, Mac 6.4.3 and later), Loon (Build 945 and later); with a domain certificate also Stash, the Hiddify apps (Hiddify, NekoBox, Karing) and Shadowrocket (2.2.65 and later) |
 
 You need: a server that shows **Online**, with agent **1.3** or later (**1.3.1** for AnyTLS) and
 nftables (the install command sets both up on a new server).
@@ -21,7 +21,7 @@ nftables (the install command sets both up on a new server).
 3. For **mieru**, choose **Runs over**: **TCP** works everywhere; **UDP** can be faster on long or
    lossy routes.
 4. For **AnyTLS**, choose the **Certificate**: **Self-signed (no domain)** is the quick start; with a
-   domain, **Let's Encrypt** lets Stash and the Hiddify apps use it too (see
+   domain, **Let's Encrypt** lets Stash, the Hiddify apps and Shadowrocket use it too (see
    [Certificates](certificates.md)).
 5. Press **Add protocol**.
 

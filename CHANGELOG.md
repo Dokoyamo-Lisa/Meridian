@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- **Shadowrocket** subscriptions now include what current Shadowrocket reads. VLESS Encryption
+  (ML-KEM-768, since 2.2.78) is no longer left out. mieru is sent as mieru's simple link
+  (`mierus://`, since 2.2.81), with the port in the query, MTU 1400 and low multiplexing. HTTPUpgrade
+  and XHTTP go out on the share links it already stores. AnyTLS with a domain certificate goes out
+  as `anytls://` (since 2.2.65). REALITY is still only sent over raw TCP, and Trojan with REALITY is
+  still left out. A self-signed certificate is still never a share link.
+- **Loon** subscriptions now include AnyTLS (Loon's manual, Build 945 and later): a domain
+  certificate as written, a self-signed one pinned with `tls-cert-sha256`, and REALITY's public key
+  and short id when the node has them. Certificate checks are not turned off.
+- Still left out, because those apps have no field for them: VLESS Encryption, mieru and XHTTP in
+  sing-box (1.14.3) and the apps on it (Hiddify, NekoBox, Karing); mieru in the Xray-based apps,
+  Surge, Loon and Quantumult X; Hysteria2, AnyTLS and VLESS Encryption in Quantumult X. A self-signed
+  Hysteria2 server is still not a share link.
+
 ## 1.3.2 - 2026-10-10
 
 Fixes; upgrade the panel, then the agents (**Settings › Updates** - nobody is disconnected).

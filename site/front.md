@@ -90,7 +90,7 @@ changed. It has two sides:
 | Shadowsocks | 2022 ciphers and classic AEAD, over TCP and UDP; SOCKS5 and HTTP with a password per user |
 | Hysteria2 | QUIC, with port hopping and obfuscation |
 | WireGuard | In the kernel, with the official apps |
-| mieru, Snell, AnyTLS | A port and a small server of their own for every user, so usage, limits and cuts are exact; mieru for the mihomo apps and Stash, Snell for Surge, Stash, the mihomo apps and sing-box, AnyTLS for the mihomo apps, sing-box and Surge (with a domain certificate also Stash and Hiddify) |
+| mieru, Snell, AnyTLS | A port and a small server of their own for every user, so usage, limits and cuts are exact; mieru for the mihomo apps, Stash and Shadowrocket, Snell for Surge, Stash, the mihomo apps and sing-box, AnyTLS for the mihomo apps, sing-box, Surge and Loon (with a domain certificate also Stash, Hiddify and Shadowrocket) |
 
 | Apps | How users add their link |
 |---|---|
