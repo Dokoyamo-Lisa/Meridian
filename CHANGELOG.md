@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased (towards 1.4.0)
+## 1.4.0 - 2026-10-12
+
+Upgrade the panel, then the agents (**Settings › Updates** - nobody is disconnected). The new server
+features need agent 1.4; on servers added before, nothing new is installed until you ask (**Servers ›
+Install missing software**).
 
 - **Security mode** (per server, **Security mode** on its page): what the agent does by itself
   against what production servers meet every day - blocks addresses that keep guessing SSH

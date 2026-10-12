@@ -1,8 +1,8 @@
 # Meridian status
 
-Last updated 2026-10-12 (towards 1.4.0 - not released yet).
+Last updated 2026-10-12 (version 1.4.0).
 
-## Tested towards 1.4.0 (local panel 1.4.0 in an Ubuntu 26.04 VM, its 1.3.2 data upgraded in place)
+## Tested for 1.4.0 (local panel 1.4.0 in an Ubuntu 26.04 VM, its 1.3.2 data upgraded in place)
 
 - **Upgrade from 1.3.2**: the VM's panel binary replaced (migration 28 ran on its data); its agent
   upgraded from the panel. The agent prepared the server at once: Xray 26.3.27 and Hysteria 2.13.0
@@ -34,7 +34,12 @@ Last updated 2026-10-12 (towards 1.4.0 - not released yet).
 - **Fixes found on the way**: a server without mieru, Snell or AnyTLS reported an error about their
   list once its folder was gone; the health check's excuse for a reinstalled core now survives the
   agent's restart and is used up at the next scan; uninstalling an agent stops users' own servers.
-- `make check` clean.
+- **VLESS · TLS · Vision with real clients**: with a self-signed certificate, sing-box 1.14.2 and
+  mihomo 1.19.32 connected through it (204 each, `test/e2e/matrix.py`); both configurations carry
+  `xtls-rprx-vision` and pin the certificate, none turns certificate checks off; the share links for
+  Xray-based apps leave it out (they cannot pin). REALITY on the same server: 204 in all three clients.
+- **PostgreSQL 18.6**: the panel, database and backup suites, migration 28 included. `make check`
+  clean; the release's SHA256SUMS.sig verifies with the key panels carry.
 
 ## Tested for 1.3.2 (local panels; Ubuntu 26.04 VMs)
 
