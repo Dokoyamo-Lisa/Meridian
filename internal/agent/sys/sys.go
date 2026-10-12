@@ -37,6 +37,7 @@ func Hello(version string, started time.Time) *proto.Hello {
 	pub := LastPublic(context.Background())
 	h.IPv4, h.IPv6, h.IPv4Gone, h.IPv6Gone = pub.IPv4, pub.IPv6, pub.IPv4Gone, pub.IPv6Gone
 	h.Addrs = LocalAddrs()
+	h.AddrPublic = LastAddrPublic() // asked in the background (the agent's address watch)
 	return h
 }
 

@@ -533,7 +533,15 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 				Target: p.forwardTo(ctx, srv, f), Engine: f.Engine, ProxyProtocol: f.ProxyProtocol})
 		}
 	}
-	st.Ping = p.pingTargetsFor(ctx, srv) // the addresses it measures the way to (pingmon.go)
+	st.Ping = p.pingTargetsFor(ctx, srv)                         // the addresses it measures the way to (pingmon.go)
+	st.Guard = p.guardFor(ctx, srv)                              // the security mode, when the supervisor turned it on (servguard.go)
+	if srv.SetupScript != "" && srv.caps().Setup && !srv.Guest { // the supervisor's setup script (servsetup.go)
+		shell := srv.SetupShell
+		if shell != "/bin/bash" {
+			shell = "/bin/sh"
+		}
+		st.Setup = &proto.SetupScript{Version: srv.SetupVersion, Shell: shell, Script: srv.SetupScript}
+	}
 
 	if gr, err := p.geoRule(ctx, srv); err == nil {
 		st.Geo = gr

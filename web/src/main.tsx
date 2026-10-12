@@ -14,6 +14,7 @@ import { ConsoleDock } from './pages/Console'
 import { Login } from './pages/Login'
 import { Monitor } from './pages/Monitor'
 import { Overview } from './pages/Overview'
+import { QuickSearch, openQuickSearch } from './pages/QuickSearch'
 import { Protocols } from './pages/Protocols'
 import { Routing } from './pages/Routing'
 import { ServerPage } from './pages/Server'
@@ -106,6 +107,9 @@ function Shell() {
           ))}
         </nav>
         <div class="tools">
+          <button type="button" class="icon-btn" aria-label="Find (Ctrl K)" title="Find a server, user, protocol or page (Ctrl K or ⌘K)" onClick={openQuickSearch}>
+            <Icon name="search" />
+          </button>
           <ToneMenu />
           <Menu label="Account" icon="users">
             <div class="who">
@@ -135,6 +139,7 @@ function Shell() {
         <Routes />
       </main>
       <PluginEvents />
+      <QuickSearch />
       <footer class="app-foot">
         <span>
           <a href="https://github.com/Dokoyamo-Lisa/Meridian" target="_blank" rel="noopener noreferrer">

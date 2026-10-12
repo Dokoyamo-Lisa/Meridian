@@ -371,6 +371,22 @@ Xray, Hysteria2, users' own mieru/Snell/AnyTLS servers, realm forwards - and the
 only after the human's yes). Expected answer: `{"servers":["Tokyo"],"skipped":[{"name":"Old","why":"agent
 older than 1.3.1 - upgrade it first (nobody is disconnected by that)"}]}`.
 
+**A server's cores** (agent 1.4): `scripts/api.sh GET /api/servers/ID` has `prepare` - each step's
+`state` (`done`, `running`, `failed`, `missing`) and `detail`. A server added before 1.4 shows a core it
+never had as `missing`; install it (disconnects nobody):
+
+```bash
+scripts/api.sh POST /api/servers/ID/actions '{"kind":"install_cores"}'   # answer: {"id":N}
+scripts/api.sh GET /api/actions/N                                          # "status":"done", "output":"Hysteria 2.x in place - ..."
+```
+
+**Reinstall a server** (agent 1.4; everyone on it reconnects once - only after the human's yes):
+`scripts/api.sh POST /api/servers/ID/reinstall '{"clean":false,"confirm":true}'` downloads every core
+again and rebuilds every proxy from the panel with the same ports, keys and links. `"clean":true`
+starts the server over: **its protocols and forwards are removed from the panel too** (users' links
+lose them) - only when the human asks for exactly that. Answer: `{"id":N,"protocols_removed":0,
+"forwards_removed":0}`; then `scripts/wait-server.sh ID`.
+
 **Update the panel itself** (installs since 0.7.0 have the updater service): `scripts/api.sh GET /api/update`
 shows the newest release; `scripts/api.sh POST /api/update/install '{"agents":true}'` installs it (the
 panel restarts once - expect the API to drop for a few seconds - and then upgrades every agent).

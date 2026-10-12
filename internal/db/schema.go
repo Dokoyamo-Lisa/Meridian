@@ -802,6 +802,15 @@ CREATE TABLE protections (
 );
 CREATE INDEX protections_server ON protections(server_id, id);
 `,
+	// 28: (1.4) the public address each private address of a server leaves with, as its agent found
+	// (a cloud's elastic IPs), and the server's security mode the supervisor turned on (JSON; '' = off)
+	`
+ALTER TABLE servers ADD COLUMN addr_public TEXT NOT NULL DEFAULT '';
+ALTER TABLE servers ADD COLUMN guard TEXT NOT NULL DEFAULT '';
+ALTER TABLE servers ADD COLUMN setup_script TEXT NOT NULL DEFAULT '';
+ALTER TABLE servers ADD COLUMN setup_shell TEXT NOT NULL DEFAULT '';
+ALTER TABLE servers ADD COLUMN setup_version INTEGER NOT NULL DEFAULT 0;
+`,
 }
 
 // NextID is an SQL expression for the id of a new row of nodes or subs: above every id the table

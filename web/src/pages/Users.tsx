@@ -155,9 +155,12 @@ function UserList() {
                 {rows.map((s) => (
                   <tr class="click" onClick={() => navigate(`/users/${s.id}`)}>
                     <td>
-                      <a class="cell-main" href={`/users/${s.id}`}>
-                        {s.name}
-                      </a>
+                      <span class="row nowrap" style="gap:4px">
+                        <a class="cell-main" href={`/users/${s.id}`}>
+                          {s.name}
+                        </a>
+                        {s.link && <CopyButton text={s.link} small label={`Copy ${s.name}’s subscription link`} />}
+                      </span>
                       {s.note && <div class="cell-sub ellipsis" style="max-width:260px">{s.note}</div>}
                     </td>
                     <td>

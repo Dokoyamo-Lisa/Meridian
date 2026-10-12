@@ -8,6 +8,35 @@ The things you do once the service runs. Each one takes a minute.
 and a list called **Needs attention** when something does - a user who used up their data, an access
 that ended, a server that stopped reporting.
 
+## Find anything quickly
+
+Press **Ctrl K** (on a Mac **⌘K**), or **/** when you are not typing in a field - on a phone, the
+magnifier at the top. Type part of a name: a server, a user, a protocol (or its port), or a page such
+as *health* or *backups*.
+
+**You should see** the matches as you type. **↑** and **↓** move, **Enter** opens one (or tap it),
+**Esc** closes.
+
+## Copy someone's link
+
+In **Users**, the copy button next to a person's name copies their subscription link - to paste into
+a message. The person's page has the QR code and everything else.
+
+## Work on several servers at once
+
+On **Servers**, tick the servers (the box in the header ticks every server shown). A bar appears
+above the list:
+
+| Button | What happens |
+|---|---|
+| **Install missing software** | Servers added before 1.4 get the cores they lack (Xray, Hysteria) from the official releases. Nobody is disconnected. |
+| **Reinstall…** | Each server downloads its cores again and sets every proxy up again from the panel - the same ports, keys and links. Everyone connected reconnects once. |
+| **Clean reinstall…** | Each server starts over as if just added - **its protocols and forwards are removed**. Type *clean reinstall* to confirm. |
+| **Clear** | Unticks them. |
+
+**You should see** *Reinstalling 2 servers* (for example); each server's page shows how it went.
+Servers that cannot (an agent older than 1.4, or a server shared with you) are named and left out.
+
 ## When someone uses up their data
 
 When a user has used all of their **quota**, the servers stop letting them in at once - by

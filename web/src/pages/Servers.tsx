@@ -8,6 +8,7 @@ import { upgradedText } from './agentUpgrades'
 import { DynamicDNSFields, PanelIPv6Note, confirmCloudflare } from './DynamicDNS'
 import { openConsole } from './Console'
 import { restartEverywhere } from './restartAll'
+import { coreNames, missingCores } from './ServerPrep'
 
 export function statusDot(status: string) {
   return status === 'online' ? 'good' : status === 'offline' ? 'crit' : ''
@@ -26,6 +27,7 @@ export function Servers() {
   const loc = useLocation()
   const list = useAsync(() => get<Server[]>('/api/servers'))
   const [q, setQ] = useState('')
+  const [sel, setSel] = useState<Set<number>>(new Set())
   usePoll(() => void list.reload(), 10000)
   const adding = loc.query.get('add') === '1'
 
@@ -56,6 +58,117 @@ export function Servers() {
     }
   }
 
+  // servers whose agent waits to be asked before it installs the cores it never had
+  const lacking = (list.data || []).filter((s) => !s.guest && s.caps?.prepare && missingCores(s.prepare).length > 0)
+  const chosen = (list.data || []).filter((s) => sel.has(s.id))
+  const toggle = (id: number, on: boolean) =>
+    setSel((x) => {
+      const n = new Set(x)
+      if (on) n.add(id)
+      else n.delete(id)
+      return n
+    })
+
+  // installMissing installs the cores the given servers lack, each from the official releases
+  const installMissing = async (servers: Server[]) => {
+    const can = servers.filter((s) => !s.guest && s.caps?.prepare && missingCores(s.prepare).length > 0)
+    if (!can.length) {
+      toast('None of these servers lacks proxy software it can install (that needs agent 1.4)')
+      return
+    }
+    const ok = await ask({
+      title: `Install the missing proxy software on ${can.length} server${can.length === 1 ? '' : 's'}?`,
+      body: (
+        <>
+          <ul style="margin:0 0 10px;padding-left:18px">
+            {can.map((s) => (
+              <li>
+                <b>{s.name}</b>: {coreNames(missingCores(s.prepare))}
+              </li>
+            ))}
+          </ul>
+          <p class="muted" style="margin:0">
+            Each agent downloads them from the official releases on GitHub and checks each against its published checksum. Nothing that runs restarts and nobody is disconnected.
+          </p>
+        </>
+      ),
+      confirm: 'Install',
+    })
+    if (!ok) return
+    const failed: string[] = []
+    for (const s of can) {
+      try {
+        await post(`/api/servers/${s.id}/actions`, { kind: 'install_cores' })
+      } catch (e) {
+        failed.push(`${s.name} (${errText(e)})`)
+      }
+    }
+    toast(failed.length ? `Not sent to: ${failed.join(', ')}` : `Installing on ${can.length} server${can.length === 1 ? '' : 's'} - each server's page shows the download`)
+    void list.reload()
+  }
+
+  // reinstallMany reinstalls the chosen servers - keeping their protocols, or starting them over
+  const reinstallMany = async (clean: boolean) => {
+    const can = chosen.filter((s) => !s.guest && s.caps?.reinstall)
+    const left = chosen.filter((s) => !can.includes(s))
+    if (!can.length) {
+      toast('None of these servers can be reinstalled from here (that needs agent 1.4, on a server of your own)')
+      return
+    }
+    const protocols = can.reduce((n, s) => n + s.nodes.length, 0)
+    const forwards = can.reduce((n, s) => n + s.forwards.length, 0)
+    const removed = [protocols ? `${protocols} protocol${protocols === 1 ? '' : 's'}` : '', forwards ? `${forwards} forward${forwards === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')
+    const ok = await ask({
+      title: clean ? `Clean reinstall of ${can.length} server${can.length === 1 ? '' : 's'}?` : `Reinstall ${can.length} server${can.length === 1 ? '' : 's'}?`,
+      body: (
+        <>
+          <p style="margin-top:0">{can.map((s) => s.name).join(', ')}</p>
+          {clean ? (
+            <div class="callout crit">
+              <Icon name="alert" size="sm" />
+              <div>
+                {removed && (
+                  <>
+                    <b>
+                      {removed} {protocols + forwards === 1 ? 'is' : 'are'} removed for good
+                    </b>{' '}
+                    - users’ links lose them and their keys are gone.{' '}
+                  </>
+                )}
+                Each server starts over as if just added: the cores and everything Rosélune set up there are cleared, fresh cores come from the official releases and its setup script runs once
+                more. Everyone connected is disconnected.
+              </div>
+            </div>
+          ) : (
+            <div class="callout warn">
+              <Icon name="alert" size="sm" />
+              <div>
+                Each server downloads its cores again from the official releases and sets every proxy up again from the panel - the same ports, keys and links. Everyone connected to them is
+                disconnected for a moment, and their apps reconnect by themselves.
+              </div>
+            </div>
+          )}
+          {left.length > 0 && <p class="muted" style="margin:0">Left out: {left.map((s) => s.name).join(', ')} (needs agent 1.4, on a server of your own).</p>}
+        </>
+      ),
+      confirm: clean ? 'Clean reinstall' : 'Reinstall',
+      danger: true,
+      typed: clean ? 'clean reinstall' : undefined,
+    })
+    if (!ok) return
+    const failed: string[] = []
+    for (const s of can) {
+      try {
+        await post(`/api/servers/${s.id}/reinstall`, { clean, confirm: true })
+      } catch (e) {
+        failed.push(`${s.name} (${errText(e)})`)
+      }
+    }
+    toast(failed.length ? `Not sent to: ${failed.join(', ')}` : `${clean ? 'Starting over' : 'Reinstalling'} ${can.length} server${can.length === 1 ? '' : 's'}`)
+    setSel(new Set())
+    void list.reload()
+  }
+
   return (
     <>
       <PageHead
@@ -64,6 +177,12 @@ export function Servers() {
         actions={
           <>
             {list.data && list.data.length > 5 && <Search value={q} onInput={setQ} placeholder="Find a server" />}
+            {lacking.length > 0 && (
+              <button type="button" class="btn" onClick={() => void installMissing(lacking)} title="Servers that ran before agent 1.4 get cores they never had only when you ask">
+                <Icon name="download" size="sm" />
+                Install missing software ({lacking.length})
+              </button>
+            )}
             {older.length > 0 && (
               <button type="button" class="btn" onClick={() => void upgradeAll()} title={`${older.length} server(s) run an older agent than the panel (${version})`}>
                 <Icon name="download" size="sm" />
@@ -98,11 +217,50 @@ export function Servers() {
           Add a Linux server, paste one command on it, and it is ready.
         </Empty>
       )}
+      {chosen.length > 0 && (
+        <div class="bulkbar" role="region" aria-label="Selected servers">
+          <b>{chosen.length} selected</b>
+          <span class="grow" />
+          <button class="btn sm" onClick={() => void installMissing(chosen)}>
+            <Icon name="download" size="sm" />
+            Install missing software
+          </button>
+          <button class="btn sm" onClick={() => void reinstallMany(false)}>
+            <Icon name="refresh" size="sm" />
+            Reinstall…
+          </button>
+          <button class="btn sm danger" onClick={() => void reinstallMany(true)}>
+            <Icon name="trash" size="sm" />
+            Clean reinstall…
+          </button>
+          <button class="btn sm ghost" onClick={() => setSel(new Set())}>
+            Clear
+          </button>
+        </div>
+      )}
       {rows.length > 0 && (
         <div class="table-wrap">
           <table class="t">
             <thead>
               <tr>
+                <th class="pick">
+                  <input
+                    type="checkbox"
+                    aria-label="Select every server shown"
+                    checked={rows.length > 0 && rows.every((s) => sel.has(s.id))}
+                    onChange={(e) => {
+                      const on = e.currentTarget.checked
+                      setSel((x) => {
+                        const n = new Set(x)
+                        for (const s of rows) {
+                          if (on) n.add(s.id)
+                          else n.delete(s.id)
+                        }
+                        return n
+                      })
+                    }}
+                  />
+                </th>
                 <th>Server</th>
                 <th>Status</th>
                 <th class="hide-sm">Protocols</th>
@@ -115,7 +273,10 @@ export function Servers() {
             </thead>
             <tbody>
               {rows.map((s) => (
-                <tr class="click" onClick={() => navigate(`/servers/${s.id}`)}>
+                <tr class={'click' + (sel.has(s.id) ? ' selected' : '')} onClick={() => navigate(`/servers/${s.id}`)}>
+                  <td class="pick" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" aria-label={`Select ${s.name}`} checked={sel.has(s.id)} onChange={(e) => toggle(s.id, e.currentTarget.checked)} />
+                  </td>
                   <td>
                     <a class="cell-main" href={`/servers/${s.id}`}>
                       {s.name}
@@ -129,6 +290,7 @@ export function Servers() {
                     <StatusWord status={s.status} />
                     {s.pending_restart && <div class="cell-sub warn-ink">restart needed</div>}
                     {s.apply_errors && <div class="cell-sub crit-ink">apply error</div>}
+                    {missingCores(s.prepare).length > 0 && <div class="cell-sub warn-ink">without {coreNames(missingCores(s.prepare))}</div>}
                   </td>
                   <td class="hide-sm">
                     <div class="row wrap" style="gap:4px">

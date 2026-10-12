@@ -972,6 +972,11 @@ func KeysOnlyReady(root string, s sshd.Settings) string {
 // written to a settings file of its own, checked with sshd -t and sshd -T, then read by the SSH
 // server without dropping a session.
 func (e *Engine) keysOnly(ctx context.Context) (*entry, string, error) {
+	return e.keysOnlyIn(ctx, sshd.KeysOnlyFile, "# Rosélune: SSH takes keys only - turned on in the panel by the supervisor; undo it there (server › Security)\n")
+}
+
+// keysOnlyIn writes the keys-only settings to file (with a first line saying whose they are).
+func (e *Engine) keysOnlyIn(ctx context.Context, name, comment string) (*entry, string, error) {
 	s, err := e.sshdSettings(ctx)
 	if err != nil {
 		return nil, "", fmt.Errorf("reading the SSH server's settings: %v", err)
@@ -982,10 +987,9 @@ func (e *Engine) keysOnly(ctx context.Context) (*entry, string, error) {
 	if why := KeysOnlyReady(e.Root, s); why != "" {
 		return nil, "", errors.New(why)
 	}
-	file := e.path(sshd.KeysOnlyFile)
+	file := e.path(name)
 	write := func(kbd string) error {
-		body := "# Rosélune: SSH takes keys only - turned on in the panel by the supervisor; undo it there (server › Security)\n" +
-			"PasswordAuthentication no\n" + kbd + " no\nPermitEmptyPasswords no\n"
+		body := comment + "PasswordAuthentication no\n" + kbd + " no\nPermitEmptyPasswords no\n"
 		return os.WriteFile(file, []byte(body), 0o644)
 	}
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
@@ -1014,7 +1018,60 @@ func (e *Engine) keysOnly(ctx context.Context) (*entry, string, error) {
 		os.Remove(file)
 		return nil, "", fmt.Errorf("the SSH server did not take the settings: %v - nothing was changed", err)
 	}
-	return &entry{DropIn: sshd.KeysOnlyFile}, "SSH takes keys only now: passwords no longer sign in (sessions already open stay)", nil
+	return &entry{DropIn: name}, "SSH takes keys only now: passwords no longer sign in (sessions already open stay)", nil
+}
+
+// GuardKeysOnly makes SSH take keys only for the security mode - in a settings file of its own,
+// checked as the protective step's is, never locking anyone out - or, with on false, stops doing so.
+// It says "on" while SSH takes keys only, and otherwise why not ("" when off).
+func (e *Engine) GuardKeysOnly(ctx context.Context, on bool) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	file := e.path(sshd.GuardFile)
+	_, err := os.Stat(file)
+	there := err == nil
+	if !on {
+		if there {
+			old, _ := os.ReadFile(file)
+			os.Remove(file)
+			if msg, err := e.sshdTest(ctx); err != nil {
+				_ = os.WriteFile(file, old, 0o644) // its own settings are broken: keys only stays
+				return "the SSH server's own settings do not work (" + msg + ") - keys only stays"
+			}
+			if err := e.reloadSSH(ctx); err != nil {
+				return "the SSH server did not read its settings again: " + err.Error()
+			}
+		}
+		return ""
+	}
+	if there {
+		return "on"
+	}
+	_, _, err = e.keysOnlyIn(ctx, sshd.GuardFile, "# Rosélune's security mode: SSH takes keys only - turn it off in the panel (server › Security mode)\n")
+	if err != nil && !strings.Contains(err.Error(), "takes keys only already") {
+		return err.Error()
+	}
+	return "on"
+}
+
+// guardIDs number the security mode's own steps in the journal, far above the panel's.
+var guardIDs = struct {
+	sync.Mutex
+	n int64
+}{n: 1 << 52}
+
+// GuardStop stops a crypto-miner for the security mode, as the protective step would: the same
+// process (its number, start time and program must match), and its program into quarantine when it
+// sits outside the system's folders.
+func (e *Engine) GuardStop(ctx context.Context, f proto.Fix) (string, error) {
+	if f.Kind != proto.FixStopProcess {
+		return "", errors.New("the security mode only stops processes")
+	}
+	guardIDs.Lock()
+	guardIDs.n++
+	id := guardIDs.n + time.Now().Unix()%1000000*1000
+	guardIDs.Unlock()
+	return e.Do(ctx, proto.Protect{ID: id, Fix: &f})
 }
 
 func (e *Engine) passwordsBack(ctx context.Context, en *entry) (string, error) {

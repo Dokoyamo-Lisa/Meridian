@@ -29,6 +29,9 @@ import (
 // them compiles the account's servers again (addressMoved).
 func (p *Panel) currentAddrs(ctx context.Context, s *Server) []string {
 	ips := append([]string{s.IPv4, s.IPv6, s.Address}, s.Addrs...)
+	for _, pub := range s.AddrPublic { // where traffic from its private addresses comes from
+		ips = append(ips, pub)
+	}
 	if nodes, err := p.nodesOf(ctx, s.ID); err == nil {
 		for _, n := range nodes {
 			ips = append(ips, n.BindIP)

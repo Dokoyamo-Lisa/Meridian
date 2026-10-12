@@ -104,7 +104,8 @@ Change (full-access token):
 | `set_status_page`, `set_server_on_status_page` | where the status page is, whether visitors see the servers (`public`), whether the page shows their IP addresses (`show_ips`, off by default), and how each server appears on its globe |
 | `set_notifications`, `test_notifications` | send problems to Telegram and/or an HTTPS webhook; a test message per channel |
 | `set_branding` | the panel's name, its logo (SVG markup or a base64 image; checked like an upload) and how the logo moves |
-| `import_protocols`, `set_country_rule`, `set_protocol_enabled`, `remove_protocol`, `remove_forward`, `block_ip`, `server_action` | can disconnect people or stop services - need `confirm=true` |
+| `import_protocols`, `set_country_rule`, `set_protocol_enabled`, `remove_protocol`, `remove_forward`, `block_ip`, `server_action` | can disconnect people or stop services - need `confirm=true`; `server_action` `install_cores` installs the cores a server lacks (agent 1.4; nobody is disconnected) |
+| `reinstall_server` | `clean: false` downloads every core again and rebuilds every proxy from the panel (the same ports, keys and links); `clean: true` starts the server over - its protocols and forwards are removed from the panel too. Everyone on the server reconnects once; agent 1.4; needs `confirm=true` |
 | `remove_external_node` | the protocols and rules that used the node block that traffic until they get another exit - needs `confirm=true` |
 | `update_panel`, `upgrade_all_agents` | install the newest release (the panel restarts; proxies keep running) and upgrade every older agent (nobody is disconnected) - need `confirm=true` |
 | `decide_risk` | decides about a health risk: `expected` (never flagged again), `acknowledged` (flagged again if it happens again) or `open`; `scope: "all"` reaches every server, and expected on every server needs `confirm=true` |

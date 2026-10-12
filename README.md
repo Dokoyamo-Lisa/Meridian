@@ -124,6 +124,15 @@ A server whose route to the panel is poor can **reach the panel through another 
 agent's connection passed on, still encrypted end to end - chosen by you, or by itself once a server
 keeps losing the panel.
 
+The agent **prepares a new server by itself** - Xray and Hysteria from their official GitHub releases,
+checked against their published checksums, every step shown in the panel - and on servers that ran
+before it installs what they lack only when you ask. A server can be **reinstalled** (every core again,
+every proxy rebuilt from the panel with the same ports, keys and links) or **started over** (a clean
+reinstall), one at a time or several at once. A **security mode**, turned on per server, lets the
+agent block addresses that keep guessing SSH passwords, keep SSH to keys only and stop crypto-miners
+by itself; a **setup script** per server runs as root after the cores. A protocol whose domain or
+camouflage site is behind **Cloudflare** is flagged in red before you save.
+
 Links work in Clash Verge / FlClash / mihomo, Stash, sing-box, Shadowrocket, Surge, Quantumult X,
 Hiddify, Loon, v2rayN / v2rayNG / v2Box, NekoBox / Karing and the official WireGuard apps. The link
 detects the app; browsers get a page with QR codes and one-tap import buttons. Every protocol page

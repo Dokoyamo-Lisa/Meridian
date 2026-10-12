@@ -74,16 +74,25 @@ refuses a proxy pass or traffic rule between an IPv6-only server and one without
 
 ## Several IP addresses
 
-A server with more than one public address can give each protocol its own:
+A server with more than one address that people can reach can give each protocol its own:
 
-1. In the protocol's form, open **Port, name and more**.
-2. **Server address for this protocol**: pick one of the addresses (the agent lists them once it is
+1. In the protocol's form, find **Server address** - right under **Port** and **Name**. It is there
+   when the server has at least two addresses a protocol can use (the agent lists them once it is
    connected).
+2. Pick one of the addresses, instead of **All of the server's addresses**.
 3. Save.
 
 The protocol listens there, its traffic leaves from there, and links use it - so two protocols on
-different addresses can even share a port. (**Address override**, in the same place, changes only
-the address in links - for example a domain name.)
+different addresses can even share a port. (**Address override**, under **Proxy pass, address override
+and more**, changes only the address in links - for example a domain name.)
+
+**Clouds with elastic or floating IP addresses** (the server itself only sees private addresses such
+as *10.0.0.5*): agents 1.4 and later ask, from each private address, which public address its traffic
+leaves with. Such an address is offered as *10.0.0.5 → 203.0.113.9*: the protocol listens on the
+private address, and links give the public one. That works where the provider forwards the public
+address to that private one, as clouds do for elastic and floating IPs. A private address whose
+public address is not known is not offered - devices could not reach it. The server's page lists
+the addresses under **System** the same way.
 
 ## A poor route to the panel
 
@@ -113,3 +122,5 @@ tells you.
 | *Cloudflare refused the token* | Make the token again with the template **Edit zone DNS**, for the zone of the name. |
 | An IPv6-only server stays **Waiting for agent** | The panel's domain has no AAAA record: add one, then run the install command again. (A server whose provider carries IPv6 to IPv4 for it - NAT64 - gets through without.) |
 | *The relay through ... failed* | The port on the relaying server is filtered by its provider, or that server is offline: open the port, or pick another server. |
+| No **Server address** in the protocol form | The server has only one address a protocol can use (or its agent is older than 0.6). A private address appears once its public address is known - agent 1.4, a few minutes after it connects. |
+| *... is a private address of ..., and its public address is not known* when saving | The agent has not found which public address that private one leaves with. Wait a few minutes; if it stays, the address has no way out to the internet of its own - choose another. |

@@ -493,8 +493,8 @@ type protocolDraft struct {
 	ServerID int64       `json:"server_id,omitempty" doc:"Adding: the server it is for, so what depends on the server (its IP version, shared certificates) is checked too"`
 	// editing: the rest of what would be saved, so the answer says what changes for devices
 	Port   *int    `json:"port,omitempty" doc:"Editing: the port it would have (omitted: unchanged)"`
-	BindIP *string `json:"bind_ip,omitempty" doc:"Editing: its own address it would have (omitted: unchanged)"`
-	Host   *string `json:"host,omitempty" doc:"Editing: its address override (omitted: unchanged)"`
+	BindIP *string `json:"bind_ip,omitempty" doc:"Its own address (editing: omitted = unchanged)"`
+	Host   *string `json:"host,omitempty" doc:"Its address override (editing: omitted = unchanged) - the address its links would have is checked for Cloudflare's proxy too"`
 	Code   *string `json:"code,omitempty" doc:"Editing: its own settings as code (omitted: unchanged)"`
 }
 
@@ -546,13 +546,26 @@ func (p *Panel) apiProtocolCheck(w http.ResponseWriter, r *http.Request, a *Acco
 		draft := &Node{Kind: kind, Settings: raw}
 		if n != nil {
 			draft.ID, draft.BindIP = n.ID, n.BindIP
-			if in.BindIP != nil {
-				draft.BindIP = strings.Trim(strings.TrimSpace(*in.BindIP), "[]")
-			}
+		}
+		if in.BindIP != nil { // adding too: the range is checked on the address it would have
+			draft.BindIP = strings.Trim(strings.TrimSpace(*in.BindIP), "[]")
 		}
 		err = p.checkHop(r.Context(), srv, draft)
 	}
 	v := supportOf(kind, raw, err)
+	if err == nil { // a name behind Cloudflare (cfcheck.go) - with the address its links would have
+		draft := &Node{Kind: kind, Settings: raw}
+		if n != nil {
+			draft.Host, draft.BindIP = n.Host, n.BindIP
+		}
+		if in.Host != nil {
+			draft.Host, _ = normHost(*in.Host)
+		}
+		if in.BindIP != nil {
+			draft.BindIP = strings.Trim(strings.TrimSpace(*in.BindIP), "[]")
+		}
+		v.Warnings = domainWarnings(r.Context(), kind, raw, linkHost(draft, srv))
+	}
 	if n != nil && err == nil {
 		next := *n
 		next.Settings = raw

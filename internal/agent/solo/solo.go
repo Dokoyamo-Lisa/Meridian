@@ -252,6 +252,11 @@ func (e *Engine) save() error {
 		list = append(list, i)
 	}
 	sort.Slice(list, func(a, b int) bool { return list[a].Key() < list[b].Key() })
+	if len(list) == 0 {
+		if _, err := os.Stat(e.ConfDir); os.IsNotExist(err) {
+			return nil // nothing runs, and the folder for it was never made (or was cleared)
+		}
+	}
 	b, _ := json.Marshal(list)
 	return os.WriteFile(filepath.Join(e.ConfDir, "instances.json"), b, 0o600)
 }
@@ -538,6 +543,26 @@ func (e *Engine) Pending() []string {
 		out[k] = fmt.Sprintf("protocol n%d: %s without root rights, a safer setup from the upgraded agent", id, who)
 	}
 	return out
+}
+
+// Remove stops every user's process, forgets the services and removes their files (the agent
+// is uninstalled, or the server's proxies are installed again).
+func (e *Engine) Remove() {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.init()
+	for _, i := range e.running {
+		e.stop(i)
+	}
+	for _, unit := range units {
+		service.Undefine(unit)
+	}
+	e.defined = map[string]bool{}
+	os.RemoveAll(e.ConfDir)
+	os.RemoveAll(e.RunDir)
 }
 
 // RestartPending restarts the processes that run as root, now with the account: their users'

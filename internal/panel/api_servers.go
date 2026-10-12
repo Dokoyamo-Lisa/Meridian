@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	mrand "math/rand/v2"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"slices"
 	"strconv"
@@ -87,8 +88,50 @@ type serverView struct {
 	DNS        *dnsView                    `json:"dns,omitempty" doc:"A server whose IP address changes (ddns): what its name resolves to and whether that is the server"`
 	Shares     []proto.ShareStatus         `json:"shares,omitempty" doc:"(The server's own panel) the other panels it is shared with, as its agent reports them"`
 	Taken      [][2]int                    `json:"taken,omitempty" doc:"Port ranges the other panels' protocols and forwards use on this server (first, last): yours cannot use them"`
+	Choices    []addrChoice                `json:"addr_choices" doc:"The addresses a protocol can have to itself: each public address of the server, and each private one whose public address the agent found - with the address devices reach it at"`
+	Prepare    *proto.Prepare              `json:"prepare,omitempty" doc:"How the agent prepares the server - its cores from their official releases, and what the host offers - as it goes (agents 1.4 and later)"`
+	GuardNow   *proto.GuardStatus          `json:"guard_now,omitempty" doc:"What the security mode does now: addresses blocked from SSH, whether SSH takes keys only, miners stopped (while it is on)"`
+	SetupNow   *proto.SetupResult          `json:"setup_now,omitempty" doc:"How the supervisor's setup script went: its output and exit code (agents 1.4)"`
 
 	panelLinkView // how its agent reaches the panel (relay.go)
+}
+
+// addrChoice is an address a protocol can be given on its own, and where devices reach it.
+type addrChoice struct {
+	Addr   string `json:"addr"`
+	Public string `json:"public" doc:"The address devices connect to: the address itself, or the public one its traffic leaves with"`
+}
+
+// publicOf is the address a protocol bound to bind is reached at: bind when it is public, the public
+// address the agent found for a private one, else "".
+func (s *Server) publicOf(bind string) string {
+	a, err := netip.ParseAddr(bind)
+	if err != nil {
+		return ""
+	}
+	if publicAddr(a) {
+		return a.Unmap().String()
+	}
+	return s.AddrPublic[a.Unmap().String()]
+}
+
+// addrChoices are the addresses a protocol can have to itself: the server's public ones, and private
+// ones whose public address is known - each public address once (its first local address).
+func (s *Server) addrChoices() []addrChoice {
+	out := []addrChoice{}
+	seen := map[string]bool{}
+	for _, a := range s.Addrs {
+		pub := s.publicOf(a)
+		if pub == "" || seen[pub] {
+			continue
+		}
+		if ip, err := netip.ParseAddr(a); err == nil && ((ip.Is4() && !s.v4()) || (ip.Is6() && !s.v6())) {
+			continue
+		}
+		seen[pub] = true
+		out = append(out, addrChoice{Addr: a, Public: pub})
+	}
+	return out
 }
 
 // noNftables says whether a server has told the panel it has no nftables.
@@ -103,7 +146,7 @@ func noNftables(s *Server) bool {
 const nftMissing = "nftables is not installed on this server (apk add nftables on Alpine, apt install nftables on Debian or Ubuntu)"
 
 func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*serverView, error) {
-	v := &serverView{Server: s, BwUsed: s.BwUsed(), Nodes: []nodeView{}, Forwards: []*Forward{}}
+	v := &serverView{Server: s, BwUsed: s.BwUsed(), Nodes: []nodeView{}, Forwards: []*Forward{}, Choices: s.addrChoices()}
 	_ = json.Unmarshal([]byte(s.Caps), &v.Caps)
 	if c := p.hub.get(s.ID); c != nil {
 		v.DesiredRev = c.state.Rev
@@ -133,6 +176,7 @@ func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*server
 			v.Ports = ls.Live.Ports
 		}
 		v.Shares, v.Taken = ls.Live.Shares, ls.Live.Taken // sharing.go
+		v.Prepare, v.GuardNow, v.SetupNow = ls.Live.Prepare, ls.Live.Guard, ls.Live.Setup
 		for _, u := range ls.Live.Online {
 			online[u.Node] += len(u.IPs)
 			subs[u.Sub] = true
@@ -198,6 +242,13 @@ func (p *Panel) serverView(ctx context.Context, s *Server, detail bool) (*server
 	v.Forwards = append(v.Forwards, fw...)
 	v.Limits = append(v.Limits, portIssues(s, nodes, fw)...)
 	v.Limits = append(v.Limits, addressIssues(s, nodes)...)
+	for _, n := range nodes { // a name behind Cloudflare, as far as known now (cfcheck.go)
+		if n.Enabled {
+			for _, w := range knownDomainWarnings(n.Kind, n.Settings, linkHost(n, s)) {
+				v.Limits = append(v.Limits, protocolLabel(n.Kind, n.Settings)+": "+w)
+			}
+		}
+	}
 	if detail {
 		p.hub.settle(ctx, time.Second) // a change just made: what its compile found about the rules
 	}
@@ -245,6 +296,8 @@ func addressIssues(s *Server, nodes []*Node) []string {
 		}
 		if n.BindIP != "" && len(s.Addrs) > 0 && !slices.Contains(s.Addrs, n.BindIP) {
 			out = append(out, fmt.Sprintf("%s is bound to %s, which is no longer an address of this server - choose another one.", label, n.BindIP))
+		} else if n.BindIP != "" && n.Host == "" && s.publicOf(n.BindIP) == "" {
+			out = append(out, fmt.Sprintf("%s is bound to %s, a private address whose public address is not known - links give the server's address instead. Choose an address reached from the internet, or set an address override.", label, n.BindIP))
 		}
 		if n.Kind == subgen.KindWireGuard {
 			var ws wgSettings
@@ -832,7 +885,8 @@ func (p *Panel) apiServerAction(w http.ResponseWriter, r *http.Request, a *Accou
 		return err
 	}
 	if !slices.Contains([]string{proto.ActionRestartXray, proto.ActionRestartPending, proto.ActionRestartAll, proto.ActionUpgradeXray,
-		proto.ActionUpgradeHysteria, proto.ActionUpgradeRealm, proto.ActionUpgradeAgent, proto.ActionCheckTarget}, in.Kind) {
+		proto.ActionUpgradeHysteria, proto.ActionUpgradeRealm, proto.ActionUpgradeAgent, proto.ActionCheckTarget, proto.ActionReinstall,
+		proto.ActionInstallCores}, in.Kind) {
 		return errStatus(http.StatusBadRequest, "unknown action")
 	}
 	if s.Guest && !guestActionKinds[in.Kind] { // sharing.go
@@ -840,6 +894,12 @@ func (p *Panel) apiServerAction(w http.ResponseWriter, r *http.Request, a *Accou
 	}
 	if in.Kind == proto.ActionRestartAll && !s.caps().RestartAll {
 		return errStatus(http.StatusBadRequest, needRestartAll)
+	}
+	if in.Kind == proto.ActionReinstall && !s.caps().Reinstall {
+		return errStatus(http.StatusBadRequest, "installing the cores again needs agent 1.4 or later on this server - upgrade its agent first (nobody is disconnected by that)")
+	}
+	if in.Kind == proto.ActionInstallCores && !s.caps().Prepare {
+		return errStatus(http.StatusBadRequest, "installing the cores a server lacks needs agent 1.4 or later on it - upgrade its agent first (nobody is disconnected by that)")
 	}
 	if in.Kind == proto.ActionRestartPending && !s.caps().RestartPending {
 		in.Kind = proto.ActionRestartXray // agents before 0.6.3: only Xray's settings ever wait
@@ -874,6 +934,24 @@ func (p *Panel) apiServerAction(w http.ResponseWriter, r *http.Request, a *Accou
 			b, _ := json.Marshal(map[string]string{"version": v})
 			args = string(b)
 		}
+	case proto.ActionReinstall:
+		var x proto.Reinstall
+		if len(in.Args) > 0 && string(in.Args) != "null" {
+			if err := json.Unmarshal(in.Args, &x); err != nil {
+				return errStatus(http.StatusBadRequest, "invalid args")
+			}
+		}
+		if x.Rebuild || x.Clean { // the whole server: its own endpoint, which confirms and removes what a clean one removes
+			return errStatus(http.StatusBadRequest, "to reinstall the whole server use POST /api/servers/{id}/reinstall")
+		}
+		if x.Core == "" {
+			x.Core = "all"
+		}
+		if x.Core != "xray" && x.Core != "hysteria" && x.Core != "all" {
+			return errStatus(http.StatusBadRequest, "args.core is xray, hysteria or all")
+		}
+		b, _ := json.Marshal(x)
+		args = string(b)
 	}
 	if aid == 0 {
 		res, err := p.db.Exec1(`INSERT INTO actions (server_id, kind, args, created_at, created_by) VALUES (?, ?, ?, ?, ?)`,
@@ -884,8 +962,13 @@ func (p *Panel) apiServerAction(w http.ResponseWriter, r *http.Request, a *Accou
 		aid, _ = res.LastInsertId()
 	}
 	what := strings.ReplaceAll(in.Kind, "_", " ")
-	if in.Kind == proto.ActionRestartAll {
+	switch in.Kind {
+	case proto.ActionRestartAll:
 		what = "restart everything"
+	case proto.ActionReinstall:
+		what = "installing the cores again"
+	case proto.ActionInstallCores:
+		what = "installing the cores it lacks"
 	}
 	p.event(s.AccountID, "info", "action", id, 0, a.ID, fmt.Sprintf("%s requested %s on %s", a.Username, what, s.Name), nil)
 	p.touchServers(id)
@@ -1210,7 +1293,7 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	bind := ""
 	if in.BindIP != nil {
-		if bind, err = bindAddr(s, *in.BindIP); err != nil {
+		if bind, err = bindAddr(s, *in.BindIP, ""); err != nil {
 			return err
 		}
 		if bind != "" && !s.agent06() {
@@ -1358,7 +1441,7 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 	t1, u1 := nodeNets(n.Kind, n.Settings)
 	rebound := false
 	if in.BindIP != nil {
-		bind, err := bindAddr(s, *in.BindIP)
+		bind, err := bindAddr(s, *in.BindIP, n.BindIP)
 		if err != nil {
 			return err
 		}

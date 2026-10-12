@@ -16,28 +16,48 @@ const publicEvery = 2 * time.Minute
 // minutes, and a change sends a hello at once: users' links, other servers' links to this one, the
 // country rules that let it in and its dynamic DNS name follow within seconds of the check.
 type publicAddrs struct {
-	mu   sync.Mutex
-	sent *sys.PublicAddrs // what the last hello the panel received said
-	now  sys.PublicAddrs  // the last check
+	mu      sync.Mutex
+	sent    *sys.PublicAddrs  // what the last hello the panel received said
+	now     sys.PublicAddrs   // the last check
+	sentMap map[string]string // the public address of each private one, as the last hello said
+	nowMap  map[string]string // ... and as the last check found
 }
 
-// watchPublic checks the public addresses every two minutes and asks for a report when they moved.
+// watchPublic checks the public addresses every two minutes - and, for each private address of the
+// host, the public one its traffic leaves with - and asks for a report when they moved.
 func (a *Agent) watchPublic(ctx context.Context) {
 	t := time.NewTicker(publicEvery)
 	defer t.Stop()
+	first := true
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
+		if !first {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
 		}
-		if a.pub.update(sys.CheckPublic(ctx)) {
+		moved := a.pub.updateMap(sys.AddrPublic(ctx, sys.LocalAddrs()))
+		if !first {
+			moved = a.pub.update(sys.CheckPublic(ctx)) || moved
+		}
+		first = false
+		if moved {
 			select {
 			case a.kick <- struct{}{}:
 			default:
 			}
 		}
 	}
+}
+
+// updateMap takes what was found of the private addresses' public ones and says whether the panel has
+// to hear it now.
+func (p *publicAddrs) updateMap(m map[string]string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.nowMap = m
+	return p.movedLocked()
 }
 
 // update takes a check's result and says whether the panel has to hear it now.
@@ -64,7 +84,7 @@ func (p *publicAddrs) movedLocked() bool {
 	}
 	s, n := *p.sent, p.now
 	return (n.IPv4 != "" && n.IPv4 != s.IPv4) || (n.IPv6 != "" && n.IPv6 != s.IPv6) ||
-		(n.IPv4Gone && !s.IPv4Gone) || (n.IPv6Gone && !s.IPv6Gone)
+		(n.IPv4Gone && !s.IPv4Gone) || (n.IPv6Gone && !s.IPv6Gone) || !sys.SameAddrPublic(p.nowMap, p.sentMap)
 }
 
 // delivered records what a hello the panel received said about the addresses.
@@ -75,4 +95,5 @@ func (p *publicAddrs) delivered(h *proto.Hello) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.sent = &sys.PublicAddrs{IPv4: h.IPv4, IPv6: h.IPv6, IPv4Gone: h.IPv4Gone, IPv6Gone: h.IPv6Gone}
+	p.sentMap = h.AddrPublic
 }

@@ -54,6 +54,16 @@ Logs: journalctl -u meridian-agent -f
 Go back to the panel - do not reload, the page updates by itself. Within a few seconds step 2 gets a
 tick, and the server's page shows **Online**, where it is, its system, its processor, memory and disk.
 
+Step 3, **Preparing the server**, follows the agent as it gets the server ready - usually in under a
+minute:
+
+- **Xray** and **Hysteria** - downloaded from their official releases on GitHub (with a bar while
+  they download), each checked against its published checksum.
+- **nftables**, **WireGuard**, **Time**, **Public address** - what the server offers. *missing*
+  next to one of them only matters for the protocols that need it, and says what to install.
+
+When the cores have their ticks, it says **Ready** - you can add protocols before that, too.
+
 ![The server's page, online, with Add a protocol](../img/guide/server-connected.webp)
 
 Next: [Add a protocol](add-a-protocol.md) - the button is right there on the server's page.
@@ -69,6 +79,9 @@ Next: [Add a protocol](add-a-protocol.md) - the button is right there on the ser
 | It says *installed and running*, but the panel keeps waiting | Look at the agent: `systemctl status meridian-agent --no-pager` and `journalctl -u meridian-agent -n 50 --no-pager`. |
 | `clock skew` in the agent's log | The server's clock is wrong. Run `timedatectl set-ntp true`, wait a minute. |
 | `panel refused this agent` in the agent's log | The command's secret was replaced. Copy the command from the setup page again and paste it. |
+| **Preparing the server**: *Xray ... failed - tried again in a few minutes* | The server could not download from GitHub. Check it can open `https://github.com` (outgoing HTTPS must be allowed); behind a filter, tick **Download cores through the panel** in **Settings › Panel** (**Cores**). It is tried again every few minutes by itself. |
+| **nftables** *missing* | `apt-get install -y nftables` (Debian, Ubuntu) or `apk add nftables` (Alpine) on the server - needed for users' own servers (mieru, Snell, AnyTLS), kernel port forwards, port hopping, country rules and IP blocks. |
+| **Time** *missing* | `timedatectl set-ntp true` on the server, or install `chrony`. |
 | The command shows `localhost` or a private address instead of your panel's name | Set the panel's public address in **Settings › Panel** first, then copy the command again. |
 
 > **Good to know:** Pasting the command again is always safe. It repairs the agent and keeps the

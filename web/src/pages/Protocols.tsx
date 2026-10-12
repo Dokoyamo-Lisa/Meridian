@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { AppSupport, Cert, ExtNode, NodeView, ProtocolCatalog, ProtocolCheck, Server, User, del, get, patch, plural, post } from '../api'
+import { ApiError, AppSupport, Cert, ExtNode, NodeView, ProtocolCatalog, ProtocolCheck, Server, User, del, get, patch, plural, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import { Check, Code, Empty, ErrorBox, Field, Loading, Menu, Modal, PageHead, Search, Seg, Toggle, ask, errText, run, toast, useAsync, usePoll } from '../ui'
@@ -402,7 +402,10 @@ export function ProtocolCard(props: {
   const st = n.settings || {}
   const [testing, setTesting] = useState(false)
   const [result, setResult] = useState<{ target: string; addr?: string; ok: boolean; ms?: number; error?: string }[] | null>(null)
-  const host = n.host || n.bind_ip || props.server.address || props.server.ipv4 || props.server.ipv6
+  const [copying, setCopying] = useState(false)
+  // its own address: devices reach a private one at the public address its traffic leaves with
+  const own = n.bind_ip ? props.server.addr_choices?.find((c) => c.addr === n.bind_ip)?.public || n.bind_ip : ''
+  const host = n.host || own || props.server.address || props.server.ipv4 || props.server.ipv6
 
   const entries = n.pass_entries || []
   const rules = n.route_uses || []
@@ -505,7 +508,7 @@ export function ProtocolCard(props: {
       </span>,
     ],
   ]
-  facts.push(['Address', <span class="mono ellipsis">{st.cdn ? `${st.cdn_host}:${st.cdn_port} (CDN)` : host || '—'}{n.bind_ip ? <span class="faint"> · its own</span> : null}</span>])
+  facts.push(['Address', <span class="mono ellipsis">{st.cdn ? `${st.cdn_host}:${st.cdn_port} (CDN)` : host || '—'}{n.bind_ip ? <span class="faint"> · its own{own !== n.bind_ip ? ` (${n.bind_ip})` : ''}</span> : null}</span>])
   if (st.security === 'reality') facts.push(['Camouflage', <span class="ellipsis">{st.own_site ? `your site ${st.sni} (${st.target})` : st.sni}</span>])
   if (st.security === 'tls' || n.kind === 'hysteria2' || n.kind === 'anytls')
     facts.push(['Certificate', <span class="ellipsis">{st.sni} <span class="faint">· {({ self: 'self-signed, pinned', acme: "Let's Encrypt", custom: 'your own', shared: 'shared' } as Record<string, string>)[st.cert_mode] || st.cert_mode}</span></span>])
@@ -618,6 +621,12 @@ export function ProtocolCard(props: {
         )}
         <span class="grow" />
         <Menu label="Protocol actions">
+          {!props.forUser && (
+            <button onClick={() => setCopying(true)}>
+              <Icon name="copy" size="sm" />
+              Copy to other servers…
+            </button>
+          )}
           <button onClick={regen}>
             <Icon name="key" size="sm" />
             Regenerate keys…
@@ -628,7 +637,115 @@ export function ProtocolCard(props: {
           </button>
         </Menu>
       </div>
+      {copying && <CopyProtocol node={n} server={props.server} onClose={() => setCopying(false)} onDone={props.onChanged} />}
     </div>
+  )
+}
+
+// CopyProtocol sets the same protocol up on other servers: the same settings, with keys of their
+// own - on the same port where it is free there, else on a free one.
+function CopyProtocol(props: { node: NodeView; server: Server; onClose: () => void; onDone: () => void }) {
+  const n = props.node
+  const st = n.settings || {}
+  const servers = useAsync(() => get<Server[]>('/api/servers'))
+  const [pick, setPick] = useState<Set<number>>(new Set())
+  const [busy, setBusy] = useState(false)
+  const [out, setOut] = useState<{ name: string; ok: boolean; text: string }[]>([])
+  const others = (servers.data || []).filter((x) => x.id !== props.server.id && !x.guest)
+  // its own domain and certificate belong to its server: elsewhere the domain must point at that server too
+  const ownDomain = (st.security === 'tls' || n.kind === 'hysteria2' || n.kind === 'anytls') && st.cert_mode && st.cert_mode !== 'self' && !st.cdn
+  const go = async () => {
+    setBusy(true)
+    const body = settingsFor(n.kind, draftFrom(n.kind, st), false)
+    const results: { name: string; ok: boolean; text: string }[] = []
+    for (const x of others.filter((o) => pick.has(o.id))) {
+      try {
+        let made: { port: number }
+        try {
+          made = await post<{ port: number }>(`/api/servers/${x.id}/nodes`, { kind: n.kind, settings: body, port: n.port })
+        } catch (e) {
+          // the port is taken there (or not one the provider forwards): a free one instead
+          if (!(e instanceof ApiError) || (e.status !== 409 && !/port/i.test(e.message))) throw e
+          made = await post<{ port: number }>(`/api/servers/${x.id}/nodes`, { kind: n.kind, settings: body })
+        }
+        results.push({ name: x.name, ok: true, text: made.port === n.port ? `on port ${made.port}` : `on port ${made.port} (${n.port} is taken there)` })
+      } catch (e) {
+        results.push({ name: x.name, ok: false, text: errText(e) })
+      }
+    }
+    setOut(results)
+    setBusy(false)
+    if (results.some((r) => r.ok)) props.onDone()
+  }
+  return (
+    <Modal
+      title={`Copy ${n.label} to other servers`}
+      onClose={props.onClose}
+      footer={
+        out.length ? (
+          <button class="btn primary" onClick={props.onClose}>
+            Done
+          </button>
+        ) : (
+          <>
+            <button class="btn ghost" onClick={props.onClose} disabled={busy}>
+              Cancel
+            </button>
+            <button class="btn primary" onClick={() => void go()} disabled={busy || !pick.size}>
+              {busy ? <span class="spin" /> : `Copy to ${pick.size || ''} server${pick.size === 1 ? '' : 's'}`.replace('  ', ' ')}
+            </button>
+          </>
+        )
+      }
+    >
+      {out.length ? (
+        <div class="list">
+          {out.map((r) => (
+            <div class="li">
+              <span class={'dot ' + (r.ok ? 'good' : 'crit')} />
+              <span class="grow">
+                <b>{r.name}</b> - {r.ok ? `added ${r.text}` : r.text}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          <p style="margin-top:0">
+            The same settings on each server you pick, with keys of its own (users’ links get a new entry for each), on port {n.port} where it is free - else on a free one. Its name, own address,
+            address override and proxy pass stay with this one.
+          </p>
+          {ownDomain && (
+            <div class="callout warn">
+              <Icon name="alert" size="sm" />
+              <div>
+                It uses its own domain{st.sni ? <> (<span class="mono">{st.sni}</span>)</> : null} and certificate: on another server they work only where that domain points at that server too.
+              </div>
+            </div>
+          )}
+          {servers.error && <ErrorBox error={servers.error} retry={servers.reload} />}
+          {!servers.data && !servers.error && <Loading />}
+          {servers.data && others.length === 0 && <p class="muted">There is no other server of yours to copy it to.</p>}
+          <div class="radios">
+            {others.map((x) => (
+              <Check
+                checked={pick.has(x.id)}
+                onChange={(on) =>
+                  setPick((p) => {
+                    const q = new Set(p)
+                    if (on) q.add(x.id)
+                    else q.delete(x.id)
+                    return q
+                  })
+                }
+                label={x.name}
+                hint={[x.status === 'online' ? 'online' : x.status === 'offline' ? 'offline - it gets the protocol when it is back' : 'waiting for its agent', x.nodes.some((o) => o.kind === n.kind && o.port === n.port) ? `port ${n.port} is in use there` : ''].filter(Boolean).join(' · ')}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </Modal>
   )
 }
 
@@ -790,6 +907,7 @@ const presets: { id: string; title: string; text: string; kind: string; d: Parti
   { id: 'reality', title: 'VLESS · REALITY', text: 'Best default. No domain needed; looks like a visit to a big website.', kind: 'vless', d: { transport: 'raw', security: 'reality', flow: 'xtls-rprx-vision' } },
   { id: 'hy2', title: 'Hysteria2', text: 'Fast on long or lossy routes (UDP).', kind: 'hysteria2', d: {} },
   { id: 'cdn', title: 'VLESS · WebSocket · CDN', text: 'Hides the server behind Cloudflare or another CDN. Needs a domain on the CDN.', kind: 'vless', d: { transport: 'ws', security: 'none', cdn: true, flow: '' } },
+  { id: 'vision', title: 'VLESS · TLS · Vision', text: 'A real domain and certificate, with the Vision flow. Looks like an HTTPS website.', kind: 'vless', d: { transport: 'raw', security: 'tls', flow: 'xtls-rprx-vision', cert_mode: 'acme' } },
   { id: 'vmess', title: 'VMess · WebSocket · TLS', text: 'Works in almost every app, including Surge.', kind: 'vmess', d: { transport: 'ws', security: 'tls' } },
   { id: 'trojan', title: 'Trojan · TLS', text: 'Looks like an HTTPS server. Best with a real domain.', kind: 'trojan', d: { transport: 'raw', security: 'tls' } },
   { id: 'ss', title: 'Shadowsocks 2022', text: 'Simple and supported everywhere. TCP + UDP.', kind: 'shadowsocks', d: {} },
@@ -848,10 +966,12 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
       ...(editing && n
         ? { node_id: n.id, ...(Number(port) > 0 ? { port: Number(port) } : {}), bind_ip: bindIP, host: host.trim(), ...(kind !== 'wireguard' ? { code: adv ? code : '' } : {}) }
         : serverId
-          ? { server_id: serverId }
+          ? { server_id: serverId, bind_ip: bindIP, host: host.trim() }
           : {}),
     }).catch((e): ProtocolCheck => ({ valid: false, error: errText(e) }))
   const seq = useRef(0) // answers to older drafts are dropped
+  // editing: the red warnings the protocol already had when the window opened (only new ones pop up)
+  const hadWarnings = useRef<string[] | null>(editing ? null : [])
   useEffect(() => {
     if (!kind || !body) return
     const my = ++seq.current
@@ -859,6 +979,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
     const t = window.setTimeout(() => {
       void runCheck().then((c) => {
         if (my !== seq.current) return
+        if (hadWarnings.current === null && c.valid) hadWarnings.current = c.warnings || []
         setCheck(c)
         setChecking(false)
       })
@@ -915,6 +1036,32 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
     if (!c.valid) {
       showWarning()
       return
+    }
+    // a name behind Cloudflare: saving works, after a red warning about the risk
+    const risks = (c.warnings || []).filter((w) => !(hadWarnings.current || []).includes(w))
+    if (risks.length) {
+      const ok = await ask({
+        title: 'Behind Cloudflare - a risk of abuse',
+        body: (
+          <>
+            <div class="callout crit" role="alert">
+              <Icon name="alert" size="sm" />
+              <div>
+                {risks.map((w, i) => (
+                  <p style={i ? 'margin:8px 0 0' : 'margin:0'}>{w}</p>
+                ))}
+              </div>
+            </div>
+            <p class="muted" style="margin:0">You can save it anyway - Rosélune does not block it - but the risk is yours.</p>
+          </>
+        ),
+        confirm: 'Save anyway',
+        danger: true,
+      })
+      if (!ok) {
+        showWarning()
+        return
+      }
     }
     // what saving does to the protocol's devices comes with the check (the server compares it with
     // what it runs)
@@ -1013,6 +1160,8 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
             }),
         )
   const xray = k?.engine === 'xray'
+  // the addresses a protocol can have to itself (public ones, and private ones whose public address is known)
+  const choices = server?.addr_choices || []
   const transports = k?.transports || []
   const securities = k?.securities || []
   const cdnable = !!k?.cdn && ['ws', 'httpupgrade', 'xhttp'].includes(d.transport)
@@ -1064,38 +1213,80 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
               <div class="callout lock-note">
                 <Icon name="info" size="sm" />
                 <div>
-                  <b>Advanced settings are in use.</b> They take precedence over this form, so its settings are locked. Turn advanced settings off to use the form again; port, name, address and proxy pass stay
-                  under “Port, name and more”.
+                  <b>Advanced settings are in use.</b> They take precedence over this form, so its settings are locked. Turn advanced settings off to use the form again; port, name, address and proxy pass
+                  stay yours to change.
                 </div>
               </div>
             )}
-            <fieldset class="lockable" disabled={locked}>
-              {!editing && (
-                <>
-                  <div class="label">Start from</div>
-                  <div class="presets">
-                    {presets.map((p) => (
-                      <button type="button" class={'preset' + (kind === p.kind && JSON.stringify({ ...draftFrom(p.kind, undefined), ...p.d }) === JSON.stringify(d) ? ' on' : '')} onClick={() => choose(p)}>
-                        <b>{p.title}</b>
-                        <span>{p.text}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <Field label="Protocol">
-                    <Seg
-                      value={kind}
-                      onChange={(v) => {
-                        setCode('')
-                        setKind(v)
-                        setD(draftFrom(v, undefined))
-                      }}
-                      options={cat.data.kinds.map((x) => [x.kind, x.short] as [string, string])}
-                    />
-                  </Field>
-                  {k && <p class="muted" style="margin:-4px 0 12px">{k.blurb}</p>}
-                </>
-              )}
+            {!editing && (
+              <fieldset class="lockable" disabled={locked}>
+                <div class="label">Start from</div>
+                <div class="presets">
+                  {presets.map((p) => (
+                    <button type="button" class={'preset' + (kind === p.kind && JSON.stringify({ ...draftFrom(p.kind, undefined), ...p.d }) === JSON.stringify(d) ? ' on' : '')} onClick={() => choose(p)}>
+                      <b>{p.title}</b>
+                      <span>{p.text}</span>
+                    </button>
+                  ))}
+                </div>
+                <Field label="Protocol">
+                  <Seg
+                    value={kind}
+                    onChange={(v) => {
+                      setCode('')
+                      setKind(v)
+                      setD(draftFrom(v, undefined))
+                    }}
+                    options={cat.data.kinds.map((x) => [x.kind, x.short] as [string, string])}
+                  />
+                </Field>
+                {k && <p class="muted" style="margin:-4px 0 12px">{k.blurb}</p>}
+              </fieldset>
+            )}
 
+            {kind && (
+              <div class="inline-fields">
+                <Field
+                  label="Port"
+                  hint={
+                    server?.public_ports
+                      ? `On this server: one of the ports from the provider (${server.public_ports}). Empty = pick a free one.`
+                      : check?.ports?.length
+                        ? `Empty = a free one of ${check.ports.slice(0, 4).join(', ')}.`
+                        : 'Empty = pick a free one.'
+                  }
+                >
+                  <input class="input mono" inputMode="numeric" value={port} placeholder="auto" onInput={(e) => setPort(e.currentTarget.value.replace(/[^0-9]/g, ''))} />
+                </Field>
+                <Field label="Name" hint="Optional: apps list the protocol by this name alone. Empty = the server’s name and the protocol.">
+                  <input class="input" value={name} maxLength={40} placeholder={server ? `${server.name} · ${check?.label || k?.label || kind}` : ''} onInput={(e) => setName(e.currentTarget.value)} />
+                </Field>
+              </div>
+            )}
+            {kind && (choices.length > 1 || (bindIP && !choices.some((c) => c.addr === bindIP))) && (
+              <Field
+                label="Server address"
+                hint={
+                  (kind === 'wireguard'
+                    ? 'One of the server’s addresses for this protocol alone: devices’ traffic leaves from there and links use it.'
+                    : 'One of the server’s addresses for this protocol alone: it listens there, its traffic leaves from there, and links use it.') +
+                  ' Protocols on different addresses can share a port.' +
+                  (choices.some((c) => c.addr !== c.public)
+                    ? ' A private address is reached at the public one its traffic leaves with (→) - where the provider forwards that address to the server, as most clouds do.'
+                    : '')
+                }
+              >
+                <select class="input mono" value={bindIP} onChange={(e) => setBindIP(e.currentTarget.value)}>
+                  <option value="">All of the server’s addresses</option>
+                  {choices.map((c) => (
+                    <option value={c.addr}>{c.addr === c.public ? c.addr : `${c.addr} → ${c.public}`}</option>
+                  ))}
+                  {bindIP && !choices.some((c) => c.addr === bindIP) && <option value={bindIP}>{bindIP} - not one the server offers now</option>}
+                </select>
+              </Field>
+            )}
+
+            <fieldset class="lockable" disabled={locked}>
               {kind && xray && (
                 <>
                   {transports.length > 1 && (
@@ -1313,43 +1504,9 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
               </div>
             )}
 
-            {kind && (
+            {kind && (xray || (kind !== 'wireguard' && !solo(kind))) && (
               <details class="adv">
-                <summary>Port, name and more</summary>
-                <div class="inline-fields">
-                  <Field
-                    label="Port"
-                    hint={
-                      server?.public_ports
-                        ? `On this server: one of the ports from the provider (${server.public_ports}). Empty = pick a free one.`
-                        : check?.ports?.length
-                          ? `Empty = a free one of ${check.ports.slice(0, 4).join(', ')}.`
-                          : 'Empty = pick a free one.'
-                    }
-                  >
-                    <input class="input mono" inputMode="numeric" value={port} placeholder="auto" onInput={(e) => setPort(e.currentTarget.value.replace(/[^0-9]/g, ''))} />
-                  </Field>
-                  <Field label="Name" hint="Optional: apps list the protocol by this name alone. Empty = the server’s name and the protocol.">
-                    <input class="input" value={name} maxLength={40} onInput={(e) => setName(e.currentTarget.value)} />
-                  </Field>
-                </div>
-                <Field
-                  label="Server address for this protocol"
-                  hint={
-                    server && server.addrs?.length > 1
-                      ? kind === 'wireguard'
-                        ? 'One of the server’s addresses for this protocol alone: devices’ traffic leaves from there and links use it. Protocols on different addresses can share a port.'
-                        : 'One of the server’s addresses for this protocol alone: it listens there, its traffic leaves from there, and links use it. Protocols on different addresses can share a port.'
-                      : 'Servers with several IP addresses can give each protocol its own (the agent lists them after it connects; needs agent 0.6).'
-                  }
-                >
-                  <select class="input mono" value={bindIP} onChange={(e) => setBindIP(e.currentTarget.value)} disabled={!server?.addrs?.length && !bindIP}>
-                    <option value="">All of the server’s addresses</option>
-                    {[...new Set([...(server?.addrs || []), ...(bindIP ? [bindIP] : [])])].map((a) => (
-                      <option value={a}>{a}</option>
-                    ))}
-                  </select>
-                </Field>
+                <summary>{xray ? 'Proxy pass, address override and more' : 'More'}</summary>
                 {xray && !d.cdn && (
                   <Field label="Address override" hint="A different domain or IP in links for this protocol only. Empty = its own address, or the server's.">
                     <input class="input mono" value={host} placeholder={bindIP || server?.address || server?.ipv4 || ''} onInput={(e) => setHost(e.currentTarget.value)} autoComplete="off" spellcheck={false} />
@@ -1723,32 +1880,46 @@ function CheckPanel(props: { check: ProtocolCheck | null; checking: boolean }) {
       </div>
     )
   const works = (c.apps || []).filter((a) => a.ok)
+  const risks = c.warnings || []
   return (
-    <div class="check-panel good">
-      <div class="row wrap" style="gap:8px">
-        <Icon name="check" size="sm" />
-        <b>Works</b>
-        <span class="muted">
-          apps show it as <b>{c.label}</b> · {c.net === 'both' ? 'TCP + UDP' : (c.net || '').toUpperCase()} · {works.length} of {(c.apps || []).length} app families
-        </span>
-        {props.checking && <span class="spin" />}
-      </div>
-      <div class="app-grid">
-        {(c.apps || []).map((a) => (
-          <div class={'app-cell ' + (a.ok ? 'ok' : 'no')} title={a.why || ''}>
-            <span>{a.ok ? '✓' : '✗'}</span>
-            <span class="grow">{a.name}</span>
-            {!a.ok && <span class="faint mini">{a.why}</span>}
+    <>
+      {risks.length > 0 && (
+        <div class="check-panel bad" role="alert">
+          <div class="row" style="gap:8px">
+            <Icon name="alert" size="sm" />
+            <b>Behind Cloudflare - a risk of abuse</b>
           </div>
-        ))}
-      </div>
-      {(c.notes || []).length > 0 && (
-        <ul class="notes">
-          {(c.notes || []).map((x) => (
-            <li>{x}</li>
+          {risks.map((w) => (
+            <p style="margin:6px 0 0">{w}</p>
           ))}
-        </ul>
+        </div>
       )}
-    </div>
+      <div class="check-panel good">
+        <div class="row wrap" style="gap:8px">
+          <Icon name="check" size="sm" />
+          <b>Works</b>
+          <span class="muted">
+            apps show it as <b>{c.label}</b> · {c.net === 'both' ? 'TCP + UDP' : (c.net || '').toUpperCase()} · {works.length} of {(c.apps || []).length} app families
+          </span>
+          {props.checking && <span class="spin" />}
+        </div>
+        <div class="app-grid">
+          {(c.apps || []).map((a) => (
+            <div class={'app-cell ' + (a.ok ? 'ok' : 'no')} title={a.why || ''}>
+              <span>{a.ok ? '✓' : '✗'}</span>
+              <span class="grow">{a.name}</span>
+              {!a.ok && <span class="faint mini">{a.why}</span>}
+            </div>
+          ))}
+        </div>
+        {(c.notes || []).length > 0 && (
+          <ul class="notes">
+            {(c.notes || []).map((x) => (
+              <li>{x}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
   )
 }

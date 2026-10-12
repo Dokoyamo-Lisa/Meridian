@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"math/big"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -150,4 +152,17 @@ func testCert(t *testing.T) (certPEM, keyPEM string) {
 	kb, _ := x509.MarshalECPrivateKey(k)
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
 		string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: kb}))
+}
+
+// TestSaveWithoutFolder: with nothing running and no folder for users' servers (a server that never
+// had one, or whose proxies were installed again), saving the empty list is no error.
+func TestSaveWithoutFolder(t *testing.T) {
+	e := &Engine{ConfDir: filepath.Join(t.TempDir(), "solo")}
+	e.init()
+	if err := e.save(); err != nil {
+		t.Fatalf("saving nothing without a folder: %v", err)
+	}
+	if _, err := os.Stat(e.ConfDir); !os.IsNotExist(err) {
+		t.Errorf("the folder was made for nothing: %v", err)
+	}
 }

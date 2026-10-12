@@ -572,8 +572,17 @@ func (p *Panel) apiPutSettings(w http.ResponseWriter, r *http.Request, a *Accoun
 	}
 	p.digests.kick()
 	if old.XrayVersion != p.settings().XrayVersion {
-		p.event(0, "info", "settings", 0, 0, a.ID, "Xray version set to "+p.settings().XrayVersion+
-			" - running servers keep their version until you upgrade them", nil)
+		then := " - running servers keep their version until you upgrade them"
+		if s.CoreAutoUpgrade {
+			then = " - running servers upgrade to it at night, one at a time"
+		}
+		p.event(0, "info", "settings", 0, 0, a.ID, "Xray version set to "+p.settings().XrayVersion+then, nil)
+	}
+	switch { // automatic core upgrades (coreupgrades.go)
+	case s.CoreAutoUpgrade && !old.CoreAutoUpgrade:
+		p.event(0, "warn", "settings", 0, 0, a.ID, a.Username+" let servers upgrade Xray and Hysteria by themselves, at night (03:00-05:00), one server at a time - each restarts once", nil)
+	case !s.CoreAutoUpgrade && old.CoreAutoUpgrade:
+		p.event(0, "info", "settings", 0, 0, a.ID, a.Username+" turned automatic core upgrades off: only a person upgrades servers' cores", nil)
 	}
 	_ = p.compileAll(r.Context())
 	writeJSON(w, http.StatusOK, p.settings())

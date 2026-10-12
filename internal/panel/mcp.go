@@ -2254,10 +2254,10 @@ var mcpTools = []mcpTool{
 			return pick(m["server"], "id", "name", "public_name", "status_hidden", "city", "country", "lat", "lon", "loc_manual"), nil
 		}},
 	{Name: "server_action", Title: "Restart or upgrade", Write: true, Destructive: true,
-		Description: "Run a maintenance action on a server: restart_pending (restarts exactly what waits for a restart - the server's pending_restart - and disconnects those users for a moment), restart_all (restarts everything that carries traffic - Xray, Hysteria2, each user's own server, realm forwards - and then the agent: everyone on the server reconnects once; agent 1.3.1 and later), restart_xray or upgrade_xray (disconnects Xray users for a moment), upgrade_hysteria or upgrade_realm (switches to the version in Settings; those users reconnect), upgrade_agent (nobody is disconnected). Returns an action id for action_status.",
+		Description: "Run a maintenance action on a server: restart_pending (restarts exactly what waits for a restart - the server's pending_restart - and disconnects those users for a moment), restart_all (restarts everything that carries traffic - Xray, Hysteria2, each user's own server, realm forwards - and then the agent: everyone on the server reconnects once; agent 1.3.1 and later), restart_xray or upgrade_xray (disconnects Xray users for a moment), upgrade_hysteria or upgrade_realm (switches to the version in Settings; those users reconnect), upgrade_agent (nobody is disconnected), install_cores (installs the cores the server lacks - Xray, Hysteria - from their official releases; nobody is disconnected; agent 1.4 - the server's prepare steps say which are missing). To reinstall a whole server: reinstall_server. Returns an action id for action_status.",
 		Props: map[string]any{
 			"server_id": pInt("Server id"),
-			"action":    pEnum("What to do", "restart_pending", "restart_all", "restart_xray", "upgrade_xray", "upgrade_hysteria", "upgrade_realm", "upgrade_agent"),
+			"action":    pEnum("What to do", "restart_pending", "restart_all", "restart_xray", "upgrade_xray", "upgrade_hysteria", "upgrade_realm", "upgrade_agent", "install_cores"),
 		},
 		Required: []string{"server_id", "action"},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
@@ -2267,6 +2267,21 @@ var mcpTools = []mcpTool{
 			}
 			kind, _ := argStr(a, "action")
 			return c.api("POST", fmt.Sprintf("/api/servers/%d/actions", id), map[string]any{"kind": kind})
+		}},
+	{Name: "reinstall_server", Title: "Reinstall a server, or start it over", Write: true, Destructive: true,
+		Description: "clean false (reinstall): the server's agent downloads every core again from its official release (checked; when one cannot be downloaded nothing changes), clears what it generated for the proxies and builds it all again from the panel - the same protocols, ports, keys and links. clean true (clean reinstall): the server starts over as if just added - its protocols and forwards are removed from the panel too (users' links lose them, their keys are gone; protocols on other servers that pass through them are blocked until they get another exit), the cores and everything set up there are cleared, fresh cores are installed and the setup script runs once more. Either way everyone connected to the server is disconnected for a moment. Needs agent 1.4. Use clean only when the supervisor asks to start the server over. Returns an action id for action_status.",
+		Props: map[string]any{
+			"server_id": pInt("Server id"),
+			"clean":     pBool("true: start the server over, removing its protocols and forwards; false: reinstall keeping them"),
+		},
+		Required: []string{"server_id"},
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			id, err := needInt(a, "server_id")
+			if err != nil {
+				return nil, err
+			}
+			clean, _ := a["clean"].(bool)
+			return c.api("POST", fmt.Sprintf("/api/servers/%d/reinstall", id), map[string]any{"clean": clean, "confirm": true})
 		}},
 	restartAllTool,
 }

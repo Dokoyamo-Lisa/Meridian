@@ -1,6 +1,40 @@
 # Meridian status
 
-Last updated 2026-10-10 (version 1.3.2).
+Last updated 2026-10-12 (towards 1.4.0 - not released yet).
+
+## Tested towards 1.4.0 (local panel 1.4.0 in an Ubuntu 26.04 VM, its 1.3.2 data upgraded in place)
+
+- **Upgrade from 1.3.2**: the VM's panel binary replaced (migration 28 ran on its data); its agent
+  upgraded from the panel. The agent prepared the server at once: Xray 26.3.27 and Hysteria 2.13.0
+  *in place*, nftables, WireGuard, time and the public address checked.
+- **A server that ran before gets nothing without asking**: with Hysteria's files removed (the server
+  never had it, as far as the agent knows) the agent showed *Hysteria not installed* and downloaded
+  nothing; **Install** downloaded it from its official GitHub release, checked, in seconds - the event
+  says *installed on request*.
+- **Reinstall**: every core downloaded again and checked, the proxies cleared and built again from
+  the panel: Xray came back with a new process id on the same port with the same keys; no apply
+  error. The same from **Servers** with the server ticked (bulk), and the setup script did not run
+  again.
+- **Clean reinstall**: the protocol was removed in the panel, the agent cleared its cores and set-up,
+  restarted, downloaded fresh Xray and Hysteria from GitHub, and ran the setup script once more -
+  after the new cores (the first try ran it seconds before them; fixed: the script waits until the
+  server is prepared). Twice, through the page and through the API.
+- **Setup script**: saved from the browser with a confirmation; it ran as root (`id -u` 0,
+  `MERIDIAN_SETUP=1`), its output and exit code 0 shown on the page.
+- **Security mode**: turned on from a signed-in browser (an API token is refused); SSH reported
+  *takes keys only*; a harmless program named like a crypto-miner (it only sleeps) was stopped by
+  itself within one health check and its program moved into quarantine; turned off again, SSH kept
+  its own setting.
+- **Cloudflare warning**: a camouflage site resolving into Cloudflare's addresses showed the red box,
+  and saving asked *Save anyway*. (The lab's own DNS was rewritten by a proxy tool on the machine, so
+  a hosts entry stood in for Cloudflare's answer; the unit tests cover every kind of name.)
+- **Phones (375 px)**: no page wider than the screen any more (a long link in an event widened the
+  server's page to 550 px); the health check's risks keep their full width; quick search, the
+  reinstall dialogs, the setup script and the protocol form (Port and Name at once) checked.
+- **Fixes found on the way**: a server without mieru, Snell or AnyTLS reported an error about their
+  list once its folder was gone; the health check's excuse for a reinstalled core now survives the
+  agent's restart and is used up at the next scan; uninstalling an agent stops users' own servers.
+- `make check` clean.
 
 ## Tested for 1.3.2 (local panels; Ubuntu 26.04 VMs)
 

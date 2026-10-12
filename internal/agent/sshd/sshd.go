@@ -26,6 +26,9 @@ const DropInDir = "/etc/ssh/sshd_config.d"
 // sorts first, so its settings come before every other file's.
 const KeysOnlyFile = DropInDir + "/00-meridian-keys-only.conf"
 
+// GuardFile is the security mode's own settings file: SSH takes keys only while it is there.
+const GuardFile = DropInDir + "/00-meridian-guard.conf"
+
 // KeyFingerprint reads one authorized_keys line: the key's fingerprint as ssh-keygen -l shows it,
 // its type and its comment. Options before the key ("command=...", "from=...") are skipped.
 func KeyFingerprint(line string) (fp, typ, comment string, ok bool) {

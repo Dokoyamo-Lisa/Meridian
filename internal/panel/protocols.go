@@ -340,8 +340,9 @@ var fingerprints = []string{"chrome", "firefox", "safari", "ios", "edge", "andro
 
 // RealityTargets are sites that serve TLS 1.3 + H2 and are reachable worldwide. The agent tests
 // them from the server itself (a real REALITY handshake) and new nodes take the first that works.
+// None of them is behind Cloudflare (cfcheck.go): REALITY would pass strangers on to Cloudflare.
 var RealityTargets = []string{"www.apple.com", "dl.google.com", "addons.mozilla.org", "www.amazon.com",
-	"gateway.icloud.com", "www.yahoo.com", "www.nvidia.com", "www.cloudflare.com"}
+	"gateway.icloud.com", "www.yahoo.com", "www.nvidia.com"}
 
 const defaultSelfSignedName = "www.bing.com"
 
@@ -1099,8 +1100,10 @@ func checkWG6(srv *Server, kind string, raw, old json.RawMessage) error {
 }
 
 // bindAddr checks a protocol's own address: one of the server's (as its agent lists them), of a
-// kind the server uses. Empty means all addresses.
-func bindAddr(srv *Server, raw string) (string, error) {
+// kind the server uses, that devices can reach - a public address, or a private one whose public
+// address the agent found (agents 1.4 and later; keep, the address it has now, stays as it is).
+// Empty means all addresses.
+func bindAddr(srv *Server, raw, keep string) (string, error) {
 	raw = strings.Trim(strings.TrimSpace(raw), "[]")
 	if raw == "" {
 		return "", nil
@@ -1117,6 +1120,8 @@ func bindAddr(srv *Server, raw string) (string, error) {
 		return "", errStatus(400, "this server does not use IPv6 (set to IPv4 only, or IPv6 is off in its kernel)")
 	case a.Is4() && !srv.v4():
 		return "", errStatus(400, "this server is set to IPv6 only")
+	case a.String() != keep && srv.caps().Prepare && srv.publicOf(a.String()) == "":
+		return "", errStatus(400, fmt.Sprintf("%s is a private address of %s, and its public address is not known: devices could not reach a protocol there - choose an address reached from the internet", a, srv.Name))
 	}
 	return a.String(), nil
 }
@@ -1687,8 +1692,8 @@ func linkHost(n *Node, srv *Server) string {
 	if n.Host != "" {
 		return n.Host
 	}
-	if a, err := netip.ParseAddr(n.BindIP); err == nil && publicAddr(a) {
-		return n.BindIP
+	if pub := srv.publicOf(n.BindIP); pub != "" { // its own address - or the public one in front of it
+		return pub
 	}
 	return srv.Host()
 }
@@ -1944,16 +1949,19 @@ func protocolLabel(kind string, raw json.RawMessage) string {
 
 // supportView says which apps can use a protocol as configured, and why not where they cannot.
 type supportView struct {
-	Valid   bool                 `json:"valid"`
-	Error   string               `json:"error,omitempty" doc:"Why the combination cannot be saved"`
-	Label   string               `json:"label,omitempty" doc:"How the protocol is named in apps"`
-	Net     string               `json:"net,omitempty" doc:"tcp | udp | both"`
-	Ports   []int                `json:"ports,omitempty" doc:"Usual ports for this combination"`
-	Apps    []subgen.AppSupport  `json:"apps,omitempty"`
-	Notes   []string             `json:"notes,omitempty" doc:"What the admin needs to know or do"`
-	Applied json.RawMessage      `json:"settings,omitempty" doc:"The settings as they would be saved (keys left out)"`
-	Kind    *kindInfo            `json:"kind,omitempty"`
-	Fields  map[string]fieldHelp `json:"fields,omitempty"`
+	Valid bool                `json:"valid"`
+	Error string              `json:"error,omitempty" doc:"Why the combination cannot be saved"`
+	Label string              `json:"label,omitempty" doc:"How the protocol is named in apps"`
+	Net   string              `json:"net,omitempty" doc:"tcp | udp | both"`
+	Ports []int               `json:"ports,omitempty" doc:"Usual ports for this combination"`
+	Apps  []subgen.AppSupport `json:"apps,omitempty"`
+	Notes []string            `json:"notes,omitempty" doc:"What the admin needs to know or do"`
+	// Warnings: risks with the protocol as set up - a camouflage site or a domain behind Cloudflare's
+	// proxy (cfcheck.go). Shown in red; saving still works.
+	Warnings []string             `json:"warnings,omitempty" doc:"Risks with the protocol as set up (a REALITY camouflage site behind Cloudflare, or a domain proxied by Cloudflare) - in red; saving still works"`
+	Applied  json.RawMessage      `json:"settings,omitempty" doc:"The settings as they would be saved (keys left out)"`
+	Kind     *kindInfo            `json:"kind,omitempty"`
+	Fields   map[string]fieldHelp `json:"fields,omitempty"`
 	// editing an existing protocol: what saving the draft does to its devices
 	Refresh  []string `json:"refresh,omitempty" doc:"Editing: what changes in the links (transport, port, address, ...) - devices using the protocol stop working until they refresh their subscription"`
 	Restarts bool     `json:"restarts,omitempty" doc:"Editing: saving restarts the protocol's server process (Hysteria2) - its devices drop and reconnect by themselves"`

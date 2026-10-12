@@ -129,7 +129,8 @@ key or account as it is now - and does nothing (and says why) if what was found 
 
 What it never does:
 
-- **Nothing happens by itself.** Only a person signed in to the panel in a browser can take a step:
+- **Nothing happens by itself** - except what a supervisor turned on in the security mode (below).
+  Only a person signed in to the panel in a browser can take a step:
   API tokens, assistants (MCP) and the Telegram bot cannot - they can only tell you which button to
   press. The rule is in the panel and in the agent's design: the agent acts only on a step the panel
   sends for a confirmed click.
@@ -147,6 +148,22 @@ What it never does:
 A step that is done marks its risk acknowledged by whoever asked for it. The risk shows how the step
 went - *on its way to the server*, *done*, *not done* with the server's reason, *undone* - and who
 asked; the timeline has each request and its result.
+
+## The security mode
+
+For what production servers meet every day, a supervisor can let a server's agent act by itself
+(agent 1.4; **Security mode** on the server's page, or `PUT /api/servers/{id}/guard` from a signed-in
+browser with `confirm: true` - never a token, an assistant or the bot):
+
+| Part | What the agent does by itself |
+| --- | --- |
+| `ssh_ban` | counts failed SSH sign-ins every 20 seconds; 5 within 10 minutes shut the address out of SSH for an hour (nftables, the SSH ports only), a day once it was blocked 3 times in a day. Never a private address, one that signed in over SSH lately, the panel's own addresses or the one the mode was turned on from (`trusted`). |
+| `keys_only` | makes SSH take keys only, the way **SSH: keys only** does - after the same check that an account which may sign in has a key - and keeps it so; `guard_now.keys_only` says *on* or why not. |
+| `stop_miners` | when the health check finds a known crypto-miner, stops it at once and quarantines its program, the way **Stop it** does - the same checks, the same undo. |
+
+What it does now is in `guard_now` on the server (blocked addresses with until when, SSH, miners
+stopped); every block and stop is in the timeline. Turned off, the blocks go and SSH takes passwords
+again where its own settings allow them. Everything else still waits for a person's click.
 
 ## Where you see them
 

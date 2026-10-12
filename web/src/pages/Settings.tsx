@@ -282,7 +282,13 @@ function General() {
       const r = await put<PanelSettings>('/api/settings', v)
       res.set(r)
       setV(r)
-      toast(versions ? 'Saved - servers keep their core versions until you upgrade each one' : 'Saved')
+      toast(
+        versions
+          ? r.core_auto_upgrade
+            ? 'Saved - servers upgrade to these versions at night, one at a time'
+            : 'Saved - servers keep their core versions until you upgrade each one'
+          : 'Saved',
+      )
       void loadSession()
     } catch (e) {
       setErr(errText(e))
@@ -522,7 +528,9 @@ function General() {
           <h2 class="h">Cores</h2>
         </div>
         <p class="muted" style="margin-top:0">
-          Versions new servers install. Running servers keep their version until you upgrade them from the server page - a version change never restarts anything by itself.
+          {v.core_auto_upgrade
+            ? 'Versions new servers install - and running servers upgrade to at night, one at a time.'
+            : 'Versions new servers install. Running servers keep their version until you upgrade them from the server page - a version change never restarts anything by itself.'}
         </p>
         <div class="inline-fields">
           <Field label="Xray">
@@ -535,6 +543,34 @@ function General() {
             <input class="input mono" value={v.realm_version} onInput={(e) => set('realm_version', e.currentTarget.value.trim())} />
           </Field>
         </div>
+        <Check
+          checked={!!v.core_auto_upgrade}
+          onChange={async (x) => {
+            if (
+              x &&
+              !(await ask({
+                title: 'Let servers upgrade their cores by themselves?',
+                body: (
+                  <>
+                    <p style="margin-top:0">
+                      A server whose Xray or Hysteria is older than the versions here upgrades it at night - between 03:00 and 05:00 panel time ({v.timezone || 'UTC'}), one server at a time, once a
+                      day at most.
+                    </p>
+                    <div class="callout warn" style="margin-bottom:0">
+                      <Icon name="alert" size="sm" />
+                      <div>Each core that upgrades restarts once: the people connected through it drop for a moment and their apps reconnect by themselves.</div>
+                    </div>
+                  </>
+                ),
+                confirm: 'Turn on',
+              }))
+            )
+              return
+            set('core_auto_upgrade', x)
+          }}
+          label="Upgrade servers’ cores by themselves, at night"
+          hint="Off (the default): only you upgrade a server’s cores, from its page. On: Xray and Hysteria follow the versions here, at night, one server at a time - each restarts once."
+        />
         <Check
           checked={v.mirror}
           onChange={(x) => set('mirror', x)}
