@@ -17,6 +17,10 @@
   reading their page and link, and use the Telegram bot. Signing in (password or Telegram), every
   request of an open session and the bot's commands now need the account enabled; enabling it again
   lets them back in as they were.
+- **Security: a disabled supervisor's account cannot use the Telegram bot.** A browser session, a
+  token and the Mini App already refused it, but its linked Telegram account and its chat still got
+  commands (servers, users, traffic, events) and could press a button handed out before - pausing a
+  user, say. Commands and buttons, in private and in the chat, now need the account enabled.
 - **Backups: retention removes only this panel's own encrypted backups.** Two panels sending
   backups to the same WebDAV folder or S3 prefix counted - and removed - each other's; and a plain
   ZIP took one of the kept places while only encrypted backups were removed, so fewer were kept

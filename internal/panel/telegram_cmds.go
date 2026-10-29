@@ -973,6 +973,10 @@ func (p *Panel) botPrivate(ctx context.Context, c notifyConfig, m *tgMessage) {
 			send("Opening the panel from Telegram is off. Turn it on in the panel (Settings › Notifications).", nil)
 			return
 		}
+		if !p.ownerEnabled(ctx) { // as a browser, a token or the Mini App would be refused
+			send("The panel's account is disabled - this Telegram account cannot use it until it is enabled again.", nil)
+			return
+		}
 		_, _ = p.db.Exec1(`UPDATE tg_links SET last_used_at = ? WHERE id = ?`, now(), l.ID)
 		switch cmd {
 		case "open":

@@ -772,6 +772,10 @@ func (p *Panel) handleUpdate(ctx context.Context, c notifyConfig, u tgUpdate) {
 		if !p.botAllow(ctx, c) {
 			return
 		}
+		if !p.ownerEnabled(ctx) { // the reply counts against the limit like any other
+			_ = p.botSend(ctx, c, "The panel's account is disabled - commands are off until it is enabled again.", nil)
+			return
+		}
 		text, keys := p.botCommand(ctx, c, *m.From, cmd, cleanName(arg, 64))
 		if err := p.botSend(ctx, c, text, keys); err != nil {
 			slog.Warn("telegram reply", "err", err)
@@ -782,9 +786,20 @@ func (p *Panel) handleUpdate(ctx context.Context, c notifyConfig, u tgUpdate) {
 			return
 		}
 		if cb.Message.Chat.Type == "private" && !ourChat(c, cb.Message.Chat) {
-			if l := p.tgLinkOf(ctx, cb.From.ID); l == nil || (l.Supervisor && !c.Panel) || (!l.Supervisor && !c.UserLink) {
+			l := p.tgLinkOf(ctx, cb.From.ID)
+			if l == nil || (l.Supervisor && !c.Panel) || (!l.Supervisor && !c.UserLink) {
 				p.botAnswer(ctx, c, cb, "Link your Telegram account first.", true)
 				return
+			}
+			if l.Supervisor && !p.ownerEnabled(ctx) {
+				p.botAnswer(ctx, c, cb, "The panel's account is disabled.", true)
+				return
+			}
+			if !l.Supervisor {
+				if s, err := p.subByID(ctx, l.SubID); err != nil || !p.userMaySignIn(ctx, s) {
+					p.botAnswer(ctx, c, cb, "Your account cannot use this any more - ask whoever runs this service.", true)
+					return
+				}
 			}
 			if !p.limiter.allow("tgpm:"+strconv.FormatInt(cb.From.ID, 10), 12, time.Minute) {
 				p.botAnswer(ctx, c, cb, "Too many at once - wait a minute.", false)
@@ -800,12 +815,24 @@ func (p *Panel) handleUpdate(ctx context.Context, c notifyConfig, u tgUpdate) {
 			p.botAnswer(ctx, c, cb, "You may not use this bot.", true)
 			return
 		}
+		if !p.ownerEnabled(ctx) {
+			p.botAnswer(ctx, c, cb, "The panel's account is disabled.", true)
+			return
+		}
 		if !p.botAllow(ctx, c) {
 			p.botAnswer(ctx, c, cb, "Too many at once - wait a minute.", false)
 			return
 		}
 		p.botButton(ctx, c, cb)
 	}
+}
+
+// ownerEnabled says whether the supervisor's account may use the panel - from the bot as from a
+// browser, a token or the Mini App (tgSignIn): a disabled account's linked Telegram accounts and its
+// chat get no commands and no button actions.
+func (p *Panel) ownerEnabled(ctx context.Context) bool {
+	a, err := p.ownerAccount(ctx)
+	return err == nil && a.Enabled
 }
 
 // botAllow limits replies to 20 a minute; the first one over says so.

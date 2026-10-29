@@ -370,3 +370,68 @@ func TestTelegramDisabledAccount(t *testing.T) {
 		t.Errorf("the bot, enabled again: %s", u)
 	}
 }
+
+// TestTelegramSupervisorDisabled: a disabled supervisor's account cannot go on through Telegram -
+// as a browser session, a token or the Mini App cannot. Its linked Telegram account gets no command
+// answered and no button acted on (one handed out while it was enabled included), and its chat gets
+// no commands or button actions either; enabled again, all of it works.
+func TestTelegramSupervisorDisabled(t *testing.T) {
+	h, b, f := botSetup(t, map[string]any{"telegram_panel": true, "telegram_changes": true, "telegram_users": []int64{operatorID}})
+	b.must("POST", "/api/users", map[string]any{"name": "dave"}, 201)
+	code := b.must("POST", "/api/telegram/code", nil, 200)["code"].(string)
+	if m := say(t, h, f, 701, "/link "+code); !strings.Contains(m.Get("text"), "opens the panel") {
+		t.Fatalf("the supervisor's link: %v", m)
+	}
+	// buttons handed out while the account is enabled: one in private, one in the chat
+	privateYes := buttons(t, say(t, h, f, 701, "/pause dave"))["Yes, pause dave"]
+	f.queue(tgMsg(botChatID, operatorID, "/pause dave"))
+	poll(t, h)
+	sent, _, _ := f.take()
+	if len(sent) != 1 {
+		t.Fatalf("/pause in the chat: %d replies", len(sent))
+	}
+	chatYes := buttons(t, sent[0])["Yes, pause dave"]
+	if privateYes == "" || chatYes == "" {
+		t.Fatalf("no confirm buttons: %q %q; the chat said %q", privateYes, chatYes, sent[0].Get("text"))
+	}
+	paused := func() bool {
+		var p bool
+		h.p.db.QueryRow(`SELECT paused FROM subs WHERE name = 'dave'`).Scan(&p)
+		return p
+	}
+	setEnabled := func(on int) {
+		if _, err := h.p.db.Exec1(`UPDATE accounts SET enabled = ? WHERE username = 'owner'`, on); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	setEnabled(0)
+	if m := say(t, h, f, 701, "/status"); strings.Contains(m.Get("text"), "Servers:") || !strings.Contains(m.Get("text"), "disabled") {
+		t.Errorf("a disabled account's linked Telegram got /status: %q", m.Get("text"))
+	}
+	f.queue(tgPrivatePress(701, 1, privateYes))
+	poll(t, h)
+	f.take()
+	f.queue(tgMsg(botChatID, operatorID, "/status"))
+	poll(t, h)
+	if sent, _, _ := f.take(); len(sent) != 1 || strings.Contains(sent[0].Get("text"), "Servers:") {
+		t.Errorf("a disabled account's chat got /status: %v", sent)
+	}
+	f.queue(tgPress(operatorID, 1, chatYes))
+	poll(t, h)
+	f.take()
+	if paused() {
+		t.Fatal("a button pressed after the account was disabled paused a user")
+	}
+
+	setEnabled(1)
+	if m := say(t, h, f, 701, "/status"); !strings.Contains(m.Get("text"), "Servers:") {
+		t.Errorf("enabled again, /status: %q", m.Get("text"))
+	}
+	f.queue(tgPrivatePress(701, 1, privateYes))
+	poll(t, h)
+	f.take()
+	if !paused() {
+		t.Error("enabled again, the button does nothing")
+	}
+}
