@@ -23,6 +23,10 @@
   1.4 TB read "1 TB").
 - **Monitor › Online now** shows the IPs and users online and what all servers receive and send right
   now, refreshed every 10 seconds.
+- **Traffic from before a reset no longer fills the new cycle.** A server that was offline and sent
+  what it had counted after the user's usage was reset (or a new cycle began) added it to the new
+  cycle - the user could find themselves out of data at once. It now stays in their totals and
+  history only; "last online" no longer moves back with such a report either.
 - **Users' page: each server's traffic this cycle restarts with a usage reset.** It was summed from
   whole days since the cycle began, so after a reset in the middle of a day the user saw that day's
   earlier traffic still counted on their servers while their data left showed it gone. It now comes
