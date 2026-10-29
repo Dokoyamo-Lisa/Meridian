@@ -80,7 +80,7 @@ func (p *Panel) withCSS(which string, page *staticFile) *staticFile {
 
 // siteTones are the looks a page can open with, the default first (web/public/boot.js knows the
 // same); a site's look may also be "auto": Ice, or Paper on a device set to light.
-var siteTones = []string{"romance", "umbrella", "ice", "celadon", "ink", "paper", "mist"}
+var siteTones = []string{"romance", "umbrella", "ice", "celadon", "ink", "paper", "mist", "postmodern"}
 
 // withTone names the site's default look on a page: boot.js applies it to people who did not pick
 // one themselves.

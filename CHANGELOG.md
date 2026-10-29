@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **A new look: Postmodern.** Cream paper, solid black outlines, hard offset shadows and blocks of
+  canary, bubblegum, mint and sky around a cobalt accent, in a geometric display face. It goes
+  further than the other looks: on a wide screen the panel's menu becomes a canary rail down the left
+  side; panels become outlined boards with a coloured header, figures sit on blocks of colour, tables
+  have a black header band, and buttons press into their shadow. The status page keeps its one-screen
+  layout without the globe (the figures and the servers take the middle column); the users' page
+  and users' subscription pages follow too. Text keeps 4.5:1 everywhere (WCAG AA). Pick it with the
+  palette button, or make it everyone's in **Settings › Panel › Look**. Romance stays the default.
+
 ## 1.4.1 - 2026-10-29
 
 Fixes and more apps; upgrade the panel (**Settings › Updates** - nobody is disconnected). Agents need
