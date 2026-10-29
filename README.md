@@ -192,7 +192,7 @@ Details: [docs/getting-started.md](docs/getting-started.md).
 
 ## Building from source
 
-Go 1.26 or newer (it fetches the toolchain `go.mod` names, currently Go 1.27.2) and Node 22+.
+Go 1.26 or newer (it fetches the toolchain `go.mod` names, currently Go 1.27.3) and Node 22+.
 
 ```bash
 make            # UI, panel (dist/meridian) and agents (dist/meridian-agent-linux-*)

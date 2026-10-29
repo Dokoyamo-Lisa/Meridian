@@ -7,6 +7,11 @@ Last updated 2026-10-29 (version 1.4.1).
 - **Users' page**: on a phone (375 px) and on a desktop, as a user with a quota, one without a limit,
   one out of data and one whose access had ended, with and without the supervisor signed in too: the
   header keeps the clock, ended access reads *Access ended* in red.
+- **Postmodern look**: the panel (overview, servers, users, a window) at 1360 px and 375 px, the
+  status page's overview (no globe) and the users' page at desktop and phone width; text contrast
+  4.5:1 or more on the paper and every colour block. Romance still shows the globe.
+- **Confetti logo**: drawn the same by the panel and the app (`TestBuiltinMarksMatchWeb`, the tab
+  icon included), checked at 16-160 px on light and dark pages and in Settings › Panel › Logo.
 - **Shadowrocket and Loon subscriptions**: every share link read back (`TestShareLinksRoundTrip`,
   mieru's link included), the golden subscriptions, `go test -race ./internal/...` and
   `GOOS=linux go vet ./internal/...` clean.

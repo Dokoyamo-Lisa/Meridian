@@ -1,7 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.4.1 - 2026-10-29
 
+A new look, a new logo, fixes and more apps; upgrade the panel (**Settings › Updates** - nobody is
+disconnected). Agents need nothing new.
+
+- **Security: built with Go 1.27.3.** It distrusts compromised intermediate certificates
+  ([GO-2026-6809](https://pkg.go.dev/vuln/GO-2026-6809)); the panel reaches that check when it talks
+  TLS to its agents, so 1.4.1 is the one to run.
 - **A new built-in logo: Confetti.** A cobalt crescent moon cradling a canary sun with a black rim,
   a mint zigzag, a pink triangle and a cobalt dot - the Postmodern look's colours. Like the rose and
   the umbrella, its pieces fly in from every side as pages load, and it is the browser tab's icon
@@ -14,12 +20,6 @@
   layout without the globe (the figures and the servers take the middle column); the users' page
   and users' subscription pages follow too. Text keeps 4.5:1 everywhere (WCAG AA). Pick it with the
   palette button, or make it everyone's in **Settings › Panel › Look**. Romance stays the default.
-
-## 1.4.1 - 2026-10-29
-
-Fixes and more apps; upgrade the panel (**Settings › Updates** - nobody is disconnected). Agents need
-nothing new.
-
 - **Users' page on a phone: the clock is no longer hidden.** A long name, or the supervisor's own
   button next to the user's, pushed the header's buttons over the clock and the live dot. On a phone
   the buttons now show only the initial (screen readers still read the name).
