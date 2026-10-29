@@ -1571,7 +1571,9 @@ function updateMe() {
   const m = S.me
   if (!m || S.view !== 'me') return
   setText($('#hMe'), m.name ? `Hello, ${m.name}` : 'Your usage')
-  setText($('#meSub'), `Signed in as ${m.username}${m.status === 'paused' ? ' · paused' : m.status === 'out_of_data' ? ' · out of data' : ''}`)
+  const ended = !!m.expires_at && m.expires_at <= now()
+  const state = [m.status === 'paused' ? 'paused' : m.status === 'out_of_data' ? 'out of data' : '', ended ? 'access ended' : ''].filter(Boolean)
+  setText($('#meSub'), `Signed in as ${m.username}${state.map((x) => ' · ' + x).join('')}`)
 
   // notes: paused, over quota, expiry ...
   const flags = clear($('#meFlags'))
@@ -1622,7 +1624,9 @@ function updateMe() {
       kv(m.count_mode === 'up' ? 'Downloaded (not counted)' : 'Downloaded', bytes(m.used.down)),
       kv('Cycle started', m.cycle_start ? isoDate(m.cycle_start) : '—'),
       kv('Starts over', m.next_reset ? `${isoDate(m.next_reset)} · ${inDays(daysUntil(m.next_reset))}` : 'Never'),
-      kv('Access until', m.expires_at ? isoDate(m.expires_at) : 'No end date', m.expires_at && m.expires_at - now() < 3 * 86400 ? 'warn' : undefined),
+      ended
+        ? kv('Access ended', isoDate(m.expires_at), 'crit')
+        : kv('Access until', m.expires_at ? isoDate(m.expires_at) : 'No end date', m.expires_at && m.expires_at - now() < 3 * 86400 ? 'warn' : undefined),
       kv('Devices now', m.ip_limit ? `${m.devices.length} of ${m.ip_limit}` : String(m.devices.length), m.ip_limit && m.devices.length > m.ip_limit ? 'warn' : undefined),
       kv('In total', bytes(m.total.up + m.total.down)),
     ),
