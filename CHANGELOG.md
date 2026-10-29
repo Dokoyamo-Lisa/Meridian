@@ -23,6 +23,9 @@
   1.4 TB read "1 TB").
 - **Monitor › Online now** shows the IPs and users online and what all servers receive and send right
   now, refreshed every 10 seconds.
+- **Plans counted in months end in the right month.** A one-month plan starting on Jan 31 ran until
+  Mar 3, one starting on Mar 31 until May 1. A month from the 29th-31st now ends on the shorter
+  month's last day (Feb 28 or 29, Apr 30), as the monthly usage reset already did.
 - **Traffic from before a reset no longer fills the new cycle.** A server that was offline and sent
   what it had counted after the user's usage was reset (or a new cycle began) added it to the new
   cycle - the user could find themselves out of data at once. It now stays in their totals and
