@@ -314,3 +314,59 @@ func TestTelegramSupervisorChat(t *testing.T) {
 		t.Errorf("the supervisor's menu: %s", cmds)
 	}
 }
+
+// TestTelegramDisabledAccount: disabling an account shuts its users out of Telegram as it shuts
+// them out of their page - the Mini App does not sign a linked user in, and the bot does not answer
+// their commands with their data - and enabling it again lets them back in.
+func TestTelegramDisabledAccount(t *testing.T) {
+	h, b, f := botSetup(t, map[string]any{"telegram_user_link": true})
+	set := b.must("GET", "/api/settings", nil, 200)
+	set["public_url"] = "https://panel.example.com"
+	b.must("PUT", "/api/settings", set, 200)
+	b.must("POST", "/api/users", map[string]any{"name": "carol", "username": "carol", "password": "carol-password-1", "quota": 10 << 30}, 201)
+	web := h.browser()
+	web.login("carol", "carol-password-1")
+	code := web.must("POST", "/api/portal/telegram/code", nil, 200)["code"].(string)
+	if m := say(t, h, f, 601, "/start "+code); !strings.Contains(m.Get("text"), "Linked") {
+		t.Fatalf("linking: %v", m)
+	}
+	carol := tgUser{ID: 601, FirstName: "Carol"}
+	miniApp := func() (int, any) {
+		app := h.browser()
+		c, v, _ := app.do("POST", "/api/tg/session", map[string]any{"init_data": initData(botToken, carol, now())})
+		if c == 200 && v["kind"] == "user" {
+			if mc, _, _ := app.do("GET", "/api/portal/me", nil); mc != 200 {
+				t.Errorf("the Mini App's session does not open the page: %d", mc)
+			}
+		}
+		return c, v["kind"]
+	}
+	setEnabled := func(on int) {
+		if _, err := h.p.db.Exec1(`UPDATE accounts SET enabled = ? WHERE username = 'owner'`, on); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// enabled: both work
+	if c, kind := miniApp(); c != 200 || kind != "user" {
+		t.Fatalf("the Mini App, account enabled: %d %v", c, kind)
+	}
+	if u := say(t, h, f, 601, "/usage").Get("text"); !strings.Contains(u, "carol") || !strings.Contains(u, "of 10 GB") {
+		t.Fatalf("the bot, account enabled: %s", u)
+	}
+
+	setEnabled(0)
+	if c, kind := miniApp(); c == 200 && kind == "user" {
+		t.Errorf("the Mini App signed in a disabled account's user")
+	}
+	if u := say(t, h, f, 601, "/usage").Get("text"); strings.Contains(u, "of 10 GB") || !strings.Contains(u, "cannot use this any more") {
+		t.Errorf("the bot answered a disabled account's user: %q", u)
+	}
+
+	setEnabled(1)
+	if c, kind := miniApp(); c != 200 || kind != "user" {
+		t.Errorf("the Mini App, enabled again: %d %v", c, kind)
+	}
+	if u := say(t, h, f, 601, "/usage").Get("text"); !strings.Contains(u, "of 10 GB") {
+		t.Errorf("the bot, enabled again: %s", u)
+	}
+}
