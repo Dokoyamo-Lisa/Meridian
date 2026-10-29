@@ -76,8 +76,12 @@ type Spec struct {
 	// (hop.go); hops are those ranges once checked
 	Hysteria []proto.HyNode
 	hops     []Hop
-	// Speed are users' speed limits (speed.go): their devices' addresses come with SetSpeedIPs
-	Speed []proto.SpeedLimit
+	// Speed are users' speed limits (speed.go): their devices' addresses come with SetSpeedIPs.
+	// XrayTCP/XrayUDP are Xray's ports, the only ones address-based limits apply to; WGSpeed the
+	// limited users' WireGuard tunnel addresses
+	Speed            []proto.SpeedLimit
+	XrayTCP, XrayUDP []int
+	WGSpeed          []WGSpeed
 	// Solo are the ports of mieru, Snell and AnyTLS users (solo.go): counted per port, and refusing new
 	// connections while the user is in grace
 	Solo []SoloPort
@@ -459,7 +463,7 @@ func (e *Engine) render(spec Spec) string {
 		w("  set ssh_ports { type inet_service;%s }", elemsInt(sshPorts))
 	}
 	speed := speedOK(spec.Speed)
-	renderSpeed(w, speed)
+	renderSpeed(w, speed, spec.XrayTCP, spec.XrayUDP)
 	if spec.Geo != nil {
 		v4, v6, ex4, ex6 := spec.Geo.clean()
 		w("  set geo4 { type ipv4_addr; flags interval; auto-merge;%s }", bigElems(v4))
@@ -506,8 +510,8 @@ func (e *Engine) render(spec Spec) string {
 		w("    tcp dport @svc_tcp jump geo_in")
 		w("    udp dport @svc_udp jump geo_in")
 	}
-	speedRulesIn(w, speed)    // users' speed limits, what their devices send (speed.go)
-	soloRulesIn(w, spec.Solo) // mieru and Snell users' ports: counted, and closed to new connections in grace (solo.go)
+	speedRulesIn(w, speed, spec.Solo) // users' speed limits, what their devices send (speed.go)
+	soloRulesIn(w, spec.Solo)         // mieru and Snell users' ports: counted, and closed to new connections in grace (solo.go)
 	w("  }")
 	// ...and nothing flows back to them either, so open sessions (QUIC especially, whose large
 	// windows would let a server keep sending until its idle timeout) stop at once
@@ -521,7 +525,7 @@ func (e *Engine) render(spec Spec) string {
 		w("    tcp sport @own_tcp jump geo_out")
 		w("    udp sport @own_udp jump geo_out")
 	}
-	speedRulesOut(w, speed) // ...and what they receive
+	speedRulesOut(w, speed, spec.Solo) // ...and what they receive
 	soloRulesOut(w, spec.Solo)
 	w("  }")
 	w("  chain guard_fwd {")
@@ -531,6 +535,7 @@ func (e *Engine) render(spec Spec) string {
 	if spec.Geo != nil {
 		w("    ct mark and 0xffff0000 == 0x%08x ct direction reply jump geo_out", markBase)
 	}
+	speedRulesFwd(w, speed, spec.WGSpeed) // WireGuard users' speed limits, by their tunnel addresses
 	w("  }")
 
 	w("  chain prerouting {")

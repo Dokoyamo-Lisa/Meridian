@@ -39,6 +39,13 @@
   1.4 TB read "1 TB").
 - **Monitor › Online now** shows the IPs and users online and what all servers receive and send right
   now, refreshed every 10 seconds.
+- **A speed limit no longer slows down other people on the same network.** Limits were enforced on
+  the addresses a limited user connected from, for every protocol - so anyone else behind that
+  address (one home or office network, a carrier's shared address) was slowed down too, and two
+  limited users there shared one rate. Now WireGuard is limited by the person's tunnel address and
+  mieru, Snell and AnyTLS by their own port - exact wherever they connect from; Hysteria2 keeps its
+  own per-user check at sign-in; and on VLESS, VMess, Trojan and Shadowsocks an address another user
+  is connected from too is left unlimited, with a note on the user's timeline. Needs agent 1.4.2.
 - **Plans counted in months end in the right month.** A one-month plan starting on Jan 31 ran until
   Mar 3, one starting on Mar 31 until May 1. A month from the 29th-31st now ends on the shorter
   month's last day (Feb 28 or 29, Apr 30), as the monthly usage reset already did.

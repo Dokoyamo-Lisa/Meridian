@@ -122,10 +122,11 @@ type Agent struct {
 	done        map[int64]int64 // actions started: id -> when the panel made it (0: not known)
 	events      []proto.AgentEvent
 	lastHello   time.Time
-	limitWarned time.Time  // when a speed limit failure was last logged (limits.go)
-	cons        consoles   // the supervisor's consoles open now (console.go)
-	lastCaps    proto.Caps // what the last hello said the host supports
-	lastAddrs   []string   // the addresses the last hello listed
+	limitWarned time.Time            // when a speed limit failure was last logged (limits.go)
+	sharedTold  map[string]time.Time // speed limits left off an address another user shares, when last told (limits.go)
+	cons        consoles             // the supervisor's consoles open now (console.go)
+	lastCaps    proto.Caps           // what the last hello said the host supports
+	lastAddrs   []string             // the addresses the last hello listed
 	cores       map[string]proto.CoreStatus
 	kick        chan struct{}
 	applyMu     sync.Mutex
@@ -785,11 +786,15 @@ func (a *Agent) nftSpec(st *proto.State) nft.Spec {
 			switch {
 			case obj.Protocol == "hysteria":
 				spec.UDPPorts = append(spec.UDPPorts, obj.Port)
+				spec.XrayUDP = append(spec.XrayUDP, obj.Port)
 			case obj.Protocol == "shadowsocks", obj.Protocol == "socks" && obj.Settings.UDP:
 				spec.TCPPorts = append(spec.TCPPorts, obj.Port)
 				spec.UDPPorts = append(spec.UDPPorts, obj.Port)
+				spec.XrayTCP = append(spec.XrayTCP, obj.Port)
+				spec.XrayUDP = append(spec.XrayUDP, obj.Port)
 			default:
 				spec.TCPPorts = append(spec.TCPPorts, obj.Port)
+				spec.XrayTCP = append(spec.XrayTCP, obj.Port)
 			}
 		}
 	}
@@ -827,7 +832,16 @@ func (a *Agent) nftSpec(st *proto.State) nft.Spec {
 		spec.Solo = append(spec.Solo, nft.SoloPort{Node: i.Node, Sub: i.Sub, Port: i.Port, TCP: i.TCP(), UDP: i.UDP(), NoNew: noNew[i.Key()],
 			Refused: refused[i.Sub]})
 	}
+	limited := map[int64]bool{}
+	for _, l := range st.Speed {
+		limited[l.Sub] = true
+	}
 	for _, w := range st.WireGuard {
+		for _, peer := range w.Peers { // a limited user's speed, by their own tunnel addresses
+			if limited[peer.SubID] {
+				spec.WGSpeed = append(spec.WGSpeed, nft.WGSpeed{Sub: peer.SubID, Iface: w.Name, Addrs: peer.AllowedIPs})
+			}
+		}
 		spec.UDPPorts = append(spec.UDPPorts, w.ListenPort)
 		g := nft.WGNat{NodeID: w.NodeID, Iface: w.Name, SNAT: w.SNAT}
 		for _, ad := range w.Address {

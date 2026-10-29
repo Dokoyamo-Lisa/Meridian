@@ -584,7 +584,7 @@ func (p *Panel) applyBatch(tx *sql.Tx, srv *Server, b *proto.Batch, set Settings
 			lvl = "info"
 		}
 		msg, sub := e.Message, int64(0)
-		if e.Kind == "hy_over_speed" { // "... of user 5: ..." - named, and on the user's timeline
+		if e.Kind == "hy_over_speed" || e.Kind == "speed_shared" { // "... of user 5 ..." - named, and on the user's timeline
 			if m := agentUserRE.FindStringSubmatch(msg); m != nil {
 				id, _ := strconv.ParseInt(m[1], 10, 64)
 				var name string

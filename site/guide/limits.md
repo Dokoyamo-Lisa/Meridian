@@ -59,6 +59,13 @@ away, *1 device over the limit of 2 turned away now* with its address.
 downloads slow down or speed up on the spot. (On Hysteria2 their app needs the new link first - see
 [Everyday tasks](everyday.md#change-someones-speed).)
 
+A speed limit never slows down anyone else. On WireGuard, mieru, Snell and AnyTLS it follows the
+person wherever they connect from. On the other protocols (VLESS, VMess, Trojan, Shadowsocks) it
+follows the addresses their devices connect from - so while someone else is connected from the same
+address (one home or office network, a phone carrier's shared address), that address is left
+unlimited for both, and the server's timeline says so. If that happens often, give the person
+WireGuard, mieru, Snell or AnyTLS.
+
 ## Limits per protocol
 
 Besides the quota, at most so much through one protocol each cycle - a costly server, say:
