@@ -7,6 +7,11 @@
   account is disabled returned the full configuration, private key included. Every subscription
   route now goes through the same check (rate limit, token, account enabled), and a paused user's
   page never shows WireGuard keys as QR codes or links.
+- **Security: a disabled account's users are shut out of their own page and the bot.** Disabling an
+  account stopped its subscription links, but its users could still sign in, keep an open session
+  reading their page and link, and use the Telegram bot. Signing in (password or Telegram), every
+  request of an open session and the bot's commands now need the account enabled; enabling it again
+  lets them back in as they were.
 - **Backups: retention removes only this panel's own encrypted backups.** Two panels sending
   backups to the same WebDAV folder or S3 prefix counted - and removed - each other's; and a plain
   ZIP took one of the kept places while only encrypted backups were removed, so fewer were kept

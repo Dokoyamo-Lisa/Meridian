@@ -996,7 +996,7 @@ func (p *Panel) botPrivate(ctx context.Context, c notifyConfig, m *tgMessage) {
 			return
 		}
 		s, err := p.subByID(ctx, l.SubID)
-		if err != nil || !s.CanSignIn {
+		if err != nil || !p.userMaySignIn(ctx, s) {
 			send("Your account cannot use this any more - ask whoever runs this service.", nil)
 			return
 		}

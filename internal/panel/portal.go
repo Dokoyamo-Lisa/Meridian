@@ -47,6 +47,18 @@ func (p *Panel) portal(h portalFunc) http.HandlerFunc {
 	}
 }
 
+// userMaySignIn says whether a user may use their own page and the bot: they have a sign-in, and the
+// account that owns them is enabled - the rule a subscription link follows too (subOf). A disabled
+// account's open sessions are refused on every request, not removed: enabling it again lets its
+// users back in as they were.
+func (p *Panel) userMaySignIn(ctx context.Context, s *Sub) bool {
+	if s == nil || !s.CanSignIn {
+		return false
+	}
+	acct, err := p.accountByID(ctx, s.AccountID)
+	return err == nil && acct.Enabled
+}
+
 func (p *Panel) sessionUser(r *http.Request) (*Sub, error) {
 	c, err := r.Cookie(userCookie)
 	if err != nil || len(c.Value) < 20 || len(c.Value) > 200 {
@@ -64,7 +76,7 @@ func (p *Panel) sessionUser(r *http.Request) (*Sub, error) {
 		return nil, errors.New("expired")
 	}
 	s, err := p.subByID(r.Context(), subID)
-	if err != nil || !s.CanSignIn {
+	if err != nil || !p.userMaySignIn(r.Context(), s) {
 		return nil, errors.New("sign-in removed")
 	}
 	if t-seen > 300 {
@@ -95,6 +107,10 @@ func (p *Panel) userLogin(w http.ResponseWriter, r *http.Request, user, password
 	s, err := p.subByID(r.Context(), id)
 	if err != nil {
 		writeErr(w, errStatus(http.StatusUnauthorized, "wrong username or password"))
+		return
+	}
+	if !p.userMaySignIn(r.Context(), s) {
+		writeErr(w, errStatus(http.StatusForbidden, "your account cannot sign in any more - ask whoever runs this service"))
 		return
 	}
 	p.signinSucceeded(ip, user)

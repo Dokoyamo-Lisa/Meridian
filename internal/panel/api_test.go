@@ -900,3 +900,35 @@ func TestSubWireGuardGate(t *testing.T) {
 		t.Errorf("a disabled account's file: %d %s", code, body)
 	}
 }
+
+// TestDisabledAccountUsers: disabling an account shuts its users out as it shuts out their
+// subscription links - a new sign-in is refused, a session already open stops answering - and
+// enabling it again lets them back in as they were.
+func TestDisabledAccountUsers(t *testing.T) {
+	h := newHarness(t)
+	owner := h.browser()
+	owner.login("owner", "owner-password-1")
+	owner.must("POST", "/api/users", map[string]any{"name": "Dana", "username": "dana", "password": "dana-password-1"}, 201)
+	open := h.browser()
+	open.login("dana", "dana-password-1")
+	if me := open.must("GET", "/api/portal/me", nil, 200); me["name"] != "Dana" || me["link"] == nil {
+		t.Fatalf("an enabled account's user: %v", me)
+	}
+	setEnabled := func(on int) {
+		if _, err := h.p.db.Exec1(`UPDATE accounts SET enabled = ? WHERE username = 'owner'`, on); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setEnabled(0)
+	// the session already open: no page, no link
+	if code, m, _ := open.do("GET", "/api/portal/me", nil); code != 401 || m["link"] != nil {
+		t.Errorf("an open session of a disabled account: %d, link given: %v", code, m["link"] != nil)
+	}
+	// a new sign-in with the right password
+	if code, m, _ := h.browser().do("POST", "/api/login", map[string]string{"username": "dana", "password": "dana-password-1"}); code != 403 {
+		t.Errorf("signing in to a disabled account: %d %v", code, m["kind"])
+	}
+	setEnabled(1)
+	open.must("GET", "/api/portal/me", nil, 200)
+	h.browser().login("dana", "dana-password-1")
+}
