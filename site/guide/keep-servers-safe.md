@@ -62,10 +62,38 @@ the step.
 
 To undo: **Undo** next to it, and confirm.
 
+## 4. Let the server guard itself
+
+For what production servers meet every day - password guessing over SSH, crypto-miners - the agent
+can act **by itself**, once you turn that on for a server (agent 1.4):
+
+1. Open the server's page and scroll to **Security mode**.
+2. Tick what the agent may do:
+
+   | Choice | Then the agent |
+   |---|---|
+   | **Block addresses that keep guessing SSH passwords** | Shuts an address out of SSH for an hour after 5 failed sign-ins within 10 minutes - for a day when it comes back three times. |
+   | **SSH by keys only** | Makes SSH take keys only. It checks first that an account which may sign in has a key, so nobody is locked out. |
+   | **Stop crypto-miners at once** | Stops a known crypto-miner the moment the health check finds it and moves its program into quarantine - instead of waiting for your click. |
+
+3. Press **Save**. The question lists exactly what the agent will do by itself. Press **Turn it on**.
+
+**You should see** **On** next to the title, *Turned on by you just now*, and - as it works - *SSH
+takes keys only*, **Blocked now** with the addresses, and how many miners it stopped. Every block and
+stop is in the server's timeline, and the health check's risk shows the step taken.
+
+To turn it off: untick everything, **Save**, **Turn it off**. Blocked addresses are let go, and SSH
+takes passwords again where its own settings allow them.
+
+> **Good to know:** It never blocks a private address, one that signed in over SSH lately, the
+> panel's own, or the one you turned it on from. Only you, signed in in a browser, can turn it on,
+> change or turn it off - never a token, an assistant or the bot.
+
 ## What protective steps never do
 
-- **Nothing happens by itself.** Only you, signed in to the panel in a browser, can take a step - never
-  an API token, an assistant or the Telegram bot.
+- **Nothing happens by itself** - unless you turned the security mode on for that server (above),
+  and then only what you ticked. Only you, signed in to the panel in a browser, can take a step -
+  never an API token, an assistant or the Telegram bot.
 - **The server checks again first.** If the process, file, key or account has changed or is gone by
   then, it does nothing and says so.
 - **It never locks you out.** **SSH: keys only** is refused unless an account that may sign in has a
@@ -96,3 +124,6 @@ looks real - a miner, a key or account you did not add, *ld.so.preload*:
 | **not done** - *the process is not running any more*, *the file changed since it was found* ... | The server saw something different from what was found, so it did nothing. Look again; a new risk follows if it is still there. |
 | **SSH: keys only** is refused | No account that may sign in has an SSH key, or SSH does not read `/etc/ssh/sshd_config.d`. Add your key first. |
 | The same harmless thing is flagged on every server | **Expected…** › **On every server**. |
+| *The security mode needs agent 1.4 or later* | **⋯** › **Upgrade agent** on the server (nobody is disconnected). |
+| **SSH** shows why it does not take keys only | No account that may sign in has a key - add yours (`ssh-copy-id`), then **Save** again. |
+| Your own address was blocked from SSH | Open the server's **Console** from the panel, or turn the security mode off; the block ends by itself after an hour. Sign in once from the address you use and it is never blocked again. |

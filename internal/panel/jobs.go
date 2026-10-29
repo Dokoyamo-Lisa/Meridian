@@ -40,9 +40,10 @@ func (p *Panel) jobs(ctx context.Context) {
 		if time.Since(lastMinute) >= 59*time.Second {
 			lastMinute = time.Now()
 			p.sampleUptime(ctx)
-			p.resetCycles(ctx) // each minute: a user whose data was used up is back right as it starts over
-			p.autoUpdate(ctx)  // a night-time install, when automatic updates are on
-			p.relayJob(ctx)    // servers that keep losing the panel (relay.go)
+			p.resetCycles(ctx)     // each minute: a user whose data was used up is back right as it starts over
+			p.autoUpdate(ctx)      // a night-time install, when automatic updates are on
+			p.coreAutoUpgrade(ctx) // cores that upgrade themselves at night, when turned on (coreupgrades.go)
+			p.relayJob(ctx)        // servers that keep losing the panel (relay.go)
 		}
 		if time.Now().After(nextUpdateCheck) {
 			nextUpdateCheck = time.Now().Add(6 * time.Hour)

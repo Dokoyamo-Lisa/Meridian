@@ -71,7 +71,7 @@ func EnsureMita(ctx context.Context, base, version, mirror string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	gh := fmt.Sprintf("https://github.com/enfein/mieru/releases/download/v%s/", version)
+	gh := fmt.Sprintf("%s/enfein/mieru/releases/download/v%s/", githubDL, version)
 	want := digestFor("mita", version, asset)
 	if want == "" { // the panel had none: ask GitHub directly, never the mirror
 		want = githubAssetDigest(ctx, "enfein/mieru", "v"+version, asset)
@@ -86,12 +86,11 @@ func EnsureMita(ctx context.Context, base, version, mirror string) (string, erro
 	if want == "" {
 		return "", errors.New("cannot verify the mieru server download: no checksum from the panel or GitHub")
 	}
-	var urls []string
+	urls := []string{gh + asset}
 	if mirror != "" {
 		urls = append(urls, fmt.Sprintf("%s/mita/%s/%s", mirror, version, asset))
 	}
-	urls = append(urls, gh+asset)
-	gz, err := fetch(ctx, urls, 100<<20)
+	gz, err := fetchCore(ctx, "mita", urls, 100<<20, want)
 	if err != nil {
 		return "", err
 	}
@@ -148,12 +147,11 @@ func EnsureSingBox(ctx context.Context, base, version, mirror string) (string, e
 	if want == "" {
 		return "", errors.New("cannot verify the sing-box download: no checksum from the panel or GitHub")
 	}
-	var urls []string
+	urls := []string{fmt.Sprintf("%s/SagerNet/sing-box/releases/download/v%s/%s", githubDL, version, asset)}
 	if mirror != "" {
 		urls = append(urls, fmt.Sprintf("%s/sing-box/%s/%s", mirror, version, asset))
 	}
-	urls = append(urls, fmt.Sprintf("https://github.com/SagerNet/sing-box/releases/download/v%s/%s", version, asset))
-	gz, err := fetch(ctx, urls, 100<<20)
+	gz, err := fetchCore(ctx, "sing-box", urls, 100<<20, want)
 	if err != nil {
 		return "", err
 	}
@@ -210,12 +208,11 @@ func EnsureSnell(ctx context.Context, base, version, mirror string) (string, err
 	if want == "" {
 		return "", fmt.Errorf("snell-server %s is not a version this agent can verify - pick a known one in Settings", version)
 	}
-	var urls []string
+	urls := []string{"https://dl.nssurge.com/snell/" + asset}
 	if mirror != "" {
 		urls = append(urls, fmt.Sprintf("%s/snell/%s/%s", mirror, version, asset))
 	}
-	urls = append(urls, "https://dl.nssurge.com/snell/"+asset)
-	data, err := fetch(ctx, urls, 50<<20)
+	data, err := fetchCore(ctx, "snell", urls, 50<<20, want)
 	if err != nil {
 		return "", err
 	}

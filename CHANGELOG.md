@@ -6,8 +6,8 @@
   (ML-KEM-768, since 2.2.78) is no longer left out. mieru is sent as mieru's simple link
   (`mierus://`, since 2.2.81), with the port in the query, MTU 1400 and low multiplexing. HTTPUpgrade
   goes out on the share links it already stores, and XHTTP with VLESS. AnyTLS with a domain
-  certificate goes out as `anytls://` (since 2.2.65). REALITY is still only sent over raw TCP, and Trojan with REALITY is
-  still left out. A self-signed certificate is still never a share link.
+  certificate goes out as `anytls://` (since 2.2.65). REALITY is still only sent over raw TCP, and
+  Trojan with REALITY is still left out. A self-signed certificate is still never a share link.
 - **Loon** subscriptions now include AnyTLS (Loon's manual, Build 945 and later): a domain
   certificate as written, a self-signed one pinned with `tls-cert-sha256`. Certificate checks are
   not turned off.
@@ -15,6 +15,77 @@
   sing-box (1.14.3) and the apps on it (Hiddify, NekoBox, Karing); mieru in the Xray-based apps,
   Surge, Loon and Quantumult X; Hysteria2, AnyTLS and VLESS Encryption in Quantumult X. A self-signed
   Hysteria2 server is still not a share link.
+
+## 1.4.0 - 2026-10-12
+
+Upgrade the panel, then the agents (**Settings › Updates** - nobody is disconnected). The new server
+features need agent 1.4; on servers added before, nothing new is installed until you ask (**Servers ›
+Install missing software**).
+
+- **Security mode** (per server, **Security mode** on its page): what the agent does by itself
+  against what production servers meet every day - blocks addresses that keep guessing SSH
+  passwords (5 failures in 10 minutes: an hour out of SSH, a day after 3 blocks in a day; never a
+  private address, one that signed in lately, the panel's own or the one you turned it on from),
+  makes SSH take keys only (after checking that an account which may sign in has a key, so nobody is
+  locked out), and stops a known crypto-miner the health check finds, quarantining its program. It
+  does nothing until a person turns it on in a browser and confirms - never an API token, an
+  assistant or the bot - and everything it does is in the timeline. Needs agent 1.4.
+- **The agent prepares a new server by itself**: once it has its first state it makes sure Xray and
+  Hysteria are in place - from their **official GitHub releases**, checked against their published
+  checksums - and looks at what the host offers (nftables, WireGuard, a clock kept in time, a public
+  address). The panel shows every step as it goes (in the setup guide right after the agent
+  connects, and on the server's page), with the download's progress, and says what to do about
+  anything the host lacks. A core the server had whose program file goes missing later is installed
+  again by itself, and so is one a protocol needs.
+- **Servers that ran before get nothing new without asking**: on a server added before 1.4, the agent
+  shows the cores it lacks as missing, with an **Install** button on the server's page - and
+  **Install missing software** on **Servers** does it on every such server at once (nobody is
+  disconnected).
+- **Reinstall, or start a server over** (**⋯ › Reinstall…** / **Clean reinstall…** on the server's
+  page, or several servers at once from **Servers**): a reinstall downloads every core again from
+  its official release and sets every proxy the panel has for the server up again - the same ports,
+  keys and links; when a download fails nothing changes. A clean reinstall starts the server over as
+  if just added: its protocols and forwards are removed (in the panel too - after typing the server's
+  name), the cores and everything Rosélune set up there are cleared, fresh cores come from the
+  official releases and the setup script runs once more. One core alone (Xray or Hysteria) can be
+  installed again too. Needs agent 1.4; also as the assistants' **reinstall_server**.
+- **Cores come from their official release first**, with the panel's copy only as a fallback (it was
+  the other way round), and a source whose file does not match its checksum is passed over for the
+  next.
+- **Cores that upgrade themselves** (optional, **Settings › Cores**): off by default; on, Xray and
+  Hysteria follow the versions in Settings at night, one server at a time - each restarts once.
+- **Servers with several IP addresses**: a protocol can be given one of its own even behind a
+  cloud's elastic or floating IP - the agent asks, from that address, which public address its
+  traffic leaves with, and links then give that one. An address devices could not reach is refused.
+- **A warning about Cloudflare**: when you add or change a protocol, the domains it depends on are
+  looked up. A REALITY camouflage site behind Cloudflare, a domain pointed at Cloudflare's proxy (the
+  orange cloud), the address in its links proxied by Cloudflare, or a CDN domain on Cloudflare is
+  shown in red in the form, and saving asks once more - it risks being taken for abuse (saving still
+  works). *www.cloudflare.com* is no longer picked as a camouflage site by itself.
+- **A setup script per server** (1.4 agents): a script the agent runs after the cores are in place,
+  as root, once for each version - to install a package, open a port at the host's firewall or tune
+  the kernel. Its output and exit code come back to the panel. Browser sessions only, confirmed. It is
+  also where proxy software Rosélune does not manage can be installed - the page says plainly what
+  that costs (Rosélune cannot audit it: no counting, quotas, limits, rules or logs for it, and the
+  health check cannot vouch for its programs) and that support for a missing proxy can be asked for
+  from @JensenSu on Telegram.
+- **VLESS · TLS · Vision** is offered as a starting point in the protocol form.
+- **The protocol form shows Port and Name at once**, right under the choice of protocol (they were
+  folded away), and on a server with several usable addresses the address too - a private one with
+  the public address devices reach it at.
+- **Phones**: long words (addresses, links in error messages) no longer widen the page; the health
+  check's risks keep their full width with the buttons below them; the health intro is folded; a
+  scrolling tab strip keeps the chosen tab in view.
+- **Quick search**: **Ctrl K** or **⌘K** (or **/**, or the magnifier at the top on a phone) finds a
+  server, a user, a protocol or a page and opens it.
+- **Copy a user's link from the list** (the copy button by their name), and **copy a protocol to other
+  servers** (its **⋯** menu): the same settings with keys of their own, on the same port where it is
+  free there.
+- **Several servers at once**: tick servers on **Servers** to install missing software, reinstall or
+  start them over together.
+- Fixes: a server with no mieru, Snell or AnyTLS protocol could report an error about their list after
+  its folder was cleared; uninstalling an agent now also stops users' own servers (mieru, Snell,
+  AnyTLS).
 
 ## 1.3.2 - 2026-10-10
 

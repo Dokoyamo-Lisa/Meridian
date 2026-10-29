@@ -31,7 +31,8 @@ type Settings struct {
 	MitaVersion     string `json:"mita_version" doc:"mieru server (mita) version servers install for mieru"`
 	SnellVersion    string `json:"snell_version" doc:"snell-server version servers install for Snell - one Rosélune can verify (5.0.1)"`
 	SingBoxVersion  string `json:"singbox_version" doc:"sing-box version servers install for AnyTLS"`
-	Mirror          bool   `json:"mirror" doc:"Agents may download cores through the panel"`
+	Mirror          bool   `json:"mirror" doc:"Agents may download cores through the panel, when their official release does not answer"`
+	CoreAutoUpgrade bool   `json:"core_auto_upgrade" doc:"Servers' Xray and Hysteria upgrade themselves to the versions here, at night (03:00 to 05:00 panel time), one server at a time - each restarts once and its users reconnect by themselves. Off: only a person upgrades them"`
 	AutoUpdate      bool   `json:"auto_update" doc:"Install new Rosélune releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts"`
 	AutoRelay       int64  `json:"auto_relay" doc:"A server that keeps losing the panel (see panel_trouble on servers) is switched to reach it through this server, once - by itself, with an event; switch it back on its page at any time. 0 = off: the panel only tells"`
 	Maintenance     bool   `json:"maintenance" doc:"Maintenance mode: only the supervisor can sign in; everyone else - users on their own pages, other accounts - sees \"Maintenance in progress\" and is signed out. Servers, protocols and subscriptions keep working"`
@@ -230,74 +231,92 @@ func scanAccount(r interface{ Scan(...any) error }) (*Account, error) {
 // ---------------------------------------------------------------- servers
 
 type Server struct {
-	ID              int64    `json:"id"`
-	AccountID       int64    `json:"account_id"`
-	Name            string   `json:"name"`
-	Secret          string   `json:"-"`
-	PassSecret      string   `json:"-"` // what proxy-pass credentials come from (see migration 12)
-	Address         string   `json:"address"`
-	Note            string   `json:"note"`
-	Sort            int      `json:"sort"`
-	CreatedAt       int64    `json:"created_at"`
-	DeletedAt       int64    `json:"-"`
-	InstanceID      string   `json:"-"`
-	LastSeq         int64    `json:"-"`
-	AgentVersion    string   `json:"agent_version"`
-	Hostname        string   `json:"hostname"`
-	OS              string   `json:"os"`
-	Kernel          string   `json:"kernel"`
-	Virt            string   `json:"virt" doc:"What it runs in, as its agent sees it: kvm, xen, vmware, hyper-v, openvz, lxc, docker ...; none = no hypervisor shows; empty = unknown"`
-	Arch            string   `json:"arch"`
-	CPUModel        string   `json:"cpu_model"`
-	CPUCores        int      `json:"cpu_cores"`
-	MemTotal        int64    `json:"mem_total"`
-	DiskTotal       int64    `json:"disk_total"`
-	IPv4            string   `json:"ipv4"`
-	IPv6            string   `json:"ipv6"`
-	Country         string   `json:"country"`
-	City            string   `json:"city"`
-	Lat             *float64 `json:"lat"`
-	Lon             *float64 `json:"lon"`
-	Caps            string   `json:"-"`
-	BootTime        int64    `json:"boot_time"`
-	AgentStartedAt  int64    `json:"agent_started_at"`
-	FirstSeenAt     int64    `json:"first_seen_at"`
-	LastSeenAt      int64    `json:"last_seen_at"`
-	Online          bool     `json:"online"`
-	StatusChangedAt int64    `json:"status_changed_at"`
-	AppliedRev      string   `json:"applied_rev"`
-	ApplyErrors     string   `json:"apply_errors"`
-	PendingRestart  string   `json:"pending_restart"`
-	XrayVersion     string   `json:"xray_version"`
-	BwLimit         int64    `json:"bw_limit"`
-	BwMode          string   `json:"bw_mode"`
-	BwResetDay      int      `json:"bw_reset_day"`
-	BwOffset        int64    `json:"bw_offset"`
-	CycleRX         int64    `json:"cycle_rx"`
-	CycleTX         int64    `json:"cycle_tx"`
-	CycleStart      int64    `json:"cycle_start"`
-	Price           float64  `json:"price"`
-	Currency        string   `json:"currency"`
-	BillingCycle    string   `json:"billing_cycle"`
-	ExpiresOn       string   `json:"expires_on"`
-	CountryMode     string   `json:"country_mode" doc:"'' = follows the global country rule, off = none, block or allow = its own"`
-	CountryList     string   `json:"-"`
-	Countries       []string `json:"countries" doc:"Its own country rule's countries"`
-	PublicName      string   `json:"public_name" doc:"The name users see - on the status page, their own page and in their apps; empty = the server's name"`
-	StatusHidden    bool     `json:"status_hidden" doc:"Left off the status page"`
-	LocManual       bool     `json:"loc_manual" doc:"The location was set by hand (not from the IP database)"`
-	PublicPorts     string   `json:"public_ports" doc:"Ports the server's provider forwards to it (NAT servers, LXC and Incus containers), e.g. '20000-20019, 40001-40010:10001-10010'; empty = every port"`
-	IPVersion       string   `json:"ip_version" doc:"'' = IPv4 and IPv6, ipv4 = IPv4 only, ipv6 = IPv6 only: how protocols reach sites, which address links use, and whether WireGuard may route IPv6"`
-	Addrs           []string `json:"addrs" doc:"The addresses on the server's own interfaces, as the agent reports them: what a protocol can be bound to"`
-	XrayCode        string   `json:"xray_code" doc:"Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates: outbounds (added, or replacing one with the same tag), routing.rules (before the panel's), inbounds by tag (merged into that protocol, or added as your own) and other sections (dns, ...). Only the syntax is checked; Xray decides the rest"`
-	PanelRelay      int64    `json:"panel_relay" doc:"The server whose agent this server's agent reaches the panel through (a relay, for a server with a poor route to the panel); 0 = directly"`
-	RelayPort       int      `json:"relay_port" doc:"The TCP port this server listens on for the servers it relays to the panel (0 = none picked yet); a firewall in front of it must let that port in"`
-	DDNS            bool     `json:"ddns" doc:"Its IP address changes (dynamic DNS): address is then its domain name, which every link to it uses - users' links and other servers' proxy passes and traffic rules - and the panel checks that the name points at the addresses the agent reports"`
-	DDNSCloudflare  bool     `json:"ddns_cloudflare" doc:"With ddns: the panel keeps the name's A and AAAA records in Cloudflare pointing at the addresses the agent reports (DNS only, a short TTL), and removes the name's A or AAAA record when the server has no address of that kind. Other names are never touched. Needs the Cloudflare token (Settings)"`
-	Guest           bool     `json:"guest" doc:"Another panel shares this server with you: your protocols, users and forwards run there, but its console, the agent's and the cores' upgrades, its country rule and relaying stay with its owner's panel (sharing.go)"`
+	ID              int64             `json:"id"`
+	AccountID       int64             `json:"account_id"`
+	Name            string            `json:"name"`
+	Secret          string            `json:"-"`
+	PassSecret      string            `json:"-"` // what proxy-pass credentials come from (see migration 12)
+	Address         string            `json:"address"`
+	Note            string            `json:"note"`
+	Sort            int               `json:"sort"`
+	CreatedAt       int64             `json:"created_at"`
+	DeletedAt       int64             `json:"-"`
+	InstanceID      string            `json:"-"`
+	LastSeq         int64             `json:"-"`
+	AgentVersion    string            `json:"agent_version"`
+	Hostname        string            `json:"hostname"`
+	OS              string            `json:"os"`
+	Kernel          string            `json:"kernel"`
+	Virt            string            `json:"virt" doc:"What it runs in, as its agent sees it: kvm, xen, vmware, hyper-v, openvz, lxc, docker ...; none = no hypervisor shows; empty = unknown"`
+	Arch            string            `json:"arch"`
+	CPUModel        string            `json:"cpu_model"`
+	CPUCores        int               `json:"cpu_cores"`
+	MemTotal        int64             `json:"mem_total"`
+	DiskTotal       int64             `json:"disk_total"`
+	IPv4            string            `json:"ipv4"`
+	IPv6            string            `json:"ipv6"`
+	Country         string            `json:"country"`
+	City            string            `json:"city"`
+	Lat             *float64          `json:"lat"`
+	Lon             *float64          `json:"lon"`
+	Caps            string            `json:"-"`
+	BootTime        int64             `json:"boot_time"`
+	AgentStartedAt  int64             `json:"agent_started_at"`
+	FirstSeenAt     int64             `json:"first_seen_at"`
+	LastSeenAt      int64             `json:"last_seen_at"`
+	Online          bool              `json:"online"`
+	StatusChangedAt int64             `json:"status_changed_at"`
+	AppliedRev      string            `json:"applied_rev"`
+	ApplyErrors     string            `json:"apply_errors"`
+	PendingRestart  string            `json:"pending_restart"`
+	XrayVersion     string            `json:"xray_version"`
+	BwLimit         int64             `json:"bw_limit"`
+	BwMode          string            `json:"bw_mode"`
+	BwResetDay      int               `json:"bw_reset_day"`
+	BwOffset        int64             `json:"bw_offset"`
+	CycleRX         int64             `json:"cycle_rx"`
+	CycleTX         int64             `json:"cycle_tx"`
+	CycleStart      int64             `json:"cycle_start"`
+	Price           float64           `json:"price"`
+	Currency        string            `json:"currency"`
+	BillingCycle    string            `json:"billing_cycle"`
+	ExpiresOn       string            `json:"expires_on"`
+	CountryMode     string            `json:"country_mode" doc:"'' = follows the global country rule, off = none, block or allow = its own"`
+	CountryList     string            `json:"-"`
+	Countries       []string          `json:"countries" doc:"Its own country rule's countries"`
+	PublicName      string            `json:"public_name" doc:"The name users see - on the status page, their own page and in their apps; empty = the server's name"`
+	StatusHidden    bool              `json:"status_hidden" doc:"Left off the status page"`
+	LocManual       bool              `json:"loc_manual" doc:"The location was set by hand (not from the IP database)"`
+	PublicPorts     string            `json:"public_ports" doc:"Ports the server's provider forwards to it (NAT servers, LXC and Incus containers), e.g. '20000-20019, 40001-40010:10001-10010'; empty = every port"`
+	IPVersion       string            `json:"ip_version" doc:"'' = IPv4 and IPv6, ipv4 = IPv4 only, ipv6 = IPv6 only: how protocols reach sites, which address links use, and whether WireGuard may route IPv6"`
+	Addrs           []string          `json:"addrs" doc:"The addresses on the server's own interfaces, as the agent reports them: what a protocol can be bound to"`
+	XrayCode        string            `json:"xray_code" doc:"Your own Xray configuration (JSON, comments allowed), merged on top of what the panel generates: outbounds (added, or replacing one with the same tag), routing.rules (before the panel's), inbounds by tag (merged into that protocol, or added as your own) and other sections (dns, ...). Only the syntax is checked; Xray decides the rest"`
+	PanelRelay      int64             `json:"panel_relay" doc:"The server whose agent this server's agent reaches the panel through (a relay, for a server with a poor route to the panel); 0 = directly"`
+	RelayPort       int               `json:"relay_port" doc:"The TCP port this server listens on for the servers it relays to the panel (0 = none picked yet); a firewall in front of it must let that port in"`
+	DDNS            bool              `json:"ddns" doc:"Its IP address changes (dynamic DNS): address is then its domain name, which every link to it uses - users' links and other servers' proxy passes and traffic rules - and the panel checks that the name points at the addresses the agent reports"`
+	DDNSCloudflare  bool              `json:"ddns_cloudflare" doc:"With ddns: the panel keeps the name's A and AAAA records in Cloudflare pointing at the addresses the agent reports (DNS only, a short TTL), and removes the name's A or AAAA record when the server has no address of that kind. Other names are never touched. Needs the Cloudflare token (Settings)"`
+	Guest           bool              `json:"guest" doc:"Another panel shares this server with you: your protocols, users and forwards run there, but its console, the agent's and the cores' upgrades, its country rule and relaying stay with its owner's panel (sharing.go)"`
+	AddrPublic      map[string]string `json:"addr_public" doc:"For each private address in addrs, the public address its traffic leaves with - a cloud's elastic or floating IP in front of it - as the agent found by asking from that address (1.4 and later). A protocol bound to such an address is reached at its public one"`
+	Guard           *GuardSettings    `json:"guard" doc:"The server's security mode, when the supervisor turned it on (null: off) - see PUT /api/servers/{id}/guard"`
+	SetupScript     string            `json:"setup_script" doc:"A script the agent runs on the server after the cores are in place, to ready the environment (as root; 1.4). Set it with PUT /api/servers/{id}/setup"`
+	SetupShell      string            `json:"setup_shell" doc:"The setup script's interpreter: /bin/sh (default) or /bin/bash"`
+	SetupVersion    int64             `json:"setup_version" doc:"Changes each time the script is saved; the agent runs each version once"`
 
 	ports    portMap // PublicPorts, parsed
 	addrList string  // Addrs as stored
+	addrPub  string  // AddrPublic as stored
+	guardRaw string  // Guard as stored
+}
+
+// GuardSettings is a server's security mode: what its agent does by itself once the supervisor turned
+// it on (guard.go).
+type GuardSettings struct {
+	SSHBan     bool     `json:"ssh_ban" doc:"Block, for a while, addresses that keep failing to sign in over SSH (as fail2ban does): 5 failures in 10 minutes, an hour - a day after 3 blocks in a day. Never a private address, one that signed in over SSH lately, or a trusted one"`
+	KeysOnly   bool     `json:"keys_only" doc:"SSH takes keys only - no passwords - once an account that may sign in has a key (the agent checks first: nobody is locked out)"`
+	StopMiners bool     `json:"stop_miners" doc:"Stop a known crypto-miner the health check finds, at once, its program into quarantine"`
+	Trusted    []string `json:"trusted" doc:"Addresses never blocked: the panel's own and the one the supervisor turned it on from"`
+	At         int64    `json:"at" doc:"When it was turned on or last changed"`
+	By         string   `json:"by" doc:"Who did"`
 }
 
 const serverCols = `id, account_id, name, secret, address, note, sort, created_at, deleted_at, instance_id, last_seq,
@@ -305,7 +324,7 @@ agent_version, hostname, os, kernel, arch, cpu_model, cpu_cores, mem_total, disk
 lat, lon, caps, boot_time, agent_started_at, first_seen_at, last_seen_at, online, status_changed_at, applied_rev,
 apply_errors, pending_restart, xray_version, bw_limit, bw_mode, bw_reset_day, bw_offset, cycle_rx, cycle_tx,
 cycle_start, price, currency, billing_cycle, expires_on, country_mode, country_list, public_name, status_hidden, loc_manual, public_ports, ip_version, addrs, xray_code,
-pass_secret, panel_relay, relay_port, ddns, ddns_cloudflare, guest, virt`
+pass_secret, panel_relay, relay_port, ddns, ddns_cloudflare, guest, virt, addr_public, guard, setup_script, setup_shell, setup_version`
 
 func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 	s := &Server{}
@@ -317,7 +336,8 @@ func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 		&s.ApplyErrors, &s.PendingRestart, &s.XrayVersion, &s.BwLimit, &s.BwMode, &s.BwResetDay, &s.BwOffset,
 		&s.CycleRX, &s.CycleTX, &s.CycleStart, &s.Price, &s.Currency, &s.BillingCycle, &s.ExpiresOn, &s.CountryMode,
 		&s.CountryList, &s.PublicName, &s.StatusHidden, &s.LocManual, &s.PublicPorts, &s.IPVersion, &s.addrList,
-		&s.XrayCode, &s.PassSecret, &s.PanelRelay, &s.RelayPort, &s.DDNS, &s.DDNSCloudflare, &s.Guest, &s.Virt)
+		&s.XrayCode, &s.PassSecret, &s.PanelRelay, &s.RelayPort, &s.DDNS, &s.DDNSCloudflare, &s.Guest, &s.Virt, &s.addrPub, &s.guardRaw,
+		&s.SetupScript, &s.SetupShell, &s.SetupVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -325,6 +345,16 @@ func scanServer(r interface{ Scan(...any) error }) (*Server, error) {
 	_ = json.Unmarshal([]byte(s.addrList), &s.Addrs)
 	if s.Addrs == nil {
 		s.Addrs = []string{}
+	}
+	_ = json.Unmarshal([]byte(s.addrPub), &s.AddrPublic)
+	if s.AddrPublic == nil {
+		s.AddrPublic = map[string]string{}
+	}
+	if s.guardRaw != "" {
+		var g GuardSettings
+		if json.Unmarshal([]byte(s.guardRaw), &g) == nil {
+			s.Guard = &g
+		}
 	}
 	_ = json.Unmarshal([]byte(s.CountryList), &s.Countries)
 	if s.Countries == nil {

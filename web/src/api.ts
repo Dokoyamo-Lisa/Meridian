@@ -196,6 +196,56 @@ export interface ShareStatus {
   error?: string
 }
 
+/** The security mode: what a server's agent does by itself once the supervisor turned it on. */
+export interface GuardSettings {
+  /** Block addresses that keep failing to sign in over SSH, for a while (as fail2ban does). */
+  ssh_ban: boolean
+  /** SSH takes keys only, once an account that may sign in has a key. */
+  keys_only: boolean
+  /** Stop a known crypto-miner the health check finds, at once. */
+  stop_miners: boolean
+  /** Addresses never blocked. */
+  trusted: string[]
+  at: number
+  by: string
+}
+
+/** What the security mode does now, as the agent reports it. */
+export interface GuardStatus {
+  banned?: { ip: string; until: number; fails: number }[]
+  /** 'on' while SSH takes keys only; otherwise why not. */
+  keys_only?: string
+  /** Crypto-miners stopped since the agent started. */
+  stopped?: number
+}
+
+/** How the agent prepares a server: the cores from their official releases, and what the host offers. */
+export interface Prepare {
+  started: number
+  finished?: number
+  steps: PrepStep[]
+}
+
+export interface PrepStep {
+  key: string
+  title: string
+  state: 'waiting' | 'running' | 'done' | 'failed' | 'missing'
+  detail?: string
+  /** Bytes downloaded so far, and in all (0 = not known). */
+  done?: number
+  total?: number
+}
+
+/** How a server's setup script went. */
+export interface SetupResult {
+  version: number
+  started: number
+  finished?: number
+  exit_code: number
+  output: string
+  error?: string
+}
+
 export interface Server {
   id: number
   name: string
@@ -288,7 +338,33 @@ export interface Server {
     anytls?: boolean
     /** Restarts everything on request (1.3.1 and later). */
     restart_all?: boolean
+    /** Offers protective steps with its findings (1.3.1 and later). */
+    protect?: boolean
+    /** Prepares the server by itself and says how it goes (1.4 and later). */
+    prepare?: boolean
+    /** Installs its cores again on request (1.4 and later). */
+    reinstall?: boolean
+    /** Runs the security mode (1.4 and later). */
+    guard?: boolean
+    /** Runs the supervisor's setup script (1.4 and later). */
+    setup?: boolean
   }
+  /** The security mode, when the supervisor turned it on (null: off). */
+  guard: GuardSettings | null
+  /** What the security mode does now (while it is on). */
+  guard_now?: GuardStatus
+  /** The addresses a protocol can have to itself, and where devices reach each. */
+  addr_choices?: { addr: string; public: string }[]
+  /** For each private address of the server, the public one its traffic leaves with. */
+  addr_public?: Record<string, string>
+  /** How the agent prepares the server (its cores and what the host offers), as it goes. */
+  prepare?: Prepare
+  /** The setup script the agent runs after the cores. */
+  setup_script: string
+  setup_shell: string
+  setup_version: number
+  /** How the setup script went. */
+  setup_now?: SetupResult
   desired_rev?: string
   limits?: string[]
   /** Traffic rules and load balancers that cannot be used on this server as written (that traffic is blocked here). */
@@ -562,6 +638,8 @@ export interface Settings {
   xray_version: string
   hysteria_version: string
   realm_version: string
+  /** Servers' Xray and Hysteria upgrade themselves to these versions at night (03:00-05:00 panel time), one server at a time. */
+  core_auto_upgrade: boolean
   mirror: boolean
   status_page: 'off' | 'home' | 'page'
   status_domain: string
@@ -622,6 +700,8 @@ export interface ProtocolCheck {
   refresh?: string[]
   /** Editing: saving restarts the protocol's server process (Hysteria2); its devices reconnect by themselves. */
   restarts?: boolean
+  /** Risks with the protocol as set up - a name behind Cloudflare (shown in red; saving still works). */
+  warnings?: string[]
 }
 
 export interface CountryRule {

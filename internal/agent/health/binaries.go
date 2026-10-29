@@ -63,14 +63,15 @@ func (sc *scan) checkBinaries() {
 				sc.last(proto.Finding{Key: "binary:" + core + ":" + ver, Kind: proto.FindBinary, Severity: proto.SevCritical,
 					Title: label + " " + ver + "'s program is not the published one",
 					Detail: p + " does not match the checksum of the official release (SHA-256 " + short(s.SHA) + "…, published " +
-						short(want) + "…). Upgrade Hysteria from the server page to install it again."})
+						short(want) + "…). Install it again from the server page (⋯ › Reinstall cores…)."})
 				continue
 			}
-			if had && !sc.first && old.SHA != "" && old.SHA != s.SHA {
+			replaced := m.wasReplaced(p) // asked at every scan: a reinstall excuses this scan's change alone
+			if had && !sc.first && old.SHA != "" && old.SHA != s.SHA && !replaced {
 				sc.event(proto.Finding{Key: "binary:" + core + ":" + ver, Kind: proto.FindBinary, Severity: proto.SevHigh,
 					Title: label + " " + ver + "'s program file changed",
 					Detail: p + " is not the file the agent installed (SHA-256 " + short(s.SHA) + "…, was " + short(old.SHA) +
-						"…). Upgrade " + label + " from the server page to install it again."})
+						"…). Install it again from the server page (⋯ › Reinstall cores…)."})
 			}
 		}
 	}

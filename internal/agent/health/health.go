@@ -55,6 +55,8 @@ type Monitor struct {
 	// SSHD reads the SSH server's effective settings (sshd -T); nil = sshd.Read on a server, nothing
 	// in tests that leave it out
 	SSHD func(ctx context.Context) (sshd.Settings, error)
+	// OnFinding hears each new finding as a scan reports it (the security mode acts on some)
+	OnFinding func(f proto.Finding)
 
 	mu       sync.Mutex
 	s        saved
@@ -69,6 +71,8 @@ type Monitor struct {
 	traffic  []trafficSample
 	carried  int64 // bytes Meridian's protocols and forwards carried, all told
 	binWrong map[string]int
+	replaced map[string]bool  // cores' program files the agent put in place again: not a change to flag
+	fresh    *[]proto.Finding // the findings the running scan reports (for OnFinding)
 }
 
 // saved is what the check keeps on disk.
@@ -83,9 +87,10 @@ type saved struct {
 	Keys       map[string][]string `json:"keys"`   // authorized key fingerprints per file
 	Services   []string            `json:"services"`
 	Modules    []string            `json:"modules"`
-	Ports      []string            `json:"ports"`            // listening at the baseline
-	Cores      map[string]fileSum  `json:"cores"`            // Meridian's programs (the agent's and the cores') as last seen
-	Expect     string              `json:"expect,omitempty"` // the agent program the agent is upgrading itself to
+	Ports      []string            `json:"ports"`              // listening at the baseline
+	Cores      map[string]fileSum  `json:"cores"`              // Meridian's programs (the agent's and the cores') as last seen
+	Expect     string              `json:"expect,omitempty"`   // the agent program the agent is upgrading itself to
+	Replaced   []string            `json:"replaced,omitempty"` // cores' program files the agent put in place again, not yet scanned
 	SSH        sshPos              `json:"ssh"`
 	SSHGood    map[string]int64    `json:"ssh_good,omitempty"` // addresses that signed in over SSH, and when last: never offered for blocking
 	Globs      []string            `json:"globs,omitempty"`    // the watched files' patterns the baseline covers
@@ -270,6 +275,41 @@ func (m *Monitor) Upgrading(sha string) {
 	m.mu.Unlock()
 }
 
+// Replaced says the agent installed a core's program file again (path, under the agent's data
+// directory): the new file is the one to watch, not a change to flag.
+// It is kept on disk too: a reinstall restarts the agent within seconds, before the next scan.
+func (m *Monitor) Replaced(path string) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	if m.replaced == nil {
+		m.replaced = map[string]bool{}
+	}
+	m.replaced[path] = true
+	if !slices.Contains(m.s.Replaced, path) && len(m.s.Replaced) < 64 {
+		m.s.Replaced = append(m.s.Replaced, path)
+		m.save()
+	}
+	m.mu.Unlock()
+}
+
+// wasReplaced says whether the agent put path in place again since the last scan, and forgets it.
+func (m *Monitor) wasReplaced(path string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	kept := slices.Contains(m.s.Replaced, path)
+	if kept {
+		m.s.Replaced = slices.DeleteFunc(m.s.Replaced, func(p string) bool { return p == path })
+		m.save()
+	}
+	if m.replaced[path] || kept {
+		delete(m.replaced, path)
+		return true
+	}
+	return false
+}
+
 // Scan runs one scan now.
 func (m *Monitor) Scan(ctx context.Context) {
 	m.load()
@@ -291,8 +331,19 @@ func (m *Monitor) Scan(ctx context.Context) {
 	m.mu.Unlock()
 	sc.run(ctx)
 
+	// who hears of new findings hears of them once the lock is let go
+	var fresh []proto.Finding
+	defer func() {
+		if m.OnFinding != nil {
+			for _, f := range fresh {
+				m.OnFinding(f)
+			}
+		}
+	}()
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.fresh = &fresh
+	defer func() { m.fresh = nil }()
 	if m.s.ID != prev.ID { // a reset happened meanwhile (it cannot, but never mix two baselines)
 		return
 	}
@@ -345,6 +396,9 @@ func (m *Monitor) emit(f proto.Finding, t time.Time) {
 	m.s.Seq++
 	f.Seq, f.At = m.s.Seq, t.Unix()
 	m.s.Pending = append(m.s.Pending, f)
+	if m.fresh != nil {
+		*m.fresh = append(*m.fresh, f)
+	}
 	if over := len(m.s.Pending) - maxPending; over > 0 {
 		m.s.Pending = slices.Delete(m.s.Pending, 0, over) // the panel is long unreachable: the oldest go
 	}

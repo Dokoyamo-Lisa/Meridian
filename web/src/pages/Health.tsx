@@ -171,7 +171,7 @@ export function RiskRow(props: { risk: Risk; showServer?: boolean; onChanged: ()
   }
   const decided = r.status === 'expected' ? (r.expected_everywhere ? 'expected on every server' : 'expected') : 'acknowledged'
   return (
-    <div class="li">
+    <div class="li risk">
       <span class={'dot ' + sevTone[r.severity]} />
       <div class="grow" style="min-width:0">
         <div class="row wrap" style="gap:8px;align-items:baseline">
@@ -210,7 +210,7 @@ export function RiskRow(props: { risk: Risk; showServer?: boolean; onChanged: ()
           </div>
         )}
       </div>
-      <div class="row wrap" style="gap:6px;flex:none;justify-content:flex-end">
+      <div class="risk-acts">
         {r.fix && (!st || st.state === 'failed' || st.state === 'undone') && (
           <button type="button" class="btn sm danger" disabled={busy} onClick={() => void protect()} title={r.fix.explain}>
             <Icon name="shield" size="sm" />
@@ -349,10 +349,13 @@ export function HealthTab(props: { servers: Server[] }) {
   usePoll(() => void list.reload(), 30000, [q])
   return (
     <>
-      <p class="muted" style="margin-top:0">
-        Every few minutes each server's agent looks for signs of a break-in or abuse: crypto-miners, programs run from temporary folders, new ports, accounts and SSH keys, changed administrator
-        rights, scheduled tasks and services, kernel modules, SSH sign-ins, traffic Rosélune does not account for, Rosélune's own programs changed. <Decisions />
-      </p>
+      <details class="intro muted">
+        <summary>Every few minutes each server's agent looks for signs of a break-in or abuse - what it looks for, and what the buttons do</summary>
+        <p>
+          Crypto-miners, programs run from temporary folders, new ports, accounts and SSH keys, changed administrator rights, scheduled tasks and services, kernel modules, SSH sign-ins, traffic
+          Rosélune does not account for, Rosélune's own programs changed. <Decisions />
+        </p>
+      </details>
       <div class="row wrap" style="margin-bottom:12px">
         <Seg
           value={status}

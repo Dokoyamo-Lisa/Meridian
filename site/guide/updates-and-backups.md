@@ -37,6 +37,27 @@ the panel and restarts itself, while the proxies keep running. Press **Upgrade a
 **You should see**, within a minute, *Every server runs this panel's agent (1.4.0).* It is safe at any
 time: nobody is disconnected.
 
+### After the update to 1.4
+
+Agents 1.4 look at their servers once and show what they lack. A server added before 1.4 that never
+had Hysteria (for example) shows *Hysteria not installed* on its page, with **Install** - nothing is
+downloaded there without asking. **Servers** › **Install missing software** does it for every such
+server at once. New servers get their cores by themselves.
+
+## The cores: Xray and Hysteria
+
+The versions new servers install are in **Settings › Panel** (**Cores**). Servers already running
+keep theirs until you upgrade them (**⋯** › **Upgrade Xray…** on a server's page) - a version change
+never restarts anything by itself.
+
+To have them follow the versions there by themselves, tick **Upgrade servers' cores by themselves, at
+night**, confirm, and press **Save**. Then a server whose Xray or Hysteria is older upgrades it between
+03:00 and 05:00 (panel time), one server at a time, once a day at most.
+
+> **Good to know:** Each core that upgrades restarts once: the people connected through it drop for a
+> moment and reconnect by themselves. Off (the default), only you upgrade cores. Every automatic
+> upgrade is in the timeline.
+
 ## Back up
 
 ### Download a backup

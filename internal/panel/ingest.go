@@ -99,6 +99,18 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 				if _, err := tx.Exec(`UPDATE servers SET addrs = ? WHERE id = ?`, string(addrs), srv.ID); err != nil {
 					return err
 				}
+				// the public address of each private one (1.4): a protocol bound there is reached at it
+				pub := ""
+				if len(h.AddrPublic) > 0 {
+					b, _ := json.Marshal(h.AddrPublic)
+					pub = string(b)
+				}
+				if pub != srv.addrPub {
+					if _, err := tx.Exec(`UPDATE servers SET addr_public = ? WHERE id = ?`, pub, srv.ID); err != nil {
+						return err
+					}
+					recompile, ipMoved = true, true
+				}
 			}
 			if settleAgentUpgrades(tx, srv, h) { // an upgrade whose report was lost (agentupgrades.go)
 				recompile = true
@@ -395,6 +407,20 @@ func sanitizeHello(h *proto.Hello) {
 		}
 	}
 	h.Addrs = addrs
+	// a private address's public one: only for an address the server has, of the same kind
+	pub := map[string]string{}
+	for local, public := range h.AddrPublic {
+		l, err1 := netip.ParseAddr(local)
+		g, err2 := netip.ParseAddr(public)
+		if err1 != nil || err2 != nil || len(pub) == 16 {
+			continue
+		}
+		l, g = l.Unmap(), g.Unmap()
+		if slices.Contains(addrs, l.String()) && !publicAddr(l) && publicAddr(g) && l.Is4() == g.Is4() {
+			pub[l.String()] = g.String()
+		}
+	}
+	h.AddrPublic = pub
 }
 
 // batchLimit caps how many entries of each kind one report may carry.

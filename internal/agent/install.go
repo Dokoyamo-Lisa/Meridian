@@ -18,6 +18,7 @@ import (
 	"meridian/internal/agent/nft"
 	"meridian/internal/agent/realm"
 	"meridian/internal/agent/service"
+	"meridian/internal/agent/solo"
 	"meridian/internal/agent/wg"
 	"meridian/internal/agent/xray"
 	"meridian/internal/seal"
@@ -157,6 +158,8 @@ func Uninstall(verbose bool) {
 	(&hy.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "hy2")}).Remove()
 	say("Removing realm forwards")
 	(&realm.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "realm")}).Remove()
+	say("Stopping users' own servers (mieru, Snell, AnyTLS)")
+	(&solo.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "solo"), RunDir: SoloRunDir()}).Remove()
 	say("Removing WireGuard interfaces")
 	wg.New().Remove()
 	say("Removing firewall and forwarding rules")

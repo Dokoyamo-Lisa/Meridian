@@ -44,12 +44,12 @@ changed. It has two sides:
 
 | | |
 |---|---|
-| **Runs the servers** | One command per server installs its agent. Forms accept only protocol combinations that work, and say which apps can use each one. Users, keys and settings change live; nobody is disconnected. |
+| **Runs the servers** | One command per server installs its agent, which gets the server ready by itself - the cores from their official releases, checked - and shows each step. Forms accept only protocol combinations that work, and say which apps can use each one. Users, keys and settings change live; nobody is disconnected. A server can be reinstalled, or started over, in one click. |
 | **Never disruptive on its own** | A user who uses up their data is off until it starts over, then back by themselves; end dates and device limits raise alerts, and only a person pauses. A change that needs a core restart waits for your click. |
 | **Users see their own** | Each user has a page with the data they have left, their devices, and their link with a QR code and one-tap import for every app. A Telegram bot answers them too. |
 | **A status page** | Every server on a live globe, with its health, history and ping monitors, public or private. IP addresses stay hidden unless you show them; prices and users never appear. |
 | **Traffic splitting** | Sites, countries, ports or BitTorrent go directly, through another server, a provider's proxy or a load balancer, for every server or a few, applied live. |
-| **Health checks** | Every few minutes each agent looks for miners, new accounts and SSH keys, programs started from temporary folders, SSH that takes passwords, ports nobody opened and changed services, and asks you about them. Where the server can act - stop a miner, remove a key, lock an account, keys-only SSH - a button does it, only after you confirm, and can undo it. |
+| **Health checks** | Every few minutes each agent looks for miners, new accounts and SSH keys, programs started from temporary folders, SSH that takes passwords, ports nobody opened and changed services, and asks you about them. Where the server can act - stop a miner, remove a key, lock an account, keys-only SSH - a button does it, only after you confirm, and can undo it. Turn on a server's security mode and its agent blocks SSH password guessers, keeps SSH to keys only and stops miners by itself. |
 | **Accountable** | Every connecting address with its user, server, place and network; destinations per user; traffic counted exactly once per user, protocol and day. |
 | **Shared servers** | Lend a server to a friend's panel without your console. Reach servers whose address changes by their name, and IPv6-only servers wherever both ends can meet. |
 | **Automatable** | A REST API with scoped tokens, and an MCP server, so an AI assistant can answer "who is sharing their link?" and asks first before anything disruptive. |

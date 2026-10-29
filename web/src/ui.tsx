@@ -347,8 +347,17 @@ export function Seg<T extends string | number>(props: { value: T; options: [T, s
 }
 
 export function Tabs<T extends string>(props: { value: T; tabs: [T, string, number?][]; onChange: (v: T) => void }) {
+  // on a narrow screen the strip scrolls: the chosen tab is kept in view
+  const strip = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = strip.current
+    const on = el?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!el || !on || el.scrollWidth <= el.clientWidth) return
+    const left = on.offsetLeft - el.offsetLeft
+    if (left < el.scrollLeft || left + on.offsetWidth > el.scrollLeft + el.clientWidth) el.scrollLeft = Math.max(0, left - 24)
+  }, [props.value])
   return (
-    <div class="tabs" role="tablist">
+    <div class="tabs" role="tablist" ref={strip}>
       {props.tabs.map(([v, l, n]) => (
         <button type="button" role="tab" key={v} aria-selected={props.value === v} onClick={() => props.onChange(v)}>
           {l}

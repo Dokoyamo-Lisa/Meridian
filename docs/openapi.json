@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rosélune API",
-    "version": "1.3.2",
+    "version": "1.4.0",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -1494,7 +1494,7 @@
           "Servers"
         ],
         "summary": "Restart or upgrade",
-        "description": "Queues an explicit maintenance action. restart_pending restarts exactly what waits for a restart (the server's pending_restart) and disconnects those users for a moment; restart_all restarts everything that carries traffic - Xray, Hysteria2, each user's own server (mieru, Snell, AnyTLS), realm forwards - and then the agent, so everyone on the server reconnects once (agent 1.3.1 and later); restart_xray and upgrade_xray disconnect Xray users for a moment; upgrade_hysteria and upgrade_realm switch the server to the version in Settings and restart those cores (their users reconnect); upgrade_agent disconnects nobody.",
+        "description": "Queues an explicit maintenance action. restart_pending restarts exactly what waits for a restart (the server's pending_restart) and disconnects those users for a moment; restart_all restarts everything that carries traffic - Xray, Hysteria2, each user's own server (mieru, Snell, AnyTLS), realm forwards - and then the agent, so everyone on the server reconnects once (agent 1.3.1 and later); restart_xray and upgrade_xray disconnect Xray users for a moment; upgrade_hysteria and upgrade_realm switch the server to the version in Settings and restart those cores (their users reconnect); upgrade_agent disconnects nobody; install_cores installs the cores the server lacks (Xray, Hysteria) from their official releases and disconnects nobody (agent 1.4; a server that ran before agent 1.4 is not given them without asking); reinstall with args.core (xray, hysteria or all) downloads those cores again and restarts them (agent 1.4 - the whole server: POST /api/servers/{id}/reinstall).",
         "operationId": "postServersIdActions",
         "parameters": [
           {
@@ -1522,6 +1522,58 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ActionRef"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/servers/{id}/reinstall": {
+      "post": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Reinstall a server, or start it over",
+        "description": "clean false (reinstall): the agent downloads every core the server runs again from its official release (checked - when one cannot be downloaded, nothing changes), clears what it generated for the proxies and builds it all again from the panel: the same protocols, ports, keys and links. clean true (clean reinstall): the server starts over as if just added - its protocols and forwards are removed here too (users' links lose them; protocols on other servers that pass through them are blocked until they get another exit), and the agent clears its cores and everything it set up for proxies, installs fresh cores and runs the setup script once more. Either way everyone connected to the server is disconnected for a moment. Needs agent 1.4 and confirm: true; never for a server shared with you.",
+        "operationId": "postServersIdReinstall",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReinstallInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReinstallOutput"
                 }
               }
             },
@@ -5116,6 +5168,122 @@
         "x-scope": "session"
       }
     },
+    "/api/servers/{id}/setup": {
+      "put": {
+        "tags": [
+          "Servers"
+        ],
+        "summary": "Save or clear a server's setup script",
+        "description": "A script the agent runs on the server after the cores are in place - as root, once for each version - to ready the environment the panel needs (install a package, open a port at the host's firewall, tune the kernel). Saving a new script gives it a new version, which the agent runs once; an empty script clears it. How it went (its output and exit code) is in setup_now on the server. Needs agent 1.4. Browser sessions only, with confirm: true. Never for a server shared with you.",
+        "operationId": "putServersIdSetup",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupOutput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
+    "/api/servers/{id}/guard": {
+      "put": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Turn a server's security mode on, change it or turn it off",
+        "description": "What the server's agent then does by itself: ssh_ban blocks addresses that keep failing to sign in over SSH for a while (5 failures in 10 minutes: an hour; a day after 3 blocks in a day - never a private address, one that signed in over SSH lately, the panel's own or the one this was turned on from); keys_only makes SSH take keys only once an account that may sign in has a key; stop_miners stops a known crypto-miner the health check finds at once. All three false turns it off: the blocks go and SSH takes passwords again where its own settings allow them. What it does now is in guard_now on the server. Needs agent 1.4. Browser sessions only, with confirm: true.",
+        "operationId": "putServersIdGuard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardOutput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-scope": "session"
+      }
+    },
     "/api/protections/{id}/undo": {
       "post": {
         "tags": [
@@ -8224,6 +8392,34 @@
             "description": "Another panel shares this server with you: your protocols, users and forwards run there, but its console, the agent's and the cores' upgrades, its country rule and relaying stay with its owner's panel (sharing.go)",
             "type": "boolean"
           },
+          "addr_public": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "For each private address in addrs, the public address its traffic leaves with - a cloud's elastic or floating IP in front of it - as the agent found by asking from that address (1.4 and later). A protocol bound to such an address is reached at its public one",
+            "type": "object"
+          },
+          "guard": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardSettings"
+              }
+            ],
+            "description": "The server's security mode, when the supervisor turned it on (null: off) - see PUT /api/servers/{id}/guard"
+          },
+          "setup_script": {
+            "description": "A script the agent runs on the server after the cores are in place, to ready the environment (as root; 1.4). Set it with PUT /api/servers/{id}/setup",
+            "type": "string"
+          },
+          "setup_shell": {
+            "description": "The setup script's interpreter: /bin/sh (default) or /bin/bash",
+            "type": "string"
+          },
+          "setup_version": {
+            "description": "Changes each time the script is saved; the agent runs each version once",
+            "format": "int64",
+            "type": "integer"
+          },
           "status": {
             "type": "string"
           },
@@ -8324,6 +8520,37 @@
             },
             "type": "array"
           },
+          "addr_choices": {
+            "description": "The addresses a protocol can have to itself: each public address of the server, and each private one whose public address the agent found - with the address devices reach it at",
+            "items": {
+              "$ref": "#/components/schemas/AddrChoice"
+            },
+            "type": "array"
+          },
+          "prepare": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentPrepare"
+              }
+            ],
+            "description": "How the agent prepares the server - its cores from their official releases, and what the host offers - as it goes (agents 1.4 and later)"
+          },
+          "guard_now": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentGuardStatus"
+              }
+            ],
+            "description": "What the security mode does now: addresses blocked from SSH, whether SSH takes keys only, miners stopped (while it is on)"
+          },
+          "setup_now": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentSetupResult"
+              }
+            ],
+            "description": "How the supervisor's setup script went: its output and exit code (agents 1.4)"
+          },
           "panel_trouble": {
             "description": "Why the server keeps losing the panel - it went offline 3 times or more in the last 24 hours, or for more than 1% of them while it came back in between (reboots, agent restarts and drops most servers shared do not count) - in plain words; empty when it does not",
             "type": "string"
@@ -8357,6 +8584,39 @@
           },
           "conn_error": {
             "description": "Why its agent makes HTTP requests although it should use its WebSocket (agent_transport in Settings), e.g. a proxy in front of the panel that does not pass WebSockets",
+            "type": "string"
+          }
+        }
+      },
+      "GuardSettings": {
+        "type": "object",
+        "properties": {
+          "ssh_ban": {
+            "description": "Block, for a while, addresses that keep failing to sign in over SSH (as fail2ban does): 5 failures in 10 minutes, an hour - a day after 3 blocks in a day. Never a private address, one that signed in over SSH lately, or a trusted one",
+            "type": "boolean"
+          },
+          "keys_only": {
+            "description": "SSH takes keys only - no passwords - once an account that may sign in has a key (the agent checks first: nobody is locked out)",
+            "type": "boolean"
+          },
+          "stop_miners": {
+            "description": "Stop a known crypto-miner the health check finds, at once, its program into quarantine",
+            "type": "boolean"
+          },
+          "trusted": {
+            "description": "Addresses never blocked: the panel's own and the one the supervisor turned it on from",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "at": {
+            "description": "When it was turned on or last changed",
+            "format": "int64",
+            "type": "integer"
+          },
+          "by": {
+            "description": "Who did",
             "type": "string"
           }
         }
@@ -8711,6 +8971,18 @@
           },
           "protect": {
             "type": "boolean"
+          },
+          "prepare": {
+            "type": "boolean"
+          },
+          "reinstall": {
+            "type": "boolean"
+          },
+          "guard": {
+            "type": "boolean"
+          },
+          "setup": {
+            "type": "boolean"
           }
         }
       },
@@ -8783,6 +9055,120 @@
           "last_at": {
             "format": "int64",
             "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "AddrChoice": {
+        "type": "object",
+        "properties": {
+          "addr": {
+            "type": "string"
+          },
+          "public": {
+            "description": "The address devices connect to: the address itself, or the public one its traffic leaves with",
+            "type": "string"
+          }
+        }
+      },
+      "AgentPrepare": {
+        "type": "object",
+        "properties": {
+          "started": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "finished": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/AgentPrepStep"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "AgentPrepStep": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "done": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "AgentGuardStatus": {
+        "type": "object",
+        "properties": {
+          "banned": {
+            "items": {
+              "$ref": "#/components/schemas/AgentBan"
+            },
+            "type": "array"
+          },
+          "keys_only": {
+            "type": "string"
+          },
+          "stopped": {
+            "type": "integer"
+          }
+        }
+      },
+      "AgentBan": {
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "until": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "fails": {
+            "type": "integer"
+          }
+        }
+      },
+      "AgentSetupResult": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "started": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "finished": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "output": {
+            "type": "string"
           },
           "error": {
             "type": "string"
@@ -8997,6 +9383,37 @@
           },
           "args": {
             "description": "Any JSON value"
+          }
+        }
+      },
+      "ReinstallInput": {
+        "type": "object",
+        "properties": {
+          "clean": {
+            "description": "false: reinstall, keeping every protocol (the same ports, keys and links). true: start over - the server's protocols and forwards are removed, in the panel too",
+            "type": "boolean"
+          },
+          "confirm": {
+            "description": "Must be true: everyone connected to the server is disconnected for a moment (and a clean reinstall removes its protocols and forwards)",
+            "type": "boolean"
+          }
+        }
+      },
+      "ReinstallOutput": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "description": "The action: poll GET /api/actions/{id} for how it went",
+            "format": "int64",
+            "type": "integer"
+          },
+          "protocols_removed": {
+            "description": "Clean reinstall: how many protocols were removed",
+            "type": "integer"
+          },
+          "forwards_removed": {
+            "description": "Clean reinstall: how many forwards were removed",
+            "type": "integer"
           }
         }
       },
@@ -9378,11 +9795,11 @@
             "type": "integer"
           },
           "bind_ip": {
-            "description": "Editing: its own address it would have (omitted: unchanged)",
+            "description": "Its own address (editing: omitted = unchanged)",
             "type": "string"
           },
           "host": {
-            "description": "Editing: its address override (omitted: unchanged)",
+            "description": "Its address override (editing: omitted = unchanged) - the address its links would have is checked for Cloudflare's proxy too",
             "type": "string"
           },
           "code": {
@@ -9558,6 +9975,13 @@
           },
           "notes": {
             "description": "What the admin needs to know or do",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "warnings": {
+            "description": "Risks with the protocol as set up (a REALITY camouflage site behind Cloudflare, or a domain proxied by Cloudflare) - in red; saving still works",
             "items": {
               "type": "string"
             },
@@ -12934,6 +13358,67 @@
           }
         }
       },
+      "SetupInput": {
+        "type": "object",
+        "properties": {
+          "script": {
+            "description": "The script (empty clears it). At most 64 KB",
+            "type": "string"
+          },
+          "shell": {
+            "description": "The interpreter: /bin/sh (default) or /bin/bash",
+            "type": "string"
+          },
+          "confirm": {
+            "description": "Must be true: a setup script runs as root on the server",
+            "type": "boolean"
+          }
+        }
+      },
+      "SetupOutput": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "description": "The script's version now (0 = none)",
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "GuardInput": {
+        "type": "object",
+        "properties": {
+          "ssh_ban": {
+            "description": "Block addresses that keep failing to sign in over SSH, for a while (as fail2ban does)",
+            "type": "boolean"
+          },
+          "keys_only": {
+            "description": "SSH takes keys only (the agent first checks that an account that may sign in has a key)",
+            "type": "boolean"
+          },
+          "stop_miners": {
+            "description": "Stop a known crypto-miner the health check finds, at once",
+            "type": "boolean"
+          },
+          "confirm": {
+            "description": "Must be true: the supervisor saw what the security mode does",
+            "type": "boolean"
+          }
+        }
+      },
+      "GuardOutput": {
+        "type": "object",
+        "properties": {
+          "guard": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GuardSettings"
+              }
+            ],
+            "description": "The security mode now (null: off)"
+          }
+        }
+      },
       "RiskDecision": {
         "type": "object",
         "properties": {
@@ -13092,7 +13577,11 @@
             "type": "string"
           },
           "mirror": {
-            "description": "Agents may download cores through the panel",
+            "description": "Agents may download cores through the panel, when their official release does not answer",
+            "type": "boolean"
+          },
+          "core_auto_upgrade": {
+            "description": "Servers' Xray and Hysteria upgrade themselves to the versions here, at night (03:00 to 05:00 panel time), one server at a time - each restarts once and its users reconnect by themselves. Off: only a person upgrades them",
             "type": "boolean"
           },
           "auto_update": {

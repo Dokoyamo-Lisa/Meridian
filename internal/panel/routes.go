@@ -73,6 +73,8 @@ func (p *Panel) Handler() http.Handler {
 	handle("POST /api/risks/{id}/decide", p.authed(p.apiDecideRisk))
 	// protective steps: a person confirms each in the browser - never a token or an assistant (protect.go)
 	handle("POST /api/risks/{id}/protect", p.sessionOnly(p.apiProtect))
+	handle("PUT /api/servers/{id}/guard", p.sessionOnly(p.apiPutGuard)) // the security mode (servguard.go)
+	handle("PUT /api/servers/{id}/setup", p.sessionOnly(p.apiPutSetup)) // the setup script (servsetup.go)
 	handle("POST /api/protections/{id}/undo", p.sessionOnly(p.apiUndoProtection))
 	handle("GET /api/protections", p.authed(p.apiProtections))
 	handle("GET /api/servers/{id}/health", p.authed(p.apiServerHealth))
@@ -88,6 +90,7 @@ func (p *Panel) Handler() http.Handler {
 	handle("DELETE /api/servers/{id}", p.authed(p.apiDeleteServer))
 	handle("POST /api/servers/{id}/rotate-token", p.authed(p.apiRotateServerToken))
 	handle("POST /api/servers/{id}/actions", p.authed(p.apiServerAction))
+	handle("POST /api/servers/{id}/reinstall", p.authed(p.apiReinstallServer)) // servreinstall.go
 	handle("POST /api/servers/{id}/shares", p.authed(p.apiShareServer))
 	handle("DELETE /api/servers/{id}/shares", p.authed(p.apiUnshareServer))
 	handle("POST /api/agents/upgrade", p.authed(p.apiUpgradeAgents))

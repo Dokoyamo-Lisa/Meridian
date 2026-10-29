@@ -4,6 +4,7 @@ import { Icon } from '../icons'
 import { navigate } from '../router'
 import { Ago, Check, Code, ErrorBox, Loading, Modal, ask, errText, toast, useAsync } from '../ui'
 import { waitAction } from './Protocols'
+import { PrepSteps, prepTrouble, preparing } from './ServerPrep'
 import { NewUsers } from './Users'
 
 // ServerSetup walks an admin through getting a new server ready, step by step, and follows the
@@ -15,7 +16,11 @@ export function ServerSetup(props: { server: Server; install: string; onDone: ()
   const hasProtocols = s.nodes.length > 0
   const panelURL = location.origin
   const waitingLong = !connected && Date.now() / 1000 - s.created_at > 120
-  const step = !connected ? 2 : !hasProtocols ? 3 : 4
+  // preparing the server (agents 1.4 and later): the cores from their official releases, and what the host offers
+  const prepStep = !!s.caps?.prepare || !!s.prepare
+  const prepDone = !!s.prepare && !preparing(s.prepare) && !prepTrouble(s.prepare).failed.length
+  const step = !connected ? 2 : prepStep && !prepDone ? 3 : !hasProtocols ? (prepStep ? 4 : 3) : prepStep ? 5 : 4
+  const nProto = prepStep ? 4 : 3
 
   return (
     <section class="panel">
@@ -96,8 +101,39 @@ export function ServerSetup(props: { server: Server; install: string; onDone: ()
           </div>
         </div>
 
-        <div class={'setup-step ' + (hasProtocols ? 'done' : connected ? 'now' : '')}>
-          <span class="n">{hasProtocols ? <Icon name="check" size="sm" /> : 3}</span>
+        {prepStep && (
+          <div class={'setup-step ' + (prepDone ? 'done' : connected ? 'now' : '')}>
+            <span class="n">{prepDone ? <Icon name="check" size="sm" /> : 3}</span>
+            <h3>Preparing the server</h3>
+            <div class="body">
+              {!s.prepare ? (
+                <p style="margin:0">
+                  {connected ? (
+                    <span class="row" style="gap:8px">
+                      <span class="spin" /> Starting - the agent puts the cores in place and looks at what the server offers.
+                    </span>
+                  ) : (
+                    'Once connected, the agent puts the cores in place from their official releases on GitHub - each checked against its published checksum - and looks at what the server offers. This page follows it.'
+                  )}
+                </p>
+              ) : (
+                <>
+                  <p style="margin:0 0 8px">
+                    {preparing(s.prepare)
+                      ? 'The agent puts the cores in place from their official releases on GitHub - each checked against its published checksum - and looks at what the server offers.'
+                      : prepTrouble(s.prepare).failed.length
+                        ? 'Something failed - it is tried again every few minutes by itself. You can add protocols in the meantime.'
+                        : 'Ready. What is missing below only matters for the protocols that need it.'}
+                  </p>
+                  <PrepSteps prep={s.prepare} />
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div class={'setup-step ' + (hasProtocols ? 'done' : step === nProto ? 'now' : '')}>
+          <span class="n">{hasProtocols ? <Icon name="check" size="sm" /> : nProto}</span>
           <h3>Add protocols</h3>
           <div class="body">
             <p style="margin:0 0 8px">
@@ -119,8 +155,8 @@ export function ServerSetup(props: { server: Server; install: string; onDone: ()
           </div>
         </div>
 
-        <div class={'setup-step ' + (step === 4 ? 'now' : '')}>
-          <span class="n">4</span>
+        <div class={'setup-step ' + (step === nProto + 1 ? 'now' : '')}>
+          <span class="n">{nProto + 1}</span>
           <h3>Give people access</h3>
           <div class="body">
             <p style="margin:0 0 8px">Add users: each gets a link for their apps and a sign-in to see their own usage. Existing users pick up the new server when their apps refresh.</p>

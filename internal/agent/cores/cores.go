@@ -1,6 +1,6 @@
-// Package cores downloads and unpacks the proxy cores the agent runs (Xray, Hysteria, realm). It
-// tries the panel's mirror first - servers with poor GitHub access then still install - and GitHub
-// second.
+// Package cores downloads and unpacks the proxy cores the agent runs (Xray, Hysteria, realm, and the
+// users' own servers). It downloads each from its official release - GitHub - first, and from the
+// panel's mirror only when that does not answer, so servers with poor GitHub access still install.
 //
 // Integrity: every download is checked against a SHA-256 that comes either from the panel inside
 // the signed and encrypted state, or straight from GitHub over HTTPS. A checksum is never taken
@@ -61,7 +61,7 @@ func digestFor(core, version, asset string) string {
 // githubAssetDigest asks the GitHub API (over HTTPS) for the SHA-256 GitHub computed for a release
 // asset. Empty when GitHub is unreachable or has none.
 func githubAssetDigest(ctx context.Context, repo, tag, asset string) string {
-	b, err := fetch(ctx, []string{fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/%s", repo, tag)}, 4<<20)
+	b, err := fetch(ctx, []string{fmt.Sprintf("%s/repos/%s/releases/tags/%s", githubAPI, repo, tag)}, 4<<20)
 	if err != nil {
 		return ""
 	}
@@ -139,32 +139,135 @@ func SetTransport(rt http.RoundTripper) {
 	transport.Unlock()
 }
 
+// Progress hears how a core's download goes: which core, the bytes so far and in all (0 = not known).
+var progress struct {
+	sync.Mutex
+	fn func(core string, done, total int64)
+}
+
+// SetProgress sets who hears how downloads go (nil: nobody).
+func SetProgress(fn func(core string, done, total int64)) {
+	progress.Lock()
+	progress.fn = fn
+	progress.Unlock()
+}
+
+func tell(core string, done, total int64) {
+	progress.Lock()
+	fn := progress.fn
+	progress.Unlock()
+	if fn != nil && core != "" {
+		fn(core, done, total)
+	}
+}
+
+// The official releases' addresses (tests point them elsewhere).
+var (
+	githubDL  = "https://github.com"
+	githubAPI = "https://api.github.com"
+)
+
+// answerWait is how long a source may take to answer before the next one is tried: GitHub out of
+// reach (blocked, or no IPv6 on an IPv6-only server) moves on to the panel's mirror quickly.
+var answerWait = 45 * time.Second
+
 // fetch downloads the first URL that works.
 func fetch(ctx context.Context, urls []string, limit int64) ([]byte, error) {
+	return fetchCore(ctx, "", urls, limit)
+}
+
+// fetchCore downloads a core's file from the first URL that gives one matching want (its SHA-256;
+// "" = taken as it comes), telling Progress how it goes. A source whose file does not match is
+// passed over for the next.
+func fetchCore(ctx context.Context, core string, urls []string, limit int64, want ...string) ([]byte, error) {
 	var errs []string
 	transport.Lock()
 	client := &http.Client{Timeout: 5 * time.Minute, Transport: transport.rt}
 	transport.Unlock()
-	for _, u := range urls {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-		if err != nil {
-			continue
+	for i, u := range urls {
+		b, err := fetchOne(ctx, client, core, u, limit, i < len(urls)-1)
+		if err == nil && len(want) > 0 && want[0] != "" {
+			if err = checkSum(b, want[0], core); err != nil {
+				err = fmt.Errorf("%s: %v", u, err)
+			}
 		}
-		req.Header.Set("User-Agent", "meridian-agent")
-		resp, err := client.Do(req)
 		if err != nil {
 			errs = append(errs, err.Error())
-			continue
-		}
-		b, err := io.ReadAll(io.LimitReader(resp.Body, limit))
-		resp.Body.Close()
-		if err != nil || resp.StatusCode != http.StatusOK {
-			errs = append(errs, fmt.Sprintf("%s: %s", u, resp.Status))
 			continue
 		}
 		return b, nil
 	}
 	return nil, errors.New("download failed: " + strings.Join(errs, "; "))
+}
+
+// fetchOne downloads one URL. More: another source follows, so this one must answer in answerWait.
+func fetchOne(ctx context.Context, client *http.Client, core, u string, limit int64, more bool) ([]byte, error) {
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var waited *time.Timer
+	if more {
+		waited = time.AfterFunc(answerWait, cancel)
+	}
+	req, err := http.NewRequestWithContext(cctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "meridian-agent")
+	resp, err := client.Do(req)
+	if waited != nil && !waited.Stop() && err == nil {
+		resp.Body.Close()
+		return nil, fmt.Errorf("%s: no answer in %s", u, answerWait)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s: %s", u, resp.Status)
+	}
+	total := resp.ContentLength
+	if total < 0 || total > limit {
+		total = 0
+	}
+	var buf bytes.Buffer
+	if total > 0 {
+		buf.Grow(int(total))
+	}
+	r := io.LimitReader(resp.Body, limit)
+	chunk := make([]byte, 64<<10)
+	var done, told int64
+	tell(core, 0, total)
+	for {
+		n, err := r.Read(chunk)
+		buf.Write(chunk[:n])
+		done += int64(n)
+		if done-told >= 256<<10 {
+			tell(core, done, total)
+			told = done
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s: %v", u, err)
+		}
+	}
+	tell(core, done, done)
+	return buf.Bytes(), nil
+}
+
+// Installed says whether a version of a core is unpacked here (its program file is in place).
+func Installed(base, name, version string) bool {
+	st, err := os.Stat(filepath.Join(Dir(base, name, version), binName(name)))
+	return err == nil && st.Mode().IsRegular() && st.Size() > 0
+}
+
+// binName is a core's program file.
+func binName(name string) string {
+	if name == "mita" || name == "snell" {
+		return map[string]string{"mita": "mita", "snell": "snell-server"}[name]
+	}
+	return name
 }
 
 // EnsureXray makes sure version is unpacked and returns its directory.
@@ -182,7 +285,7 @@ func EnsureXray(ctx context.Context, base, version, mirror string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	gh := fmt.Sprintf("https://github.com/XTLS/Xray-core/releases/download/v%s/%s", version, asset)
+	gh := fmt.Sprintf("%s/XTLS/Xray-core/releases/download/v%s/%s", githubDL, version, asset)
 	want := digestFor("xray", version, asset)
 	if want == "" { // the panel had none: ask GitHub directly, never the mirror
 		if dgst, err := fetch(ctx, []string{gh + ".dgst"}, 1<<16); err == nil {
@@ -195,12 +298,11 @@ func EnsureXray(ctx context.Context, base, version, mirror string) (string, erro
 	if want == "" {
 		return "", errors.New("cannot verify the Xray download: no checksum from the panel or GitHub")
 	}
-	var urls []string
+	urls := []string{gh}
 	if mirror != "" {
 		urls = append(urls, fmt.Sprintf("%s/xray/%s/%s", mirror, version, asset))
 	}
-	urls = append(urls, gh)
-	zipped, err := fetch(ctx, urls, 200<<20)
+	zipped, err := fetchCore(ctx, "xray", urls, 200<<20, want)
 	if err != nil {
 		return "", err
 	}
@@ -266,7 +368,7 @@ func EnsureHysteria(ctx context.Context, base, version, mirror string) (string, 
 	default:
 		return "", fmt.Errorf("no Hysteria build for %s", runtime.GOARCH)
 	}
-	gh := fmt.Sprintf("https://github.com/apernet/hysteria/releases/download/app%%2Fv%s/", version)
+	gh := fmt.Sprintf("%s/apernet/hysteria/releases/download/app%%2Fv%s/", githubDL, version)
 	want := digestFor("hysteria", version, asset)
 	if want == "" { // the panel had none: ask GitHub directly, never the mirror
 		if hashes, err := fetch(ctx, []string{gh + "hashes.txt"}, 1<<20); err == nil {
@@ -279,12 +381,11 @@ func EnsureHysteria(ctx context.Context, base, version, mirror string) (string, 
 	if want == "" {
 		return "", errors.New("cannot verify the Hysteria download: no checksum from the panel or GitHub")
 	}
-	var urls []string
+	urls := []string{gh + asset}
 	if mirror != "" {
 		urls = append(urls, fmt.Sprintf("%s/hysteria/%s/%s", mirror, version, asset))
 	}
-	urls = append(urls, gh+asset)
-	data, err := fetch(ctx, urls, 100<<20)
+	data, err := fetchCore(ctx, "hysteria", urls, 100<<20, want)
 	if err != nil {
 		return "", err
 	}
@@ -316,17 +417,16 @@ func EnsureRealm(ctx context.Context, base, version, mirror string) (string, err
 	if err != nil {
 		return "", err
 	}
-	gh := fmt.Sprintf("https://github.com/zhboner/realm/releases/download/v%s/%s", version, asset)
+	gh := fmt.Sprintf("%s/zhboner/realm/releases/download/v%s/%s", githubDL, version, asset)
 	want := digestFor("realm", version, asset)
 	if want == "" {
 		want = githubAssetDigest(ctx, "zhboner/realm", "v"+version, asset)
 	}
-	var urls []string
+	urls := []string{gh}
 	if mirror != "" && want != "" { // the mirror is used only when the result can be verified
 		urls = append(urls, fmt.Sprintf("%s/realm/%s/%s", mirror, version, asset))
 	}
-	urls = append(urls, gh)
-	gz, err := fetch(ctx, urls, 100<<20)
+	gz, err := fetchCore(ctx, "realm", urls, 100<<20, want)
 	if err != nil {
 		return "", err
 	}
@@ -525,4 +625,43 @@ func Prune(base, name string, keep ...string) {
 			os.RemoveAll(filepath.Join(base, "cores", name, e.Name()))
 		}
 	}
+}
+
+// Reinstall downloads a version of a core again from its official release - checked as every
+// download is - and puts it where the old one was. When the download fails, the old files come back.
+// Processes that run the old program keep running it until they restart.
+func Reinstall(ctx context.Context, base, name, version, mirror string) error {
+	if err := checkVersion(name, version); err != nil {
+		return err
+	}
+	dir := Dir(base, name, version)
+	old := dir + ".old"
+	os.RemoveAll(old)
+	had := false
+	if _, err := os.Stat(dir); err == nil {
+		if err := os.Rename(dir, old); err != nil {
+			return err
+		}
+		had = true
+	}
+	var err error
+	if name == "xray" {
+		_, err = EnsureXray(ctx, base, version, mirror)
+	} else {
+		_, err = ensure(ctx, base, name, version, mirror)
+	}
+	if err != nil {
+		if had {
+			os.RemoveAll(dir)
+			_ = os.Rename(old, dir)
+		}
+		return err
+	}
+	os.RemoveAll(old)
+	return nil
+}
+
+// Path is a core version's program file.
+func Path(base, name, version string) string {
+	return filepath.Join(Dir(base, name, version), binName(name))
 }

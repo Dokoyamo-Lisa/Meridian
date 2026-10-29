@@ -36,6 +36,8 @@ import { PanelLinkCard } from './PanelLink'
 import { DynamicDNSCard, DynamicDNSFields, confirmCloudflare } from './DynamicDNS'
 import { openConsole } from './Console'
 import { ShareCodeBox, SharingPanel } from './Sharing'
+import { SecurityModePanel } from './SecurityMode'
+import { PrepSummary, PrepareCard, ReinstallDialog, SetupScriptPanel } from './ServerPrep'
 
 interface Metric {
   t: number
@@ -68,6 +70,7 @@ export function ServerPage(props: { id: number }) {
   const [fwdModal, setFwdModal] = useState<{ fwd?: Forward } | null>(null)
   const [install, setInstall] = useState('')
   const [shareCode, setShareCode] = useState('')
+  const [reinstall, setReinstall] = useState<'' | 'keep' | 'clean'>('')
   usePoll(() => {
     void res.reload()
     void events.reload()
@@ -275,6 +278,27 @@ export function ServerPage(props: { id: number }) {
                     Upgrade agent
                   </button>
                   )}
+                  {!srv.guest && (
+                    <>
+                      <button
+                        disabled={!srv.caps?.reinstall}
+                        title={srv.caps?.reinstall ? 'Download the cores again and set every proxy up again from the panel' : 'Needs agent 1.4 or later - upgrade the agent first (nobody is disconnected by that)'}
+                        onClick={() => setReinstall('keep')}
+                      >
+                        <Icon name="refresh" size="sm" />
+                        Reinstall…
+                      </button>
+                      <button
+                        class="danger-item"
+                        disabled={!srv.caps?.reinstall}
+                        title={srv.caps?.reinstall ? 'Start the server over as if just added' : 'Needs agent 1.4 or later - upgrade the agent first (nobody is disconnected by that)'}
+                        onClick={() => setReinstall('clean')}
+                      >
+                        <Icon name="trash" size="sm" />
+                        Clean reinstall…
+                      </button>
+                    </>
+                  )}
                   <div class="sep" />
                 </>
               )}
@@ -342,6 +366,7 @@ export function ServerPage(props: { id: number }) {
       ))}
       <RouteNotes notes={srv.route_notes} />
       <DynamicDNSCard server={srv} />
+      {srv.status !== 'pending' && <PrepareCard server={srv} onChanged={res.reload} />}
 
       {sys && (
         <div class="kpis">
@@ -484,11 +509,19 @@ export function ServerPage(props: { id: number }) {
             <dd>
               {srv.agent_version || '—'} {srv.agent_started_at > 0 && <span class="faint">· started <Ago ts={srv.agent_started_at} /></span>}
             </dd>
+            {srv.prepare && (
+              <>
+                <dt>Prepared</dt>
+                <dd>
+                  <PrepSummary prep={srv.prepare} />
+                </dd>
+              </>
+            )}
             {srv.addrs?.length ? (
               <>
                 <dt>Addresses</dt>
                 <dd>
-                  <span class="mono">{srv.addrs.join(', ')}</span>
+                  <span class="mono">{srv.addrs.map((a) => (srv.addr_public?.[a] ? `${a} → ${srv.addr_public[a]}` : a)).join(', ')}</span>
                   {srv.ip_version ? <span class="faint"> · {srv.ip_version === 'ipv4' ? 'IPv4 only' : 'IPv6 only'}</span> : srv.caps?.no_ipv6 ? <span class="faint"> · IPv6 is off in the kernel</span> : null}
                 </dd>
               </>
@@ -594,6 +627,19 @@ export function ServerPage(props: { id: number }) {
         {events.data ? events.data.length ? <EventList events={events.data} /> : <Empty title="No activity yet" /> : <Loading />}
       </section>
       <PanelLinkCard server={srv} onChanged={res.reload} n="11" />
+      {!srv.guest && srv.status !== 'pending' && <SecurityModePanel server={srv} onChanged={res.reload} />}
+      {!srv.guest && srv.status !== 'pending' && <SetupScriptPanel server={srv} n="13" onChanged={res.reload} />}
+      {reinstall && (
+        <ReinstallDialog
+          server={srv}
+          clean={reinstall === 'clean'}
+          onClose={() => setReinstall('')}
+          onDone={() => {
+            setReinstall('')
+            void res.reload()
+          }}
+        />
+      )}
 
       {editing && (
         <EditServer

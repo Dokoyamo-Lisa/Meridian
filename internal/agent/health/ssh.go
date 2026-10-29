@@ -40,6 +40,32 @@ var (
 	userRE        = regexp.MustCompile(`^[A-Za-z0-9._@-]{1,64}$`)
 )
 
+// FailedSSH reads one of the SSH server's lines: a failed sign-in, the address it came from and its
+// connection (address and port: a failure shows up in up to three lines).
+func FailedSSH(line string) (addr netip.Addr, conn string, ok bool) {
+	m := failedRE.FindStringSubmatch(line)
+	if m == nil {
+		return netip.Addr{}, "", false
+	}
+	for i := 1; i+1 < len(m); i += 2 {
+		if m[i] == "" {
+			continue
+		}
+		a, err := netip.ParseAddr(m[i])
+		if err != nil {
+			return netip.Addr{}, "", false
+		}
+		return a.Unmap(), m[i] + ":" + m[i+1], true
+	}
+	return netip.Addr{}, "", false
+}
+
+// SSHLogs are where systems without the journal keep the SSH server's messages.
+var SSHLogs = sshLogs
+
+// Inode is a file's inode number (0 where it cannot be told): a log that was rotated has a new one.
+func Inode(fi os.FileInfo) uint64 { return inode(fi) }
+
 // sshLogs are where systems without the journal keep the SSH server's messages.
 var sshLogs = []string{"/var/log/auth.log", "/var/log/secure", "/var/log/messages"}
 

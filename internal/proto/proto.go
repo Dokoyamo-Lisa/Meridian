@@ -58,6 +58,38 @@ type State struct {
 	// until Until (the supervisor's loose mode); new ones are refused all the same. Any other user
 	// who is taken off a protocol has the connections still open there cut at once (Caps.Cut).
 	Grace []Grace `json:"grace,omitempty"`
+	// Guard is the server's security mode, which the supervisor turned on with a confirmed click
+	// (Caps.Guard; 1.4 and later): nil = off.
+	Guard *Guard `json:"guard,omitempty"`
+	// Setup is a script the supervisor wrote for this server, run once (per version) by the agent
+	// after the cores are in place, as root (Caps.Setup; 1.4 and later): nil = none.
+	Setup *SetupScript `json:"setup,omitempty"`
+}
+
+// SetupScript is a script the agent runs on the server after the cores are prepared, to ready the
+// environment the panel needs (install a package, open a firewall, tune the kernel). It runs as
+// root, once for each Version (the supervisor's confirmed click changes it); its output is reported
+// (Live.Setup). The supervisor turns it off by clearing it.
+type SetupScript struct {
+	Version int64  `json:"version"`
+	Shell   string `json:"shell"`
+	Script  string `json:"script"`
+}
+
+// Guard is what the server's security mode does by itself. Each part only works once the
+// supervisor turned it on, and stops when they turn it off.
+type Guard struct {
+	// SSHBan blocks, for a while, the addresses that keep failing to sign in over SSH (as fail2ban
+	// does): never a private address, one that signed in lately, or one in Trusted
+	SSHBan bool `json:"ssh_ban,omitempty"`
+	// KeysOnly: SSH takes keys only - no passwords, no empty passwords - while an account that may
+	// sign in has a key (the agent checks first and says why not)
+	KeysOnly bool `json:"keys_only,omitempty"`
+	// StopMiners stops a known crypto-miner the health check finds, at once, and moves its program
+	// into quarantine when it sits outside the system's folders
+	StopMiners bool `json:"stop_miners,omitempty"`
+	// Trusted are addresses never blocked: the panel's, and the supervisor's own
+	Trusted []string `json:"trusted,omitempty"`
 }
 
 // SoloNode is a protocol of the one-user-per-process kind on this server.
@@ -176,7 +208,7 @@ type Cores struct {
 	Mita     string `json:"mita,omitempty"`    // mieru's server
 	Snell    string `json:"snell,omitempty"`   // snell-server
 	SingBox  string `json:"singbox,omitempty"` // sing-box, AnyTLS's server
-	Mirror   string `json:"mirror,omitempty"`  // panel download mirror, tried before GitHub
+	Mirror   string `json:"mirror,omitempty"`  // panel download mirror: tried after GitHub (1.4 and later; before it, first)
 	// Digests are SHA-256 checksums of release files, keyed "core/version/asset". The panel takes
 	// them from GitHub over HTTPS; arriving in the signed state they let the agent verify a
 	// download from the (possibly plain-HTTP) mirror.
@@ -340,12 +372,20 @@ const (
 	// settings and restart those cores (agents 0.7 and later); until then a server keeps its version
 	ActionUpgradeHysteria = "upgrade_hysteria"
 	ActionUpgradeRealm    = "upgrade_realm"
-	ActionUpgradeAgent    = "upgrade_agent"
-	ActionCheckTarget     = "check_target" // probe a REALITY target from the server
-	ActionScan            = "scan"         // find proxy software already running on the server (read only)
-	ActionStopService     = "stop_service" // take over: stop and disable a unit the last scan found
-	ActionCheckExit       = "check_exit"   // reach an external node from the server (ExitCheck; agents 1.0 and later)
-	ActionConsole         = "console"      // open the supervisor's console: a shell joined to the panel (Caps.Console)
+	// ActionReinstall downloads the official release of the cores the server runs again (the versions
+	// in use), checks it, puts it in place and restarts those cores - or, with Reinstall.Rebuild or
+	// Reinstall.Clean, the whole server's proxies (Reinstall; Caps.Reinstall, 1.4)
+	ActionReinstall = "reinstall"
+	// ActionInstallCores installs the cores a server lacks (Xray, Hysteria) from their official
+	// releases, on the supervisor's request: a server that ran before agent 1.4 is not given cores it
+	// never had without asking (Prepare shows them as missing; Caps.Prepare, 1.4)
+	ActionInstallCores = "install_cores"
+	ActionUpgradeAgent = "upgrade_agent"
+	ActionCheckTarget  = "check_target" // probe a REALITY target from the server
+	ActionScan         = "scan"         // find proxy software already running on the server (read only)
+	ActionStopService  = "stop_service" // take over: stop and disable a unit the last scan found
+	ActionCheckExit    = "check_exit"   // reach an external node from the server (ExitCheck; agents 1.0 and later)
+	ActionConsole      = "console"      // open the supervisor's console: a shell joined to the panel (Caps.Console)
 	// ActionShareAdd / ActionShareRemove: the server's own panel shares it with another panel, or stops
 	// (ShareAdd / ShareRemove; Caps.Share). Only the server's own panel can; a panel it is shared with
 	// leaves by removing the server on its side.
@@ -453,6 +493,11 @@ type Hello struct {
 	// Addrs are the addresses on the server's own interfaces (not loopback, link-local or Meridian's
 	// WireGuard): what a protocol can be bound to. Agents before 0.6 leave it out.
 	Addrs []string `json:"addrs,omitempty"`
+	// AddrPublic: for each of Addrs that is not a public address itself, the public address its
+	// traffic leaves with - a cloud's elastic or floating IP in front of it - as an echo service saw a
+	// connection made from it. Missing: not known (no answer, or a provider's shared NAT that
+	// gives no address of its own). Agents before 1.4 leave it out.
+	AddrPublic map[string]string `json:"addr_public,omitempty"`
 	// IPv4Gone, IPv6Gone: the host has no public address of that kind any more (no route to the
 	// internet of that kind in two checks in a row). An empty IPv4 or IPv6 alone is a lookup that
 	// failed this time: the panel keeps the address it knew. Agents before 1.0 leave them out.
@@ -512,6 +557,15 @@ type Caps struct {
 	// Protect: the agent offers fixes with its findings and does them on request (ActionProtect;
 	// 1.3.1 and later).
 	Protect bool `json:"protect,omitempty"`
+	// Prepare: the agent prepares the server by itself - the cores, from their official releases,
+	// and a look at what the host offers - and reports how it goes (Live.Prepare; 1.4 and later).
+	Prepare bool `json:"prepare,omitempty"`
+	// Reinstall: the agent installs the cores it runs again on request (ActionReinstall; 1.4).
+	Reinstall bool `json:"reinstall,omitempty"`
+	// Guard: the agent runs the server's security mode (State.Guard; 1.4 and later).
+	Guard bool `json:"guard,omitempty"`
+	// Setup: the agent runs the supervisor's setup script after the cores (State.Setup, Live.Setup).
+	Setup bool `json:"setup,omitempty"`
 }
 
 // The console's WebSocket: the agent dials ConsolePath + the session's id; every message starts with
@@ -608,6 +662,75 @@ type Live struct {
 	// as ranges (first, last).
 	Shares []ShareStatus `json:"shares,omitempty"`
 	Taken  [][2]int      `json:"taken,omitempty"`
+	// Prepare: how preparing the server goes or went (Caps.Prepare); Guard: what the security mode
+	// does now (Caps.Guard)
+	Prepare *Prepare     `json:"prepare,omitempty"`
+	Guard   *GuardStatus `json:"guard,omitempty"`
+	Setup   *SetupResult `json:"setup,omitempty"`
+}
+
+// SetupResult is how the setup script went, for the panel to show.
+type SetupResult struct {
+	Version  int64  `json:"version"`
+	Started  int64  `json:"started"`
+	Finished int64  `json:"finished,omitempty"`
+	ExitCode int    `json:"exit_code"`
+	Output   string `json:"output"`
+	Error    string `json:"error,omitempty"`
+}
+
+// Prepare is the agent's preparation of the server: the cores the panel's protocols need, from
+// their official releases (checked against their published checksums), and what the host offers.
+type Prepare struct {
+	Started  int64      `json:"started"`
+	Finished int64      `json:"finished,omitempty"` // 0 while it runs
+	Steps    []PrepStep `json:"steps"`
+}
+
+// PrepStep is one thing preparing the server does or looks at.
+type PrepStep struct {
+	Key    string `json:"key"`   // xray | hysteria | nftables | wireguard | time | address
+	Title  string `json:"title"` // e.g. "Xray 25.10.15"
+	State  string `json:"state"` // waiting | running | done | failed | missing
+	Detail string `json:"detail,omitempty"`
+	Done   int64  `json:"done,omitempty"`  // bytes downloaded so far
+	Total  int64  `json:"total,omitempty"` // bytes to download; 0 = not known
+}
+
+// Prep step states.
+const (
+	PrepWaiting = "waiting"
+	PrepRunning = "running"
+	PrepDone    = "done"
+	PrepFailed  = "failed"  // it will be tried again
+	PrepMissing = "missing" // the host lacks it: what depends on it cannot run (Detail says what to do)
+)
+
+// GuardStatus is what the server's security mode does now.
+type GuardStatus struct {
+	Banned   []Ban  `json:"banned,omitempty"`    // addresses blocked from SSH now
+	KeysOnly string `json:"keys_only,omitempty"` // "on" when SSH takes keys only; otherwise why not
+	Stopped  int    `json:"stopped,omitempty"`   // crypto-miners stopped since the agent started
+}
+
+// Ban is an address the security mode blocks from SSH, until when, and why.
+type Ban struct {
+	IP    string `json:"ip"`
+	Until int64  `json:"until"`
+	Fails int    `json:"fails"`
+}
+
+// Reinstall asks for the cores to install again: xray, hysteria, or all of those the server runs.
+type Reinstall struct {
+	Core string `json:"core"` // xray | hysteria | all
+	// Rebuild: every core the server runs is installed again (checked; the old files come back when a
+	// download fails), what was generated for the proxies is cleared, and the agent restarts and builds
+	// it all again from the state - the same protocols, ports and keys.
+	Rebuild bool `json:"rebuild,omitempty"`
+	// Clean: the panel has removed the server's protocols and forwards; the agent clears the cores and
+	// everything it set up for proxies, then starts over as on a new server - fresh cores from their
+	// official releases, the setup script once more.
+	Clean bool `json:"clean,omitempty"`
 }
 
 type Sys struct {

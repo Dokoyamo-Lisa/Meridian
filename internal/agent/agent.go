@@ -140,6 +140,9 @@ type Agent struct {
 	protect     *protect.Engine // fixes of health findings the supervisor confirmed (protect/)
 	resolvers   []string        // the host's name servers the nftables table lets that account ask
 	pub         publicAddrs     // the public addresses between hellos (publicaddr.go)
+	prep        preparer        // preparing the server: its cores and what the host offers (prepare.go)
+	guard       guardian        // the server's security mode, when the supervisor turned it on (guard.go)
+	setup       runner          // the supervisor's setup script (setup.go)
 
 	// the panels the server is shared with (share.go): their links, and the state the host runs -
 	// the home's with theirs laid over it - with what of theirs could not run
@@ -183,15 +186,25 @@ func New(cfg *Config) (*Agent, error) {
 		Events: a.event}
 	a.realm = &realm.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "realm")}
 	// the users' own servers' control sockets: the account's to write, outside RunDir (root's alone)
-	a.solo = &solo.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "solo"), RunDir: filepath.Join(filepath.Dir(RunDir), "meridian-solo"),
+	a.solo = &solo.Engine{Base: DataDir, ConfDir: filepath.Join(ConfDir, "solo"), RunDir: SoloRunDir(),
 		Events: a.event}
 	a.health = a.newHealth()
+	a.health.OnFinding = a.guardFinding // the security mode stops a crypto-miner at once (guard.go)
 	a.protect = &protect.Engine{Root: "/", Dir: filepath.Join(DataDir, "protect"), Own: ownPath, Trusted: a.health.TrustedSSH}
 	a.restoreBaselines()
 	a.certs = &acme.Manager{Dir: filepath.Join(DataDir, "certs"), Directory: cfg.ACMEDirectory, CAFile: cfg.ACMECAFile,
 		Events: a.event, OnChange: a.reapply}
 	a.relay = newRelayServer(c.link.host)
 	cores.SetTransport(c.link) // the panel's mirror the way the panel's requests go (a relay, when there is one)
+	a.prep.notify = func() {
+		select {
+		case a.kick <- struct{}{}:
+		default:
+		}
+	}
+	cores.SetProgress(a.prep.progress)
+	// no state yet: a new server, whose cores are installed by themselves (prepare.go)
+	a.prep.load(!isFile(a.statePath()))
 	a.loadDone()
 	return a, nil
 }
@@ -379,6 +392,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	go a.certs.Run(ctx)
 	go a.health.Run(ctx)
 	go a.watchPublic(ctx)
+	go a.watchGuard(ctx)
 	a.reportLoop(ctx)
 	return nil
 }
@@ -498,6 +512,9 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 	note("country rule", gerr)
 
 	cores.SetDigests(st.Cores.Digests)
+	if a.guard.set(st.Guard) { // the security mode was turned on, off or changed (guard.go)
+		go a.guardKeys(context.Background(), st.Guard, time.Now(), true)
+	}
 	if !runtimeOK() {
 		note("agent", errors.New("this host is not Linux with systemd"))
 	} else {
@@ -550,6 +567,8 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 	a.ping.Set(a.runCtx, full.Ping) // the ping monitors (ping.go)
 
 	a.runActions(st, st.Actions)
+	a.maybePrepare(st) // the cores and what the host offers, by itself (prepare.go)
+	a.maybeSetup(st)   // the supervisor's setup script, after the cores (setup.go)
 
 	// what went wrong with a guest's part is that guest's to hear (in its own ids)
 	homeErrs, guestErrs := splitErrs(errs)
@@ -726,8 +745,15 @@ func (a *Agent) nftSpec(st *proto.State) nft.Spec {
 	// the account their servers run as, kept from this host and private networks (solo/)
 	spec.SoloUID = a.solo.UID()
 	spec.Resolvers = sys.Resolvers()
-	// addresses that kept guessing SSH passwords, blocked on the supervisor's request (protect/)
-	if spec.SSHBlocked = a.protect.Blocked(); len(spec.SSHBlocked) > 0 {
+	// addresses that kept guessing SSH passwords, blocked on the supervisor's request (protect/) or by
+	// the security mode (guard.go)
+	spec.SSHBlocked = a.protect.Blocked()
+	for _, ip := range a.guard.banned() {
+		if !slices.Contains(spec.SSHBlocked, ip) {
+			spec.SSHBlocked = append(spec.SSHBlocked, ip)
+		}
+	}
+	if len(spec.SSHBlocked) > 0 {
 		if s, err := sshd.Read(context.Background()); err == nil {
 			spec.SSHPorts = s.Ports()
 		}
@@ -812,6 +838,17 @@ func (a *Agent) runAction(ctx context.Context, st *proto.State, act proto.Action
 		return strings.Join(done, " and ") + " restarted", nil
 	case proto.ActionRestartAll:
 		return a.restartAll(ctx)
+	case proto.ActionReinstall:
+		var r proto.Reinstall
+		if err := json.Unmarshal(act.Args, &r); err != nil || (r.Core != "xray" && r.Core != "hysteria" && r.Core != "all") {
+			return "", errors.New("reinstall: the core is xray, hysteria or all")
+		}
+		if r.Rebuild || r.Clean { // the whole server's proxies (rebuild.go)
+			return a.rebuild(ctx, st, r.Clean)
+		}
+		return a.reinstall(ctx, st, r.Core)
+	case proto.ActionInstallCores:
+		return a.installCores(ctx, st) // prepare.go
 	case proto.ActionProtect:
 		var p proto.Protect
 		if err := json.Unmarshal(act.Args, &p); err != nil {
@@ -1059,6 +1096,10 @@ func (a *Agent) restartAll(ctx context.Context) (string, error) {
 	return what + " restarted; the agent restarts too", nil
 }
 
+// SoloRunDir is where users' own servers keep their sockets (mita's control sockets), the
+// account's to write.
+func SoloRunDir() string { return filepath.Join(filepath.Dir(RunDir), "meridian-solo") }
+
 // ownPath says whether a path is Rosélune's own on this server: the agent, its data (cores, state)
 // and its settings. Protective steps never touch those.
 func ownPath(p string) bool {
@@ -1251,6 +1292,10 @@ func (a *Agent) report(ctx context.Context) {
 	caps.AnyTLS = true     // and AnyTLS, with sing-box
 	caps.RestartAll = true // restarts everything on request (restartAll)
 	caps.Protect = true    // offers fixes with findings and does them on request (protect/)
+	caps.Prepare = true    // prepares the server by itself and says how it goes (prepare.go)
+	caps.Reinstall = true  // installs its cores again on request (prepare.go)
+	caps.Guard = true      // runs the security mode the supervisor turns on (guard.go)
+	caps.Setup = true      // runs the supervisor's setup script after the cores (setup.go)
 	addrs := sys.LocalAddrs()
 	// the host's name servers changed: the users' servers' account may ask the new ones (nft solo_out)
 	if a.resolvers != nil && !slices.Equal(a.resolvers, sys.Resolvers()) {
@@ -1267,6 +1312,9 @@ func (a *Agent) report(ctx context.Context) {
 	mergeErrs := a.mergeErrs
 	a.mu.Unlock()
 	live.Shares = a.shareStatus(mergeErrs) // the panels the server is shared with (share.go)
+	live.Prepare = a.prep.status()         // preparing the server (prepare.go)
+	live.Guard = a.guard.status()          // the security mode (guard.go)
+	live.Setup = a.setup.status()          // the supervisor's setup script (setup.go)
 	live.Taken = a.takenFor(0)
 	rep := &proto.Report{Instance: a.out.Instance, Batch: a.out.next(), Live: live, Applied: applied,
 		ActionResults: results, Health: a.health.Report()}
