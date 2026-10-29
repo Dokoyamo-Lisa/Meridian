@@ -419,8 +419,8 @@ The country lists come from DB-IP's free database, downloaded by the panel once 
 ## 9. Your name and logo (optional)
 
 **Settings › Panel › Name and logo**: the panel's name; its logo - the **Rose** (Rosélune's own: five
-petals, a blush bloom and the moon at its heart), the **Umbrella**, or your own (SVG, PNG, JPEG or
-WebP, up to 128 KB); how it moves - Assemble (the built-in logo's pieces fly in), Rise, Pulse, Spin or
+petals, a blush bloom and the moon at its heart), the **Umbrella**, **Confetti** (a cobalt crescent moon cradling
+a canary sun, in the Postmodern colours), or your own (SVG, PNG, JPEG or WebP, up to 128 KB); how it moves - Assemble (the built-in logo's pieces fly in), Rise, Pulse, Spin or
 None; and the **Look** pages open with for people who have not picked one: Romance (the default),
 Umbrella, a quiet tone, or **Follow the device** (Ice in the dark, Paper in the light). The preview
 shows the logo as users will see it; **Use the rose** (or the umbrella) brings the built-in logo back

@@ -1,7 +1,7 @@
 package panel
 
 // The panel's look is the operator's: besides the name (Settings.SiteTitle), the logo is one of the
-// built-in marks (Settings.LogoMark: the rose, Rosélune's own, or the umbrella - brandmarks.go) or an
+// built-in marks (Settings.LogoMark: the rose, Rosélune's own, the umbrella or confetti - brandmarks.go) or an
 // uploaded image, and its animation is chosen (Settings.LogoAnimation). The logo is shown wherever
 // the mark would be - the top bar, the sign-in pages, the loading screens, the status page,
 // subscription pages and the browser tab.
@@ -81,7 +81,7 @@ func (p *Panel) loadBrand() error {
 type logoInfo struct {
 	Custom    bool   `json:"custom" doc:"An uploaded logo replaces the built-in one"`
 	V         string `json:"v,omitempty" doc:"Changes whenever the logo does: add it to /brand/logo?v= so browsers fetch the new one"`
-	Mark      string `json:"mark" doc:"The built-in logo, shown while none is uploaded: rose | umbrella"`
+	Mark      string `json:"mark" doc:"The built-in logo, shown while none is uploaded: rose | umbrella | confetti"`
 	Animation string `json:"animation" doc:"assemble | rise | pulse | spin | none"`
 }
 
@@ -115,8 +115,8 @@ func (p *Panel) serveIcon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := "favicon.svg" // the rose
-	if p.settings().LogoMark == "umbrella" {
-		name = "favicon-umbrella.svg"
+	if m := p.settings().LogoMark; m == "umbrella" || m == "confetti" {
+		name = "favicon-" + m + ".svg"
 	}
 	var body []byte
 	if p.cfg.WebFS != nil {

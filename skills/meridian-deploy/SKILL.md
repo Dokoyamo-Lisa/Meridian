@@ -177,7 +177,7 @@ scripts/api.sh PUT /api/settings '{"site_title":"Acme Net","timezone":"Europe/Be
 | `site_title` | the panel's name on every page and in users' apps (up to 64 characters) |
 | `timezone` | IANA name, e.g. `Asia/Singapore`; days and monthly resets follow it |
 | `public_url` | only behind a reverse proxy: the address users and servers use, e.g. `https://panel.example.com` (with `--domain` it is set for you) |
-| `logo_mark` | the built-in logo while none is uploaded: `rose` (Rosélune's own, the default) or `umbrella` |
+| `logo_mark` | the built-in logo while none is uploaded: `rose` (Rosélune's own, the default), `umbrella` or `confetti` |
 | `logo_animation` | `assemble`, `rise`, `pulse`, `spin` or `none` |
 | `default_tone` | the look pages open with: `romance` (the default), `umbrella`, `ice`, `celadon`, `ink`, `paper`, `mist`, `postmodern`, or `auto` (Ice, Paper on devices set to light) |
 | `agent_port` | where new agents put their two local-only ports (default 50000, then 50001); change it **before** installing agents if something on the servers already uses them |
