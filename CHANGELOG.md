@@ -16,6 +16,13 @@
   backups to the same WebDAV folder or S3 prefix counted - and removed - each other's; and a plain
   ZIP took one of the kept places while only encrypted backups were removed, so fewer were kept
   than set. Now only names this panel makes count and go.
+- **Backups made close together no longer overwrite each other.** Names carried the time to the
+  second, so two backups in the same second went to one file and the destination kept only the
+  second. Names now carry milliseconds and never repeat; retention orders old and new names together.
+- **Backups › Test checks that the destination really lists and removes files.** A destination that
+  took the test file but listed nothing - or answered a removal but kept the file - was reported as
+  working, though it would show no backups to restore and never remove old ones. Test now says what
+  is wrong with it.
 - **Quotas and limits read as entered.** A 1500 GB quota or bandwidth limit showed as "1 TB" or
   "1.5 TB" - on the panel's users, user, plans and servers pages, the status page and users' page,
   subscription pages, alerts, events and Telegram messages; it now shows "1500 GB", and 1.5 TB
