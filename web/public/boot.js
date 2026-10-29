@@ -3,7 +3,7 @@
 // and "auto" is Ice, or Paper on a device set to light. The colour browsers paint around the page
 // (theme-color) follows.
 (function () {
-  var page = { romance: '#fbf0f2', umbrella: '#0a0a0b', ice: '#07090d', celadon: '#111413', ink: '#13110f', paper: '#f3efe6', mist: '#eef2f1' }
+  var page = { romance: '#fbf0f2', umbrella: '#0a0a0b', ice: '#07090d', celadon: '#111413', ink: '#13110f', paper: '#f3efe6', mist: '#eef2f1', postmodern: '#f4eee2' }
   var root = document.documentElement
   var t = null
   try {

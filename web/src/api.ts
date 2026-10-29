@@ -658,7 +658,7 @@ export interface Settings {
   /** The built-in logo, shown while none is uploaded: rose (Rosélune's own) or umbrella. */
   logo_mark: string
   logo_animation: string
-  /** The look pages open with for people who have not picked one: romance (the default), umbrella, ice, celadon, ink, paper, mist - or auto (Ice, or Paper on light devices). */
+  /** The look pages open with for people who have not picked one: romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern - or auto (Ice, or Paper on light devices). */
   default_tone: string
   agent_port: number
   auto_update: boolean

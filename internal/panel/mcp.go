@@ -2161,7 +2161,7 @@ var mcpTools = []mcpTool{
 			"name":        pStr("The panel's name, shown on every page and in users' apps (up to 64 characters)"),
 			"mark":        pEnum("The built-in logo, shown while no logo is uploaded: rose (Rosélune's own: five petals, a blush bloom, the moon at its heart) or umbrella (eight panels, red and white)", logoMarks...),
 			"animation":   pEnum("How the logo moves while pages load and when someone signs in (assemble flies in the built-in logo's pieces; an uploaded logo rises instead)", logoAnimations...),
-			"look":        pEnum("How the panel, the status page and users' pages look to people who have not picked a look themselves: romance (the default: blush paper, rose ink, a serif voice), umbrella (black, white and signal red, a laboratory's), the quiet tones ice, celadon, ink, paper, mist - or auto (Ice, Paper on light devices)", append(slices.Clone(siteTones), "auto")...),
+			"look":        pEnum("How the panel, the status page and users' pages look to people who have not picked a look themselves: romance (the default: blush paper, rose ink, a serif voice), umbrella (black, white and signal red, a laboratory's), postmodern (cream paper, black outlines, blocks of bright colour, laid out anew; no globe on the status page), the quiet tones ice, celadon, ink, paper, mist - or auto (Ice, Paper on light devices)", append(slices.Clone(siteTones), "auto")...),
 			"logo_svg":    pStr("A new logo as SVG markup"),
 			"logo_base64": pStr("A new logo as a base64 PNG, JPEG or WebP image"),
 			"reset_logo":  pBool("Use the built-in logo again (see mark)"),

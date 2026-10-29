@@ -1,0 +1,142 @@
+/* The Postmodern look for the status page and the users' page (its colour tokens and paper are in
+   ../themes.css). The header is a canary band; the overview keeps its one-screen grid, its panels
+   under a heavy black rule with their name on a coloured tag (a box would not fit the screen); the
+   users' page, the server cards and the drawers become outlined boards with hard shadows. */
+
+/* ------------------------------------------------------------------ the header band */
+:root[data-theme="postmodern"] .top { background: var(--pm-yellow); border-bottom: 3px solid var(--pm-edge); box-shadow: none; }
+:root[data-theme="postmodern"] .c-time { font: 800 26px/1 var(--font-d); letter-spacing: -.01em; color: var(--pm-edge); }
+:root[data-theme="postmodern"] .c-meta { font: 600 10px/1.35 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--pm-edge); }
+:root[data-theme="postmodern"] .nav a { color: var(--pm-edge); font: 700 14px/1 var(--font-d); letter-spacing: .02em; padding: 7px 12px; border: 2px solid transparent; }
+:root[data-theme="postmodern"] .nav a:hover { border-color: var(--pm-edge); background: rgba(255, 255, 255, .5); }
+:root[data-theme="postmodern"] .nav a[aria-current="page"] { background: var(--raised); border-color: var(--pm-edge); box-shadow: var(--pm-shadow-s); transform: rotate(-1.5deg); }
+:root[data-theme="postmodern"] .nav a::after { display: none; }
+:root[data-theme="postmodern"] .live { color: var(--pm-edge); font: 600 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+:root[data-theme="postmodern"] .live i { box-shadow: 0 0 0 1.5px var(--pm-edge); background: var(--pm-mint); }
+:root[data-theme="postmodern"] .live.stale i { background: var(--pm-tomato); }
+:root[data-theme="postmodern"] .live i::after { border-color: var(--pm-edge); }
+:root[data-theme="postmodern"] .mnav { background: var(--page); padding-top: 10px; }
+:root[data-theme="postmodern"] .mnav a { color: var(--pm-edge); font: 700 13.5px/1 var(--font-d); border: 2px solid transparent; border-radius: 0; }
+:root[data-theme="postmodern"] .mnav a[aria-current="page"] { background: var(--pm-edge); color: var(--pm-yellow); box-shadow: none; }
+@media (max-width: 860px) { :root[data-theme="postmodern"] .top { background: var(--pm-yellow); } :root[data-theme="postmodern"] .mnav { box-shadow: 0 2px 0 var(--line-2); } }
+
+/* ------------------------------------------------------------------ type */
+:root[data-theme="postmodern"] :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 0; }
+:root[data-theme="postmodern"] :is(.page-h h1, .gate h1) { width: fit-content; font: 800 42px/1.05 var(--font-d); letter-spacing: -.025em; padding: 0 .08em; background: linear-gradient(transparent 58%, var(--pm-yellow) 58% 92%, transparent 92%); }
+:root[data-theme="postmodern"] .gate h1 { margin: 0 auto; }
+:root[data-theme="postmodern"] .page-h p { font: 500 11px/1.5 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); }
+:root[data-theme="postmodern"] .ph h2 { display: inline-block; padding: 5px 9px 4px; background: var(--pm-head, var(--pm-mint)); border: 2px solid var(--pm-edge); box-shadow: var(--pm-shadow-s); font: 700 13px/1.1 var(--font-d); text-transform: uppercase; letter-spacing: .06em; color: var(--pm-edge); }
+:root[data-theme="postmodern"] .pn { display: inline-block; padding: 4px 6px 3px; background: var(--pm-edge); color: var(--page); font: 600 10px/1 var(--mono); }
+:root[data-theme="postmodern"] :is(.a-num, .k-val, .mine-v b, .left-hero .value, .quota-big .value, .t-val, .tc-now) { font-family: var(--font-d); font-weight: 800; letter-spacing: -.03em; }
+:root[data-theme="postmodern"] :is(.d-sec h4, .sub-h) { font: 600 10.5px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .09em; color: var(--ink-2); }
+:root[data-theme="postmodern"] .verdict b { font: 800 19px/1.2 var(--font-d); }
+:root[data-theme="postmodern"] .verdict .v-ic { border: 2px solid var(--pm-edge); background: var(--pm-mint); color: var(--pm-edge); }
+:root[data-theme="postmodern"] .verdict[data-level="warn"] .v-ic { background: var(--pm-yellow); color: var(--pm-edge); }
+:root[data-theme="postmodern"] .verdict[data-level="crit"] .v-ic { background: var(--pm-tomato); color: var(--pm-edge); }
+
+/* ------------------------------------------------------------------ no globe
+   Postmodern's overview has no globe: the middle column is the figures and the servers, and the
+   servers' list takes the room. The figures under the globe stay; the globe pauses itself while it
+   is not shown, and its panel no longer takes a number. */
+:root[data-theme="postmodern"] .globe-area { flex: none; min-height: 0; counter-increment: none; }
+:root[data-theme="postmodern"] .globe-area > :is(.ph.ghost, .g-stage) { display: none; }
+@media (min-width: 1280px) {
+  :root[data-theme="postmodern"] .col-c .globe-area { flex: none; min-height: 0; }
+  :root[data-theme="postmodern"] .col-c .p-table { flex: 1 1 0; }
+}
+
+/* ------------------------------------------------------------------ panels: a heavy rule and a tag */
+:root[data-theme="postmodern"] .panel { --pm-head: var(--pm-mint); border-top: 3px solid var(--pm-edge); }
+:root[data-theme="postmodern"] .panel:nth-child(3n+2) { --pm-head: var(--pm-pink); }
+:root[data-theme="postmodern"] .panel:nth-child(3n) { --pm-head: var(--pm-sky); }
+:root[data-theme="postmodern"] .ph.ghost h2 { box-shadow: none; }
+/* the users' page is not one screen: there each panel is a board */
+:root[data-theme="postmodern"] #v-me .panel { border: 2px solid var(--pm-edge); background: var(--surface); padding: 18px 20px 20px; box-shadow: var(--pm-shadow-l); }
+:root[data-theme="postmodern"] .kpis { gap: 14px; border: 0; }
+:root[data-theme="postmodern"] .kpi, :root[data-theme="postmodern"] .kpi + .kpi { border: 2px solid var(--pm-edge); background: var(--pm-yellow); box-shadow: var(--pm-shadow); }
+:root[data-theme="postmodern"] .kpi:nth-child(4n+2) { background: var(--pm-pink); }
+:root[data-theme="postmodern"] .kpi:nth-child(4n+3) { background: var(--pm-mint); }
+:root[data-theme="postmodern"] .kpi:nth-child(4n) { background: var(--pm-sky); }
+:root[data-theme="postmodern"] .kpi :is(small, span, .k-l) { color: var(--pm-edge); }
+:root[data-theme="postmodern"] .kpi .unit { color: var(--ink-2); } /* 4.5:1 on every block */
+:root[data-theme="postmodern"] .strip i { border-radius: 0; box-shadow: inset 0 0 0 1px rgba(23, 21, 26, .35); }
+:root[data-theme="postmodern"] .strip i.good { background: var(--pm-mint); }
+:root[data-theme="postmodern"] .strip i.warn { background: var(--pm-yellow); }
+:root[data-theme="postmodern"] .strip i.crit { background: var(--pm-tomato); }
+
+/* ------------------------------------------------------------------ cards, boxes, notes */
+:root[data-theme="postmodern"] :is(.card, .tc-card, .tc-pick, .tc-skel, .tg-code, .sup-note) { border: 2px solid var(--pm-edge); border-radius: 0; background: var(--raised); box-shadow: var(--pm-shadow); }
+:root[data-theme="postmodern"] .card { transition: transform .25s var(--ease-out), box-shadow .25s var(--ease-out); }
+:root[data-theme="postmodern"] .card:hover { border-color: var(--pm-edge); background: var(--raised); transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--pm-edge); }
+:root[data-theme="postmodern"] :is(.c-t b, .tc-t b) { font: 700 17px/1.2 var(--font-d); }
+:root[data-theme="postmodern"] .note-box { border-radius: 0; border: 2px solid var(--pm-edge); border-left-width: 8px; box-shadow: none; background: var(--raised); }
+:root[data-theme="postmodern"] .note-box.warn { background: var(--warn-soft); }
+:root[data-theme="postmodern"] .note-box.crit { background: var(--crit-soft); }
+:root[data-theme="postmodern"] .maint-banner { border: 2px solid var(--pm-edge); border-radius: 0; background: var(--pm-yellow); color: var(--pm-edge); }
+
+/* ------------------------------------------------------------------ controls */
+:root[data-theme="postmodern"] :is(.btn, .pill-btn, .more, .bar-key, .ip) { border: 2px solid var(--pm-edge); border-radius: 999px; background: var(--raised); color: var(--pm-edge); font-weight: 600; box-shadow: var(--pm-shadow-s); transition: background .15s, transform .12s var(--ease-out), box-shadow .12s var(--ease-out); }
+:root[data-theme="postmodern"] :is(.btn, .pill-btn, .more, .bar-key, .ip):hover:not(:disabled) { background: var(--pm-yellow); border-color: var(--pm-edge); color: var(--pm-edge); transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--pm-edge); }
+:root[data-theme="postmodern"] :is(.btn, .pill-btn, .more, .bar-key, .ip):active:not(:disabled) { transform: translate(2px, 2px); box-shadow: none; }
+:root[data-theme="postmodern"] :is(.btn.primary, .gate-form .btn.primary) { background: var(--accent); border-color: var(--pm-edge); color: var(--on-accent); }
+:root[data-theme="postmodern"] :is(.btn.primary, .gate-form .btn.primary):hover:not(:disabled) { background: var(--accent-ink); color: var(--on-accent); }
+:root[data-theme="postmodern"] .btn:disabled { background: var(--hover); border-color: var(--line-2); color: var(--ink-3); box-shadow: none; opacity: 1; }
+:root[data-theme="postmodern"] .btn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
+:root[data-theme="postmodern"] .top .pill-btn { box-shadow: none; }
+:root[data-theme="postmodern"] .avatar { background: var(--pm-edge); color: var(--pm-yellow); }
+:root[data-theme="postmodern"] .icon-btn { border: 2px solid var(--pm-edge); border-radius: 0; background: var(--raised); color: var(--pm-edge); }
+:root[data-theme="postmodern"] .icon-btn:hover { background: var(--pm-pink); border-color: var(--pm-edge); color: var(--pm-edge); }
+:root[data-theme="postmodern"] .seg { border: 2px solid var(--pm-edge); border-radius: 999px; background: var(--raised); }
+:root[data-theme="postmodern"] .seg button { border-radius: 999px; font-weight: 600; color: var(--ink-2); }
+:root[data-theme="postmodern"] :is(.seg button[aria-pressed="true"], .seg button[aria-selected="true"]) { color: var(--page); }
+:root[data-theme="postmodern"] .seg .ind { border-radius: 999px; background: var(--pm-edge); box-shadow: none; }
+:root[data-theme="postmodern"] .chip { border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--pm-edge); color: var(--pm-edge); background: var(--raised); font-weight: 600; }
+:root[data-theme="postmodern"] .chip.good { background: var(--pm-mint); color: var(--pm-edge); box-shadow: inset 0 0 0 1.5px var(--pm-edge); }
+:root[data-theme="postmodern"] .chip.warn { background: var(--pm-yellow); color: var(--pm-edge); box-shadow: inset 0 0 0 1.5px var(--pm-edge); }
+:root[data-theme="postmodern"] .chip.crit { background: var(--pm-tomato); color: var(--pm-edge); box-shadow: inset 0 0 0 1.5px var(--pm-edge); }
+:root[data-theme="postmodern"] .chip.accent { background: var(--pm-sky); color: var(--pm-edge); box-shadow: inset 0 0 0 1.5px var(--pm-edge); }
+:root[data-theme="postmodern"] :is(.link-in, .gate-form .field input) { border: 2px solid var(--pm-edge); border-radius: 0; background: var(--raised); }
+:root[data-theme="postmodern"] :is(.link-in, .gate-form .field input):focus { border-color: var(--accent); box-shadow: 4px 4px 0 var(--accent); }
+:root[data-theme="postmodern"] .pal-pop { border: 2px solid var(--pm-edge); border-radius: 0; background: var(--raised); box-shadow: var(--pm-shadow); }
+:root[data-theme="postmodern"] .pal-pop button { border-radius: 0; color: var(--pm-edge); }
+:root[data-theme="postmodern"] .pal-pop button:hover { background: var(--pm-yellow); color: var(--pm-edge); }
+:root[data-theme="postmodern"] .tip { border: 2px solid var(--pm-edge); border-radius: 0; box-shadow: var(--pm-shadow-s); }
+:root[data-theme="postmodern"] .toast { border: 2px solid var(--pm-edge); border-radius: 999px; background: var(--raised); box-shadow: var(--pm-shadow); }
+
+/* ------------------------------------------------------------------ tables: a black header band */
+:root[data-theme="postmodern"] th { background: var(--pm-edge); color: var(--page); font: 600 10.5px/1.2 var(--mono); text-transform: uppercase; letter-spacing: .09em; padding: 8px 10px; border: 0; }
+:root[data-theme="postmodern"] th:first-child, :root[data-theme="postmodern"] td:first-child { padding-left: 10px; }
+:root[data-theme="postmodern"] td { border-bottom: 1.5px solid var(--line); }
+:root[data-theme="postmodern"] tbody tr:nth-child(even) { background: rgba(23, 21, 26, .035); }
+
+/* ------------------------------------------------------------------ rings and bars: thick ink */
+:root[data-theme="postmodern"] .r-track { stroke: rgba(23, 21, 26, .14); stroke-width: 4; }
+:root[data-theme="postmodern"] .r-val { stroke-width: 4; stroke-linecap: butt; }
+:root[data-theme="postmodern"] .seg-bar { opacity: 1; stroke: var(--pm-edge); stroke-width: .6; }
+
+/* ------------------------------------------------------------------ drawers and windows */
+:root[data-theme="postmodern"] .panel-d { border-left: 3px solid var(--pm-edge); border-radius: 0; box-shadow: -10px 0 0 rgba(23, 21, 26, .12); }
+@media (max-width: 860px) { :root[data-theme="postmodern"] .panel-d { border-left: 0; border-top: 3px solid var(--pm-edge); border-radius: 0; } }
+:root[data-theme="postmodern"] .d-head { background: var(--pm-yellow); border-bottom: 2px solid var(--pm-edge); }
+:root[data-theme="postmodern"] .d-head h3 { font: 800 22px/1.2 var(--font-d); color: var(--pm-edge); }
+:root[data-theme="postmodern"] .d-head p { color: var(--ink-2); }
+:root[data-theme="postmodern"] .d-sec { border-bottom: 2px dashed var(--line-2); }
+:root[data-theme="postmodern"] dialog { border: 2px solid var(--pm-edge); border-radius: 0; box-shadow: 10px 10px 0 var(--pm-edge); }
+
+/* ------------------------------------------------------------------ the sign-in: a poster */
+:root[data-theme="postmodern"] .gate { position: relative; z-index: 1; max-width: 400px; margin-top: 7vh; padding: 34px 32px 28px; border: 3px solid var(--pm-edge); background: var(--surface); box-shadow: 12px 12px 0 var(--pm-edge); }
+@media (max-width: 560px) { :root[data-theme="postmodern"] .gate { margin: 3vh 0 0; padding: 28px 20px 22px; box-shadow: 8px 8px 0 var(--pm-edge); } }
+:root[data-theme="postmodern"] .gate h1 { font-size: 34px; }
+:root[data-theme="postmodern"] :is(.gate p, .gate-text) { color: var(--ink-2); }
+:root[data-theme="postmodern"] .foot { font: 500 10.5px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+
+/* the dashboard fills the width: only the dot grid and the half-moon, nothing behind the charts */
+:root[data-theme="postmodern"] body::before {
+  background:
+    radial-gradient(circle at 3% 104%, var(--pm-pink) 0 120px, var(--pm-edge) 120px 123px, transparent 123px),
+    radial-gradient(rgba(23, 21, 26, .15) 1.2px, transparent 1.6px) 0 0 / 22px 22px;
+}
+/* a phone: the panels sit straight on the paper, so only the dot grid stays behind them */
+@media (max-width: 860px) {
+  :root[data-theme="postmodern"] body::before { background: radial-gradient(rgba(23, 21, 26, .15) 1.2px, transparent 1.6px) 0 0 / 22px 22px; }
+}

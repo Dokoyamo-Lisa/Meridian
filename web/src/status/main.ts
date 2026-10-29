@@ -10,6 +10,7 @@ import qrcode from 'qrcode-generator'
 import '../mark.css'
 import './status.css'
 import '../themes.css'
+import './postmodern.css'
 import { LogoInfo, animClass, brand, logoSrc, markPieces, openInto, setBrand, transition } from '../mark'
 import { $, $$, append, clear, h, icon, numUnit, s, safeHref, setText } from './dom'
 import {
@@ -2367,7 +2368,7 @@ function toast(msg: string, warn = false) {
   toastTimer = window.setTimeout(() => t.classList.remove('on'), 2600)
 }
 
-const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist']
+const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist', 'postmodern']
 function initTones() {
   const root = document.documentElement
   const btn = $('#palBtn')

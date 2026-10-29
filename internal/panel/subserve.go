@@ -296,6 +296,12 @@ a.dl{color:var(--accent)}
 .look-romance .link input{border-radius:12px}.look-romance button.btn{border-radius:999px;padding:9px 16px}.look-romance .qr{border-radius:14px}
 .look-umbrella .brand{letter-spacing:.42em;font-weight:600}.look-umbrella h1{text-transform:uppercase;letter-spacing:.08em;font-weight:500;font-size:26px}
 .look-umbrella h2{text-transform:uppercase;letter-spacing:.16em;font-size:11px}.look-umbrella .app,.look-umbrella .link input,.look-umbrella button.btn{border-radius:3px}
+.look-postmodern body{background-image:radial-gradient(rgba(23,21,26,.15) 1.2px,transparent 1.6px);background-size:22px 22px}
+.look-postmodern .brand{color:#17151a;font-weight:700}.look-postmodern h1{width:fit-content;letter-spacing:-.025em;background:linear-gradient(transparent 58%,#ffd23f 58% 92%,transparent 92%)}
+.look-postmodern section{border-top:3px solid #17151a}.look-postmodern h2{display:inline-block;padding:5px 9px 4px;background:#6fdcb9;border:2px solid #17151a;box-shadow:2px 2px 0 #17151a;text-transform:uppercase;letter-spacing:.06em;font-family:var(--display);font-weight:700}
+.look-postmodern .app,.look-postmodern .link input,.look-postmodern .qr{border:2px solid #17151a;border-radius:0;background:#fff;box-shadow:4px 4px 0 #17151a}
+.look-postmodern .app:hover{background:#ffd23f}.look-postmodern button.btn{border:2px solid #17151a;border-radius:999px;background:#fff;box-shadow:2px 2px 0 #17151a;font-weight:600}
+.look-postmodern .bar{height:10px;border:1.5px solid #17151a;border-radius:0;background:#fff}.look-postmodern .bar i{background:repeating-linear-gradient(-45deg,#2346d8 0 5px,#4a68ec 5px 10px)}
 </style></head><body><main>
 <div class="brand">{{if .Logo}}<img class="mark" src="{{.Logo}}" alt="">{{else}}{{.Mark}}{{end}}{{.Site}}</div>
 <h1>{{.Name}}</h1>

@@ -39,6 +39,9 @@ var pageTones = map[string]pageTone{
 		sansDisplay, "normal", "300", "none"},
 	"mist": {"light", "#eef2f1", "#fafcfb", "rgba(24,32,30,.09)", "rgba(24,32,30,.17)", "#18201e", "#43504c", "#74807c", "#487d73", "#448247", "#a8762c",
 		sansDisplay, "normal", "300", "none"},
+	// Postmodern's dot grid and outlines come from the page's .look-postmodern rules (subserve.go)
+	"postmodern": {"light", "#f4eee2", "#fffbf2", "rgba(23,21,26,.16)", "rgba(23,21,26,.36)", "#17151a", "#3b3640", "#5c5562", "#2346d8", "#17744a", "#8a5200",
+		`Futura,"Futura PT","Avenir Next","Century Gothic","Trebuchet MS",sans-serif`, "normal", "800", "none"},
 }
 
 func (t pageTone) vars() string {

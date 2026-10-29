@@ -1,8 +1,9 @@
-/* Two looks beyond the quiet tones: Romance - Rosélune's own, the default - and Umbrella. Each is a
-   tone like the others (the colour tokens the panel and the status page share, the globe's, the
-   charts') plus a character of its own - type, corners, light, a few details - written against the
-   classes both pages have. No image or font is loaded: everything here is drawn by CSS from system
-   fonts. */
+/* Three looks beyond the quiet tones: Romance - Rosélune's own, the default - Umbrella and
+   Postmodern. Each is a tone like the others (the colour tokens the panel and the status page share,
+   the globe's, the charts') plus a character of its own - type, corners, light, a few details -
+   written against the classes both pages have. Postmodern goes furthest: it lays the pages out anew
+   (postmodern.css, status/postmodern.css). No image or font is loaded: everything here is drawn by
+   CSS from system fonts. */
 
 /* ------------------------------------------------------------------ Umbrella
    A corporate laboratory after hours: black glass, white type, one signal red, clinical lines. */
@@ -162,3 +163,72 @@
 }
 @keyframes petal-sway { from { translate: -26px 0; } to { translate: 26px 0; } } /* composes with the fall's transform */
 @media (prefers-reduced-motion: reduce) { :root[data-theme="romance"] .petals { display: none; } }
+
+/* ------------------------------------------------------------------ Postmodern
+   A Memphis-era studio: cream paper, solid black outlines, hard offset shadows, cobalt with blocks of
+   canary, bubblegum, mint and sky, a geometric display face, confetti in the margins. Text keeps
+   4.5:1 on the paper and on every colour block (WCAG AA), the faintest 3:1. The layout itself is in
+   postmodern.css (the panel) and status/postmodern.css. */
+:root[data-theme="postmodern"] {
+  color-scheme: light;
+  --page: #f4eee2;
+  --surface: #fffbf2;
+  --raised: #ffffff;
+  --hover: rgba(23, 21, 26, .06);
+  --line: rgba(23, 21, 26, .16);
+  --line-2: rgba(23, 21, 26, .36);
+  --ink: #17151a;
+  --ink-2: #3b3640;
+  --ink-3: #5c5562;
+  --ink-4: #7d7584;
+  --accent: #2346d8;
+  --accent-ink: #1a33a8;
+  --accent-soft: rgba(35, 70, 216, .12);
+  --on-accent: #ffffff;
+  --grid: rgba(23, 21, 26, .09);
+  --baseline: rgba(23, 21, 26, .3);
+  --good: #17744a;
+  --warn: #8a5200;
+  --crit: #c1311d;
+  --good-soft: rgba(73, 209, 168, .3);
+  --warn-soft: rgba(255, 210, 63, .42);
+  --crit-soft: rgba(255, 91, 58, .2);
+  --scrim: rgba(23, 21, 26, .38);
+  --shadow-pop: 8px 8px 0 #17151a;
+  --pool: transparent;
+  --g-day: #2b2730;
+  --g-night: #c9bfae;
+  --g-night-lum: .62;
+  --g-rim: rgba(23, 21, 26, .24);
+  --g-halo: rgba(35, 70, 216, .06);
+  --g-arc: #2346d8;
+  --g-accent: #ff5b3a;
+  --g-hub: #17151a;
+  --g-client: #e0a800;
+  --g-back: .03;
+  --font-d: Futura, "Futura PT", "Avenir Next", "Century Gothic", "Trebuchet MS", sans-serif;
+  --num-weight: 700;
+  --c1: #2346d8; --c2: #ff5b3a; --c3: #e0a800; --c4: #19a67c; --c5: #a058e0; --c6: #ff7fae; --c7: #1aa3d9; --c8: #6b6370;
+  /* the look's own: the outline, its blocks of colour, its shadows */
+  --pm-edge: #17151a;
+  --pm-yellow: #ffd23f;
+  --pm-pink: #ff9dc2;
+  --pm-mint: #6fdcb9;
+  --pm-sky: #8ad3ff;
+  --pm-tomato: #ff5b3a;
+  --pm-lilac: #b9a4ff;
+  --pm-shadow: 4px 4px 0 var(--pm-edge);
+  --pm-shadow-s: 2px 2px 0 var(--pm-edge);
+  --pm-shadow-l: 6px 6px 0 var(--pm-edge);
+  scrollbar-color: var(--pm-edge) transparent;
+  caret-color: var(--accent);
+}
+:root[data-theme="postmodern"] ::selection { background: var(--pm-yellow); color: var(--pm-edge); }
+
+/* the paper: a dot grid, a canary sun at the right edge, a bubblegum half-moon at the bottom left */
+:root[data-theme="postmodern"] body::before {
+  background:
+    radial-gradient(circle at calc(100% + 76px) 46%, var(--pm-yellow) 0 110px, var(--pm-edge) 110px 113px, transparent 113px),
+    radial-gradient(circle at 3% 104%, var(--pm-pink) 0 120px, var(--pm-edge) 120px 123px, transparent 123px),
+    radial-gradient(rgba(23, 21, 26, .15) 1.2px, transparent 1.6px) 0 0 / 22px 22px;
+}
