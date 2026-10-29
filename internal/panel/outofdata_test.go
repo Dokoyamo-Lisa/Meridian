@@ -365,3 +365,63 @@ func TestOutOfDataLoose(t *testing.T) {
 		t.Errorf("grace while paused: %v", g)
 	}
 }
+
+// TestPortalCycleAfterReset: a user's own page shows each server's traffic this cycle exactly as
+// the quota counts it. Usage reset in the middle of a day starts every server's cycle over at once -
+// the day's traffic from before the reset stays in today's and the 30 days' figures, not in the
+// cycle's - and what comes after counts again.
+func TestPortalCycleAfterReset(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	ctx := context.Background()
+	s := b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.160", "protocols": []string{"vless"}}, 201)["server"].(map[string]any)
+	sid, node := id(s["id"]), id(s["nodes"].([]any)[0].(map[string]any)["id"])
+	var made []map[string]any
+	_, _, raw := b.do("POST", "/api/users", map[string]any{"name": "gil", "username": "gilgil", "password": "gil-password-123", "quota": 10 << 30})
+	if err := json.Unmarshal(raw, &made); err != nil || len(made) != 1 {
+		t.Fatalf("user: %s", raw)
+	}
+	uid := id(made[0]["id"])
+	seq := int64(0)
+	report := func(up, down int64) {
+		t.Helper()
+		seq++
+		srv, _ := h.p.serverByID(ctx, sid)
+		if _, err := h.p.ingest(ctx, srv, &proto.Report{Instance: "cy", Batch: &proto.Batch{Seq: seq, To: now(),
+			Traffic: []proto.UserTraffic{{Sub: uid, Node: node, Up: up, Down: down}}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gil := h.browser()
+	gil.login("gilgil", "gil-password-123")
+	tokyo := func() (me, cycle, today map[string]any) {
+		t.Helper()
+		me = gil.must("GET", "/api/portal/me", nil, 200)
+		for _, x := range me["servers"].([]any) {
+			if srv := x.(map[string]any); id(srv["id"]) == sid {
+				return me, srv["cycle"].(map[string]any), srv["today"].(map[string]any)
+			}
+		}
+		t.Fatalf("no Tokyo on the page: %v", me["servers"])
+		return
+	}
+	is := func(m map[string]any, up, down int64) bool { return id(m["up"]) == up && id(m["down"]) == down }
+
+	report(100, 200)
+	if me, cycle, _ := tokyo(); !is(cycle, 100, 200) || id(me["counted"]) != 300 {
+		t.Fatalf("before the reset: cycle %v, counted %v", cycle, me["counted"])
+	}
+	b.must("POST", fmt.Sprintf("/api/users/%d/reset-usage", uid), nil, 200)
+	me, cycle, today := tokyo()
+	if !is(cycle, 0, 0) || id(me["counted"]) != 0 || !is(me["used"].(map[string]any), 0, 0) {
+		t.Errorf("after the reset: cycle %v, counted %v, used %v", cycle, me["counted"], me["used"])
+	}
+	if !is(today, 100, 200) {
+		t.Errorf("today lost the traffic from before the reset: %v", today)
+	}
+	report(10, 20)
+	if me, cycle, today := tokyo(); !is(cycle, 10, 20) || id(me["counted"]) != 30 || !is(today, 110, 220) {
+		t.Errorf("after more traffic: cycle %v, counted %v, today %v", cycle, me["counted"], today)
+	}
+}

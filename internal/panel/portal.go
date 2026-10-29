@@ -164,7 +164,7 @@ type portalServer struct {
 	Online    bool     `json:"online" doc:"The server is up"`
 	Protocols []string `json:"protocols"`
 	Today     usage    `json:"today"`
-	Cycle     usage    `json:"cycle" doc:"Since the start of the current cycle (whole days)"`
+	Cycle     usage    `json:"cycle" doc:"This cycle, exactly as the quota counts it: a reset of the usage clears it at once"`
 	Days30    usage    `json:"days30"`
 	Devices   int      `json:"devices" doc:"The user's devices connected to this server now"`
 	Former    bool     `json:"former" doc:"No longer in the user's access (or removed): shown for its traffic only"`
@@ -333,12 +333,48 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 	for i := range me.Servers {
 		byID[me.Servers[i].ID] = &me.Servers[i]
 	}
+	serverOf := func(sid int64) *portalServer {
+		if ps := byID[sid]; ps != nil || sid == 0 {
+			return ps
+		}
+		// a server the user no longer has (or that was removed): still count it in the totals
+		name := "Removed server"
+		if srv, err := p.serverByID(ctx, sid); err == nil && srv.DeletedAt == 0 {
+			name = srv.ShownName()
+		}
+		me.Servers = append(me.Servers, portalServer{ID: sid, Name: name, Protocols: []string{}, Former: true})
+		for i := range me.Servers {
+			byID[me.Servers[i].ID] = &me.Servers[i]
+		}
+		return byID[sid]
+	}
+	// this cycle per server: the per-protocol counters, which every report adds to with the user's
+	// own (ingest.go) and every reset clears with them (reset-usage, the cycle's start, a plan's new
+	// period) - exact, where days would still hold what a reset in the middle of one let go
+	crows, err := p.db.QueryContext(ctx, `SELECT server_id, SUM(cycle_up), SUM(cycle_down) FROM sub_node_usage
+		WHERE sub_id = ? AND (cycle_up > 0 OR cycle_down > 0) GROUP BY server_id`, s.ID)
+	if err != nil {
+		return err
+	}
+	for crows.Next() {
+		var sid, up, down int64
+		if err := crows.Scan(&sid, &up, &down); err != nil {
+			crows.Close()
+			return err
+		}
+		if ps := serverOf(sid); ps != nil {
+			ps.Cycle.Up += up
+			ps.Cycle.Down += down
+		}
+	}
+	if err := crows.Close(); err != nil {
+		return err
+	}
 	today := p.dayKey(time.Now())
 	since := p.dayKey(time.Now().AddDate(0, 0, -29))
-	cycleDay := p.dayKey(time.Unix(s.CycleStart, 0))
 	days := map[string]*portalDay{}
 	rows, err := p.db.QueryContext(ctx, `SELECT day, server_id, node_id, SUM(up), SUM(down) FROM traffic_daily
-		WHERE sub_id = ? AND day >= ? GROUP BY day, server_id, node_id`, s.ID, min(since, cycleDay))
+		WHERE sub_id = ? AND day >= ? GROUP BY day, server_id, node_id`, s.ID, since)
 	if err != nil {
 		return err
 	}
@@ -349,27 +385,10 @@ func (p *Panel) apiPortalMe(w http.ResponseWriter, r *http.Request, s *Sub) erro
 		if err := rows.Scan(&day, &sid, &nid, &up, &down); err != nil {
 			return err
 		}
-		ps := byID[sid]
-		if ps == nil && sid != 0 {
-			// a server the user no longer has (or that was removed): still count it in the totals
-			name := "Removed server"
-			if srv, err := p.serverByID(ctx, sid); err == nil && srv.DeletedAt == 0 {
-				name = srv.ShownName()
-			}
-			me.Servers = append(me.Servers, portalServer{ID: sid, Name: name, Protocols: []string{}, Former: true})
-			for i := range me.Servers {
-				byID[me.Servers[i].ID] = &me.Servers[i]
-			}
-			ps = byID[sid]
-		}
-		if ps != nil {
+		if ps := serverOf(sid); ps != nil {
 			if day == today {
 				ps.Today.Up += up
 				ps.Today.Down += down
-			}
-			if day >= cycleDay {
-				ps.Cycle.Up += up
-				ps.Cycle.Down += down
 			}
 			if day >= since {
 				ps.Days30.Up += up

@@ -23,6 +23,10 @@
   1.4 TB read "1 TB").
 - **Monitor › Online now** shows the IPs and users online and what all servers receive and send right
   now, refreshed every 10 seconds.
+- **Users' page: each server's traffic this cycle restarts with a usage reset.** It was summed from
+  whole days since the cycle began, so after a reset in the middle of a day the user saw that day's
+  earlier traffic still counted on their servers while their data left showed it gone. It now comes
+  from the same counters as the quota, which every reset clears at once.
 - **A user's page:** the Online now tab counts devices as the IP limit does (one per address, however
   many servers it is connected to), and Usage by protocol gives each protocol's share of the cycle's
   traffic both ways - shares add up to 100% - and says when the quota counts only one way.

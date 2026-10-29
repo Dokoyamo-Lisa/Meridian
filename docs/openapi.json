@@ -11559,7 +11559,7 @@
                 "$ref": "#/components/schemas/Usage"
               }
             ],
-            "description": "Since the start of the current cycle (whole days)"
+            "description": "This cycle, exactly as the quota counts it: a reset of the usage clears it at once"
           },
           "days30": {
             "$ref": "#/components/schemas/Usage"
