@@ -16,8 +16,11 @@
   backups to the same WebDAV folder or S3 prefix counted - and removed - each other's; and a plain
   ZIP took one of the kept places while only encrypted backups were removed, so fewer were kept
   than set. Now only names this panel makes count and go.
-- **Quotas and limits read as entered.** A 1500 GB quota or bandwidth limit showed as "1 TB" (users,
-  a user's page, plans, servers, the status page); it now shows "1500 GB", and 1.5 TB "1.5 TB".
+- **Quotas and limits read as entered.** A 1500 GB quota or bandwidth limit showed as "1 TB" or
+  "1.5 TB" - on the panel's users, user, plans and servers pages, the status page and users' page,
+  subscription pages, alerts, events and Telegram messages; it now shows "1500 GB", and 1.5 TB
+  "1.5 TB". Traffic charts label their gridlines with a decimal where rounding misled (a line at
+  1.4 TB read "1 TB").
 - **Monitor › Online now** shows the IPs and users online and what all servers receive and send right
   now, refreshed every 10 seconds.
 - **A user's page:** the Online now tab counts devices as the IP limit does (one per address, however

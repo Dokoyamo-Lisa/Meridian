@@ -262,7 +262,7 @@ func (p *Panel) nodeQuotaEvents(ctx context.Context, subs []*Sub) {
 				what = "it no longer serves them until their cycle starts over (their other protocols keep working)"
 			}
 			p.event(s.AccountID, "warn", "node_quota_reached", l.ServerID, s.ID, 0, fmt.Sprintf("%s used all of their %s on %s · %s this cycle - %s",
-				s.Name, fmtBytes(l.Quota), l.Server, l.Protocol, what), map[string]int64{"node": l.NodeID})
+				s.Name, fmtSize(l.Quota), l.Server, l.Protocol, what), map[string]int64{"node": l.NodeID})
 		}
 	}
 }

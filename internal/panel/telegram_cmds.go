@@ -314,7 +314,7 @@ func (p *Panel) botServer(ctx context.Context, q string) string {
 	today, month := p.serverTraffic(ctx, []int64{s.ID})
 	fmt.Fprintf(&b, "Traffic: today %s · this month %s\n", fmtBytes(today[s.ID]), fmtBytes(month[s.ID]))
 	if s.BwLimit > 0 {
-		fmt.Fprintf(&b, "Plan: %s of %s used (%.0f%%), resets on day %d\n", fmtBytes(s.BwUsed()), fmtBytes(s.BwLimit),
+		fmt.Fprintf(&b, "Plan: %s of %s used (%.0f%%), resets on day %d\n", fmtBytes(s.BwUsed()), fmtSize(s.BwLimit),
 			float64(s.BwUsed())*100/float64(s.BwLimit), max(s.BwResetDay, 1))
 	}
 	if s.ExpiresOn != "" {
@@ -427,7 +427,7 @@ func (p *Panel) botFindUser(ctx context.Context, q string) (*Sub, string) {
 // usedOf says how much of their data a user used this cycle.
 func usedOf(s *Sub) string {
 	if s.Quota > 0 {
-		return fmt.Sprintf("%s of %s", fmtBytes(s.Used()), fmtBytes(s.Quota))
+		return fmt.Sprintf("%s of %s", fmtBytes(s.Used()), fmtSize(s.Quota))
 	}
 	return fmtBytes(s.Used())
 }
@@ -709,7 +709,7 @@ func (p *Panel) endingSoon(ctx context.Context, days int) (ending, data []string
 			}
 		}
 		if s.BwLimit > 0 && s.BwUsed() >= s.BwLimit*8/10 {
-			data = append(data, fmt.Sprintf("🟠 %s used %.0f%% of its %s plan", esc(s.Name), float64(s.BwUsed())*100/float64(s.BwLimit), fmtBytes(s.BwLimit)))
+			data = append(data, fmt.Sprintf("🟠 %s used %.0f%% of its %s plan", esc(s.Name), float64(s.BwUsed())*100/float64(s.BwLimit), fmtSize(s.BwLimit)))
 		}
 	}
 	subs, _ := p.subsOf(ctx, 0)
@@ -726,9 +726,9 @@ func (p *Panel) endingSoon(ctx context.Context, days int) (ending, data []string
 		}
 		switch {
 		case s.outOfData():
-			data = append(data, fmt.Sprintf("⛔ %s used all of %s - suspended, back %s", esc(s.Name), fmtBytes(s.Quota), p.backOn(s)))
+			data = append(data, fmt.Sprintf("⛔ %s used all of %s - suspended, back %s", esc(s.Name), fmtSize(s.Quota), p.backOn(s)))
 		case s.Quota > 0 && s.Used() >= s.Quota*8/10:
-			data = append(data, fmt.Sprintf("🟠 %s used %.0f%% of %s", esc(s.Name), float64(s.Used())*100/float64(s.Quota), fmtBytes(s.Quota)))
+			data = append(data, fmt.Sprintf("🟠 %s used %.0f%% of %s", esc(s.Name), float64(s.Used())*100/float64(s.Quota), fmtSize(s.Quota)))
 		}
 	}
 	if len(ending) > 25 {
@@ -1087,7 +1087,7 @@ func (p *Panel) botUsage(ctx context.Context, s *Sub) string {
 	}
 	if s.Quota > 0 {
 		left := max(s.Quota-s.Used(), 0)
-		fmt.Fprintf(&b, "Data: %s of %s used · <b>%s left</b>\n", fmtBytes(s.Used()), fmtBytes(s.Quota), fmtBytes(left))
+		fmt.Fprintf(&b, "Data: %s of %s used · <b>%s left</b>\n", fmtBytes(s.Used()), fmtSize(s.Quota), fmtBytes(left))
 	} else {
 		fmt.Fprintf(&b, "Data: %s used this cycle (no limit)\n", fmtBytes(s.Used()))
 	}
@@ -1137,7 +1137,7 @@ func (p *Panel) botUsage(ctx context.Context, s *Sub) string {
 			if l.Stopped {
 				fmt.Fprintf(&b, "• %s: used up - it works again when the cycle starts over\n", esc(name))
 			} else {
-				fmt.Fprintf(&b, "• %s: %s left of %s\n", esc(name), fmtBytes(l.Left), fmtBytes(l.Quota))
+				fmt.Fprintf(&b, "• %s: %s left of %s\n", esc(name), fmtBytes(l.Left), fmtSize(l.Quota))
 			}
 		}
 	}

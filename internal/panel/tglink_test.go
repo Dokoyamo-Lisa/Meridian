@@ -115,7 +115,7 @@ func TestTelegramUserLinks(t *testing.T) {
 		t.Error("a code worked twice")
 	}
 	u := say(t, h, f, 501, "/usage").Get("text")
-	if !strings.Contains(u, "alice") || !strings.Contains(u, "3.0 GB of 10.0 GB") || !strings.Contains(u, "7.0 GB left") || strings.Contains(u, "bobby") {
+	if !strings.Contains(u, "alice") || !strings.Contains(u, "3.0 GB of 10 GB") || !strings.Contains(u, "7.0 GB left") || strings.Contains(u, "bobby") {
 		t.Errorf("/usage: %s", u)
 	}
 	if m := say(t, h, f, 501, "/status"); strings.Contains(m.Get("text"), "Servers:") {

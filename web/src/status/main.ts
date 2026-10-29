@@ -584,14 +584,14 @@ function updateKpis() {
     setText($('#kUsedLab'), 'You, this cycle')
     if (m.quota) tween(el, (used * 100) / m.quota, (x) => numUnit(el, x.toFixed(1), '%'), 1200)
     else figure(el, used, bsplit(), 1200)
-    setText($('#kUsedSub'), m.quota ? `${bytes(used)} of ${bytes(m.quota)}` : 'No data limit')
+    setText($('#kUsedSub'), m.quota ? `${bytes(used)} of ${size(m.quota)}` : 'No data limit')
   } else {
     const list = p.servers.filter((x) => x.bandwidth)
     const used = list.reduce((a, x) => a + (x.bandwidth?.used || 0), 0)
     const limit = list.reduce((a, x) => a + (x.bandwidth?.limit || 0), 0)
     setText($('#kUsedLab'), 'Bandwidth used')
     if (limit) tween(el, (used * 100) / limit, (x) => numUnit(el, x.toFixed(1), '%'), 1200)
-    setText($('#kUsedSub'), limit ? `${bytes(used)} of ${bytes(limit)} this month` : '')
+    setText($('#kUsedSub'), limit ? `${bytes(used)} of ${size(limit)} this month` : '')
   }
 }
 
@@ -799,7 +799,7 @@ function leftSegments(m: PortalMe): RingSeg[] {
   const segs: RingSeg[] = lims.map((l) => {
     const fill = Math.min(Math.max(0, l.left), l.quota, budget)
     budget -= fill
-    const title = `${l.server} · ${l.name}: ${bytes(l.left)} left of ${bytes(l.quota)}${l.stopped ? ' - used up until the cycle starts over' : ''}`
+    const title = `${l.server} · ${l.name}: ${bytes(l.left)} left of ${size(l.quota)}${l.stopped ? ' - used up until the cycle starts over' : ''}`
     return { size: l.quota / whole, fill: fill / whole, color: colors.get(String(l.id)) || OTHER_COLOR, title }
   })
   if (m.quota && m.quota > sumLim) {
@@ -808,7 +808,7 @@ function leftSegments(m: PortalMe): RingSeg[] {
       size: (m.quota - sumLim) / whole,
       fill: rest / whole,
       color: 'var(--accent)',
-      title: lims.length ? `Everything else: ${bytes(rest)} left` : `${bytes(rest)} left of ${bytes(m.quota)}`,
+      title: lims.length ? `Everything else: ${bytes(rest)} left` : `${bytes(rest)} left of ${size(m.quota)}`,
     }
     // a small limit still gets a segment one can see and point at: taken from everything else
     const MIN = 0.06
@@ -866,7 +866,7 @@ function limitRings(svg: SVGElement, m: PortalMe, key: string) {
     const frac = l.quota > 0 ? clamp(l.left / l.quota, 0, 1) : 0
     svg.append(s('circle', { class: 'r-lim-t', cx: 22, cy: 22, r }))
     const arc = s('circle', { class: 'r-lim', cx: 22, cy: 22, r, style: `stroke:${colors.get(String(l.id)) || OTHER_COLOR}` },
-      s('title', {}, `${l.server} · ${l.name}: ${bytes(l.left)} left of ${bytes(l.quota)}${l.stopped ? ' - used up until the cycle starts over' : ''}`))
+      s('title', {}, `${l.server} · ${l.name}: ${bytes(l.left)} left of ${size(l.quota)}${l.stopped ? ' - used up until the cycle starts over' : ''}`))
     svg.append(arc)
     arcTo(arc, c, frac, `${key}:lim:${l.id}`)
   })
@@ -906,7 +906,7 @@ function limitList(m: PortalMe): HTMLElement | null {
         h('i.ml-dot', { style: { background: color } }),
         h('div.ml-name', h('b', l.name), h('small', l.server)),
         h('div.ml-bar', h('i', { style: { width: (frac * 100).toFixed(1) + '%', background: color } })),
-        h('div.ml-left', h('b', bytes(l.left)), h('small', l.stopped ? `used up - back ${m.next_reset ? inDays(daysUntil(m.next_reset)) : 'next cycle'}` : `left of ${bytes(l.quota)}`)),
+        h('div.ml-left', h('b', bytes(l.left)), h('small', l.stopped ? `used up - back ${m.next_reset ? inDays(daysUntil(m.next_reset)) : 'next cycle'}` : `left of ${size(l.quota)}`)),
       )
     }),
   )
@@ -983,7 +983,7 @@ function updateMine() {
       { cls: pct == null ? '' : severity(pct) },
       (gauge = h('div.r-g.lg', svg, c) as HTMLElement),
       m.quota
-        ? h('div.mine-v', h('b', `${bytes(Math.max(0, m.quota - used))} left`), h('small', `of ${bytes(m.quota)} · ${bytes(used)} used this cycle`))
+        ? h('div.mine-v', h('b', `${bytes(Math.max(0, m.quota - used))} left`), h('small', `of ${size(m.quota)} · ${bytes(used)} used this cycle`))
         : h('div.mine-v', h('b', bytes(used)), h('small', (m.limits || []).length ? 'used this cycle · limits on some protocols' : 'used this cycle · no limit')),
     ),
     h('div.mine-lines', lines.map((l) => h('span', l))),
@@ -1407,7 +1407,7 @@ function makeCard(sv: StatusServer): Card {
     if (sh.bandwidth && v.bandwidth) {
       const pct = bwPct(v) || 0
       bw.append(
-        h('div.q-top', h('span.q-l', 'Bandwidth this month'), h('b', pctText(pct)), h('small', `${bytes(v.bandwidth.used)} / ${bytes(v.bandwidth.limit)}`)),
+        h('div.q-top', h('span.q-l', 'Bandwidth this month'), h('b', pctText(pct)), h('small', `${bytes(v.bandwidth.used)} / ${size(v.bandwidth.limit)}`)),
         h('div.meter', { cls: severity(pct) }, h('i', { style: { width: clamp(pct, 0, 100) + '%' } })),
         h('small.c-qsub', [split, today != null ? `today ${bytes(today)}` : '', v.bandwidth.next_reset ? `resets ${inDays(daysUntil(v.bandwidth.next_reset))}` : ''].filter(Boolean).join(' · ')),
       )
@@ -1612,7 +1612,7 @@ function updateMe() {
       'div.left-hero',
       { cls: pct == null ? '' : severity(pct) },
       (gaugeXL = h('div.r-g.xl', svg, c) as HTMLElement),
-      h('div.left-v', big, h('span.of', left != null ? `left of ${bytes(m.quota)} · ${bytes(used)} used this cycle` : `${bytes(used)} used this cycle`)),
+      h('div.left-v', big, h('span.of', left != null ? `left of ${size(m.quota)} · ${bytes(used)} used this cycle` : `${bytes(used)} used this cycle`)),
     ),
   )
   drawUsage(gaugeXL, svg, val, m, pct == null ? (limLeft != null ? limLeft / 100 : 1) : (100 - Math.min(100, pct)) / 100)
@@ -2081,7 +2081,7 @@ function updateDrawer() {
     big.append(h('span.unit', bu))
     append(R.bw, [
       h('h4', 'Monthly bandwidth', h('span.aside', b.reset_day ? `resets on day ${b.reset_day} of each month` : '')),
-      h('div.quota-big', big, h('span.of', `of ${bytes(b.limit)} · ${pctText(pct)} used`)),
+      h('div.quota-big', big, h('span.of', `of ${size(b.limit)} · ${pctText(pct)} used`)),
       h('div.meter.lg', { cls: severity(pct) }, h('i', { style: { width: clamp(pct, 0, 100) + '%' } })),
       h(
         'div.kv-grid',

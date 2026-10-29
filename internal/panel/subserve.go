@@ -260,7 +260,7 @@ func (p *Panel) subPage(w http.ResponseWriter, r *http.Request, s *Sub) {
 	set := p.settings()
 	data := map[string]any{
 		"Site": set.SiteTitle, "Name": s.Name, "Paused": s.Paused, "Out": "", "Link": link, "QR": qrSVG(link),
-		"Used": fmtBytes(used), "Quota": fmtBytes(s.Quota), "Unlimited": s.Quota == 0, "Pct": fmt.Sprintf("%.1f", pct),
+		"Used": fmtBytes(used), "Quota": fmtSize(s.Quota), "Unlimited": s.Quota == 0, "Pct": fmt.Sprintf("%.1f", pct),
 		"Expires": expires, "Clients": subgen.Clients(link, s.Name), "WG": wgs, "Nonce": n,
 		"Summary": summary, "Logo": template.URL(p.logoDataURI()), // a data: URI of a checked image, or empty
 		"Mark": template.HTML(markStill(set.LogoMark)), "Look": lookCSS(set.DefaultTone), "Tone": set.DefaultTone, "ThemeColor": lookColor(set.DefaultTone),
