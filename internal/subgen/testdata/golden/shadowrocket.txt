@@ -21,7 +21,6 @@ vless://8f4c2c0e-1b7a-4b0e-9d0a-2f9f1b8c7d6e@203.0.113.10:10086?encryption=mlkem
 vless://8f4c2c0e-1b7a-4b0e-9d0a-2f9f1b8c7d6e@203.0.113.10:2083?alpn=http%2F1.1&encryption=mlkem768x25519plus.native.0rtt.yGFp__hvmtrM145uNYLVcd1GGHTv6n3pnNK1jzb7c3s&flow=xtls-rprx-vision&fp=chrome&path=%2Fenc&security=tls&sni=proxy.example.com&type=ws#Lab%20v4%20%C2%B7%20VLESS%20WS%20TLS%20ENC
 vless://8f4c2c0e-1b7a-4b0e-9d0a-2f9f1b8c7d6e@203.0.113.10:2087?alpn=h2&encryption=none&fp=chrome&mode=gun&security=tls&serviceName=grpcsvc&sni=proxy.example.com&type=grpc#Lab%20v4%20%C2%B7%20VLESS%20gRPC%20TLS
 vmess://eyJhZGQiOiIyMDMuMC4xMTMuMTAiLCJhaWQiOiIwIiwiaWQiOiI4ZjRjMmMwZS0xYjdhLTRiMGUtOWQwYS0yZjlmMWI4YzdkNmUiLCJuZXQiOiJ0Y3AiLCJwb3J0IjoiMTAwODciLCJwcyI6IkxhYiB2NCDCtyBWTWVzcyBUQ1AiLCJzY3kiOiJhdXRvIiwidHlwZSI6Im5vbmUiLCJ2IjoiMiJ9
-vmess://eyJhZGQiOiIyMDMuMC4xMTMuMTAiLCJhaWQiOiIwIiwiYWxwbiI6ImgyLGh0dHAvMS4xIiwiZnAiOiJjaHJvbWUiLCJob3N0IjoiIiwiaWQiOiI4ZjRjMmMwZS0xYjdhLTRiMGUtOWQwYS0yZjlmMWI4YzdkNmUiLCJuZXQiOiJ4aHR0cCIsInBhdGgiOiIvdngiLCJwb3J0IjoiMjA5NiIsInBzIjoiTGFiIHY0IMK3IFZNZXNzIFhIVFRQIFRMUyIsInNjeSI6ImF1dG8iLCJzbmkiOiJwcm94eS5leGFtcGxlLmNvbSIsInRscyI6InRscyIsInR5cGUiOiJhdXRvIiwidiI6IjIifQ==
 trojan://dHJvamFucGFzc3dvcmQ@203.0.113.10:4444?alpn=h2&fp=chrome&mode=gun&security=tls&serviceName=grpcsvc&sni=proxy.example.com&type=grpc#Lab%20v4%20%C2%B7%20Trojan%20gRPC%20TLS
 ss://YWVzLTI1Ni1nY206YzNOd1lYTnpkMjl5WkE@203.0.113.10:9388#Lab%20v4%20%C2%B7%20SS%20classic
 socks://czcubjEyMDpzb2Nrcy1wYXNzd29yZA@203.0.113.10:1080#Lab%20v4%20%C2%B7%20SOCKS5
@@ -31,6 +30,7 @@ vless://8f4c2c0e-1b7a-4b0e-9d0a-2f9f1b8c7d6e@cdn.example.com:443?alpn=http%2F1.1
 # Lab v4 · Trojan REALITY (this app does not support REALITY with Trojan - use VLESS with REALITY)
 # Lab v6 · Trojan REALITY (this app does not support REALITY with Trojan - use VLESS with REALITY)
 # Lab dns · Trojan REALITY (this app does not support REALITY with Trojan - use VLESS with REALITY)
+# Lab v4 · VMess XHTTP TLS (this app does not support this transport)
 # Lab v4 · Trojan TLS pinned (this app cannot check a self-signed certificate - use REALITY, a domain certificate or a CDN)
 # Lab v4 · Hy2 pinned (this app cannot check a self-signed certificate - use REALITY, a domain certificate or a CDN)
 # Lab v4 · HTTPS (share links have no form for an HTTPS proxy - use Clash, sing-box, Surge or Quantumult X)

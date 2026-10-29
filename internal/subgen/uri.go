@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"meridian/internal/proto"
 )
 
 // hostPort joins host and port, bracketing IPv6 literals.
@@ -81,8 +83,10 @@ func URI(e Endpoint) string {
 	return u
 }
 
-// uri renders a share link for the apps of a profile, or says why there is none. The link is the
-// same for every profile but for options only some apps read (Hysteria2's "mport").
+// uri renders a share link for the apps of a profile, or says why there is none. A link is the same
+// for every profile that has it but for options only some apps read (Hysteria2's "mport"); some
+// kinds have links for only some profiles (AnyTLS: sing-box apps and Shadowrocket; mieru:
+// Shadowrocket).
 func uri(e Endpoint, p linkProfile) (string, string) {
 	frag := "#" + url.PathEscape(e.Name)
 	switch e.Kind {
@@ -206,28 +210,22 @@ func uri(e Endpoint, p linkProfile) (string, string) {
 	return "", whyProtocol
 }
 
-// mieruMTU is the MTU mita is given (internal/agent/solo). mieruMux is the client multiplexing
-// Clash Meta is given; the server does not choose it.
-const (
-	mieruMTU = "1400"
-	mieruMux = "MULTIPLEXING_LOW"
-)
+// mieruMux is the multiplexing mieru clients are given (Clash Meta, Shadowrocket); the server does
+// not choose it.
+const mieruMux = "MULTIPLEXING_LOW"
 
 // mierusLink is one mieru simple share link: mierus://user:password@host?profile=&mtu=&port=&protocol=
 func mierusLink(e Endpoint) (string, string) {
-	if e.Username == "" || e.Password == "" || e.Host == "" || e.Port <= 0 {
-		return "", whyProtocol
-	}
-	proto := "TCP"
+	tr := "TCP"
 	if strings.EqualFold(e.Transport, "udp") {
-		proto = "UDP"
+		tr = "UDP"
 	}
 	q := url.Values{}
 	q.Set("profile", e.Name)
-	q.Set("mtu", mieruMTU)
+	q.Set("mtu", strconv.Itoa(proto.MieruMTU))
 	q.Set("multiplexing", mieruMux)
 	q.Set("port", strconv.Itoa(e.Port))
-	q.Set("protocol", proto)
+	q.Set("protocol", tr)
 	host := strings.Trim(e.Host, "[]")
 	if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
 		host = "[" + host + "]"

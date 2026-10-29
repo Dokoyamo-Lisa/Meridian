@@ -163,7 +163,7 @@ func (e *Engine) config(i Inst) (path, body string) {
 		"portBindings": []any{map[string]any{"port": i.Port, "protocol": strings.ToUpper(i.Transport)}},
 		"users":        []any{map[string]any{"name": i.Name, "password": i.Secret}},
 		"loggingLevel": "WARN",
-		"mtu":          1400,
+		"mtu":          proto.MieruMTU,
 	}
 	if i.Bind != "" {
 		cfg["listenIPAddress"] = i.Bind

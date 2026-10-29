@@ -9,8 +9,8 @@ import (
 // Loon reads proxies in its own line format ("name=protocol,host,port,..."), as its manual writes
 // them (Loon documentation, Node › Single-Node Configuration): protocol names as written there, the
 // TLS server name in "sni", a self-signed certificate pinned by "tls-cert-sha256". AnyTLS is the
-// manual's line (Build 945 and later), including a pinned certificate and REALITY's public-key and
-// short-id. Certificate checks are never turned off. It does not read wireguard:// share links, and
+// manual's line (Build 945 and later), with a self-signed certificate pinned the same way.
+// Certificate checks are never turned off. It does not read wireguard:// share links, and
 // its own format has no gRPC, HTTPUpgrade, XHTTP, VLESS Encryption or mieru.
 
 // loonTLS returns the TLS options of a Loon VMess / VLESS / Trojan line: a self-signed certificate
@@ -28,16 +28,22 @@ func loonTLS(e Endpoint) string {
 	default:
 		return ""
 	}
-	switch e.Fingerprint { // Loon's own TLS fingerprints
-	case "chrome":
-		b.WriteString(",tls-profile=chrome")
-	case "safari", "ios":
-		b.WriteString(",tls-profile=safari-ios18")
-	}
+	b.WriteString(loonProfile(e))
 	if len(e.ALPN) > 0 && e.Kind == KindTrojan { // the manual has alpn for Trojan only
 		b.WriteString(`,alpn="` + strings.Join(e.ALPN, ",") + `"`)
 	}
 	return b.String()
+}
+
+// loonProfile returns the Loon TLS fingerprint option for the endpoint's fingerprint, if Loon has one.
+func loonProfile(e Endpoint) string {
+	switch e.Fingerprint { // Loon's own TLS fingerprints
+	case "chrome":
+		return ",tls-profile=chrome"
+	case "safari", "ios":
+		return ",tls-profile=safari-ios18"
+	}
+	return ""
 }
 
 // loonTransport returns the transport options of a Loon line, or a reason Loon cannot use it.
@@ -157,19 +163,10 @@ func loonLine(e Endpoint) (string, string) {
 		b.WriteString("}]")
 		return b.String(), ""
 	case KindAnyTLS: // Loon manual, Node › AnyTLS (Build 945 and later)
-		sni := nz(e.SNI, e.Host)
-		line := fmt.Sprintf(`%s=AnyTLS,%s,%d,"%s",sni=%s`, name, e.Host, e.Port, e.Password, sni)
-		switch e.Fingerprint {
-		case "chrome":
-			line += ",tls-profile=chrome"
-		case "safari", "ios":
-			line += ",tls-profile=safari-ios18"
-		}
-		if e.PinSHA256 != "" {
+		line := fmt.Sprintf(`%s=AnyTLS,%s,%d,"%s",sni=%s`, name, e.Host, e.Port, e.Password, e.SNI)
+		line += loonProfile(e)
+		if e.selfSigned() {
 			line += ",tls-cert-sha256=" + e.PinSHA256
-		}
-		if e.reality() {
-			line += fmt.Sprintf(`,public-key="%s",short-id=%s`, e.PublicKey, e.ShortID)
 		}
 		return line + ",udp=true", ""
 	}

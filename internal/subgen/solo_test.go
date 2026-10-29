@@ -108,6 +108,12 @@ func TestShadowrocketReadsWhatItSupports(t *testing.T) {
 	if why := WhyNot(FormatShadowrocket, up); why != "" {
 		t.Errorf("httpupgrade: %s", why)
 	}
+	// XHTTP is known only with VLESS: VMess over XHTTP stays out.
+	vx := xhttp
+	vx.Kind = KindVMess
+	if why := WhyNot(FormatShadowrocket, vx); why != whyTransport {
+		t.Errorf("VMess over XHTTP: %s", why)
+	}
 	xhttp.Security, xhttp.PublicKey, xhttp.ShortID = SecurityReality, gPBK, gSID
 	if why := WhyNot(FormatShadowrocket, xhttp); why != whyTransport {
 		t.Errorf("REALITY over XHTTP: %s", why)
@@ -183,11 +189,6 @@ func TestAnyTLS(t *testing.T) {
 	}
 	if l, why := loonLine(self); why != "" || !strings.Contains(l, "tls-cert-sha256="+pin) || strings.Contains(l, "skip-cert-verify") {
 		t.Errorf("Loon pinned AnyTLS: %q %s", l, why)
-	}
-	real := domain
-	real.Security, real.PublicKey, real.ShortID = SecurityReality, gPBK, gSID
-	if l, why := loonLine(real); why != "" || !strings.Contains(l, `public-key="`+gPBK+`"`) || !strings.Contains(l, "short-id="+gSID) {
-		t.Errorf("Loon AnyTLS REALITY: %q %s", l, why)
 	}
 	if _, err := XrayOutbound(domain, "t"); err == nil {
 		t.Error("Xray cannot reach an AnyTLS server")

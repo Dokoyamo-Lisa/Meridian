@@ -226,6 +226,12 @@ func TestShareLinksRoundTrip(t *testing.T) {
 				if c.kind == subgen.KindSOCKS || c.kind == subgen.KindHTTP {
 					continue // plain proxies are links for apps, never exits (the reader refuses them)
 				}
+				if c.kind == subgen.KindMieru { // mieru's link carries the port in its query, and Xray cannot reach mieru
+					if err := mierusLink(link, c.e); err != nil {
+						t.Errorf("%s %s: %v\n%s", c.label, f, err, link)
+					}
+					continue
+				}
 				if err := strictAuthority(link, c.e); err != nil {
 					t.Errorf("%s %s: %v\n%s", c.label, f, err, link)
 				}
@@ -267,6 +273,30 @@ func anytlsLink(link string, e subgen.Endpoint) error {
 		return fmt.Errorf("address %s:%s", u.Hostname(), u.Port())
 	case q.Get("sni") != e.SNI || q.Has("insecure") || q.Has("allowinsecure"):
 		return fmt.Errorf("sni %q or a check turned off: %s", q.Get("sni"), u.RawQuery)
+	}
+	return nil
+}
+
+// mierusLink checks a mieru simple link (mierus://user:password@host?port=&protocol=...): the host
+// alone in the authority (IPv6 in brackets), the port and the transport in the query.
+func mierusLink(link string, e subgen.Endpoint) error {
+	u, err := url.Parse(link)
+	if err != nil {
+		return err
+	}
+	pw, _ := u.User.Password()
+	q := u.Query()
+	host := strings.Trim(e.Host, "[]")
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	switch {
+	case u.Scheme != "mierus" || u.User.Username() != e.Username || pw != e.Password:
+		return fmt.Errorf("scheme or credentials: %s", u.Redacted())
+	case u.Host != host || q.Get("port") != fmt.Sprint(e.Port):
+		return fmt.Errorf("address %q port %q, want %q %d", u.Host, q.Get("port"), host, e.Port)
+	case q.Get("protocol") != strings.ToUpper(e.Transport):
+		return fmt.Errorf("protocol %q, want %q", q.Get("protocol"), strings.ToUpper(e.Transport))
 	}
 	return nil
 }
