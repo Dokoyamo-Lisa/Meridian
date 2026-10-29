@@ -897,7 +897,7 @@ func TestSubWireGuardGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if code, body := get(conf); code != 403 || strings.Contains(body, "PrivateKey") {
-		t.Errorf("a disabled account's file: %d %s", code, body)
+		t.Errorf("a disabled account's file: %d, private key given: %v", code, strings.Contains(body, "PrivateKey"))
 	}
 }
 
