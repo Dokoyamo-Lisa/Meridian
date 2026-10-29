@@ -151,7 +151,7 @@ func clashProxy(e Endpoint, stash bool) (omap, string) {
 		m = m.set("type", "mieru").set("server", e.Host).set("port", e.Port).set("transport", tr).
 			set("username", e.Username).set("password", e.Password)
 		if !stash {
-			m = m.set("multiplexing", "MULTIPLEXING_LOW")
+			m = m.set("multiplexing", mieruMux)
 		}
 		return m, ""
 	case KindSnell:

@@ -81,7 +81,7 @@ Next: [Add users](add-users.md).
 | **Shadowsocks 2022** | An app that cannot use the others. |
 | **VLESS · WebSocket · CDN** | You want the server hidden behind a CDN. Needs a domain on the CDN. On Cloudflare the panel warns you (see the red box above): keep a second protocol that does not go through it. |
 | **VLESS · TLS · Vision** | You have a domain that points at this server (DNS only, not proxied): a real certificate from Let's Encrypt, and it looks like an ordinary HTTPS site. |
-| **mieru** | People with the mihomo apps (Clash Verge Rev, FlClash, Mihomo Party) or Stash who need something that looks like nothing in particular. Each person gets their own port: open the whole range shown on the card, for **TCP** (or **UDP**, if you chose it). |
+| **mieru** | People with the mihomo apps (Clash Verge Rev, FlClash, Mihomo Party), Stash or Shadowrocket (2.2.81 and later) who need something that looks like nothing in particular. Each person gets their own port: open the whole range shown on the card, for **TCP** (or **UDP**, if you chose it). |
 | **Snell** | People with **Surge** (or Stash, a mihomo app, sing-box). Each person gets their own port: open the range shown on the card, for **TCP and UDP**. |
 
 Each one shows its own **Works** box before you save - the panel refuses any combination that would

@@ -86,7 +86,7 @@ type linkProfile int
 const (
 	profileFull    linkProfile = iota // Xray-core apps: everything Xray speaks
 	profileSingBox                    // sing-box-core apps: what sing-box speaks
-	profileRocket                     // Shadowrocket: the widely supported subset
+	profileRocket                     // Shadowrocket 2.2.78 and later: the transports it is known to read
 )
 
 func linkWhy(e Endpoint, p linkProfile) string {
@@ -101,21 +101,24 @@ func linkWhy(e Endpoint, p linkProfile) string {
 		_, _, why := singboxOutbound(e)
 		return why
 	case profileRocket:
-		// Shadowrocket publishes no documentation of its links: only what it is known to read
-		if e.encrypted() {
-			return whyEncryption
-		}
+		// Shadowrocket publishes no link grammar. What it reads is taken from its release notes
+		// (2.2.78 VLESS Encryption, 2.2.81 mieru and XHTTP, earlier HTTPUpgrade and AnyTLS) and from
+		// the share-link fields it already stores. REALITY is still only known over raw TCP, and XHTTP
+		// only with VLESS. Trojan with REALITY has no such note, so it stays out.
 		if e.Kind == KindTrojan && e.reality() {
 			return whyTrojanReality
 		}
 		switch e.Kind {
 		case KindVLESS, KindVMess, KindTrojan:
 			switch e.transport() {
-			case TransportRaw, TransportWS, TransportGRPC:
+			case TransportRaw, TransportWS, TransportGRPC, TransportHTTPUpgrade, TransportXHTTP:
 			default:
 				return whyTransport
 			}
 			if e.reality() && e.transport() != TransportRaw {
+				return whyTransport
+			}
+			if e.transport() == TransportXHTTP && e.Kind != KindVLESS {
 				return whyTransport
 			}
 		}

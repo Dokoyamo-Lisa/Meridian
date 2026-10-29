@@ -23,7 +23,7 @@ func TestSoloKinds(t *testing.T) {
 	mieru := Endpoint{Name: "Tokyo · mieru", Kind: KindMieru, Host: "203.0.113.5", Port: 30001, Username: "u7", Password: "p-very-secret-1234", Transport: "tcp"}
 	snell := Endpoint{Name: "Tokyo · Snell", Kind: KindSnell, Host: "203.0.113.5", Port: 31001, Password: "psk-very-secret-12345"}
 	want := map[string]map[string]bool{
-		KindMieru: {"mihomo": true, "stash": true},
+		KindMieru: {"mihomo": true, "stash": true, "shadowrocket": true},
 		KindSnell: {"mihomo": true, "stash": true, "surge": true, "singbox": true},
 	}
 	for _, e := range []Endpoint{mieru, snell} {
@@ -54,20 +54,89 @@ func TestSoloKinds(t *testing.T) {
 	if o, _, why := singboxOutbound(snell); why != "" || o == nil {
 		t.Errorf("sing-box snell: %s", why)
 	}
+	u, why := uri(mieru, profileRocket)
+	if why != "" || u != "mierus://u7:p-very-secret-1234@203.0.113.5?mtu=1400&multiplexing=MULTIPLEXING_LOW&port=30001&profile=Tokyo%20%C2%B7%20mieru&protocol=TCP" {
+		t.Errorf("Shadowrocket mieru: %q %s", u, why)
+	}
+	if u, why = uri(mieru, profileFull); u != "" || why != whyProtocol {
+		t.Errorf("a mieru link for an Xray app: %q %s", u, why)
+	}
+	v6 := mieru
+	v6.Host, v6.Transport = "2001:db8::5", "udp"
+	if u, why = uri(v6, profileRocket); why != "" || !strings.Contains(u, "@[2001:db8::5]?") || !strings.Contains(u, "protocol=UDP") || strings.Contains(u, "@[2001:db8::5]:") {
+		t.Errorf("Shadowrocket mieru IPv6: %q %s", u, why)
+	}
 }
 
-// TestAnyTLS: AnyTLS with a domain certificate goes to mihomo, Stash, Surge, sing-box and the
-// Hiddify family (a link); with a self-signed one only to the apps that pin it - mihomo (fingerprint),
-// sing-box (the certificate itself) and Surge (server-cert-fingerprint-sha256). Nothing ever turns
-// certificate checks off.
+// TestShadowrocketReadsWhatItSupports: VLESS Encryption, HTTPUpgrade and XHTTP go out as the share
+// links Shadowrocket already stores. REALITY stays on raw TCP. sing-box 1.14 has no encryption
+// field, so that profile still leaves the node out. A self-signed certificate is never a link.
+func TestShadowrocketReadsWhatItSupports(t *testing.T) {
+	enc := Endpoint{Name: "Tokyo · REALITY", Kind: KindVLESS, Host: "203.0.113.5", Port: 443, UUID: gUUID,
+		Flow: "xtls-rprx-vision", Transport: TransportRaw, Security: SecurityReality, SNI: "www.apple.com",
+		Fingerprint: "chrome", PublicKey: gPBK, ShortID: gSID,
+		Encryption: "mlkem768x25519plus.native.0rtt." + gEncKey}
+	if why := WhyNot(FormatShadowrocket, enc); why != "" {
+		t.Fatalf("Shadowrocket encryption: %s", why)
+	}
+	u, why := uri(enc, profileRocket)
+	if why != "" || !strings.Contains(u, "encryption=mlkem768x25519plus.native.0rtt."+gEncKey) {
+		t.Fatalf("link: %s %s", u, why)
+	}
+	for _, f := range []string{FormatSingBox, FormatHiddify, FormatQuanX, FormatLoon} {
+		if why := WhyNot(f, enc); why != whyEncryption {
+			t.Errorf("%s: %s", f, why)
+		}
+	}
+	// Surge has no VLESS at all, so the reason is the protocol, not the encryption field.
+	if why := WhyNot(FormatSurge, enc); why != whyProtocol {
+		t.Errorf("surge: %s", why)
+	}
+	if o, _, why := singboxOutbound(enc); why != whyEncryption || o != nil {
+		t.Errorf("sing-box emitted an encrypted VLESS node: %v %s", o, why)
+	}
+	xhttp := Endpoint{Name: "xhttp", Kind: KindVLESS, Host: "203.0.113.5", Port: 443, UUID: gUUID,
+		Transport: TransportXHTTP, Path: "/x", XHTTPMode: "auto", Security: SecurityTLS, SNI: "proxy.example.com"}
+	if why := WhyNot(FormatShadowrocket, xhttp); why != "" {
+		t.Errorf("xhttp: %s", why)
+	}
+	if u, why = uri(xhttp, profileRocket); why != "" || !strings.Contains(u, "type=xhttp") {
+		t.Errorf("xhttp link: %s %s", u, why)
+	}
+	up := xhttp
+	up.Transport = TransportHTTPUpgrade
+	if why := WhyNot(FormatShadowrocket, up); why != "" {
+		t.Errorf("httpupgrade: %s", why)
+	}
+	// XHTTP is known only with VLESS: VMess over XHTTP stays out.
+	vx := xhttp
+	vx.Kind = KindVMess
+	if why := WhyNot(FormatShadowrocket, vx); why != whyTransport {
+		t.Errorf("VMess over XHTTP: %s", why)
+	}
+	xhttp.Security, xhttp.PublicKey, xhttp.ShortID = SecurityReality, gPBK, gSID
+	if why := WhyNot(FormatShadowrocket, xhttp); why != whyTransport {
+		t.Errorf("REALITY over XHTTP: %s", why)
+	}
+	hy := Endpoint{Name: "hy", Kind: KindHysteria2, Host: "203.0.113.5", Port: 443, Password: "pw",
+		SNI: "www.bing.com", PinSHA256: gPin, CertPEM: gPEM}
+	if why := WhyNot(FormatShadowrocket, hy); why != whyNoPin {
+		t.Errorf("self-signed Hysteria2: %s", why)
+	}
+}
+
+// TestAnyTLS: AnyTLS with a domain certificate goes to mihomo, Stash, Surge, sing-box, the
+// Hiddify family, Shadowrocket (a link) and Loon; with a self-signed one only to the apps that pin
+// it - mihomo (fingerprint), sing-box (the certificate itself), Surge and Loon
+// (server-cert-fingerprint-sha256 / tls-cert-sha256). Nothing ever turns certificate checks off.
 func TestAnyTLS(t *testing.T) {
 	domain := Endpoint{Name: "Tokyo · AnyTLS", Kind: KindAnyTLS, Host: "203.0.113.5", Port: 32001,
-		Password: "Pa55-word_very-secret1", SNI: "proxy.example.com"}
+		Password: "Pa55-word_very-secret1", SNI: "proxy.example.com", Fingerprint: "chrome"}
 	self := domain
 	self.SNI, self.PinSHA256, self.CertPEM = "www.bing.com", strings.Repeat("ab", 32), "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
 	want := map[bool]map[string]bool{
-		false: {"mihomo": true, "stash": true, "surge": true, "singbox": true, "hiddify": true},
-		true:  {"mihomo": true, "surge": true, "singbox": true},
+		false: {"mihomo": true, "stash": true, "surge": true, "singbox": true, "hiddify": true, "shadowrocket": true, "loon": true},
+		true:  {"mihomo": true, "surge": true, "singbox": true, "loon": true},
 	}
 	for _, e := range []Endpoint{domain, self} {
 		for _, s := range Support(e) {
@@ -107,6 +176,19 @@ func TestAnyTLS(t *testing.T) {
 	}
 	if u := URI(self); u != "" {
 		t.Errorf("a link for a self-signed certificate: %s", u)
+	}
+	if u, why := uri(domain, profileRocket); why != "" || u != URI(domain) {
+		t.Errorf("Shadowrocket AnyTLS: %s %s", u, why)
+	}
+	if u, why := uri(self, profileRocket); u != "" || why != whyNoPinAnyTLS {
+		t.Errorf("Shadowrocket self-signed AnyTLS: %q %s", u, why)
+	}
+	pin := strings.Repeat("ab", 32)
+	if l, why := loonLine(domain); why != "" || l != `Tokyo · AnyTLS=AnyTLS,203.0.113.5,32001,"Pa55-word_very-secret1",sni=proxy.example.com,tls-profile=chrome,udp=true` || strings.Contains(l, "skip-cert-verify") {
+		t.Errorf("Loon AnyTLS: %q %s", l, why)
+	}
+	if l, why := loonLine(self); why != "" || !strings.Contains(l, "tls-cert-sha256="+pin) || strings.Contains(l, "skip-cert-verify") {
+		t.Errorf("Loon pinned AnyTLS: %q %s", l, why)
 	}
 	if _, err := XrayOutbound(domain, "t"); err == nil {
 		t.Error("Xray cannot reach an AnyTLS server")

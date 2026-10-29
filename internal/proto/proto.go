@@ -117,6 +117,10 @@ type SoloUser struct {
 // SoloKinds are the protocols a SoloNode can be.
 var SoloKinds = []string{"mieru", "snell", "anytls"}
 
+// MieruMTU is the MTU mita runs with. Clients that are told an MTU (Shadowrocket's mierus:// link)
+// get the same one.
+const MieruMTU = 1400
+
 // Grace is one user's open connections allowed to finish: until Until (Unix seconds), unless the
 // state stops listing the user earlier.
 type Grace struct {
