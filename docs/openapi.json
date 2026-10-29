@@ -13657,7 +13657,7 @@
             "type": "string"
           },
           "logo_mark": {
-            "description": "The built-in logo, shown while no logo is uploaded: rose (Rosélune's own, the default) | umbrella",
+            "description": "The built-in logo, shown while no logo is uploaded: rose (Rosélune's own, the default) | umbrella | confetti",
             "type": "string"
           },
           "logo_animation": {
@@ -13690,7 +13690,7 @@
             "type": "string"
           },
           "mark": {
-            "description": "The built-in logo, shown while none is uploaded: rose | umbrella",
+            "description": "The built-in logo, shown while none is uploaded: rose | umbrella | confetti",
             "type": "string"
           },
           "animation": {

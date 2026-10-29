@@ -402,8 +402,8 @@ or fixes where it sits on the globe (`city: "auto"` returns to the IP database).
 text is public: never put anything private in it.
 
 `set_branding {name?, mark?, animation?, look?, logo_svg? | logo_base64? | reset_logo?}` sets what
-users see: the panel's name, its logo - the built-in rose (Rosélune's own, the default) or umbrella
-(`mark`), or an uploaded one - how the logo moves (assemble, rise, pulse, spin, none), and the look
+users see: the panel's name, its logo - the built-in rose (Rosélune's own, the default), umbrella or
+confetti (`mark`), or an uploaded one - how the logo moves (assemble, rise, pulse, spin, none), and the look
 pages open with (`look`: romance, the default; umbrella; a quiet tone; auto). A logo with scripts,
 links or outside resources is refused - tell the user what the answer says to remove.
 

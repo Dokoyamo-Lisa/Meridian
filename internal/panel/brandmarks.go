@@ -9,6 +9,8 @@ import (
 // draws the same; TestBuiltinMarksMatchWeb keeps them alike):
 //   - the rose, Rosélune's own: five rose petals, a blush bloom inside them, the moon at its heart
 //   - the umbrella: a canopy seen from above, eight panels alternating red and white
+//   - confetti, in the Postmodern look's colours: a canary sun with a black rim, a cobalt crescent
+//     moon cradling it, a mint zigzag, a pink triangle and a cobalt dot
 // The pages that are not the app - the loading screens before it starts, subscription pages - get
 // them from here.
 
@@ -19,7 +21,7 @@ type markPiece struct {
 }
 
 // logoMarks are the built-in marks, the default first.
-var logoMarks = []string{"rose", "umbrella"}
+var logoMarks = []string{"rose", "umbrella", "confetti"}
 
 const (
 	roseFill  = "#c13a66"
@@ -28,6 +30,11 @@ const (
 	umbRed    = "#d8232a"
 	umbWhite  = "#f5f3ef"
 	umbD      = 0.7071
+	cfEdge    = "#17151a"
+	cfSun     = "#ffd23f"
+	cfCobalt  = "#2346d8"
+	cfPink    = "#ff9dc2"
+	cfMint    = "#6fdcb9"
 )
 
 var builtinMarks = map[string][]markPiece{
@@ -53,6 +60,14 @@ var builtinMarks = map[string][]markPiece{
 		{"M12 12L2.3 16.02L7.98 21.7Z", umbWhite, true, -umbD, umbD, 5},
 		{"M12 12L2.3 7.98L2.3 16.02Z", umbRed, false, -1, 0, 6},
 		{"M12 12L7.98 2.3L2.3 7.98Z", umbWhite, true, -umbD, -umbD, 7},
+	},
+	"confetti": {
+		{"M9 8.4A6.6 6.6 0 1 1 22.2 8.4A6.6 6.6 0 1 1 9 8.4Z", cfEdge, false, umbD, -umbD, 0},
+		{"M10 8.4A5.6 5.6 0 1 1 21.2 8.4A5.6 5.6 0 1 1 10 8.4Z", cfSun, false, umbD, -umbD, 0.6},
+		{"M1.8 4.55L3.5 1.85L5.2 4.55L6.9 1.85L8.6 4.55L8.6 6.25L6.9 3.55L5.2 6.25L3.5 3.55L1.8 6.25Z", cfMint, true, -umbD, -umbD, 1.4},
+		{"M14.4 22.3L22.3 22.3L22.3 14.4Z", cfPink, true, umbD, umbD, 2.2},
+		{"M7.01 6.87A7.9 7.9 0 1 0 16.82 17.12A7.1 7.1 0 0 1 7.01 6.87Z", cfCobalt, false, -1, 0, 3},
+		{"M9.05 2.1A1.25 1.25 0 1 1 11.55 2.1A1.25 1.25 0 1 1 9.05 2.1Z", cfCobalt, false, 0, -1, 3.8},
 	},
 }
 

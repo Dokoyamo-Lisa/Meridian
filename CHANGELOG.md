@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **A new built-in logo: Confetti.** A cobalt crescent moon cradling a canary sun with a black rim,
+  a mint zigzag, a pink triangle and a cobalt dot - the Postmodern look's colours. Like the rose and
+  the umbrella, its pieces fly in from every side as pages load, and it is the browser tab's icon
+  when chosen. Pick it in **Settings › Panel › Logo**; the rose stays Rosélune's own.
 - **A new look: Postmodern.** Cream paper, solid black outlines, hard offset shadows and blocks of
   canary, bubblegum, mint and sky around a cobalt accent, in a geometric display face. It goes
   further than the other looks: on a wide screen the panel's menu becomes a canary rail down the left

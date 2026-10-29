@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import { Settings as PanelSettings, Place, dateTime, del, flag, get, post, put, until, upload } from '../api'
 import { Icon, LogoMark } from '../icons'
-import type { LogoInfo } from '../mark'
+import { builtinMark, type LogoInfo } from '../mark'
 import { setQuery, useLocation } from '../router'
 import { loadSession, setMeta, setTone, tones, useSession } from '../session'
 import { Ago, Check, Code, Empty, ErrorBox, Field, Loading, Modal, PageHead, QR, Seg, Tabs, ask, errText, run, toast, toastError, useAsync } from '../ui'
@@ -83,12 +83,13 @@ function zones(): string[] {
   }
 }
 
-// Brand is what users see of the panel: its name, its logo (a built-in one - the rose or the umbrella
+// Brand is what users see of the panel: its name, its logo (a built-in one - the rose, the umbrella, confetti
 // - or an upload), how the logo moves and the look pages open with. The logo is stored as soon as it
 // is uploaded; the rest is saved with the form. The preview plays the animation as it will look.
 const marks: { id: string; name: string; hint: string }[] = [
   { id: 'rose', name: 'Rose', hint: 'Rosélune’s own: five petals, a blush bloom, the moon at its heart' },
   { id: 'umbrella', name: 'Umbrella', hint: 'Eight panels, red and white' },
+  { id: 'confetti', name: 'Confetti', hint: 'A cobalt crescent moon cradling a canary sun, in the Postmodern colours' },
 ]
 
 function Brand(props: {
@@ -104,7 +105,7 @@ function Brand(props: {
   const s = useSession()
   const logo = s.meta?.logo
   const custom = !!logo?.custom
-  const markName = props.mark === 'umbrella' ? 'umbrella' : 'rose'
+  const markName = builtinMark(props.mark)
   const [replay, setReplay] = useState(0)
   const [busy, setBusy] = useState(false)
   const fresh = (l: LogoInfo) => {
@@ -156,7 +157,9 @@ function Brand(props: {
         ? 'Assemble needs a built-in logo’s pieces - your logo rises instead.'
         : markName === 'rose'
           ? 'The rose’s petals open one by one, then the moon at its heart.'
-          : 'The umbrella’s panels slide in one by one.'
+          : markName === 'confetti'
+            ? 'The sun, the zigzag, the triangle and the moon fly in from every side.'
+            : 'The umbrella’s panels slide in one by one.'
       : props.anim === 'none'
         ? 'The logo stays still, and signing in goes straight to the page.'
         : 'While pages load, and when someone signs in.'

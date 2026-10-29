@@ -80,7 +80,8 @@ be changed) · [Releases](https://github.com/Dokoyamo-Lisa/Meridian/releases)
 
 Rosélune is the software; what your users see is yours. In **Settings › Panel › Name and logo** you
 set the panel's name and its logo - Rosélune's rose (five petals, a blush bloom and the moon at its
-heart), the umbrella, or your own (SVG, PNG, JPEG or WebP) - and choose how it moves while pages load
+heart), the umbrella, confetti (a crescent moon and a sun in the Postmodern colours), or your own
+(SVG, PNG, JPEG or WebP) - and choose how it moves while pages load
 and when someone signs in: assembling piece by piece, rising, pulsing, spinning, or not at all. Name
 and logo appear everywhere users look: the top bar, the sign-in and loading screens, the status page,
 subscription pages, the browser tab and users' apps. **Look** sets how every page looks to people

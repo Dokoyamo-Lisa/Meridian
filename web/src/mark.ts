@@ -1,6 +1,8 @@
 // The built-in marks, drawn as pieces that fly in from outside and settle into place (mark.css):
 //   - the rose, Rosélune's own: five rose petals, a blush bloom inside them, the moon at its heart
 //   - the umbrella: a canopy seen from above, eight panels alternating red and white
+//   - confetti, in the Postmodern look's colours: a canary sun with a black rim, a cobalt crescent
+//     moon cradling it, a mint zigzag, a pink triangle and a cobalt dot
 // dx/dy point away from the centre - where a piece comes from; i orders them (the animation delay).
 // internal/panel/brandmarks.go draws the same pieces for the loading screens and subscription pages.
 
@@ -13,7 +15,7 @@ export interface Wedge {
   i: number
 }
 
-export type BuiltinMark = 'rose' | 'umbrella'
+export type BuiltinMark = 'rose' | 'umbrella' | 'confetti'
 
 const ROSE = '#c13a66'
 const BLUSH = '#fbe1e9'
@@ -21,6 +23,11 @@ const HEART = '#9e2a50'
 export const RED = '#d8232a'
 export const WHITE = '#f5f3ef'
 const D = 0.7071
+const EDGE = '#17151a'
+const SUN = '#ffd23f'
+const COBALT = '#2346d8'
+const PINK = '#ff9dc2'
+const MINT = '#6fdcb9'
 
 export const MARKS: Record<BuiltinMark, Wedge[]> = {
   rose: [
@@ -46,14 +53,23 @@ export const MARKS: Record<BuiltinMark, Wedge[]> = {
     { d: 'M12 12L2.3 7.98L2.3 16.02Z', fill: RED, white: false, dx: -1, dy: 0, i: 6 },
     { d: 'M12 12L7.98 2.3L2.3 7.98Z', fill: WHITE, white: true, dx: -D, dy: -D, i: 7 },
   ],
+  confetti: [
+    { d: 'M9 8.4A6.6 6.6 0 1 1 22.2 8.4A6.6 6.6 0 1 1 9 8.4Z', fill: EDGE, white: false, dx: D, dy: -D, i: 0 },
+    { d: 'M10 8.4A5.6 5.6 0 1 1 21.2 8.4A5.6 5.6 0 1 1 10 8.4Z', fill: SUN, white: false, dx: D, dy: -D, i: 0.6 },
+    { d: 'M1.8 4.55L3.5 1.85L5.2 4.55L6.9 1.85L8.6 4.55L8.6 6.25L6.9 3.55L5.2 6.25L3.5 3.55L1.8 6.25Z', fill: MINT, white: true, dx: -D, dy: -D, i: 1.4 },
+    { d: 'M14.4 22.3L22.3 22.3L22.3 14.4Z', fill: PINK, white: true, dx: D, dy: D, i: 2.2 },
+    { d: 'M7.01 6.87A7.9 7.9 0 1 0 16.82 17.12A7.1 7.1 0 0 1 7.01 6.87Z', fill: COBALT, white: false, dx: -1, dy: 0, i: 3 },
+    { d: 'M9.05 2.1A1.25 1.25 0 1 1 11.55 2.1A1.25 1.25 0 1 1 9.05 2.1Z', fill: COBALT, white: false, dx: 0, dy: -1, i: 3.8 },
+  ],
 }
 
 // markPieces are the pieces of a built-in mark: the chosen one, or another for a preview.
-export const markPieces = (mark?: string): Wedge[] => MARKS[(mark || brand.mark) === 'umbrella' ? 'umbrella' : 'rose']
+export const builtinMark = (m?: string | null): BuiltinMark => (m === 'umbrella' || m === 'confetti' ? m : 'rose')
+export const markPieces = (mark?: string): Wedge[] => MARKS[builtinMark(mark || brand.mark)]
 
 export type MarkMode = 'still' | 'once' | 'loop'
 
-// The logo the operator chose (Settings › Panel › Logo): a built-in mark (the rose or the umbrella) or
+// The logo the operator chose (Settings › Panel › Logo): a built-in mark (the rose, the umbrella or confetti) or
 // an uploaded image, and how it moves. Both pages set it from /api/meta.
 export interface LogoInfo {
   custom: boolean
@@ -67,7 +83,7 @@ export const brand: LogoInfo = { custom: false, mark: 'rose', animation: 'assemb
 export function setBrand(l?: Partial<LogoInfo> | null) {
   brand.custom = !!l?.custom
   brand.v = l?.v
-  brand.mark = l?.mark === 'umbrella' ? 'umbrella' : 'rose'
+  brand.mark = builtinMark(l?.mark)
   brand.animation = l?.animation || 'assemble'
 }
 
