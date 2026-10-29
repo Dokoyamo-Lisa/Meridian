@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- **Security: a disabled account's WireGuard files are no longer served.** `/s/{token}/wg/{node}.conf`
+  checked only the token and whether the user was paused; a still-known link of a user whose
+  account is disabled returned the full configuration, private key included. Every subscription
+  route now goes through the same check (rate limit, token, account enabled), and a paused user's
+  page never shows WireGuard keys as QR codes or links.
+- **Backups: retention removes only this panel's own encrypted backups.** Two panels sending
+  backups to the same WebDAV folder or S3 prefix counted - and removed - each other's; and a plain
+  ZIP took one of the kept places while only encrypted backups were removed, so fewer were kept
+  than set. Now only names this panel makes count and go.
+- **Quotas and limits read as entered.** A 1500 GB quota or bandwidth limit showed as "1 TB" (users,
+  a user's page, plans, servers, the status page); it now shows "1500 GB", and 1.5 TB "1.5 TB".
+- **Monitor › Online now** shows the IPs and users online and what all servers receive and send right
+  now, refreshed every 10 seconds.
+- **A user's page:** the Online now tab counts devices as the IP limit does (one per address, however
+  many servers it is connected to), and Usage by protocol gives each protocol's share of the cycle's
+  traffic both ways - shares add up to 100% - and says when the quota counts only one way.
+
 ## 1.4.1 - 2026-10-29
 
 A new look, a new logo, fixes and more apps; upgrade the panel (**Settings › Updates** - nobody is

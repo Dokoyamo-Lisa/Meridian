@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { Client, DayTraffic, DestRow, Endpoint, PanelEvent, IPRow, Server, User, bytes, date, dateTime, del, get, patch, pct, plural, post, NodeLimit } from '../api'
+import { Client, CountMode, DayTraffic, DestRow, Endpoint, PanelEvent, IPRow, Server, User, bytes, size, date, dateTime, del, get, patch, pct, plural, post, NodeLimit } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import { Ago, Code, CopyButton, Crumb, Empty, ErrorBox, Loading, Menu, Meter, Modal, PageHead, QR, Search, Seg, StackChart, Tabs, ask, copyText, run, toast, toastError, topSeries, useAsync, usePoll } from '../ui'
@@ -28,17 +28,23 @@ interface UserDetail {
   usage: ProtocolUsage[] | null
 }
 
-// UsageByProtocol is the user's usage per protocol: this cycle (which the quota counts) and all time.
-function UsageByProtocol(props: { usage: ProtocolUsage[]; cycle: number }) {
+// UsageByProtocol is the user's traffic per protocol, both ways: this cycle and all time. Each share
+// is of the cycle's traffic over all protocols (so they add up to 100%); the quota may count less
+// of it (count_mode: downloads only, uploads only or the larger way), which the heading says.
+function UsageByProtocol(props: { usage: ProtocolUsage[]; countMode?: CountMode }) {
   const [all, setAll] = useState(false)
   if (props.usage.length === 0) return null
   const shown = all ? props.usage : props.usage.slice(0, 6)
+  const total = props.usage.reduce((a, u) => a + u.cycle_up + u.cycle_down, 0)
+  const counts = props.countMode && props.countMode !== 'both' ? countName(props.countMode).toLowerCase() : ''
   return (
     <section class="panel">
       <div class="ph">
         <span class="pn">01</span>
         <h2 class="h">Usage by protocol</h2>
-        <span class="pm">exact, as each server counted it</span>
+        <span class="pm">
+          traffic both ways, exact as each server counted it{counts ? ` · the quota counts ${counts}` : ''}
+        </span>
       </div>
       <div class="table-wrap">
         <table class="t">
@@ -46,7 +52,9 @@ function UsageByProtocol(props: { usage: ProtocolUsage[]; cycle: number }) {
             <tr>
               <th>Protocol</th>
               <th class="right">This cycle</th>
-              <th class="right hide-sm">Share</th>
+              <th class="right hide-sm" title="Of this cycle's traffic over all protocols">
+                Share
+              </th>
               <th class="right">All time</th>
               <th class="right hide-sm">Last used</th>
             </tr>
@@ -69,7 +77,7 @@ function UsageByProtocol(props: { usage: ProtocolUsage[]; cycle: number }) {
                       ↓ {bytes(u.cycle_down)} · ↑ {bytes(u.cycle_up)}
                     </div>
                   </td>
-                  <td class="right muted hide-sm">{props.cycle > 0 ? Math.round((cyc * 100) / props.cycle) : 0}%</td>
+                  <td class="right muted hide-sm">{total > 0 ? Math.round((cyc * 100) / total) : 0}%</td>
                   <td class="right">{bytes(u.total_up + u.total_down)}</td>
                   <td class="right muted hide-sm">{u.last_at ? <Ago ts={u.last_at} /> : '—'}</td>
                 </tr>
@@ -227,7 +235,7 @@ export function UserPage(props: { id: number }) {
         <div class="callout crit">
           <Icon name="ban" size="sm" />
           <div class="grow">
-            Out of data: {sub.name} used all of their {bytes(sub.quota, 0)}. No server lets them in until{' '}
+            Out of data: {sub.name} used all of their {size(sub.quota)}. No server lets them in until{' '}
             {sub.next_reset > 0 ? <b>{date(sub.next_reset)}, when their data starts over</b> : <b>you give them more data</b>} - or at once when you raise their quota or reset their usage. Their link keeps
             working and tells them why.{' '}
             {sub.grace_until ? (
@@ -261,7 +269,7 @@ export function UserPage(props: { id: number }) {
         <div class="kpi">
           <div class="v">{bytes(used)}</div>
           <div class="l">
-            this cycle{sub.quota > 0 ? ` of ${bytes(sub.quota, 0)}` : ' · no quota'}
+            this cycle{sub.quota > 0 ? ` of ${size(sub.quota)}` : ' · no quota'}
             {sub.count_mode && sub.count_mode !== 'both' ? ` · ${countName(sub.count_mode).toLowerCase()}` : ''}
             {sub.next_reset > 0 ? ` · resets ${date(sub.next_reset)}` : ''}
           </div>
@@ -298,7 +306,7 @@ export function UserPage(props: { id: number }) {
 
       {(sub.node_limits || []).length > 0 && <NodeLimits limits={sub.node_limits!} stop={sub.node_quota_mode === 'stop'} next={sub.next_reset} />}
 
-      <UsageByProtocol usage={res.data.usage || []} cycle={used} />
+      <UsageByProtocol usage={res.data.usage || []} countMode={sub.count_mode} />
 
       <section class="panel">
         <div class="ph">
@@ -339,7 +347,7 @@ export function UserPage(props: { id: number }) {
         value={tab}
         onChange={(t) => setQuery('tab', t === 'online' ? null : t)}
         tabs={[
-          ['online', 'Online now', sub.online?.length || 0],
+          ['online', 'Online now', sub.online_ips || 0], // devices, one per address - as the KPI and the IP limit count
           ['ips', 'IP history'],
           ['dests', 'Destinations'],
           ['traffic', 'Traffic'],
@@ -526,7 +534,7 @@ function NodeLimits(props: { limits: NodeLimit[]; stop: boolean; next: number })
             </div>
             <Meter pct={pct(l.used, l.quota)} label={`${l.server} · ${l.protocol} used`} />
             <div class="nl-left">
-              <b>{bytes(l.left)}</b> left of {bytes(l.quota, 0)}
+              <b>{bytes(l.left)}</b> left of {size(l.quota)}
               {l.stopped ? <span class="badge crit" style="margin-left:8px">stopped{props.next ? ' until ' + date(props.next) : ''}</span> : null}
             </div>
           </div>

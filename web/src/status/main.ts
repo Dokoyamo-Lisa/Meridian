@@ -44,6 +44,7 @@ import {
   setClockOffset,
   setPanelZone,
   severity,
+  size,
   tzLabel,
   WEEK,
 } from './fmt'
@@ -942,8 +943,8 @@ function updateQuota() {
     const left = Math.max(0, 100 - pct)
     setRing(r.val, left / 100)
     numUnit(r.c, left >= 10 || left === 0 ? Math.floor(left).toFixed(0) : left.toFixed(1), '%')
-    setText(r.used, `${bytes(Math.max(0, b.limit - b.used), 0)} left`)
-    setText(r.sub, `${bytes(b.used, 0)} of ${bytes(b.limit, 0)} used`)
+    setText(r.used, `${bytes(Math.max(0, b.limit - b.used))} left`)
+    setText(r.sub, `${bytes(b.used)} of ${size(b.limit)} used`)
   })
   for (const [sid, r] of QRows) {
     if (!keep.has(sid)) {

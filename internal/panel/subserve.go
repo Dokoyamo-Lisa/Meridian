@@ -67,25 +67,37 @@ func (p *Panel) renderSub(r *http.Request, s *Sub, client string) ([]byte, strin
 	return body, ctype, skipped, nil
 }
 
-// handleSub serves /s/{token}: the right format for the asking app, or a page for browsers.
-func (p *Panel) handleSub(w http.ResponseWriter, r *http.Request) {
+// subOf is the user a subscription URL's token belongs to, for every route under /s/{token}: the
+// same rate limit, the same refusal of short or unknown tokens and of a user whose account is
+// disabled. It has answered the request when it returns nil.
+func (p *Panel) subOf(w http.ResponseWriter, r *http.Request) *Sub {
 	ip := p.clientIP(r)
 	if !p.limiter.allow("sub:"+ip, 120, time.Minute) {
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
-		return
+		return nil
 	}
 	token := r.PathValue("token")
 	s, err := p.subByToken(r.Context(), token)
 	if err != nil || len(token) < 16 {
 		p.limiter.allow("subfail:"+ip, 1000, time.Hour)
 		http.NotFound(w, r)
-		return
+		return nil
 	}
 	acct, err := p.accountByID(r.Context(), s.AccountID)
 	if err != nil || !acct.Enabled {
 		http.Error(w, "This subscription is not available.", http.StatusForbidden)
+		return nil
+	}
+	return s
+}
+
+// handleSub serves /s/{token}: the right format for the asking app, or a page for browsers.
+func (p *Panel) handleSub(w http.ResponseWriter, r *http.Request) {
+	s := p.subOf(w, r)
+	if s == nil {
 		return
 	}
+	ip := p.clientIP(r)
 	client := r.URL.Query().Get("client")
 	if client == "" {
 		client = r.URL.Query().Get("target")
@@ -131,10 +143,14 @@ func (p *Panel) handleSub(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
-// handleSubWG serves one WireGuard configuration file of a subscription.
+// handleSubWG serves one WireGuard configuration file of a subscription - its private key, so only
+// while the user is not paused and their account is enabled (subOf).
 func (p *Panel) handleSubWG(w http.ResponseWriter, r *http.Request) {
-	s, err := p.subByToken(r.Context(), r.PathValue("token"))
-	if err != nil || s.Paused {
+	s := p.subOf(w, r)
+	if s == nil {
+		return
+	}
+	if s.Paused {
 		http.NotFound(w, r)
 		return
 	}
@@ -209,13 +225,14 @@ type wgItem struct {
 }
 
 // subPage is what a person sees opening the link in a browser: usage, one-tap import buttons,
-// QR codes and WireGuard files.
+// QR codes and WireGuard files. A paused user sees the notice and no WireGuard keys: their files are
+// refused (handleSubWG), and the page must not hand out the same private keys as QR codes.
 func (p *Panel) subPage(w http.ResponseWriter, r *http.Request, s *Sub) {
 	link := p.subBase(r) + "/s/" + s.Token
 	eps, _ := p.endpointsFor(r.Context(), s)
 	var wgs []wgItem
 	for _, e := range eps {
-		if e.WG == nil {
+		if e.WG == nil || s.Paused {
 			continue
 		}
 		wgs = append(wgs, wgItem{Name: e.Name, URL: fmt.Sprintf("%s/wg/%d.conf", link, e.NodeID), QR: qrSVG(subgen.WGConf(e))})

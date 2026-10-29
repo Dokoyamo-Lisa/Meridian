@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks'
-import { AgentsUpgraded, Server, bits, bytes, flag, get, pct, post } from '../api'
+import { AgentsUpgraded, Server, bits, bytes, size, flag, get, pct, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import { useSession } from '../session'
@@ -323,7 +323,7 @@ export function Servers() {
                   </td>
                   <td class="hide-sm nowrap">
                     {bytes(s.bw_used)}
-                    {s.bw_limit > 0 && <span class="faint"> / {bytes(s.bw_limit, 0)}</span>}
+                    {s.bw_limit > 0 && <span class="faint"> / {size(s.bw_limit)}</span>}
                   </td>
                   <td class="right">
                     {s.status === 'online' && s.caps?.console && (

@@ -839,3 +839,64 @@ func TestMCPProtocolChanges(t *testing.T) {
 		t.Fatal(code)
 	}
 }
+
+// TestSubWireGuardGate: a WireGuard file carries the user's private key, so its URL answers only
+// while the subscription does: never for a user whose account is disabled, never while paused - and
+// a paused user's page shows the notice, not the keys as QR codes or links.
+func TestSubWireGuardGate(t *testing.T) {
+	h := newHarness(t)
+	owner := h.browser()
+	owner.login("owner", "owner-password-1")
+	sid := id(owner.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.44"}, 201)["server"].(map[string]any)["id"])
+	if _, err := h.p.db.Exec1(`UPDATE servers SET caps = '{"nftables":true,"wireguard":true,"certs":true}', first_seen_at = ? WHERE id = ?`, now(), sid); err != nil {
+		t.Fatal(err)
+	}
+	wg := owner.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "wireguard"}, 201)
+	owner.must("POST", "/api/users", map[string]any{"name": "Dana"}, 201)
+	var token string
+	var subID int64
+	if err := h.p.db.QueryRow(`SELECT id, token FROM subs WHERE name = 'Dana'`).Scan(&subID, &token); err != nil {
+		t.Fatal(err)
+	}
+	get := func(p string) (int, string) {
+		resp, err := http.Get(h.srv.URL + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(body)
+	}
+	conf := fmt.Sprintf("/s/%s/wg/%d.conf", token, id(wg["id"]))
+	page := "/s/" + token + "?client=html"
+	if code, body := get(conf); code != 200 || !strings.Contains(body, "PrivateKey") {
+		t.Fatalf("an active user's file: %d %s", code, body)
+	}
+	if code, body := get(page); code != 200 || !strings.Contains(body, "/wg/") {
+		t.Fatalf("an active user's page offers no WireGuard: %d", code)
+	}
+	if code, _ := get(fmt.Sprintf("/s/short/wg/%d.conf", id(wg["id"]))); code != 404 {
+		t.Errorf("a short token: %d", code)
+	}
+	// paused: no file, and the page shows the notice without the keys
+	owner.must("POST", fmt.Sprintf("/api/users/%d/pause", subID), nil, 200)
+	if code, body := get(conf); code == 200 || strings.Contains(body, "PrivateKey") {
+		t.Errorf("a paused user's file: %d", code)
+	}
+	if code, body := get(page); code != 200 || !strings.Contains(body, "Paused by your administrator") || strings.Contains(body, "/wg/") || strings.Contains(body, "WireGuard") {
+		t.Errorf("a paused user's page: %d, offers WireGuard: %v", code, strings.Contains(body, "/wg/"))
+	}
+	// not paused, but the account that owns the user is disabled: nothing
+	if _, err := h.p.db.Exec1(`UPDATE subs SET paused = 0 WHERE id = ?`, subID); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := get(conf); code != 200 {
+		t.Fatalf("resumed: %d", code)
+	}
+	if _, err := h.p.db.Exec1(`UPDATE accounts SET enabled = 0 WHERE username = 'owner'`); err != nil {
+		t.Fatal(err)
+	}
+	if code, body := get(conf); code != 403 || strings.Contains(body, "PrivateKey") {
+		t.Errorf("a disabled account's file: %d %s", code, body)
+	}
+}

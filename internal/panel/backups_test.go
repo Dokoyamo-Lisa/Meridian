@@ -193,3 +193,42 @@ func TestBackups(t *testing.T) {
 }
 
 func waitShort() { time.Sleep(100 * time.Millisecond) }
+
+// TestStaleBackups: retention counts and removes only this panel's encrypted backups. Another
+// panel's in the same folder or bucket - even one whose host starts like this one's - and plain
+// ZIPs neither take a kept place nor go.
+func TestStaleBackups(t *testing.T) {
+	obj := func(names ...string) []backup.Object {
+		var l []backup.Object
+		for _, n := range names {
+			l = append(l, backup.Object{Name: n})
+		}
+		return l
+	}
+	const me = "meridian-a.example.com-"
+	// a shared destination, listed in no particular order
+	shared := obj(
+		"meridian-b.example.com-20261029-040000.zip.age", // another panel's, newer than all of mine
+		me+"20261027-040000.zip.age",
+		"meridian-b.example.com-20261028-040000.zip.age",
+		me+"20261029-040000.zip.age",
+		"meridian-a.example.com-x-20261029-050000.zip.age", // a host that starts like mine
+		me+"20261028-040000.zip.age",
+		me+"notes.zip.age", // not a time
+	)
+	got := staleBackups(shared, me, 2)
+	if len(got) != 1 || got[0] != me+"20261027-040000.zip.age" {
+		t.Errorf("shared destination, keep 2: %v", got)
+	}
+	// mixed: the newest encrypted, a plain ZIP, an older encrypted - keep 2 keeps both encrypted
+	mixed := obj(me+"20261029-040000.zip.age", me+"20261028-120000.zip", me+"20261027-040000.zip.age")
+	if got := staleBackups(mixed, me, 2); len(got) != 0 {
+		t.Errorf("a plain ZIP took an encrypted backup's place: %v", got)
+	}
+	if got := staleBackups(mixed, me, 1); len(got) != 1 || got[0] != me+"20261027-040000.zip.age" {
+		t.Errorf("mixed, keep 1: %v", got)
+	}
+	if got := staleBackups(mixed, me, 0); got != nil {
+		t.Errorf("keep 0 removes nothing: %v", got)
+	}
+}

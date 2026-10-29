@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -84,8 +85,12 @@ func (c backupConf) remote() backup.Remote {
 
 // ---------------------------------------------------------------- making one
 
-// backupName is a backup file's name: the panel's host and the time.
-func (p *Panel) backupName(encrypted bool) string {
+// backupStamp is the time in a backup's name.
+const backupStamp = "20060102-150405"
+
+// backupPrefix is how this panel's backup names start: "meridian-", its host, "-". Another panel
+// sending backups to the same folder or bucket has a prefix of its own.
+func (p *Panel) backupPrefix() string {
 	host := urlHost(p.settings().PublicURL)
 	var b strings.Builder
 	for _, r := range strings.ToLower(host) {
@@ -93,11 +98,44 @@ func (p *Panel) backupName(encrypted bool) string {
 			b.WriteRune(r)
 		}
 	}
-	name := "meridian-" + nz(strings.Trim(b.String(), ".-"), "panel") + "-" + time.Now().UTC().Format("20060102-150405") + ".zip"
+	return "meridian-" + nz(strings.Trim(b.String(), ".-"), "panel") + "-"
+}
+
+// backupName is a backup file's name: the panel's host and the time.
+func (p *Panel) backupName(encrypted bool) string {
+	name := p.backupPrefix() + time.Now().UTC().Format(backupStamp) + ".zip"
 	if encrypted {
 		name += ".age"
 	}
 	return name
+}
+
+// staleBackups are this panel's encrypted backups beyond the newest keep, oldest last. Only names
+// this panel makes count - its prefix, then exactly a time, then ".zip.age" - so another panel's
+// backups in the same place (its prefix may even start like this one's: "a-" and "a-b-") are never
+// counted or removed, and plain ZIPs (downloads, or files put there by hand) neither take a place
+// among those kept nor go.
+func staleBackups(list []backup.Object, prefix string, keep int) []string {
+	var ours []string
+	for _, o := range list {
+		stamp, ok := strings.CutPrefix(o.Name, prefix)
+		if !ok {
+			continue
+		}
+		stamp, ok = strings.CutSuffix(stamp, ".zip.age")
+		if !ok || len(stamp) != len(backupStamp) {
+			continue
+		}
+		if _, err := time.Parse(backupStamp, stamp); err != nil {
+			continue
+		}
+		ours = append(ours, o.Name)
+	}
+	if keep <= 0 || len(ours) <= keep {
+		return nil
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(ours))) // same prefix and length: the newest first
+	return ours[keep:]
 }
 
 // writeBackup writes a backup to w, encrypted when passphrase is set.
@@ -159,9 +197,9 @@ func (p *Panel) backupNow(ctx context.Context, by int64) (string, error) {
 	c.LastOK, c.LastName, c.LastError = now(), name, ""
 	_ = p.saveBackupConf(c)
 	removed := 0
-	if list, err := r.List(ctx); err == nil && c.Keep > 0 && len(list) > c.Keep {
-		for _, o := range list[c.Keep:] {
-			if strings.HasSuffix(o.Name, ".zip.age") && r.Delete(ctx, o.Name) == nil {
+	if list, err := r.List(ctx); err == nil {
+		for _, old := range staleBackups(list, p.backupPrefix(), c.Keep) {
+			if r.Delete(ctx, old) == nil {
 				removed++
 			}
 		}

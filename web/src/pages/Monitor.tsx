@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { DestRow, PanelEvent, IPRow, OnlineIP, Server, User, bytes, dateTime, del, flag, get, plural, post } from '../api'
+import { DestRow, PanelEvent, IPRow, OnlineIP, Server, User, bits, bytes, dateTime, del, flag, get, post } from '../api'
 import { Icon } from '../icons'
 import { setQuery, useLocation } from '../router'
 import { Ago, Empty, ErrorBox, Field, Loading, Modal, PageHead, Search, Seg, Tabs, ask, errText, run, toast, useAsync, usePoll } from '../ui'
@@ -155,23 +155,56 @@ interface LiveRow extends OnlineIP {
   user_ips: number
 }
 
+// LiveNow is the part of /api/overview the Online now tab shows: who is connected, and what all
+// servers' network interfaces receive and send right now (bytes per second).
+interface LiveNow {
+  rx: number
+  tx: number
+  online_users: number
+  online_ips: number
+}
+
 function LiveTab() {
   const live = useAsync(() => get<LiveRow[]>('/api/live'))
+  const now = useAsync(() => get<LiveNow>('/api/overview'))
   const [q, setQ] = useState('')
   const [block, setBlock] = useState<LiveRow | null>(null)
-  usePoll(() => void live.reload(), 10000)
+  usePoll(() => {
+    void live.reload()
+    void now.reload()
+  }, 10000)
   if (!live.data) return live.error ? <ErrorBox error={live.error} retry={live.reload} /> : <Loading />
   const t = q.trim().toLowerCase()
   const rows = live.data.filter((r) => !t || [r.ip, r.user, r.server, r.country, r.city, r.org].some((x) => (x || '').toLowerCase().includes(t)))
   const subsOnline = new Set(live.data.map((r) => r.user_id)).size
   const over = new Set(live.data.filter((r) => r.ip_limit > 0 && r.user_ips > r.ip_limit).map((r) => r.user_id)).size
+  const n = now.data
   return (
     <>
+      <div class="kpis">
+        <div class="kpi">
+          <div class="v num">{new Set(live.data.map((r) => r.ip)).size}</div>
+          <div class="l">IPs online</div>
+          <div class="s">one per address, as IP limits count</div>
+        </div>
+        <div class="kpi">
+          <div class="v num">{subsOnline}</div>
+          <div class="l">Users online</div>
+          <div class="s">{over > 0 ? <span class="crit-ink">{over} over their IP limit</span> : 'with at least one connection'}</div>
+        </div>
+        <div class="kpi">
+          <div class="v num">{n ? bits(n.rx) : '—'}</div>
+          <div class="l">Servers receiving</div>
+          <div class="s">all servers' network, now</div>
+        </div>
+        <div class="kpi">
+          <div class="v num">{n ? bits(n.tx) : '—'}</div>
+          <div class="l">Servers sending</div>
+          <div class="s">all servers' network, now</div>
+        </div>
+      </div>
       <div class="row wrap" style="margin-bottom:12px">
-        <span class="muted grow">
-          {plural(new Set(live.data.map((r) => r.ip)).size, 'IP')} on {plural(subsOnline, 'user')}
-          {over > 0 && <span class="crit-ink"> · {over} over their IP limit</span>} · refreshes every 10 s
-        </span>
+        <span class="muted grow">Refreshes every 10 s</span>
         <Search value={q} onInput={setQ} placeholder="IP, user, place…" />
       </div>
       {rows.length === 0 ? (
