@@ -1,7 +1,17 @@
 # Changelog
 
-## Unreleased
+## 1.4.1 - 2026-10-29
 
+Fixes and more apps; upgrade the panel (**Settings › Updates** - nobody is disconnected). Agents need
+nothing new.
+
+- **Users' page on a phone: the clock is no longer hidden.** A long name, or the supervisor's own
+  button next to the user's, pushed the header's buttons over the clock and the live dot. On a phone
+  the buttons now show only the initial (screen readers still read the name).
+- **Users' page: ended access says so.** A user whose access period had ended read *Access until*
+  with the date in amber, as if it were still to come; it now reads *Access ended* in red, as on the
+  status page's card, and the line under the greeting says *access ended* (next to *out of data* or
+  *paused*, when those hold too).
 - **Shadowrocket** subscriptions now include what current Shadowrocket reads. VLESS Encryption
   (ML-KEM-768, since 2.2.78) is no longer left out. mieru is sent as mieru's simple link
   (`mierus://`, since 2.2.81), with the port in the query, MTU 1400 and low multiplexing. HTTPUpgrade

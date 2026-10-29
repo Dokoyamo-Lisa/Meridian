@@ -1,6 +1,15 @@
 # Meridian status
 
-Last updated 2026-10-12 (version 1.4.0).
+Last updated 2026-10-29 (version 1.4.1).
+
+## Tested for 1.4.1 (local panel with the demo's servers and users)
+
+- **Users' page**: on a phone (375 px) and on a desktop, as a user with a quota, one without a limit,
+  one out of data and one whose access had ended, with and without the supervisor signed in too: the
+  header keeps the clock, ended access reads *Access ended* in red.
+- **Shadowrocket and Loon subscriptions**: every share link read back (`TestShareLinksRoundTrip`,
+  mieru's link included), the golden subscriptions, `go test -race ./internal/...` and
+  `GOOS=linux go vet ./internal/...` clean.
 
 ## Tested for 1.4.0 (local panel 1.4.0 in an Ubuntu 26.04 VM, its 1.3.2 data upgraded in place)
 
