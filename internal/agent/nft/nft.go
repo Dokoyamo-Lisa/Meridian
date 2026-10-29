@@ -827,6 +827,12 @@ func (e *Engine) Take() map[int64]Counter {
 	return out
 }
 
+// Active says whether Rosélune's table is in force on this host: applied by this engine, or left by
+// the agent that ran before a restart (a table outlives the agent, not the host's reboot).
+func (e *Engine) Active() bool {
+	return e.applied != "" || tableExists()
+}
+
 // ---------------------------------------------------------------- host plumbing
 
 func tableExists() bool {

@@ -130,19 +130,20 @@ type Agent struct {
 	kick        chan struct{}
 	applyMu     sync.Mutex
 	geo         *geoCache
-	scanned     map[string]bool // units the last scan found: the only ones a takeover may stop
-	shared      sharedCerts     // the panel's shared certificates this server holds and serves
-	relay       *relayServer    // passes other servers' agents through to the panel (relay.go)
-	actions     string          // the actions file (empty: in DataDir; tests keep their own)
-	actionsMu   sync.Mutex      // one write of the actions file at a time
-	health      *health.Monitor // signs of a break-in or abuse, reported to the panel
-	solo        *solo.Engine    // mieru, Snell and AnyTLS: one process per user (solo/)
-	protect     *protect.Engine // fixes of health findings the supervisor confirmed (protect/)
-	resolvers   []string        // the host's name servers the nftables table lets that account ask
-	pub         publicAddrs     // the public addresses between hellos (publicaddr.go)
-	prep        preparer        // preparing the server: its cores and what the host offers (prepare.go)
-	guard       guardian        // the server's security mode, when the supervisor turned it on (guard.go)
-	setup       runner          // the supervisor's setup script (setup.go)
+	fetchGeo    func(context.Context, string) ([]byte, error) // the country list from the panel (nil: client.GeoList; tests replace it)
+	scanned     map[string]bool                               // units the last scan found: the only ones a takeover may stop
+	shared      sharedCerts                                   // the panel's shared certificates this server holds and serves
+	relay       *relayServer                                  // passes other servers' agents through to the panel (relay.go)
+	actions     string                                        // the actions file (empty: in DataDir; tests keep their own)
+	actionsMu   sync.Mutex                                    // one write of the actions file at a time
+	health      *health.Monitor                               // signs of a break-in or abuse, reported to the panel
+	solo        *solo.Engine                                  // mieru, Snell and AnyTLS: one process per user (solo/)
+	protect     *protect.Engine                               // fixes of health findings the supervisor confirmed (protect/)
+	resolvers   []string                                      // the host's name servers the nftables table lets that account ask
+	pub         publicAddrs                                   // the public addresses between hellos (publicaddr.go)
+	prep        preparer                                      // preparing the server: its cores and what the host offers (prepare.go)
+	guard       guardian                                      // the server's security mode, when the supervisor turned it on (guard.go)
+	setup       runner                                        // the supervisor's setup script (setup.go)
 
 	// the panels the server is shared with (share.go): their links, and the state the host runs -
 	// the home's with theirs laid over it - with what of theirs could not run
@@ -555,12 +556,17 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 		// nftables is optional (a bare Alpine has none): without it, country rules, IP blocks and kernel
 		// forwards do not apply here - the panel says so on the server page - and the rest runs
 		if nft.Available() {
-			spec := a.nftSpec(full)
-			spec.Geo = geo
-			note("nftables", a.nft.Apply(spec))
-			a.mu.Lock()
-			a.resolvers = spec.Resolvers // what the users' servers' account may ask (nft solo_out)
-			a.mu.Unlock()
+			if holdFirewall(st.Geo, geo, a.nft.Active()) {
+				// a new table would leave the country rule out: the one in force stays, rules and all
+				note("nftables", errors.New("left as it was until the country list can be read, so the country rule stays in force"))
+			} else {
+				spec := a.nftSpec(full)
+				spec.Geo = geo
+				note("nftables", a.nft.Apply(spec))
+				a.mu.Lock()
+				a.resolvers = spec.Resolvers // what the users' servers' account may ask (nft solo_out)
+				a.mu.Unlock()
+			}
 		}
 	}
 	note("relay for other servers", a.relay.Apply(st.Relay, a.relayTaken(full)))
@@ -661,10 +667,23 @@ func (a *Agent) prepare(ctx context.Context, st *proto.State) prepared {
 	return p
 }
 
+// geoWanted says whether a state asks for a country rule.
+func geoWanted(r *proto.GeoRule) bool { return r != nil && (r.Mode == "block" || r.Mode == "allow") }
+
+// holdFirewall says whether to leave the firewall as it is instead of applying a new table: the state
+// wants a country rule, there is no list to build it from (geoSpec), and a table is in force - one
+// this agent applied, or one left from before a restart, whose geo chains may be all that keeps the
+// rule. A new table would drop them until the list came back. With no table at all there is no rule
+// to keep, and the rest - IP blocks, forwards, the users' servers' guard - had better apply.
+func holdFirewall(r *proto.GeoRule, geo *nft.GeoSpec, active bool) bool {
+	return geoWanted(r) && geo == nil && active
+}
+
 // geoSpec turns the country rule into firewall sets. When the list cannot be fetched, the last one
-// that was applied stays in force, so a panel outage never opens the server up.
+// that was applied stays in force, so a panel outage never opens the server up: the one in memory,
+// or after a restart the last good copy on disk.
 func (a *Agent) geoSpec(ctx context.Context, r *proto.GeoRule) (*nft.GeoSpec, error) {
-	if r == nil || (r.Mode != "block" && r.Mode != "allow") {
+	if !geoWanted(r) {
 		a.geo = nil
 		return nil, nil
 	}
@@ -682,12 +701,20 @@ func (a *Agent) geoSpec(ctx context.Context, r *proto.GeoRule) (*nft.GeoSpec, er
 		}
 	}
 	if err != nil {
+		fetch := a.fetchGeo
+		if fetch == nil {
+			fetch = a.client.GeoList
+		}
 		fctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-		body, err = a.client.GeoList(fctx, r.List)
+		body, err = fetch(fctx, r.List)
 		cancel()
 		if err != nil {
 			if a.geo != nil {
 				return a.geo.spec, fmt.Errorf("keeping the previous country list: %w", err)
+			}
+			if prev := lastGeoList(r); prev != nil { // after a restart: the last good copy on disk
+				a.geo = &geoCache{hash: prev.hash, spec: prev.spec}
+				return prev.spec, fmt.Errorf("keeping the previous country list: %w", err)
 			}
 			return nil, fmt.Errorf("cannot fetch the country list: %w", err)
 		}
@@ -708,6 +735,33 @@ func (a *Agent) geoSpec(ctx context.Context, r *proto.GeoRule) (*nft.GeoSpec, er
 	g := &nft.GeoSpec{Allow: r.Mode == "allow", V4: list.V4, V6: list.V6, Except: r.Except}
 	a.geo = &geoCache{hash: r.List, spec: g}
 	return g, nil
+}
+
+// lastGeoList is the newest country list kept in DataDir that is whole - its contents hash to its
+// name - built for rule r, or nil. A list that changed while the panel was out of reach still has
+// its predecessor on disk until the new one is fetched.
+func lastGeoList(r *proto.GeoRule) *geoCache {
+	files, _ := filepath.Glob(filepath.Join(DataDir, "geo-*.json"))
+	var best *geoCache
+	var bestAt time.Time
+	for _, f := range files {
+		hash := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), "geo-"), ".json")
+		body, err := os.ReadFile(f)
+		if err != nil || !hexRE.MatchString(hash) {
+			continue
+		}
+		sum := sha256.Sum256(body)
+		var list proto.GeoList
+		if hex.EncodeToString(sum[:]) != hash || json.Unmarshal(body, &list) != nil {
+			continue
+		}
+		info, err := os.Stat(f)
+		if err != nil || (best != nil && !info.ModTime().After(bestAt)) {
+			continue
+		}
+		best, bestAt = &geoCache{hash: hash, spec: &nft.GeoSpec{Allow: r.Mode == "allow", V4: list.V4, V6: list.V6, Except: r.Except}}, info.ModTime()
+	}
+	return best
 }
 
 // nftSpec derives the nftables table from the state.

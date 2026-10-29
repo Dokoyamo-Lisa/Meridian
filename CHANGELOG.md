@@ -7,6 +7,11 @@
   account is disabled returned the full configuration, private key included. Every subscription
   route now goes through the same check (rate limit, token, account enabled), and a paused user's
   page never shows WireGuard keys as QR codes or links.
+- **Security: a country rule stays in force when its list cannot be read.** After an agent restart,
+  with the server's copy of the country list missing or damaged and the panel out of reach, the
+  agent replaced its firewall table with one without the rule - the server was open to every country
+  until the list came back. It now keeps the last good list it has on disk, and with none leaves the
+  firewall as it was (and says so) until the list can be read. Needs agent 1.4.2.
 - **Security: a disabled account's users are shut out of their own page and the bot.** Disabling an
   account stopped its subscription links, but its users could still sign in, keep an open session
   reading their page and link, and use the Telegram bot. Signing in (password or Telegram), every
