@@ -1,7 +1,47 @@
 # Changelog
 
-## Unreleased
+## 1.4.2 - 2026-10-30
 
+Security and reliability fixes from an audit of the panel, the agent, the status page and the users'
+area. Upgrade the panel (**Settings › Updates** - nobody is disconnected), then the agents (server
+page › More actions › Upgrade agent - nobody is disconnected): the fixes that end in *Needs agent
+1.4.2* (the country rule, speed limits, shared servers' checks) take effect only then.
+
+- **Security: a shared server's guest panel cannot reach this host through DNS rebinding.** A guest's
+  ping monitor was checked against public addresses by name, then each probe looked the name up
+  again - an answer that changed in between could send it to this host or a private network. A round
+  now resolves once and probes the address it checked. The guest's camouflage check works the same
+  way: Xray gets the checked address, not the name. Needs agent 1.4.2.
+- **Security: the status page no longer shows a ping monitor's target as its name.** A monitor added
+  with only a target is named after it and shown to visitors by default, so the public charts read
+  "1.1.1.1" although visitors are never to see the target. Visitors now read "Probe 1", "Probe 2" ...
+  for any monitor whose name is empty, contains its target or holds an IP address; the panel shows
+  both as before. A monitor named after its target keeps following it when the target changes, so an
+  old (perhaps internal) address never stays behind as its name.
+- **Security: a disabled account's WireGuard files are no longer served.** `/s/{token}/wg/{node}.conf`
+  checked only the token and whether the user was paused; a still-known link of a user whose
+  account is disabled returned the full configuration, private key included. Every subscription
+  route now goes through the same check (rate limit, token, account enabled), and a paused user's
+  page never shows WireGuard keys as QR codes or links.
+- **Security: a country rule stays in force when its list cannot be read.** After an agent restart,
+  with the server's copy of the country list missing or damaged and the panel out of reach, the
+  agent replaced its firewall table with one without the rule - the server was open to every country
+  until the list came back. And when a changed rule's new list could not be fetched, the newest list
+  on disk was applied under the new rule - a block list for one country could end up as the rule for
+  others, or as an allow rule. The agent now records the rule nftables last applied (countries, mode,
+  exceptions) next to its list; until the new list can be read that rule stays in force, after a
+  restart and after a reboot too, and a list on disk that was never applied is never used for another
+  rule. With no rule in force it leaves the firewall as it was (and says so); re-applying the firewall
+  for SSH blocks follows the same rule. Needs agent 1.4.2.
+- **Security: a disabled account's users are shut out of their own page and the bot.** Disabling an
+  account stopped its subscription links, but its users could still sign in, keep an open session
+  reading their page and link, and use the Telegram bot. Signing in (password or Telegram), every
+  request of an open session and the bot's commands now need the account enabled; enabling it again
+  lets them back in as they were.
+- **Security: a disabled supervisor's account cannot use the Telegram bot.** A browser session, a
+  token and the Mini App already refused it, but its linked Telegram account and its chat still got
+  commands (servers, users, traffic, events) and could press a button handed out before - pausing a
+  user, say. Commands and buttons, in private and in the chat, now need the account enabled.
 - **Ping history: a late round no longer rewrites an older five-minute step.** Rounds are kept one
   by one for 49 hours and as five-minute steps for a month; a round older than 49 hours arriving
   late (a server that could not reach the panel for days) refolded its step from the rounds still
@@ -41,41 +81,6 @@
   each step's figures equally, so a step with one lost probe weighed as much as one with six answered
   (50% lost instead of 1 in 7). The panel now sends each monitor's totals for the range (`sent`,
   `lost`, `avg_ms`), and the legend shows those.
-- **Security: a shared server's guest panel cannot reach this host through DNS rebinding.** A guest's
-  ping monitor was checked against public addresses by name, then each probe looked the name up
-  again - an answer that changed in between could send it to this host or a private network. A round
-  now resolves once and probes the address it checked. The guest's camouflage check works the same
-  way: Xray gets the checked address, not the name. Needs agent 1.4.2.
-- **Security: the status page no longer shows a ping monitor's target as its name.** A monitor added
-  with only a target is named after it and shown to visitors by default, so the public charts read
-  "1.1.1.1" although visitors are never to see the target. Visitors now read "Probe 1", "Probe 2" ...
-  for any monitor whose name is empty, contains its target or holds an IP address; the panel shows
-  both as before. A monitor named after its target keeps following it when the target changes, so an
-  old (perhaps internal) address never stays behind as its name.
-- **Security: a disabled account's WireGuard files are no longer served.** `/s/{token}/wg/{node}.conf`
-  checked only the token and whether the user was paused; a still-known link of a user whose
-  account is disabled returned the full configuration, private key included. Every subscription
-  route now goes through the same check (rate limit, token, account enabled), and a paused user's
-  page never shows WireGuard keys as QR codes or links.
-- **Security: a country rule stays in force when its list cannot be read.** After an agent restart,
-  with the server's copy of the country list missing or damaged and the panel out of reach, the
-  agent replaced its firewall table with one without the rule - the server was open to every country
-  until the list came back. And when a changed rule's new list could not be fetched, the newest list
-  on disk was applied under the new rule - a block list for one country could end up as the rule for
-  others, or as an allow rule. The agent now records the rule nftables last applied (countries, mode,
-  exceptions) next to its list; until the new list can be read that rule stays in force, after a
-  restart and after a reboot too, and a list on disk that was never applied is never used for another
-  rule. With no rule in force it leaves the firewall as it was (and says so); re-applying the firewall
-  for SSH blocks follows the same rule. Needs agent 1.4.2.
-- **Security: a disabled account's users are shut out of their own page and the bot.** Disabling an
-  account stopped its subscription links, but its users could still sign in, keep an open session
-  reading their page and link, and use the Telegram bot. Signing in (password or Telegram), every
-  request of an open session and the bot's commands now need the account enabled; enabling it again
-  lets them back in as they were.
-- **Security: a disabled supervisor's account cannot use the Telegram bot.** A browser session, a
-  token and the Mini App already refused it, but its linked Telegram account and its chat still got
-  commands (servers, users, traffic, events) and could press a button handed out before - pausing a
-  user, say. Commands and buttons, in private and in the chat, now need the account enabled.
 - **Backups: retention removes only this panel's own encrypted backups.** Two panels sending
   backups to the same WebDAV folder or S3 prefix counted - and removed - each other's; and a plain
   ZIP took one of the kept places while only encrypted backups were removed, so fewer were kept

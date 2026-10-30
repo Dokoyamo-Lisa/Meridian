@@ -1,6 +1,23 @@
 # Meridian status
 
-Last updated 2026-10-29 (version 1.4.1).
+Last updated 2026-10-30 (version 1.4.2).
+
+## Tested for 1.4.2 (an audit's findings, each with a regression test)
+
+- **Every fix** has a test that fails on the code before it where that could be run (Go: `make check`
+  clean - race tests, vet for macOS and Linux, staticcheck, govulncheck; the UI: the first
+  `node --test` tests in `web/test`, run by `make test`).
+- **Firewall**: the full ruleset the agent can write - per-user speed limits on Xray's ports, users'
+  own server ports and WireGuard tunnel addresses (forward hook), the country rule, SSH blocks - and
+  the elements the agent adds as devices connect, checked by nftables 1.1.6 on Linux 7.0 (`nft -c`)
+  and loaded in a network namespace. No traffic run through the limits.
+- **Status page in a browser** (a local panel with eight servers, two of them in Tokyo, the table
+  folded after six): the globe from the keyboard (Tab, arrows, Enter, F, + and -, Esc) and the mouse,
+  the focus at each step; the chooser of a shared pin; full screen with `/api/status` answering 403
+  on the next refresh (the sign-in, the globe closed, the page scrolls).
+- **Ping page in a browser**: a target whose last round was all lost reads *no answer*; a monitor of
+  2 minutes edits as *2 min*.
+- **Not run**: the PostgreSQL suite (its SQL rewrite is tested), traffic through speed limits.
 
 ## Tested for 1.4.1 (local panel with the demo's servers and users)
 
