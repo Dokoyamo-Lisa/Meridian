@@ -123,6 +123,7 @@ type Agent struct {
 	done        map[int64]int64 // actions started: id -> when the panel made it (0: not known)
 	events      []proto.AgentEvent
 	lastHello   time.Time
+	rateAt      time.Time            // the last report's speeds were measured up to then (rates.go)
 	limitWarned time.Time            // when a speed limit failure was last logged (limits.go)
 	sharedTold  map[string]time.Time // speed limits left off an address another user shares, when last told (limits.go)
 	cons        consoles             // the supervisor's consoles open now (console.go)
@@ -565,6 +566,8 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 				if err == nil {
 					a.setGeoActive(geo)
 				}
+				// speed per client address, in a table of its own: the users' protocols' ports (rates.go)
+				note("speed per address", nft.ApplyRates(spec.TCPPorts, spec.UDPPorts))
 				a.mu.Lock()
 				a.resolvers = spec.Resolvers // what the users' servers' account may ask (nft solo_out)
 				a.mu.Unlock()
@@ -1344,6 +1347,17 @@ func (a *Agent) report(ctx context.Context) {
 		host.Cores["xray"] = xs
 	}
 	traffic, ips, dests, fwds, parts := splitCollected(traffic, ips, dests, live, fwds)
+	// speed now, per user and per client address (rates.go): over the time since the last report
+	var ipBytes map[string][2]int64
+	if runtimeOK() && nft.Available() {
+		ipBytes = nft.TakeIPBytes()
+	}
+	secs := 0.0
+	if !a.rateAt.IsZero() {
+		secs = time.Since(a.rateAt).Seconds()
+	}
+	a.rateAt = time.Now()
+	live.Rates, live.IPRates = userRates(traffic, secs), ipRates(ipBytes, live.Online, secs)
 	pings := a.ping.Take()
 	var homePings []proto.PingResult
 	guestPings := map[int][]proto.PingResult{}
@@ -1371,6 +1385,7 @@ func (a *Agent) report(ctx context.Context) {
 		gConn, gDest := g.state != nil && g.state.Agent.ConnLog, g.state != nil && g.state.Agent.DestLog
 		gl := host
 		gl.Online, gl.Certs = p.online, p.certs
+		gl.Rates, gl.IPRates = userRates(p.traffic, secs), ipRates(ipBytes, p.online, secs)
 		gl.Cores = map[string]proto.CoreStatus{}
 		for k, v := range host.Cores {
 			gl.Cores[k] = v
@@ -1418,6 +1433,7 @@ func (a *Agent) report(ctx context.Context) {
 	caps.Reinstall = true  // installs its cores again on request (prepare.go)
 	caps.Guard = true      // runs the security mode the supervisor turns on (guard.go)
 	caps.Setup = true      // runs the supervisor's setup script after the cores (setup.go)
+	caps.Rates = true      // measures speed now, per user and per client address (rates.go)
 	addrs := sys.LocalAddrs()
 	// the host's name servers changed: the users' servers' account may ask the new ones (nft solo_out)
 	if a.resolvers != nil && !slices.Equal(a.resolvers, sys.Resolvers()) {

@@ -112,7 +112,7 @@ export function BlockIPModal(props: { ip?: string; onClose: () => void; onSaved?
 
 // ---------------------------------------------------------------- page
 
-type Tab = 'live' | 'ips' | 'dests' | 'events' | 'blocks' | 'health' | 'ping'
+type Tab = 'live' | 'speed' | 'ips' | 'dests' | 'events' | 'blocks' | 'health' | 'ping'
 
 export function Monitor() {
   const loc = useLocation()
@@ -129,6 +129,7 @@ export function Monitor() {
         onChange={(t) => setQuery('tab', t === 'live' ? null : t)}
         tabs={[
           ['live', 'Online now'],
+          ['speed', 'Speed now'],
           ['ips', 'IP history'],
           ['dests', 'Destinations'],
           ['events', 'Events'],
@@ -138,12 +139,149 @@ export function Monitor() {
         ]}
       />
       {tab === 'live' && <LiveTab />}
+      {tab === 'speed' && <SpeedTab />}
       {tab === 'ips' && <IPsTab subName={subName} srvName={srvName} servers={servers.data || []} />}
       {tab === 'dests' && <DestsTab subName={subName} subs={subs.data || []} servers={servers.data || []} />}
       {tab === 'events' && <EventsTab servers={servers.data || []} />}
       {tab === 'blocks' && <BlocksTab />}
       {tab === 'health' && <HealthTab servers={servers.data || []} />}
       {tab === 'ping' && <PingTab servers={servers.data || []} />}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------- speed now
+
+// SpeedView is GET /api/live/speed: what the agents measured over their last report, per user (all
+// their servers and protocols) and per address they are online from (per server). A user going
+// through a proxy pass is counted once, where they connect.
+interface SpeedIP {
+  ip: string
+  server_id: number
+  server: string
+  up: number
+  down: number
+  shared: number
+  country: string
+  city: string
+  org: string
+  asn: number
+}
+
+interface SpeedView {
+  up: number
+  down: number
+  users: { user_id: number; user: string; up: number; down: number; ips: SpeedIP[] }[]
+  unmeasured: string[]
+  interval: number
+}
+
+function SpeedTab() {
+  const v = useAsync(() => get<SpeedView>('/api/live/speed'))
+  const [q, setQ] = useState('')
+  usePoll(() => void v.reload(), 5000)
+  if (!v.data) return v.error ? <ErrorBox error={v.error} retry={v.reload} /> : <Loading />
+  const d = v.data
+  const t = q.trim().toLowerCase()
+  const users = d.users.filter(
+    (u) => !t || u.user.toLowerCase().includes(t) || u.ips.some((x) => [x.ip, x.server, x.country, x.city, x.org].some((y) => (y || '').toLowerCase().includes(t))),
+  )
+  const addrs = d.users.reduce((n, u) => n + u.ips.length, 0)
+  return (
+    <>
+      <div class="kpis">
+        <div class="kpi">
+          <div class="v num">{bits(d.down)}</div>
+          <div class="l">Users downloading</div>
+          <div class="s">all users together, each counted once</div>
+        </div>
+        <div class="kpi">
+          <div class="v num">{bits(d.up)}</div>
+          <div class="l">Users uploading</div>
+          <div class="s">all users together, each counted once</div>
+        </div>
+        <div class="kpi">
+          <div class="v num">{d.users.length}</div>
+          <div class="l">Users moving data</div>
+          <div class="s">over the last {d.interval} s</div>
+        </div>
+        <div class="kpi">
+          <div class="v num">{addrs}</div>
+          <div class="l">Addresses moving data</div>
+          <div class="s">per server they use</div>
+        </div>
+      </div>
+      {d.unmeasured.length > 0 && (
+        <div class="callout warn" style="margin-bottom:12px">
+          Not measured on {d.unmeasured.join(', ')}: their agent is older. Upgrade it (server page › More actions › Upgrade agent - nobody is disconnected).
+        </div>
+      )}
+      <div class="row wrap" style="margin-bottom:12px">
+        <span class="muted grow">
+          Measured by each server over its last report ({d.interval} s), refreshes every 5 s. A user going through a proxy pass is counted once, on the
+          server they connect to.
+        </span>
+        <Search value={q} onInput={setQ} placeholder="User, IP, server, place…" />
+      </div>
+      {users.length === 0 ? (
+        <Empty title={d.users.length ? 'Nothing matches' : 'Nobody is moving data right now'} />
+      ) : (
+        <div class="table-wrap">
+          <table class="t">
+            <thead>
+              <tr>
+                <th>User · address</th>
+                <th class="right">Download</th>
+                <th class="right">Upload</th>
+                <th>From</th>
+                <th class="hide-sm">Server</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => [
+                <tr class="group">
+                  <td>
+                    <a class="cell-main" href={`/users/${u.user_id}`}>
+                      {u.user}
+                    </a>
+                    <div class="cell-sub">
+                      {u.ips.length} address{u.ips.length === 1 ? '' : 'es'}
+                    </div>
+                  </td>
+                  <td class="right num nowrap">
+                    <b>{bits(u.down)}</b>
+                  </td>
+                  <td class="right num nowrap">
+                    <b>{bits(u.up)}</b>
+                  </td>
+                  <td class="muted">all servers and protocols</td>
+                  <td class="hide-sm" />
+                </tr>,
+                ...u.ips.map((x) => (
+                  <tr>
+                    <td class="mono" style="padding-left:28px">
+                      {x.ip}
+                      {x.shared > 0 && (
+                        <span class="badge warn" style="margin-left:6px" title={`${x.shared} other user${x.shared === 1 ? ' is' : 's are'} online from this address on this server: its speed is theirs too`}>
+                          shared
+                        </span>
+                      )}
+                    </td>
+                    <td class="right num nowrap">{bits(x.down)}</td>
+                    <td class="right num nowrap">{bits(x.up)}</td>
+                    <td>
+                      <Where country={x.country} city={x.city} org={x.org} asn={x.asn} />
+                    </td>
+                    <td class="hide-sm">
+                      <a href={`/servers/${x.server_id}`}>{x.server}</a>
+                    </td>
+                  </tr>
+                )),
+              ])}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   )
 }

@@ -163,6 +163,9 @@ var apiOps = []opDoc{
 	// monitoring
 	{Method: "GET", Path: "/api/overview", Tag: "Monitoring", Summary: "Dashboard numbers and alerts", Resp: overview{}},
 	{Method: "GET", Path: "/api/live", Tag: "Monitoring", Summary: "Every connection open right now", Resp: []liveRow{}},
+	{Method: "GET", Path: "/api/live/speed", Tag: "Monitoring", Summary: "Speed now, per user and per client address",
+		Desc: "What the agents measured over their last report. A user going through a proxy pass is counted once, where they connect; the servers' network rates and the bandwidth counters are not part of it.",
+		Resp: speedView{}},
 	{Method: "GET", Path: "/api/ips", Tag: "Monitoring", Summary: "IP history",
 		Desc:  "Client IPs that connected, aggregated per IP, most recent first (at most 1000). q matches an IP prefix, organisation, city or country code.",
 		Query: []paramDoc{qDays, qQuery, qServer}, Resp: []ipRow{}},

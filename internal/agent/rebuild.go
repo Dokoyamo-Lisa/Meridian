@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"meridian/internal/agent/cores"
+	"meridian/internal/agent/nft"
 	"meridian/internal/agent/service"
 	"meridian/internal/proto"
 )
@@ -89,6 +90,7 @@ func (a *Agent) teardown() {
 	a.realm.Remove()
 	a.wg.Remove()
 	a.nft.Remove()
+	nft.RemoveRates()
 }
 
 // restartSelf restarts the agent's service; that restart touches no traffic it did not touch already.

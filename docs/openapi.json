@@ -930,6 +930,38 @@
         }
       }
     },
+    "/api/live/speed": {
+      "get": {
+        "tags": [
+          "Monitoring"
+        ],
+        "summary": "Speed now, per user and per client address",
+        "description": "What the agents measured over their last report. A user going through a proxy pass is counted once, where they connect; the servers' network rates and the bandwidth counters are not part of it.",
+        "operationId": "getLiveSpeed",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
     "/api/ips": {
       "get": {
         "tags": [
@@ -8048,6 +8080,107 @@
           }
         }
       },
+      "SpeedView": {
+        "type": "object",
+        "properties": {
+          "up": {
+            "description": "All users' upload now, bytes per second (each user counted once)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "description": "All users' download now, bytes per second",
+            "format": "int64",
+            "type": "integer"
+          },
+          "users": {
+            "description": "Users with any speed now, fastest first",
+            "items": {
+              "$ref": "#/components/schemas/UserSpeed"
+            },
+            "type": "array"
+          },
+          "unmeasured": {
+            "description": "Online servers whose agent does not measure speed yet (upgrade it)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "interval": {
+            "description": "Seconds each measurement covers (the agents' report interval)",
+            "type": "integer"
+          }
+        }
+      },
+      "UserSpeed": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "user": {
+            "type": "string"
+          },
+          "up": {
+            "description": "Bytes per second, all servers and protocols",
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ips": {
+            "description": "The addresses the user is online from, with their speed on each server",
+            "items": {
+              "$ref": "#/components/schemas/IpSpeed"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "IpSpeed": {
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server": {
+            "type": "string"
+          },
+          "up": {
+            "description": "Bytes per second from this address on this server, every protocol",
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "shared": {
+            "description": "Other users online from the same address on this server (its speed is theirs too)",
+            "type": "integer"
+          },
+          "country": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "org": {
+            "type": "string"
+          },
+          "asn": {
+            "type": "integer"
+          }
+        }
+      },
       "IPHistoryRow": {
         "type": "object",
         "properties": {
@@ -8982,6 +9115,9 @@
             "type": "boolean"
           },
           "setup": {
+            "type": "boolean"
+          },
+          "rates": {
             "type": "boolean"
           }
         }

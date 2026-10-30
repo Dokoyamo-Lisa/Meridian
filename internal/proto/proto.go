@@ -566,6 +566,8 @@ type Caps struct {
 	Guard bool `json:"guard,omitempty"`
 	// Setup: the agent runs the supervisor's setup script after the cores (State.Setup, Live.Setup).
 	Setup bool `json:"setup,omitempty"`
+	// Rates: the agent measures speed now per user and per client address (Live.Rates, IPRates).
+	Rates bool `json:"rates,omitempty"`
 }
 
 // The console's WebSocket: the agent dials ConsolePath + the session's id; every message starts with
@@ -667,6 +669,27 @@ type Live struct {
 	Prepare *Prepare     `json:"prepare,omitempty"`
 	Guard   *GuardStatus `json:"guard,omitempty"`
 	Setup   *SetupResult `json:"setup,omitempty"`
+	// Rates: each user's speed now - what their protocols carried for them since the last report,
+	// per second. A proxy pass's exit counts its entry's traffic under the entry's identity, never a
+	// user's, so a user going through a pass is counted once, where they connect. IPRates: each
+	// client address's speed now, counted by the firewall on the users' protocols' ports, for the
+	// addresses users are online from here only (1.4.3 and later).
+	Rates   []UserRate `json:"rates,omitempty"`
+	IPRates []IPRate   `json:"ip_rates,omitempty"`
+}
+
+// UserRate is a user's speed now on one server, in bytes per second.
+type UserRate struct {
+	Sub  int64 `json:"s"`
+	Up   int64 `json:"u"`
+	Down int64 `json:"d"`
+}
+
+// IPRate is a client address's speed now on one server, in bytes per second.
+type IPRate struct {
+	IP   string `json:"ip"`
+	Up   int64  `json:"u"`
+	Down int64  `json:"d"`
 }
 
 // SetupResult is how the setup script went, for the panel to show.
