@@ -113,8 +113,14 @@ func hottest(temps map[string]float64) float64 {
 	return roundTo(t, 1)
 }
 
+// pingRawKeep is how long rounds are kept one by one (rollup5m drops older ones; their five-minute
+// steps stay a month).
+const pingRawKeep = 49 * 3600
+
 // storePings keeps a batch's rounds (of monitors this server measures; each once). Rounds measured
-// while the panel could not be reached come late: their five-minute steps are folded again here.
+// while the panel could not be reached come late: their five-minute steps are folded again here from
+// the rounds - or, for a step whose rounds were already dropped (pingRawKeep), the late round is
+// added to the step's totals, which are all that is left of the others.
 func storePings(tx *sql.Tx, srv *Server, rs []proto.PingResult) error {
 	if len(rs) == 0 {
 		return nil
@@ -132,15 +138,26 @@ func storePings(tx *sql.Tx, srv *Server, rs []proto.PingResult) error {
 	}
 	rows.Close()
 	cut, recent := now()-32*86400, (now()/300-3)*300
+	whole := (now()-pingRawKeep)/300*300 + 300 // the first step whose rounds are all still kept
 	late := int64(0)
 	clampMS := func(v float64) float64 { return min(max(v, 0), 60000) }
 	for _, r := range rs {
 		if !ours[r.ID] || r.TS < cut || r.TS > now()+300 || r.Sent < 1 || r.Sent > 10 || r.Lost < 0 || r.Lost > r.Sent {
 			continue
 		}
-		if _, err := tx.Exec(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(monitor_id, server_id, ts) DO NOTHING`, r.ID, srv.ID, r.TS, r.Sent, r.Lost, clampMS(r.Avg), clampMS(r.Min), clampMS(r.Max)); err != nil {
+		res, err := tx.Exec(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(monitor_id, server_id, ts) DO NOTHING`, r.ID, srv.ID, r.TS, r.Sent, r.Lost, clampMS(r.Avg), clampMS(r.Min), clampMS(r.Max))
+		if err != nil {
 			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			continue // had it already
+		}
+		if r.TS < whole {
+			if err := addPing5m(tx, srv.ID, r, clampMS); err != nil {
+				return err
+			}
+			continue
 		}
 		if r.TS < recent && (late == 0 || r.TS < late) {
 			late = r.TS
@@ -150,6 +167,26 @@ func storePings(tx *sql.Tx, srv *Server, rs []proto.PingResult) error {
 		return rollupPings(tx, `server_id = ? AND ts >= ?`, srv.ID, late/300*300)
 	}
 	return nil
+}
+
+// addPing5m adds one round to its five-minute step's totals: the average over the answered probes,
+// the lowest of the answered ones, the highest.
+func addPing5m(tx *sql.Tx, server int64, r proto.PingResult, clampMS func(float64) float64) error {
+	minMS := 0.0
+	if r.Sent > r.Lost {
+		minMS = clampMS(r.Min)
+	}
+	_, err := tx.Exec(`INSERT INTO ping_5m (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(monitor_id, server_id, ts) DO UPDATE SET
+		avg_ms = CASE WHEN (ping_5m.sent - ping_5m.lost) + (excluded.sent - excluded.lost) > 0
+			THEN (ping_5m.avg_ms * (ping_5m.sent - ping_5m.lost) + excluded.avg_ms * (excluded.sent - excluded.lost)) /
+				((ping_5m.sent - ping_5m.lost) + (excluded.sent - excluded.lost)) ELSE 0 END,
+		min_ms = CASE WHEN excluded.sent > excluded.lost AND (ping_5m.sent = ping_5m.lost OR excluded.min_ms < ping_5m.min_ms)
+			THEN excluded.min_ms ELSE ping_5m.min_ms END,
+		max_ms = MAX(ping_5m.max_ms, excluded.max_ms),
+		sent = ping_5m.sent + excluded.sent, lost = ping_5m.lost + excluded.lost`,
+		r.ID, server, r.TS/300*300, r.Sent, r.Lost, clampMS(r.Avg), minMS, clampMS(r.Max))
+	return err
 }
 
 // rollupPings folds the samples the condition picks into their five-minute steps.
@@ -190,7 +227,7 @@ func (p *Panel) rollup5m(ctx context.Context, from int64) {
 				return err
 			}
 		}
-		_, err := tx.Exec(`DELETE FROM ping_samples WHERE ts < ?`, now()-49*3600)
+		_, err := tx.Exec(`DELETE FROM ping_samples WHERE ts < ?`, now()-pingRawKeep)
 		return err
 	})
 	if err != nil {

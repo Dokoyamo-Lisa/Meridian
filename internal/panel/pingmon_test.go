@@ -383,3 +383,46 @@ func TestPingEditAfterServerDeleted(t *testing.T) {
 		t.Errorf("a new monitor on a deleted server: %d", code)
 	}
 }
+
+// TestLatePingAfterRawDropped: a five-minute step 50 hours old holds two rounds (6 probes answered,
+// 15 ms); its rounds are dropped one by one after 49 hours and only its totals are left. A round of
+// that step arriving late (every probe lost) is added to them - 9 sent, 3 lost, still 15 ms - not
+// folded from the rounds left (which would make the step that one round). Sent again, it counts once.
+func TestLatePingAfterRawDropped(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	ctx := context.Background()
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	mid := id(b.must("POST", "/api/ping-monitors", map[string]any{"name": "DNS", "target": "1.1.1.1"}, 201)["id"])
+	step := (now() - 50*3600) / 300 * 300
+	for _, ts := range []int64{step, step + 60} {
+		h.p.db.Exec1(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, 3, 0, 15, 14, 16)`, mid, sid, ts)
+	}
+	h.p.rollup5m(ctx, step) // folds the step, and drops rounds older than 49 hours
+	read := func() (sent, lost int, avg, mn, mx float64) {
+		h.p.db.QueryRow(`SELECT sent, lost, avg_ms, min_ms, max_ms FROM ping_5m WHERE monitor_id = ? AND ts = ?`, mid, step).Scan(&sent, &lost, &avg, &mn, &mx)
+		return
+	}
+	var n int
+	h.p.db.QueryRow(`SELECT COUNT(*) FROM ping_samples`).Scan(&n)
+	if sent, lost, avg, _, _ := read(); sent != 6 || lost != 0 || avg != 15 || n != 0 {
+		t.Fatalf("before: %d sent, %d lost, %v ms, %d rounds kept", sent, lost, avg, n)
+	}
+	srv, _ := h.p.serverByID(ctx, sid)
+	late := []proto.PingResult{{ID: mid, TS: step + 120, Sent: 3, Lost: 3}}
+	for seq := int64(1); seq <= 2; seq++ { // the same batch twice
+		if _, err := h.p.ingest(ctx, srv, &proto.Report{Instance: "p", Batch: &proto.Batch{Seq: seq, To: now(), Pings: late}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if sent, lost, avg, mn, mx := read(); sent != 9 || lost != 3 || avg != 15 || mn != 14 || mx != 16 {
+		t.Errorf("after the late round: %d sent, %d lost, %v ms (min %v, max %v); want 9, 3, 15 (14, 16)", sent, lost, avg, mn, mx)
+	}
+	// an answered late round in the same step weighs by its answered probes: (6×15 + 3×30) / 9 = 20
+	late = []proto.PingResult{{ID: mid, TS: step + 180, Sent: 3, Avg: 30, Min: 10, Max: 40}}
+	h.p.ingest(ctx, srv, &proto.Report{Instance: "p", Batch: &proto.Batch{Seq: 3, To: now(), Pings: late}})
+	if sent, lost, avg, mn, mx := read(); sent != 12 || lost != 3 || avg != 20 || mn != 10 || mx != 40 {
+		t.Errorf("after an answered late round: %d sent, %d lost, %v ms (min %v, max %v)", sent, lost, avg, mn, mx)
+	}
+}

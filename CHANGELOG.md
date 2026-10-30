@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Ping history: a late round no longer rewrites an older five-minute step.** Rounds are kept one
+  by one for 49 hours and as five-minute steps for a month; a round older than 49 hours arriving
+  late (a server that could not reach the panel for days) refolded its step from the rounds still
+  kept - only itself - so a step of 6 answered probes became "3 sent, 3 lost". Such a round is now
+  added to the step's totals.
 - **Status page: the full-screen globe closes when the status goes away.** A refresh answered with
   "not allowed" (a session that ended, a disabled account, a region refused) switched to the sign-in
   with the globe still "open": the page stayed locked from scrolling with no close button in view.
