@@ -1,8 +1,9 @@
 // A server's history in its details (the drawer a card opens): GET /api/status/servers/{id}/series as
 // charts - processor, memory, disk, disk activity, network, load, connections, temperature and the
 // ping monitors - over the range the viewer picks, drawn as areas, lines or bars, smoothed or as
-// measured. A gap is time the server did not report (hatched); ping rounds measured while it could
-// not reach the panel arrive later and fill theirs in. Hovering one chart shows the same moment on
+// measured. A gap is time with no data (hatched) - for a ping monitor, longer than its own interval
+// between rounds (chartgaps.ts); ping rounds measured while the server could not reach the panel
+// arrive later and fill theirs in. Hovering one chart shows the same moment on
 // all of them. What a viewer picks is kept in this browser only.
 
 import { append, clear, h, icon } from './dom'
@@ -10,6 +11,7 @@ import { C, TipRow, hideTip, monoPath, rgba, segment, showTip, tangents } from '
 import { bparts, clamp, hm, md, now } from './fmt'
 import { pingLegend } from './pingsum'
 import { historyNote } from './histstate'
+import { gapAfter, gapsOf, spacing } from './chartgaps'
 
 export interface PingSeries {
   id: number
@@ -244,6 +246,7 @@ interface Track {
   v: number[]
   loss?: number[] // ping: the share of a round's probes lost (1: all of them)
   summary?: string // ping: the range's latency and loss, for the legend (pingLegend)
+  every?: number // ping: seconds between the monitor's rounds (its gaps go by that, not the step)
   on: boolean
 }
 
@@ -397,7 +400,7 @@ class TimeChart {
     let bd = Infinity
     for (const tr of this.tracks) {
       if (!tr.on) continue
-      const i = nearest(tr.t, t, this.step * 1.5)
+      const i = nearest(tr.t, t, spacing(this.step, tr.every) * 1.5)
       if (i >= 0 && Math.abs(tr.t[i] - t) < bd) {
         bd = Math.abs(tr.t[i] - t)
         best = tr.t[i]
@@ -445,9 +448,8 @@ class TimeChart {
     this.plot = { x0, x1 }
     const span = Math.max(1, this.to - this.from)
     const X = (t: number) => x0 + ((t - this.from) / span) * (x1 - x0)
-    const gapAfter = this.step * 2.5
     const on = this.tracks.filter((t) => t.on)
-    const segs = on.map((tr) => segments(tr, gapAfter))
+    const segs = on.map((tr) => segments(tr, gapAfter(this.step, tr.every)))
     const shown = on.map((tr, k) => (this.smooth && this.tpl !== 'bars' ? smoothed(tr, segs[k]) : tr.v))
 
     // the scale: from what is shown in the window (temperatures start near their lowest)
@@ -491,10 +493,7 @@ class TimeChart {
     // time nobody reported: hatched (between points, and since the last one)
     const ref = on.reduce<Track | null>((a, tr) => (!a || tr.t.length > a.t.length ? tr : a), null)
     if (ref && ref.t.length) {
-      const gaps: [number, number][] = []
-      for (let i = 1; i < ref.t.length; i++) if (ref.t[i] - ref.t[i - 1] > gapAfter) gaps.push([ref.t[i - 1] + this.step, ref.t[i]])
-      const last = ref.t[ref.t.length - 1]
-      if (now() - last > gapAfter + this.step) gaps.push([last + this.step, this.to])
+      const gaps = gapsOf(ref.t, this.step, ref.every || 0, now(), this.to)
       for (const [a, b] of gaps) {
         const xa = Math.max(x0, X(a))
         const xb = Math.min(x1, X(b))
@@ -579,7 +578,7 @@ class TimeChart {
           const l = tr.loss![i]
           if (!(l > 0) || t < this.from) return
           const xa = X(t)
-          const w = Math.max(2, X(t + this.step) - xa - 0.5)
+          const w = Math.max(2, X(t + spacing(this.step, tr.every)) - xa - 0.5)
           ctx.fillStyle = l >= 0.999 ? sc.crit : rgba(sc.warn, 0.35 + 0.65 * l)
           ctx.fillRect(xa, ly, w, lane - 2)
         })
@@ -615,7 +614,7 @@ class TimeChart {
     const rows: TipRow[] = []
     let any = false
     on.forEach((tr, k) => {
-      const i = nearest(tr.t, t, this.step * 1.5)
+      const i = nearest(tr.t, t, spacing(this.step, tr.every) * 1.5)
       const lost = i >= 0 && tr.loss ? tr.loss[i] : 0
       if (i < 0) {
         rows.push([tr.label, '—', '', tr.color])
@@ -644,7 +643,7 @@ class TimeChart {
       const key = `${t}|${rows.map((r) => r[1]).join('|')}`
       if (key !== this.tipKey) {
         this.tipKey = key
-        showTip(this.pointer[0], this.pointer[1], when(t, span), any ? undefined : 'No data: the server did not report', rows)
+        showTip(this.pointer[0], this.pointer[1], when(t, span), any ? undefined : 'No data at this moment', rows)
       }
     }
   }
@@ -846,7 +845,7 @@ export function serverHistory(sid: number, name: string, index: number): ServerH
           .filter((l, i) => d.metrics[l.key] && (i === 0 || d.metrics[l.key].some((v) => v > 0)))
           .map((l) => ({ id: l.key, label: l.label, color: pal[l.color - 1], t: d.t, v: d.metrics[l.key], on: !off.has(l.key) }))
       } else {
-        tracks = d.ping.map((p, i) => ({ id: 'p' + p.id, label: p.name, color: pal[i % pal.length], t: p.t, v: p.avg, loss: p.loss, summary: pingLegend(p), on: !off.has('p' + p.id) }))
+        tracks = d.ping.map((p, i) => ({ id: 'p' + p.id, label: p.name, color: pal[i % pal.length], t: p.t, v: p.avg, loss: p.loss, summary: pingLegend(p), every: p.every_secs, on: !off.has('p' + p.id) }))
       }
       const span = RANGES.find((r) => r[0] === d.range)?.[2] || 86400
       const to = now()
@@ -932,7 +931,7 @@ export function serverHistory(sid: number, name: string, index: number): ServerH
     if (hn.text) note.append(h('span.tc-stale', icon('alert', 'sm'), hn.text), h('br'))
     if (!kinds.length) note.append('No history yet: it builds up while the server reports.')
     else if (!want.length) note.append('Every chart is hidden - pick some with the button next to the range.')
-    else note.append(`${stepText(d.step)} · hatched: the server did not report · times are this device's`)
+    else note.append(`${stepText(d.step)} · hatched: no data came in (a ping chart: no rounds, at each monitor's own interval) · times are this device's`)
   }
 
   render()

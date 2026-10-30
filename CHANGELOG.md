@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Ping charts no longer hatch a slow monitor's normal rounds as outages.** Gaps went by the chart's
+  step (a minute on the hour's chart), so a monitor measuring every 10 minutes was hatched between
+  each of its rounds as "the server did not report". Each monitor's gaps now go by its own interval:
+  only a missed round is hatched, and the note no longer says why data is missing.
 - **Server history: a failed load no longer passes for the range you picked.** Picking 1 h when its
   request failed left the selector on 1 h and the 24 h charts on screen, with no sign. The charts
   that stay are now dimmed, and a note names the range they really show and says it is trying again.
