@@ -472,6 +472,15 @@ type pingSeries struct {
 	Loss   []float64 `json:"loss" doc:"Share of probes lost (0-1)"`
 }
 
+// publicPingName is what visitors read for a monitor: its name, unless that gives the target away -
+// a monitor added without a name is named after its target - then "Probe n".
+func publicPingName(m *PingMonitor, n int) string {
+	if m.Name == "" || strings.Contains(strings.ToLower(m.Name), strings.ToLower(m.Target)) {
+		return fmt.Sprintf("Probe %d", n)
+	}
+	return m.Name
+}
+
 // seriesFor builds a server's charts' data. charts are the ones to include; public leaves out what
 // visitors never see (monitors not on the status page, targets).
 func (p *Panel) seriesFor(ctx context.Context, srv *Server, rng string, charts []string, public bool) (*seriesView, error) {
@@ -545,12 +554,16 @@ func (p *Panel) seriesFor(ctx context.Context, srv *Server, rng string, charts [
 	if !sr.fine {
 		ptable = "ping_5m"
 	}
+	shown := 0
 	for _, m := range mons {
 		if !m.Enabled || !m.measuredBy(srv.ID) || (public && !m.Public) {
 			continue
 		}
+		shown++
 		ps := pingSeries{ID: m.ID, Name: m.Name, Kind: m.Kind, Every: m.Every, T: []int64{}, Avg: []float64{}, Loss: []float64{}}
-		if !public {
+		if public {
+			ps.Name = publicPingName(m, shown)
+		} else {
 			ps.Target = m.Target
 		}
 		step := sr.step

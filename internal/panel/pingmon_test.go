@@ -197,3 +197,43 @@ func TestHottest(t *testing.T) {
 		t.Errorf("no sensors: %v", v)
 	}
 }
+
+// TestPublicPingNameHidesTarget: a monitor added with only a target is named after it, and public by
+// default; visitors of the status page still never read the target - not as the target, not as the
+// name, and not in a name that has it inside. The supervisor's own charts keep both.
+func TestPublicPingNameHidesTarget(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	h.p.db.Exec1(`UPDATE servers SET first_seen_at = ?, online = 1, status_changed_at = ? WHERE id = ?`, now(), now(), sid)
+
+	bare := b.must("POST", "/api/ping-monitors", map[string]any{"target": "1.1.1.1"}, 201)
+	if bare["name"] != "1.1.1.1" || bare["public"] != true {
+		t.Fatalf("a monitor with only a target: %v", bare)
+	}
+	b.must("POST", "/api/ping-monitors", map[string]any{"name": "dns.google (Google)", "target": "dns.google", "kind": "tcp", "port": 443}, 201)
+	b.must("POST", "/api/ping-monitors", map[string]any{"name": "Cloudflare", "target": "9.9.9.9"}, 201)
+	set := b.must("GET", "/api/settings", nil, 200)
+	set["status_page"] = "page"
+	set["status_charts"] = []string{"ping"}
+	b.must("PUT", "/api/settings", set, 200)
+
+	_, pub, raw := h.browser().do("GET", fmt.Sprintf("/api/status/servers/%d/series?range=1h", sid), nil)
+	var names []string
+	for _, p := range pub["ping"].([]any) {
+		names = append(names, fmt.Sprint(p.(map[string]any)["name"]))
+	}
+	if fmt.Sprint(names) != "[Probe 1 Probe 2 Cloudflare]" {
+		t.Errorf("the names visitors read: %v", names)
+	}
+	for _, target := range []string{"1.1.1.1", "dns.google", "9.9.9.9"} {
+		if strings.Contains(string(raw), target) {
+			t.Errorf("a visitor's charts give away %s: %s", target, raw)
+		}
+	}
+	sup := b.must("GET", fmt.Sprintf("/api/servers/%d/series?range=1h", sid), nil, 200)
+	if p := sup["ping"].([]any)[0].(map[string]any); p["name"] != "1.1.1.1" || p["target"] != "1.1.1.1" {
+		t.Errorf("the supervisor's chart: %v", p)
+	}
+}
