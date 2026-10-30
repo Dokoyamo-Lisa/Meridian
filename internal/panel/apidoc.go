@@ -170,7 +170,7 @@ var apiOps = []opDoc{
 		Desc:  "Client IPs that connected, aggregated per IP, most recent first (at most 1000). q matches an IP prefix, organisation, city or country code.",
 		Query: []paramDoc{qDays, qQuery, qServer}, Resp: []ipRow{}},
 	{Method: "GET", Path: "/api/dests", Tag: "Monitoring", Summary: "Destinations",
-		Desc:  "Where traffic went, by bytes then connections (at most 500). Bytes are exact for WireGuard; Xray and Hysteria2 report connections.",
+		Desc:  "Where traffic went, by visits (connections), most first (at most 500). Every protocol counts visits; bytes are measured for WireGuard only (0 elsewhere).",
 		Query: []paramDoc{qDays, qQuery, qServer, qSub}, Resp: []destRow{}},
 	{Method: "GET", Path: "/api/events", Tag: "Monitoring", Summary: "Activity timeline, newest first",
 		Query: []paramDoc{{Name: "before", Type: "integer", Desc: "Only events with a smaller id (paging)"}, qServer, qSub,

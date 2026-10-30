@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { DestRow, PanelEvent, IPRow, OnlineIP, Server, User, bits, bytes, dateTime, del, flag, get, post } from '../api'
+import { DestRow, PanelEvent, IPRow, OnlineIP, Server, User, bits, dateTime, del, flag, get, post } from '../api'
 import { Icon } from '../icons'
 import { setQuery, useLocation } from '../router'
 import { Ago, Empty, ErrorBox, Field, Loading, Modal, PageHead, Search, Seg, Tabs, ask, errText, run, toast, useAsync, usePoll } from '../ui'
@@ -503,16 +503,17 @@ function IPsTab(props: { subName: Map<number, User>; srvName: Map<number, string
   )
 }
 
+// DestTable lists destinations by visits (connections): every protocol counts those, while bytes per
+// destination are measured for WireGuard only - a traffic column would leave the rest blank.
 export function DestTable(props: { rows: DestRow[]; subName?: Map<number, User>; showSubs?: boolean }) {
-  const max = Math.max(1, ...props.rows.map((r) => r.bytes))
+  const max = Math.max(1, ...props.rows.map((r) => r.conns))
   return (
     <div class="table-wrap">
       <table class="t">
         <thead>
           <tr>
             <th>Destination</th>
-            <th class="right">Traffic</th>
-            <th class="right hide-sm">Connections</th>
+            <th class="right">Visits</th>
             {props.showSubs && <th class="hide-sm">Users</th>}
             <th class="hide-sm">Last</th>
           </tr>
@@ -525,14 +526,11 @@ export function DestTable(props: { rows: DestRow[]; subName?: Map<number, User>;
                 <span class="faint">
                   :{r.port} {r.network !== 'tcp' ? r.network : ''}
                 </span>
-                {r.bytes > 0 && (
-                  <div class="meter" style="margin-top:5px;max-width:220px">
-                    <i style={{ width: (r.bytes * 100) / max + '%' }} />
-                  </div>
-                )}
+                <div class="meter" style="margin-top:5px;max-width:220px">
+                  <i style={{ width: (r.conns * 100) / max + '%' }} />
+                </div>
               </td>
-              <td class="right nowrap">{r.bytes > 0 ? bytes(r.bytes) : <span class="faint" title="Xray and Hysteria2 report connections, not bytes, per destination">—</span>}</td>
-              <td class="right hide-sm">{r.conns.toLocaleString()}</td>
+              <td class="right nowrap num">{r.conns.toLocaleString()}</td>
               {props.showSubs && (
                 <td class="hide-sm">
                   <div class="row wrap" style="gap:4px">

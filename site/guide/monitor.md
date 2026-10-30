@@ -13,7 +13,7 @@ reach), and **Keep logs for (days)**.
 |---|---|
 | **Online now** | Every device connected right now: its IP, where it is (country, city, network), the user, the server and protocol. Refreshes every 10 seconds; people over their device limit are counted at the top. |
 | **IP history** | Every address that connected in a period (**24 h** to **90 days**), with the users it connected as. Search by IP, network, city or country code. |
-| **Destinations** | The sites and addresses people reached - per user and server. Needs **Record destinations**; for WireGuard also **Log the names devices look up** on the protocol. |
+| **Destinations** | The sites and addresses people reached, by **visits** (connections) - per user and server. Every protocol counts visits; how many bytes went to each site is not measured, so none is shown. Needs **Record destinations**; for WireGuard also **Log the names devices look up** on the protocol. |
 | **Events** | The timeline: everything that happened, by whom - **Everything** or only **Warnings**, for one server or all. |
 | **Blocked IPs** | Addresses you shut out, until when and why. |
 | **Health** | Signs of trouble on your servers - see [Keep your servers safe](keep-servers-safe.md). |

@@ -2,6 +2,7 @@ package panel
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -429,5 +430,36 @@ func TestAvailabilityDownMinutes(t *testing.T) {
 	av := h.p.availabilityOf(context.Background(), []int64{sid}, days)[sid]
 	if av == nil || av.Down[0] == nil || *av.Down[0] != 1 || *av.Days[0] != 80 {
 		t.Fatalf("the day: %+v", av)
+	}
+}
+
+// TestDestsByVisits: destinations go by visits - every protocol counts them - so a site an Xray user
+// visited fifty times comes before one a WireGuard device reached twice (with bytes, which only
+// WireGuard measures).
+func TestDestsByVisits(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	b.must("POST", "/api/users", map[string]any{"name": "Dana"}, 201)
+	var sub int64
+	h.p.db.QueryRow(`SELECT id FROM subs WHERE name = 'Dana'`).Scan(&sub)
+	day := h.p.dayKey(time.Now())
+	for _, r := range []struct {
+		host         string
+		conns, bytes int64
+	}{{"video.example.com", 2, 900_000_000}, {"news.example.com", 50, 0}, {"mail.example.com", 7, 0}} {
+		if _, err := h.p.db.Exec1(`INSERT INTO dest_log (day, server_id, sub_id, host, port, network, conns, bytes, last_seen) VALUES (?, ?, ?, ?, 443, 'tcp', ?, ?, ?)`,
+			day, sid, sub, r.host, r.conns, r.bytes, now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, _, raw := b.do("GET", "/api/dests?days=1", nil)
+	var rows []destRow
+	if err := json.Unmarshal(raw, &rows); err != nil || len(rows) != 3 {
+		t.Fatalf("destinations: %s", raw)
+	}
+	if rows[0].Host != "news.example.com" || rows[1].Host != "mail.example.com" || rows[2].Host != "video.example.com" {
+		t.Errorf("by visits: %s, %s, %s", rows[0].Host, rows[1].Host, rows[2].Host)
 	}
 }

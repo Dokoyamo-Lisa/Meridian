@@ -1096,10 +1096,13 @@ type destRow struct {
 	Servers []int64 `json:"servers,omitempty"`
 }
 
+// destinations are where traffic went, by visits (connections): every protocol counts those, while
+// only WireGuard measures bytes per destination - ranking by bytes put every WireGuard destination
+// above every other, and a table of bytes left the rest without a figure.
 func (p *Panel) destinations(ctx context.Context, where string, args []any, limit int) ([]destRow, error) {
 	rows, err := p.db.QueryContext(ctx, `SELECT host, port, network, SUM(conns), SUM(bytes), MAX(last_seen),
 		GROUP_CONCAT(DISTINCT sub_id), GROUP_CONCAT(DISTINCT server_id) FROM dest_log WHERE `+where+`
-		GROUP BY host, port, network ORDER BY SUM(bytes) DESC, SUM(conns) DESC LIMIT ?`, append(args, limit)...)
+		GROUP BY host, port, network ORDER BY SUM(conns) DESC, MAX(last_seen) DESC LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}

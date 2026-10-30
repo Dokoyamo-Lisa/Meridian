@@ -1029,7 +1029,7 @@
           "Monitoring"
         ],
         "summary": "Destinations",
-        "description": "Where traffic went, by bytes then connections (at most 500). Bytes are exact for WireGuard; Xray and Hysteria2 report connections.",
+        "description": "Where traffic went, by visits (connections), most first (at most 500). Every protocol counts visits; bytes are measured for WireGuard only (0 elsewhere).",
         "operationId": "getDests",
         "parameters": [
           {
@@ -12163,6 +12163,14 @@
             "description": "Percent per day, oldest first, 30 days; null = no data",
             "items": {
               "type": "number"
+            },
+            "type": "array"
+          },
+          "down": {
+            "description": "Minutes down per day, oldest first (null = no data): what a day's colour goes by - a few minutes early today are not a bad day",
+            "items": {
+              "format": "int64",
+              "type": "integer"
             },
             "type": "array"
           }
