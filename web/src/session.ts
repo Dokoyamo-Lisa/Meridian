@@ -97,6 +97,7 @@ export const tones: { id: string; name: string; a: string; b: string }[] = [
   { id: 'paper', name: 'Paper', a: '#2c6aa3', b: '#f3efe6' },
   { id: 'mist', name: 'Mist', a: '#487d73', b: '#eef2f1' },
   { id: 'postmodern', name: 'Postmodern', a: '#2346d8', b: '#ffd23f' },
+  { id: 'vampire', name: 'Vampire Princess', a: '#b5173f', b: '#0d090f' },
 ]
 
 export function currentTone(): string {

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **A new look: Vampire Princess.** Black velvet with a plum depth, moonlit ivory type in a
+  high-contrast Didone, blood crimson and antique gold, under a crescent moon and a scatter of
+  stars. It lays the pages out anew: on a wide screen the panel's name sits centred between gold
+  rules with the menu in small capitals beneath it; panels are arched boards in a double gold
+  frame; figures sit in gold corner brackets; buttons are crimson velvet; tables have gold
+  small-capital headers over a double rule; the sign-in is a portrait under the moon. The status
+  page shows no globe in this look (the moon moves beside the clock), and the users' page and
+  subscription pages follow. Text keeps 4.5:1 (WCAG AA). Pick it with the palette button, or make
+  it everyone's in **Settings › Panel › Look**. Romance stays the default.
 - **Status page: a day is red only when it was a bad day.** The availability bars went by each
   day's share of the time measured, so just after midnight one minute offline read as 80% - red -
   and the bar for all servers averaged them, so one server down turned it red. After the panel

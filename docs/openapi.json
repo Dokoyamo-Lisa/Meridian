@@ -13816,7 +13816,7 @@
             "type": "integer"
           },
           "default_tone": {
-            "description": "The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern - or auto: Ice, or Paper on a device set to light",
+            "description": "The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, vampire - or auto: Ice, or Paper on a device set to light",
             "type": "string"
           },
           "logo_mark": {

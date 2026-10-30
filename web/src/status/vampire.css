@@ -1,0 +1,162 @@
+/* The Vampire Princess look for the status page and the users' page (its colour tokens and night sky
+   are in ../themes.css). There is no globe: the moon over the page is the only sphere. The header is
+   a velvet band under the gold thread; the overview keeps its one-screen grid, each panel under a
+   gold rule with its name in Didone small capitals; the users' page, the server cards and the
+   drawers become boards in a double gold frame; figures and buttons follow the panel's. */
+
+/* ------------------------------------------------------------------ the header band */
+:root[data-theme="vampire"] .top { background: linear-gradient(180deg, rgba(21, 15, 23, .96), rgba(13, 9, 15, .9)); border-bottom: 1px solid var(--vp-gold-line); box-shadow: 0 1px 0 rgba(0, 0, 0, .6), 0 12px 30px -20px rgba(181, 23, 63, .5); }
+:root[data-theme="vampire"] .c-time { font: italic 400 28px/1 var(--font-d); letter-spacing: 0; color: var(--ink); }
+:root[data-theme="vampire"] .c-meta { font: 400 13px/1.35 var(--font-d); font-variant: small-caps; letter-spacing: .08em; color: var(--vp-gold-2); }
+:root[data-theme="vampire"] .nav a { color: var(--ink-3); font: 400 15px/1 var(--font-d); font-variant: small-caps; letter-spacing: .11em; }
+:root[data-theme="vampire"] .nav a:hover { color: var(--vp-gold-2); }
+:root[data-theme="vampire"] .nav a[aria-current="page"] { color: var(--ink); }
+:root[data-theme="vampire"] .nav a::after { background: linear-gradient(90deg, transparent, var(--accent-ink), transparent); }
+:root[data-theme="vampire"] .live { color: var(--ink-2); font: 400 13px/1 var(--font-d); font-variant: small-caps; letter-spacing: .08em; }
+:root[data-theme="vampire"] .live i { background: var(--good); box-shadow: 0 0 8px rgba(132, 211, 162, .7); }
+:root[data-theme="vampire"] .live.stale i { background: var(--crit); box-shadow: 0 0 8px rgba(255, 111, 134, .7); }
+:root[data-theme="vampire"] .mnav { background: var(--page); }
+:root[data-theme="vampire"] .mnav a { color: var(--ink-3); font: 400 14.5px/1 var(--font-d); font-variant: small-caps; letter-spacing: .08em; }
+:root[data-theme="vampire"] .mnav a[aria-current="page"] { color: var(--ink); background: linear-gradient(180deg, rgba(181, 23, 63, .25), rgba(181, 23, 63, .1)); box-shadow: inset 0 0 0 1px var(--vp-gold-line); }
+
+/* ------------------------------------------------------------------ type */
+:root[data-theme="vampire"] :focus-visible { outline: 1.5px solid var(--vp-gold); outline-offset: 3px; }
+:root[data-theme="vampire"] :is(.page-h h1, .gate h1) { font: italic 400 44px/1.05 var(--font-d); letter-spacing: -.01em; color: var(--ink); text-shadow: 0 0 28px rgba(181, 23, 63, .35); }
+:root[data-theme="vampire"] .page-h p { font: italic 400 15px/1.5 var(--font-d); color: var(--ink-2); }
+:root[data-theme="vampire"] .ph h2 { font: 400 15px/1.1 var(--font-d); font-variant: small-caps; letter-spacing: .12em; color: var(--vp-gold-2); }
+:root[data-theme="vampire"] .pn { font: italic 400 13px/1 var(--font-d); color: var(--vp-gold); }
+:root[data-theme="vampire"] :is(.a-num, .k-val, .mine-v b, .left-hero .value, .quota-big .value, .t-val, .tc-now) { font-family: var(--font-d); font-weight: 400; letter-spacing: -.01em; }
+:root[data-theme="vampire"] :is(.d-sec h4, .sub-h) { font: 400 14px/1.3 var(--font-d); font-variant: small-caps; letter-spacing: .1em; color: var(--vp-gold-2); }
+:root[data-theme="vampire"] .verdict b { font: italic 400 22px/1.2 var(--font-d); }
+:root[data-theme="vampire"] .verdict .v-ic { background: var(--good-soft); color: var(--good); box-shadow: 0 0 0 1px rgba(132, 211, 162, .4), 0 0 16px -2px rgba(132, 211, 162, .4); }
+:root[data-theme="vampire"] .verdict[data-level="warn"] .v-ic { background: var(--warn-soft); color: var(--warn); box-shadow: 0 0 0 1px rgba(233, 189, 100, .45), 0 0 16px -2px rgba(233, 189, 100, .45); }
+:root[data-theme="vampire"] .verdict[data-level="crit"] .v-ic { background: var(--crit-soft); color: var(--crit); box-shadow: 0 0 0 1px rgba(255, 111, 134, .5), 0 0 16px -2px rgba(255, 111, 134, .5); }
+
+/* ------------------------------------------------------------------ no globe
+   The overview has no globe in this look: the figures under it stay, the servers' list takes the
+   room, and the globe pauses itself while it is not shown. */
+:root[data-theme="vampire"] .globe-area { flex: none; min-height: 0; counter-increment: none; }
+:root[data-theme="vampire"] .globe-area > :is(.ph.ghost, .g-stage) { display: none; }
+@media (min-width: 1280px) {
+  :root[data-theme="vampire"] .col-c .globe-area { flex: none; min-height: 0; }
+  :root[data-theme="vampire"] .col-c .p-table { flex: 1 1 0; }
+}
+
+/* ------------------------------------------------------------------ panels: a gold rule over each */
+:root[data-theme="vampire"] .panel { border-top: 1px solid var(--vp-gold-line); background: linear-gradient(180deg, rgba(181, 23, 63, .05), transparent 120px); }
+:root[data-theme="vampire"] .ph.ghost h2 { text-shadow: 0 0 12px rgba(13, 9, 15, .9); }
+/* the users' page is not one screen: there each panel is an arched board in a double gold frame */
+:root[data-theme="vampire"] #v-me .panel {
+  border: 0;
+  padding: 22px 22px 22px;
+  border-radius: 140px 140px 10px 10px / 30px 30px 10px 10px;
+  background: linear-gradient(180deg, rgba(181, 23, 63, .08), transparent 140px), var(--surface);
+  box-shadow: var(--vp-frame), var(--vp-glow);
+}
+:root[data-theme="vampire"] .kpis { gap: 14px; border: 0; }
+:root[data-theme="vampire"] .kpi, :root[data-theme="vampire"] .kpi + .kpi {
+  border: 0;
+  background:
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 0 0 / 12px 1px no-repeat,
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 0 0 / 1px 12px no-repeat,
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 100% 100% / 12px 1px no-repeat,
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 100% 100% / 1px 12px no-repeat,
+    radial-gradient(120% 90% at 50% 0%, rgba(181, 23, 63, .12), transparent 70%),
+    var(--surface);
+}
+:root[data-theme="vampire"] .kpi :is(small, .k-l, .k-lab) { font-family: var(--font-d); font-variant: small-caps; letter-spacing: .09em; color: var(--vp-gold-2); }
+:root[data-theme="vampire"] .strip i { border-radius: 1px; }
+:root[data-theme="vampire"] .strip i.good { background: linear-gradient(180deg, rgba(132, 211, 162, .85), rgba(132, 211, 162, .5)); }
+:root[data-theme="vampire"] .strip i.warn { background: var(--warn); }
+:root[data-theme="vampire"] .strip i.crit { background: linear-gradient(180deg, #ff6f86, #b5173f); box-shadow: 0 0 8px rgba(255, 111, 134, .5); }
+
+/* ------------------------------------------------------------------ cards, boxes, notes */
+:root[data-theme="vampire"] :is(.card, .tc-card, .tc-pick, .tc-skel, .tg-code, .sup-note) { border: 1px solid var(--line-2); border-radius: 8px; background: var(--raised); box-shadow: 0 16px 36px -26px rgba(0, 0, 0, .9); }
+:root[data-theme="vampire"] .card { transition: border-color .3s, box-shadow .3s, transform .3s var(--ease-out); }
+:root[data-theme="vampire"] .card:hover { border-color: var(--vp-gold-line); transform: translateY(-2px); box-shadow: 0 0 0 1px rgba(214, 178, 110, .25), 0 22px 44px -26px rgba(181, 23, 63, .7); }
+:root[data-theme="vampire"] :is(.c-t b, .tc-t b) { font: italic 400 19px/1.2 var(--font-d); }
+:root[data-theme="vampire"] .note-box { border-radius: 6px; border: 1px solid var(--line-2); border-left: 3px solid var(--vp-gold); box-shadow: none; background: var(--raised); }
+:root[data-theme="vampire"] .note-box.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+:root[data-theme="vampire"] .note-box.crit { border-left-color: var(--crit); background: var(--crit-soft); }
+:root[data-theme="vampire"] .maint-banner { border: 1px solid var(--vp-gold-line); border-radius: 6px; background: linear-gradient(90deg, rgba(181, 23, 63, .3), rgba(181, 23, 63, .1)); color: var(--ink); }
+
+/* ------------------------------------------------------------------ controls */
+:root[data-theme="vampire"] :is(.btn, .pill-btn, .more, .bar-key, .ip) { border: 1px solid var(--line-2); border-radius: 4px; background: var(--raised); color: var(--ink); font-family: var(--font-d); font-variant: small-caps; letter-spacing: .07em; transition: border-color .2s, color .2s, box-shadow .25s; }
+:root[data-theme="vampire"] :is(.btn, .pill-btn, .more, .bar-key, .ip):hover:not(:disabled) { border-color: var(--vp-gold); color: var(--vp-gold-2); box-shadow: 0 0 18px -6px rgba(214, 178, 110, .45); }
+:root[data-theme="vampire"] :is(.btn.primary, .gate-form .btn.primary) { background: var(--vp-velvet); border-color: rgba(240, 217, 162, .45); color: var(--on-accent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 10px 26px -14px rgba(181, 23, 63, .9); }
+:root[data-theme="vampire"] :is(.btn.primary, .gate-form .btn.primary):hover:not(:disabled) { background: var(--vp-velvet-hover); color: #fff; border-color: var(--vp-gold-2); }
+:root[data-theme="vampire"] .btn:disabled { background: var(--hover); border-color: var(--line); color: var(--ink-4); box-shadow: none; opacity: 1; }
+:root[data-theme="vampire"] .btn.ghost { border-color: transparent; background: transparent; }
+:root[data-theme="vampire"] .avatar { background: var(--vp-velvet); color: var(--on-accent); font-family: var(--font-d); font-style: italic; }
+:root[data-theme="vampire"] .icon-btn { border: 1px solid var(--line-2); border-radius: 50%; background: var(--raised); color: var(--ink-2); }
+:root[data-theme="vampire"] .icon-btn:hover { color: var(--vp-gold-2); border-color: var(--vp-gold); box-shadow: 0 0 16px -4px rgba(214, 178, 110, .5); }
+:root[data-theme="vampire"] .seg { border: 1px solid var(--line-2); border-radius: 4px; background: rgba(0, 0, 0, .25); }
+:root[data-theme="vampire"] .seg button { border-radius: 3px; font-family: var(--font-d); font-variant: small-caps; letter-spacing: .07em; color: var(--ink-3); }
+:root[data-theme="vampire"] :is(.seg button[aria-pressed="true"], .seg button[aria-selected="true"]) { color: var(--on-accent); }
+:root[data-theme="vampire"] .seg .ind { border-radius: 3px; background: var(--vp-velvet); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .15); }
+:root[data-theme="vampire"] .chip { border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink-2); background: transparent; }
+:root[data-theme="vampire"] .chip.good { color: var(--good); background: var(--good-soft); box-shadow: inset 0 0 0 1px rgba(132, 211, 162, .4); }
+:root[data-theme="vampire"] .chip.warn { color: var(--warn); background: var(--warn-soft); box-shadow: inset 0 0 0 1px rgba(233, 189, 100, .45); }
+:root[data-theme="vampire"] .chip.crit { color: var(--crit); background: var(--crit-soft); box-shadow: inset 0 0 0 1px rgba(255, 111, 134, .5); }
+:root[data-theme="vampire"] .chip.accent { color: var(--vp-gold-2); background: rgba(214, 178, 110, .08); box-shadow: inset 0 0 0 1px var(--vp-gold-line); }
+:root[data-theme="vampire"] :is(.link-in, .gate-form .field input) { border: 1px solid var(--line-2); border-radius: 4px; background: rgba(0, 0, 0, .3); }
+:root[data-theme="vampire"] :is(.link-in, .gate-form .field input):focus { border-color: var(--vp-gold); box-shadow: 0 0 0 3px rgba(214, 178, 110, .14); }
+:root[data-theme="vampire"] .pal-pop { border: 1px solid var(--vp-gold-line); border-radius: 8px; background: var(--raised); box-shadow: 0 24px 60px -24px rgba(0, 0, 0, .95); }
+:root[data-theme="vampire"] .pal-pop button:hover { background: linear-gradient(90deg, rgba(181, 23, 63, .2), transparent); }
+:root[data-theme="vampire"] .tip { border: 1px solid var(--vp-gold-line); border-radius: 6px; box-shadow: 0 18px 44px -18px rgba(0, 0, 0, .95); }
+:root[data-theme="vampire"] .toast { border: 1px solid var(--vp-gold-line); border-radius: 6px; background: var(--raised); font-style: italic; }
+
+/* ------------------------------------------------------------------ tables: gold small capitals over a double rule */
+:root[data-theme="vampire"] th { font: 400 13px/1.2 var(--font-d); font-variant: small-caps; text-transform: none; letter-spacing: .1em; color: var(--vp-gold-2); border-bottom: 3px double var(--vp-gold-line); }
+:root[data-theme="vampire"] td { border-bottom: 1px solid var(--line); }
+:root[data-theme="vampire"] tbody tr:hover { background: linear-gradient(90deg, rgba(181, 23, 63, .1), transparent 80%); }
+
+/* ------------------------------------------------------------------ rings and bars */
+:root[data-theme="vampire"] .r-track { stroke: rgba(214, 178, 110, .14); }
+:root[data-theme="vampire"] .r-val { filter: drop-shadow(0 0 3px rgba(228, 70, 108, .5)); }
+
+/* ------------------------------------------------------------------ drawers and windows */
+:root[data-theme="vampire"] .panel-d { border-left: 1px solid var(--vp-gold-line); box-shadow: -30px 0 80px -30px rgba(0, 0, 0, .95), -1px 0 0 rgba(214, 178, 110, .12); }
+@media (max-width: 860px) { :root[data-theme="vampire"] .panel-d { border-left: 0; border-top: 1px solid var(--vp-gold-line); } }
+:root[data-theme="vampire"] .d-head { background: linear-gradient(180deg, rgba(181, 23, 63, .16), transparent); border-bottom: 1px solid var(--line); }
+:root[data-theme="vampire"] .d-head h3 { font: italic 400 26px/1.2 var(--font-d); color: var(--ink); }
+:root[data-theme="vampire"] .d-sec { border-bottom: 1px solid var(--line); }
+:root[data-theme="vampire"] dialog { border: 0; border-radius: 10px; box-shadow: var(--vp-frame), 0 40px 100px -30px rgba(0, 0, 0, .95); }
+
+/* ------------------------------------------------------------------ the sign-in: a portrait under the moon */
+:root[data-theme="vampire"] .gate {
+  position: relative;
+  z-index: 1;
+  max-width: 410px;
+  margin-top: 9vh;
+  padding: 48px 34px 30px;
+  border-radius: 190px 190px 12px 12px / 60px 60px 12px 12px;
+  background: linear-gradient(180deg, rgba(181, 23, 63, .14), transparent 180px), var(--surface);
+  box-shadow: var(--vp-frame), 0 50px 120px -40px rgba(0, 0, 0, 1), 0 0 80px -30px rgba(181, 23, 63, .6);
+}
+@media (max-width: 560px) { :root[data-theme="vampire"] .gate { margin: 3vh 0 0; padding: 36px 20px 22px; border-radius: 90px 90px 10px 10px / 34px 34px 10px 10px; } }
+:root[data-theme="vampire"] .gate h1 { font-size: 36px; }
+:root[data-theme="vampire"] :is(.gate p, .gate-text) { color: var(--ink-2); font-style: italic; font-family: var(--font-d); font-size: 15px; }
+:root[data-theme="vampire"] .foot { font: italic 400 13px/1.4 var(--font-d); color: var(--ink-3); }
+
+/* the dashboard fills the width: the stars and the crimson mist stay behind it, the moon moves into
+   the header - a small crescent before the clock */
+:root[data-theme="vampire"] body::before {
+  background:
+    radial-gradient(90vw 34vw at 50% 112%, rgba(181, 23, 63, .16), transparent 70%),
+    radial-gradient(rgba(255, 240, 222, .45) .9px, transparent 1.4px) 23px 41px / 311px 257px,
+    radial-gradient(rgba(255, 240, 222, .26) .7px, transparent 1.2px) 151px 97px / 263px 337px,
+    radial-gradient(rgba(240, 217, 162, .3) 1px, transparent 1.5px) 71px 199px / 397px 283px,
+    radial-gradient(rgba(255, 240, 222, .3) .8px, transparent 1.3px) 307px 151px / 433px 211px;
+}
+:root[data-theme="vampire"] .c-time::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 10px;
+  vertical-align: -1px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 68% 36%, #150f17 0 7px, transparent 7.5px), radial-gradient(circle, var(--vp-moon) 0 8.5px, transparent 9px);
+  filter: drop-shadow(0 0 6px rgba(244, 231, 207, .45));
+}

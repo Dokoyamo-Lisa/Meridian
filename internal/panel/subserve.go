@@ -320,6 +320,14 @@ a.dl{color:var(--accent)}
 .look-postmodern .app,.look-postmodern .link input,.look-postmodern .qr{border:2px solid #17151a;border-radius:0;background:#fff;box-shadow:4px 4px 0 #17151a}
 .look-postmodern .app:hover{background:#ffd23f}.look-postmodern button.btn{border:2px solid #17151a;border-radius:999px;background:#fff;box-shadow:2px 2px 0 #17151a;font-weight:600}
 .look-postmodern .bar{height:10px;border:1.5px solid #17151a;border-radius:0;background:#fff}.look-postmodern .bar i{background:repeating-linear-gradient(-45deg,#2346d8 0 5px,#4a68ec 5px 10px)}
+.look-vampire body{background-image:radial-gradient(circle at calc(100% - 70px) 64px,#0d090f 0 25px,transparent 26px),radial-gradient(circle at calc(100% - 80px) 72px,#f4e7cf 0 27px,transparent 28px),radial-gradient(rgba(255,240,222,.4) .9px,transparent 1.4px),radial-gradient(rgba(255,240,222,.24) .7px,transparent 1.2px),var(--glow);background-size:auto,auto,173px 131px,97px 211px,auto;background-position:0 0,0 0,13px 29px,61px 7px,0 0}
+.look-vampire .brand{font:italic 400 17px/1 var(--display);letter-spacing:.01em;text-transform:none;color:var(--ink)}.look-vampire .brand .mark{color:#d6b26e}
+.look-vampire h1{font-size:36px;text-shadow:0 0 28px rgba(181,23,63,.35)}
+.look-vampire section{border-top:1px solid rgba(214,178,110,.42)}.look-vampire h2{font:400 15px/1.2 var(--display);font-style:normal;font-variant:small-caps;letter-spacing:.12em;color:#f0d9a2}
+.look-vampire .app{border-radius:8px;border-color:rgba(214,178,110,.3);background:#1c141f}.look-vampire .app:hover{border-color:rgba(214,178,110,.6);background:#1c141f;box-shadow:0 0 22px -8px rgba(181,23,63,.8)}
+.look-vampire .link input{border-radius:4px;background:rgba(0,0,0,.3)}.look-vampire button.btn{border-radius:4px;border-color:rgba(240,217,162,.45);background:linear-gradient(180deg,#c81f4a,#8f0f30);color:#fff6f2;font-variant:small-caps;letter-spacing:.07em}
+.look-vampire .qr{border-radius:6px;box-shadow:0 0 0 1px rgba(214,178,110,.42),0 0 0 5px #150f17,0 0 0 6px rgba(214,178,110,.2)}
+.look-vampire .bar{height:5px;background:rgba(0,0,0,.4)}.look-vampire .bar i{background:linear-gradient(90deg,#8f0f30,#e4466c);box-shadow:0 0 10px rgba(228,70,108,.45)}
 </style></head><body><main>
 <div class="brand">{{if .Logo}}<img class="mark" src="{{.Logo}}" alt="">{{else}}{{.Mark}}{{end}}{{.Site}}</div>
 <h1>{{.Name}}</h1>

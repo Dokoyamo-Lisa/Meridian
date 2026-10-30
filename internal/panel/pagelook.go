@@ -42,6 +42,10 @@ var pageTones = map[string]pageTone{
 	// Postmodern's dot grid and outlines come from the page's .look-postmodern rules (subserve.go)
 	"postmodern": {"light", "#f4eee2", "#fffbf2", "rgba(23,21,26,.16)", "rgba(23,21,26,.36)", "#17151a", "#3b3640", "#5c5562", "#2346d8", "#17744a", "#8a5200",
 		`Futura,"Futura PT","Avenir Next","Century Gothic","Trebuchet MS",sans-serif`, "normal", "800", "none"},
+	// Vampire Princess: the moon and the gold frames come from the page's .look-vampire rules (subserve.go)
+	"vampire": {"dark", "#0d090f", "#150f17", "rgba(214,178,110,.14)", "rgba(214,178,110,.3)", "#f3e9df", "#d2c3b8", "#a8979d", "#ff6f8f", "#84d3a2", "#e9bd64",
+		`"Bodoni 72",Didot,"Bodoni MT","Big Caslon","Iowan Old Style","Palatino Linotype",Georgia,serif`, "italic", "400",
+		"radial-gradient(90vw 34vw at 50% 112%,rgba(181,23,63,.2),transparent 70%)"},
 }
 
 func (t pageTone) vars() string {
