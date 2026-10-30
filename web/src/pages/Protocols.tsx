@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { ApiError, AppSupport, Cert, ExtNode, NodeView, ProtocolCatalog, ProtocolCheck, Server, User, del, get, patch, plural, post } from '../api'
+import { covers as coversName, sharedName } from '../certname'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import { Check, Code, Empty, ErrorBox, Field, Loading, Menu, Modal, PageHead, Search, Seg, Toggle, ask, errText, run, toast, useAsync, usePoll } from '../ui'
@@ -1334,7 +1335,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
                 <RealitySite d={d} set={set} sites={cat.data.reality_sites} pick={sitePick} setPick={setSitePick} server={server} />
               )}
 
-              {kind && ((xray && !d.cdn && d.security === 'tls') || kind === 'hysteria2' || kind === 'anytls') && <CertFields d={d} set={set} kind={kind} editing={editing} keepKey={editing && n?.settings?.cert_mode === 'custom'} />}
+              {kind && ((xray && !d.cdn && d.security === 'tls') || kind === 'hysteria2' || kind === 'anytls') && <CertFields d={d} set={set} kind={kind} editing={editing} keepKey={editing && n?.settings?.cert_mode === 'custom'} server={server} />}
 
               {kind && xray && ['ws', 'httpupgrade', 'xhttp'].includes(d.transport) && (
                 <div class="inline-fields">
@@ -1796,7 +1797,7 @@ function RealitySite(props: { d: Draft; set: (p: Partial<Draft>) => void; sites:
   )
 }
 
-function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: string; editing: boolean; keepKey?: boolean }) {
+function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: string; editing: boolean; keepKey?: boolean; server?: Server }) {
   const { d, set } = props
   const certs = useAsync(() => get<Cert[]>('/api/certs'))
   // certificates added in another tab (Manage certificates opens one) show up on coming back
@@ -1805,7 +1806,21 @@ function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: s
     window.addEventListener('focus', back)
     return () => window.removeEventListener('focus', back)
   }, [])
-  const covers = (c: Cert, name: string) => c.domains.some((x) => x === name || (x.startsWith('*.') && name.endsWith(x.slice(1)) && !name.slice(0, -x.length + 1).includes('.')))
+  const covers = (c: Cert, name: string) => coversName(c.domains, name)
+  // choosing a certificate fills in its name (certname.ts), unless the name there is one it covers
+  const pick = (id: number) => {
+    const c = (certs.data || []).find((x) => x.id === id)
+    const name = d.sni.trim()
+    set({ cert_id: id, ...(c && !(name && covers(c, name)) ? { sni: sharedName(c.domains, props.server) } : {}) })
+  }
+  const chosen = (certs.data || []).find((x) => x.id === d.cert_id)
+  // switching to Shared certificate with one chosen before (or only one there): its name too
+  useEffect(() => {
+    if (d.cert_mode !== 'shared' || !certs.data) return
+    const only = certs.data.length === 1 ? certs.data[0] : undefined
+    if (!d.cert_id && only) pick(only.id)
+    else if (chosen && !(d.sni.trim() && covers(chosen, d.sni.trim()))) set({ sni: sharedName(chosen.domains, props.server) })
+  }, [d.cert_mode, certs.data])
   return (
     <div class="subsection">
       <Field label="Certificate">
@@ -1822,7 +1837,7 @@ function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: s
       </Field>
       {d.cert_mode === 'shared' && (
         <Field label="Shared certificate" hint={<>Kept once in Settings › Certificates and replaced there once for every server that uses it. <a href="/settings?tab=certs" target="_blank" rel="noopener noreferrer">Manage certificates</a> (opens in a new tab - this window keeps your draft)</>}>
-          <select class="input" value={d.cert_id} onChange={(e) => set({ cert_id: Number(e.currentTarget.value) })}>
+          <select class="input" value={d.cert_id} onChange={(e) => pick(Number(e.currentTarget.value))}>
             <option value={0}>Choose…</option>
             {(certs.data || []).map((c) => (
               <option value={c.id}>
@@ -1841,7 +1856,9 @@ function CertFields(props: { d: Draft; set: (p: Partial<Draft>) => void; kind: s
             : d.cert_mode === 'acme'
               ? 'A domain whose DNS record points at this server. TCP port 80 must be free: the agent gets the certificate there and renews it by itself.'
               : d.cert_mode === 'shared'
-                ? 'A domain the shared certificate covers, e.g. tokyo.example.com for a *.example.com certificate.'
+                ? chosen
+                  ? `Filled in from the certificate (${chosen.domains.join(', ')}). Any other name it covers works too.`
+                  : 'Filled in from the certificate you choose.'
                 : 'The domain the certificate is for.'
         }
       >

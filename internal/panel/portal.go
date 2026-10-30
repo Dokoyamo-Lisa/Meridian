@@ -559,6 +559,7 @@ func (p *Panel) apiProtocolCheck(w http.ResponseWriter, r *http.Request, a *Acco
 			return errStatus(http.StatusBadRequest, "a protocol's kind cannot change - add a new protocol instead")
 		}
 		kind = n.Kind
+		p.fillSharedName(r.Context(), srv, kind, in.Settings, n.Settings)
 		raw, err = updateSettings(n.Kind, n.Settings, in.Settings)
 	} else {
 		if srv, err = p.ownServer(r.Context(), a, in.ServerID); err != nil {
@@ -572,6 +573,7 @@ func (p *Panel) apiProtocolCheck(w http.ResponseWriter, r *http.Request, a *Acco
 		if nodes, err = p.nodesOf(r.Context(), srv.ID); err != nil {
 			return err
 		}
+		p.fillSharedName(r.Context(), srv, kind, in.Settings, nil)
 		raw, err = newSettings(kind, in.Settings, nodes)
 	}
 	if err == nil {

@@ -137,6 +137,100 @@ func (c *Cert) covers(name string) bool {
 	return err == nil && leaf.VerifyHostname(name) == nil
 }
 
+// sharedName is the name a protocol with this certificate presents when nobody gave one: the
+// server's address when the certificate covers it, else the certificate's first name of its own,
+// else - a wildcard alone - the server's name under it (tokyo.example.com for *.example.com). Apps
+// connect to the link's address and check this name against the certificate, so it need not
+// resolve anywhere.
+func (c *Cert) sharedName(srv *Server) string {
+	if a := strings.ToLower(strings.TrimSuffix(srv.Address, ".")); strings.Contains(a, ".") && validDNSName(a) && c.covers(a) {
+		return a
+	}
+	for _, d := range c.Domains {
+		if !strings.HasPrefix(d, "*.") && validDNSName(d) {
+			return d
+		}
+	}
+	for _, d := range c.Domains {
+		if strings.HasPrefix(d, "*.") {
+			label := hostLabel(srv.Name)
+			if label == "" {
+				label = "proxy"
+			}
+			if n := label + d[1:]; validDNSName(n) && c.covers(n) {
+				return n
+			}
+		}
+	}
+	return ""
+}
+
+// hostLabel turns a server's name into one DNS label: "Tokyo 2" -> "tokyo-2".
+func hostLabel(name string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			dash = false
+		case b.Len() > 0 && !dash:
+			b.WriteByte('-')
+			dash = true
+		}
+	}
+	out := strings.TrimRight(b.String(), "-")
+	if len(out) > 40 {
+		out = strings.TrimRight(out[:40], "-")
+	}
+	return out
+}
+
+// fillSharedName gives a protocol that chooses a shared certificate without a name the
+// certificate's own (sharedName): nobody types a domain the certificate already says. A name it had
+// before stays when the certificate covers it; one it does not cover (a REALITY site, another
+// certificate's) gives way.
+func (p *Panel) fillSharedName(ctx context.Context, srv *Server, kind string, in *protoInput, old json.RawMessage) {
+	if in == nil || in.CertMode == nil || trimLower(in.CertMode) != certShared || in.CertID == nil || *in.CertID <= 0 {
+		return
+	}
+	if in.SNI != nil && strings.TrimSpace(*in.SNI) != "" {
+		return
+	}
+	c, err := p.certByID(ctx, *in.CertID)
+	if err != nil || c.AccountID != srv.AccountID {
+		return // checkSharedCert says so
+	}
+	if was := sniOf(kind, old); was != "" && c.covers(was) {
+		in.SNI = &was // kept as it is (an empty name would fall back to the protocol's default)
+		return
+	}
+	if name := c.sharedName(srv); name != "" {
+		in.SNI = &name
+	}
+}
+
+// sniOf is the name in a protocol's settings (TLS, Hysteria2, AnyTLS; REALITY's site), or "".
+func sniOf(kind string, raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	switch kind {
+	case subgen.KindAnyTLS:
+		return parseAnyTLS(raw).SNI
+	case subgen.KindHysteria2:
+		var s hy2Settings
+		if json.Unmarshal(raw, &s) == nil {
+			return s.SNI
+		}
+		return ""
+	}
+	if s, err := parseXray(raw); err == nil {
+		return s.SNI
+	}
+	return ""
+}
+
 // certName is the name a protocol with a shared certificate presents (its SNI), or "" when it does
 // not use one.
 func certName(kind string, raw json.RawMessage) (id int64, sni string) {

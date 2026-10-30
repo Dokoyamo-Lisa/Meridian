@@ -10,7 +10,11 @@
   a server's silence counts only from when the panel started; a day's colour goes by its minutes
   down (up to 1: good, up to 14: trouble, more: bad); and the bar for all servers is red only
   when every server had a bad day.
-- **Monitor › Speed now**: each user's speed and each address's, live (see below).
+- **Shared certificates fill in the domain.** Choosing a shared certificate for a protocol still
+  asked for its domain, though the certificate names it. It is now filled in: the server's own
+  domain when the certificate covers it, else the certificate's name, else - a wildcard alone - the
+  server's name under it (Tokyo 2 with *.example.com: tokyo-2.example.com). A name typed in that the
+  certificate covers stays; the API fills it in the same way when none is sent.
 
 ## 1.4.2 - 2026-10-30
 
