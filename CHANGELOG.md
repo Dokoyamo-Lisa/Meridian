@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Security: a shared server's guest panel cannot reach this host through DNS rebinding.** A guest's
+  ping monitor was checked against public addresses by name, then each probe looked the name up
+  again - an answer that changed in between could send it to this host or a private network. A round
+  now resolves once and probes the address it checked. The guest's camouflage check works the same
+  way: Xray gets the checked address, not the name. Needs agent 1.4.2.
 - **Security: the status page no longer shows a ping monitor's target as its name.** A monitor added
   with only a target is named after it and shown to visitors by default, so the public charts read
   "1.1.1.1" although visitors are never to see the target. Visitors now read "Probe 1", "Probe 2" ...

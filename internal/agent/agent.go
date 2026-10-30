@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -383,13 +384,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.apply(ctx, st, false)
 	}
 	a.runCtx = ctx
-	a.ping.check = func(ctx context.Context, t proto.PingTarget) error { // a guest's monitors measure the internet only
-		if slot, _ := slotOf(t.ID); slot > 0 {
-			return publicTarget(ctx, t.Target)
-		}
-		return nil
-	}
-	a.startGuests(ctx) // the panels it is shared with (share.go)
+	a.ping.check = guestPingCheck // a guest's monitors measure the internet only
+	a.startGuests(ctx)            // the panels it is shared with (share.go)
 	go a.watch(ctx)
 	go a.reconcileLoop(ctx)
 	go a.certs.Run(ctx)
@@ -671,6 +667,15 @@ func (a *Agent) prepare(ctx context.Context, st *proto.State) prepared {
 		}
 	}
 	return p
+}
+
+// guestPingCheck refuses a guest panel's monitor an address that is not public: the address the
+// probes go to, resolved once for the round (pinger.round).
+func guestPingCheck(t proto.PingTarget, addr netip.Addr) error {
+	if slot, _ := slotOf(t.ID); slot > 0 && !publicIP(addr) {
+		return fmt.Errorf("%s is not a public address", addr)
+	}
+	return nil
 }
 
 // geoWanted says whether a state asks for a country rule.
