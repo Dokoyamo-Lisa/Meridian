@@ -67,7 +67,7 @@ export function PingTab(props: { servers: Server[] }) {
                     </div>
                   </td>
                   <td class="nowrap muted">{everyText(m.every_secs)}</td>
-                  <td class="muted">{m.servers.length ? m.servers.map((id) => names.get(id) || `#${id}`).join(', ') : 'All servers'}</td>
+                  <td class="muted">{m.servers.length ? m.servers.map((id) => names.get(id) || `removed server #${id}`).join(', ') : 'All servers'}</td>
                   <td>
                     {m.latest.length === 0 ? (
                       <span class="faint">{m.enabled ? 'waiting for the first rounds' : '—'}</span>
@@ -187,6 +187,16 @@ function PingModal(props: { monitor: PingMonitor | null; servers: Server[]; onCl
                   hint={s.guest ? 'Shared with you: it measures public addresses only' : undefined}
                 />
               ))}
+              {(m?.servers || [])
+                .filter((id) => !props.servers.some((s) => s.id === id))
+                .map((id) => (
+                  <Check
+                    checked={picked.includes(id)}
+                    onChange={(v) => setPicked(v ? [...picked, id] : picked.filter((x) => x !== id))}
+                    label={`Removed server #${id}`}
+                    hint="Deleted since: it measures nothing. Untick it to drop it from the list."
+                  />
+                ))}
             </div>
           )}
         </Field>

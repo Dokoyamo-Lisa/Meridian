@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Ping monitors: editing one measured from a deleted server works again.** Deleting a server left
+  it in the lists of the monitors measured from it, and saving such a monitor was refused ("there
+  is no server ..."). It now saves with its list as it was (never widened to all servers); the edit
+  dialog shows the deleted server as "Removed server #n", to untick.
 - **Ping page: "no answer" when the last round had none.** A target that answered earlier in the
   hour and then stopped showed "0.0 ms · 50% lost". The list now has each server's last round's loss
   (`last_loss`): it says "no answer" from that, and the hour's loss reads "lost in the last hour" (in

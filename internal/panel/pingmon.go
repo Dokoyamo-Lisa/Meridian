@@ -267,7 +267,10 @@ func (p *Panel) applyPingInput(ctx context.Context, m *PingMonitor, in *pingInpu
 		var list []int64
 		for _, id := range *in.Servers {
 			s, err := p.serverByID(ctx, id)
-			if err != nil || s.AccountID != m.AccountID || s.DeletedAt > 0 {
+			// a server removed since stays in a monitor's list as it was (it measures nothing): dropping it
+			// could leave the list empty, which means every server. The edit dialog shows it, to untick.
+			kept := err == nil && s.AccountID == m.AccountID && s.DeletedAt > 0 && slices.Contains(m.Servers, id)
+			if !kept && (err != nil || s.AccountID != m.AccountID || s.DeletedAt > 0) {
 				return errStatus(http.StatusBadRequest, fmt.Sprintf("there is no server %d", id))
 			}
 			if !slices.Contains(list, id) {

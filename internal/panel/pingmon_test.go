@@ -349,3 +349,37 @@ func TestPublicPingNameAfterTargetChange(t *testing.T) {
 		}
 	}
 }
+
+// TestPingEditAfterServerDeleted: a monitor measured from First and Second; First is deleted. Editing
+// the monitor (the form sends its list back, First included) works and keeps the list as it was -
+// never "all servers" - while Second still measures it; unticking First drops it. A server deleted
+// before cannot be added to a list.
+func TestPingEditAfterServerDeleted(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	ctx := context.Background()
+	first := id(b.must("POST", "/api/servers", map[string]any{"name": "First", "address": "203.0.113.21"}, 201)["server"].(map[string]any)["id"])
+	second := id(b.must("POST", "/api/servers", map[string]any{"name": "Second", "address": "203.0.113.22"}, 201)["server"].(map[string]any)["id"])
+	mid := id(b.must("POST", "/api/ping-monitors", map[string]any{"name": "DNS", "target": "1.1.1.1", "servers": []int64{first, second}}, 201)["id"])
+	b.must("DELETE", fmt.Sprintf("/api/servers/%d", first), nil, 200)
+
+	ed := b.must("PATCH", fmt.Sprintf("/api/ping-monitors/%d", mid), map[string]any{"name": "Resolver", "target": "1.1.1.1", "servers": []int64{first, second}}, 200)
+	if ed["name"] != "Resolver" || fmt.Sprint(ed["servers"]) != fmt.Sprint([]any{float64(first), float64(second)}) {
+		t.Errorf("the edit: %v", ed)
+	}
+	st, err := h.p.compileServer(ctx, second)
+	if err != nil || len(st.Ping) != 1 || st.Ping[0].ID != mid {
+		t.Errorf("Second no longer measures it: %+v %v", st.Ping, err)
+	}
+	if ed := b.must("PATCH", fmt.Sprintf("/api/ping-monitors/%d", mid), map[string]any{"servers": []int64{second}}, 200); fmt.Sprint(ed["servers"]) != fmt.Sprint([]any{float64(second)}) {
+		t.Errorf("unticking the removed server: %v", ed["servers"])
+	}
+	// once gone from the list, or for another monitor, a deleted server is no server
+	if code, _, _ := b.do("PATCH", fmt.Sprintf("/api/ping-monitors/%d", mid), map[string]any{"servers": []int64{first, second}}); code != 400 {
+		t.Errorf("a deleted server added back: %d", code)
+	}
+	if code, _, _ := b.do("POST", "/api/ping-monitors", map[string]any{"target": "8.8.8.8", "servers": []int64{first}}); code != 400 {
+		t.Errorf("a new monitor on a deleted server: %d", code)
+	}
+}
