@@ -25,7 +25,11 @@ class El {
     return this.children.find((c) => c.tag === tag) || null
   }
 }
-const ctx: Record<string, unknown> = { document: { createElement: (t: string) => new El(t) } }
+const frames: ((ts: number) => void)[] = []
+const ctx: Record<string, unknown> = {
+  document: { createElement: (t: string) => new El(t), hidden: false },
+  requestAnimationFrame: (f: (ts: number) => void) => frames.push(f),
+}
 ctx.window = ctx
 vm.runInNewContext(readFileSync(new URL('../public/status/globe.js', import.meta.url), 'utf8'), ctx)
 const G = (ctx.LSGlobe as { prototype: Record<string, (...a: unknown[]) => void> }).prototype
@@ -52,7 +56,7 @@ test('a label line that was empty at first appears, and goes when emptied', () =
   const el = new El('div')
   el.append(new El('b'))
   const it = { key: 'k', sub: '', el, lw: 120 }
-  const g = { hub: null, places: [it] }
+  const g = { hub: null, places: [it], kick() {} }
   G.setLabel.call(g, 'k', '14:05')
   assert.equal(el.querySelector('span')?.textContent, '14:05')
   assert.equal(it.lw, 0) // measured again
@@ -61,4 +65,43 @@ test('a label line that was empty at first appears, and goes when emptied', () =
   assert.equal(el.querySelector('span')?.textContent, '14:06')
   G.setLabel.call(g, 'k', '')
   assert.equal(el.querySelector('span'), null)
+})
+
+test('an idle globe (reduced motion) places a label again when its line changes', () => {
+  frames.length = 0
+  const el = new El('div')
+  el.append(new El('b'))
+  const it = { key: 'k', sub: '', el, lw: 120 }
+  let placed = 0
+  // a globe at rest: reduced motion, nothing moving, no frame asked for
+  const g = Object.assign(Object.create(G), {
+    o: { reduced: true, fps: 30 },
+    visible: true,
+    W: 400,
+    raf: 0,
+    dirty: false,
+    lastDraw: 1e9,
+    comets: [],
+    pings: [],
+    zoom: 1,
+    zoomTo: 1,
+    focusKey: null,
+    introT0: 0,
+    hub: null,
+    places: [it],
+    step() {},
+    draw() {
+      this.placeLabels() // as the real draw does, once per frame drawn
+    },
+    placeLabels() {
+      placed++
+      return []
+    },
+  })
+  g.frame = G.frame.bind(g)
+  G.setLabel.call(g, 'k', '14:05')
+  assert.equal(frames.length, 1, 'no frame was asked for')
+  frames.shift()!(1e9 + 1)
+  assert.equal(placed, 1, 'the label was not placed again')
+  assert.equal(frames.length, 0, 'an idle globe kept drawing')
 })

@@ -951,7 +951,8 @@ void main() {
       }
       if (span && !sub) span.remove();
       else if (span) span.textContent = sub;
-      it.lw = 0;                                                  // measured again on the next frame
+      it.lw = 0;                                                  // measured again on the next frame,
+      this.kick(true);                                            // which an idle globe (reduced motion) must draw
     }
 
     // ------------------------------------------------------------------ pointer
