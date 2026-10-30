@@ -470,6 +470,9 @@ type pingSeries struct {
 	T      []int64   `json:"t"`
 	Avg    []float64 `json:"avg" doc:"Milliseconds (0 where every probe was lost)"`
 	Loss   []float64 `json:"loss" doc:"Share of probes lost (0-1)"`
+	Sent   int64     `json:"sent" doc:"Probes sent in the whole range"`
+	Lost   int64     `json:"lost" doc:"Probes lost in the whole range"`
+	AvgMs  float64   `json:"avg_ms" doc:"The range's average round trip over every probe answered (0: none)"`
 }
 
 // publicPingName is what visitors read for a monitor: its name, unless that gives the target away -
@@ -577,17 +580,22 @@ func (p *Panel) seriesFor(ctx context.Context, srv *Server, rng string, charts [
 		if err != nil {
 			return nil, err
 		}
+		var answeredMs float64 // the range's totals count each probe once, whatever its step held
 		for prow.Next() {
 			var t, sent, lost int64
 			var avg float64
 			if prow.Scan(&t, &sent, &lost, &avg) != nil || sent == 0 {
 				continue
 			}
+			ps.Sent, ps.Lost, answeredMs = ps.Sent+sent, ps.Lost+lost, answeredMs+avg*float64(sent-lost)
 			ps.T = append(ps.T, t)
 			ps.Avg = append(ps.Avg, roundTo(avg, 1))
 			ps.Loss = append(ps.Loss, roundTo(float64(lost)/float64(sent), 3))
 		}
 		prow.Close()
+		if ps.Sent > ps.Lost {
+			ps.AvgMs = roundTo(answeredMs/float64(ps.Sent-ps.Lost), 1)
+		}
 		out.Ping = append(out.Ping, ps)
 	}
 	return out, nil

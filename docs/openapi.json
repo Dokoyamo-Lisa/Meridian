@@ -9578,6 +9578,20 @@
               "type": "number"
             },
             "type": "array"
+          },
+          "sent": {
+            "description": "Probes sent in the whole range",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lost": {
+            "description": "Probes lost in the whole range",
+            "format": "int64",
+            "type": "integer"
+          },
+          "avg_ms": {
+            "description": "The range's average round trip over every probe answered (0: none)",
+            "type": "number"
           }
         }
       },

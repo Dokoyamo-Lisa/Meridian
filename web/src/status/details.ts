@@ -8,6 +8,7 @@
 import { append, clear, h, icon } from './dom'
 import { C, TipRow, hideTip, monoPath, rgba, segment, showTip, tangents } from './chart'
 import { bparts, clamp, hm, md, now } from './fmt'
+import { pingLegend } from './pingsum'
 
 export interface PingSeries {
   id: number
@@ -18,6 +19,9 @@ export interface PingSeries {
   t: number[]
   avg: number[]
   loss: number[]
+  sent: number
+  lost: number
+  avg_ms: number
 }
 
 export interface SeriesPayload {
@@ -238,6 +242,7 @@ interface Track {
   t: number[]
   v: number[]
   loss?: number[] // ping: the share of a round's probes lost (1: all of them)
+  summary?: string // ping: the range's latency and loss, for the legend (pingLegend)
   on: boolean
 }
 
@@ -840,7 +845,7 @@ export function serverHistory(sid: number, name: string, index: number): ServerH
           .filter((l, i) => d.metrics[l.key] && (i === 0 || d.metrics[l.key].some((v) => v > 0)))
           .map((l) => ({ id: l.key, label: l.label, color: pal[l.color - 1], t: d.t, v: d.metrics[l.key], on: !off.has(l.key) }))
       } else {
-        tracks = d.ping.map((p, i) => ({ id: 'p' + p.id, label: p.name, color: pal[i % pal.length], t: p.t, v: p.avg, loss: p.loss, on: !off.has('p' + p.id) }))
+        tracks = d.ping.map((p, i) => ({ id: 'p' + p.id, label: p.name, color: pal[i % pal.length], t: p.t, v: p.avg, loss: p.loss, summary: pingLegend(p), on: !off.has('p' + p.id) }))
       }
       const span = RANGES.find((r) => r[0] === d.range)?.[2] || 86400
       const to = now()
@@ -857,21 +862,7 @@ export function serverHistory(sid: number, name: string, index: number): ServerH
       clear(legend)
       if (tracks.length > 1 || !def) {
         for (const tr of tracks) {
-          let extra = ''
-          if (tr.loss) {
-            let sum = 0
-            let n = 0
-            let lost = 0
-            tr.v.forEach((v, i) => {
-              lost += tr.loss![i]
-              if (tr.loss![i] < 0.999) {
-                sum += v
-                n++
-              }
-            })
-            const share = tr.t.length ? lost / tr.t.length : 0
-            extra = tr.t.length ? `${n ? (sum / n).toFixed(1) + ' ms' : 'no answer'} · ${share ? (share * 100).toFixed(share < 0.01 ? 2 : 1) + '% lost' : 'none lost'}` : 'no rounds yet'
-          }
+          const extra = tr.summary ?? ''
           const b = h(
             'button.tc-lg',
             { type: 'button', 'aria-pressed': String(tr.on), title: tr.on ? `Hide ${tr.label}` : `Show ${tr.label}` },

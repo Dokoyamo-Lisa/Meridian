@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **The ping legend counts probes, not chart steps.** The latency and loss under a ping chart averaged
+  each step's figures equally, so a step with one lost probe weighed as much as one with six answered
+  (50% lost instead of 1 in 7). The panel now sends each monitor's totals for the range (`sent`,
+  `lost`, `avg_ms`), and the legend shows those.
 - **Security: a shared server's guest panel cannot reach this host through DNS rebinding.** A guest's
   ping monitor was checked against public addresses by name, then each probe looked the name up
   again - an answer that changed in between could send it to this host or a private network. A round

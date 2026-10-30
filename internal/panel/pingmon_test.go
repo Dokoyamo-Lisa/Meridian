@@ -237,3 +237,31 @@ func TestPublicPingNameHidesTarget(t *testing.T) {
 		t.Errorf("the supervisor's chart: %v", p)
 	}
 }
+
+// TestPingSeriesTotals: the range's loss and latency count every probe once, whatever each step
+// held. One step with its single probe lost, one with six answered at 20 ms and one with three at
+// 50 ms: 1 of 10 lost (not the steps' average, 33%) and 30 ms (not 35).
+func TestPingSeriesTotals(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	h.p.db.Exec1(`UPDATE servers SET first_seen_at = ?, online = 1, status_changed_at = ? WHERE id = ?`, now(), now(), sid)
+	mid := id(b.must("POST", "/api/ping-monitors", map[string]any{"name": "DNS", "target": "1.1.1.1"}, 201)["id"])
+	t0 := now() / 60 * 60
+	for _, r := range []struct {
+		ts         int64
+		sent, lost int
+		avg        float64
+	}{{t0 - 180, 1, 1, 0}, {t0 - 120, 6, 0, 20}, {t0 - 60, 3, 0, 50}} {
+		if _, err := h.p.db.Exec1(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			mid, sid, r.ts, r.sent, r.lost, r.avg, r.avg, r.avg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	v := b.must("GET", fmt.Sprintf("/api/servers/%d/series?range=1h&charts=ping", sid), nil, 200)
+	ps := v["ping"].([]any)[0].(map[string]any)
+	if len(ps["t"].([]any)) != 3 || id(ps["sent"]) != 10 || id(ps["lost"]) != 1 || ps["avg_ms"] != 30.0 {
+		t.Errorf("the range's totals: %d steps, %v sent, %v lost, %v ms", len(ps["t"].([]any)), ps["sent"], ps["lost"], ps["avg_ms"])
+	}
+}
