@@ -32,3 +32,15 @@ export function pinStep(keys: string[], cur: string | null, dir: 1 | -1): string
   if (i < 0) return dir > 0 ? keys[0] : keys[keys.length - 1]
   return keys[(i + dir + keys.length) % keys.length]
 }
+
+// pickSig is what an open chooser shows: its servers, their names and whether they are online.
+export function pickSig(list: PinChoice[]): string {
+  return list.map((x) => `${x.id}:${x.name}:${x.online ? 1 : 0}`).join('|')
+}
+
+// pickRefresh is what a status refresh does to an open chooser: keep it, rebuild it with what its
+// pin holds now, or close it - the pin is gone, or is down to one server (or none).
+export function pickRefresh(shown: string, now: ReturnType<typeof pinChoice>): 'keep' | 'rebuild' | 'close' {
+  if (!now || !('choose' in now)) return 'close'
+  return pickSig(now.choose) === shown ? 'keep' : 'rebuild'
+}

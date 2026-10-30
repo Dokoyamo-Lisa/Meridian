@@ -56,7 +56,7 @@ import { ServerHistory, serverHistory } from './details'
 import { osBadge, virtName } from './os'
 import { TgSession, call as tgCall, telegramPanel, tgLaunch } from './tg'
 import { globeLayoutKey } from './globekeys'
-import { pinChoice, pinStep } from './globenav'
+import { PinChoice, pickRefresh, pickSig, pinChoice, pinStep } from './globenav'
 
 // ================================================================ state
 
@@ -1193,12 +1193,17 @@ function initGlobe() {
 
 // selectPin: a pin of one server opens it; a pin of several shows a chooser with a link to each
 // (their rows in the server table may be folded away, and at full screen the table is not in view)
-function selectPin(p: GlobePlace | null) {
-  if (!p || !p.ids) return
-  const c = pinChoice(p.ids, (id) => {
+const pinChoiceOf = (p: GlobePlace) =>
+  pinChoice(p.ids, (id) => {
     const sv = serverById(id)
     return sv && { id: sv.id, name: sv.name, online: !!sv.online }
   })
+
+let picked: { key: string; sig: string } | null = null // the pin the open chooser lists, and what it shows
+
+function selectPin(p: GlobePlace | null) {
+  if (!p || !p.ids) return
+  const c = pinChoiceOf(p)
   if (!c) return
   if ('go' in c) {
     closePick()
@@ -1207,23 +1212,42 @@ function selectPin(p: GlobePlace | null) {
   }
   globe!.focus(p.key)
   highlightRows(p.ids)
+  renderPick(p, c.choose)
+  $('a', $('#gPick')).focus({ preventScroll: true })
+}
+
+function renderPick(p: GlobePlace, list: PinChoice[]) {
   const pick = $('#gPick')
+  const had = (document.activeElement as HTMLElement | null)?.closest('#gPick') ? document.activeElement!.getAttribute('href') : null
   clear(pick).append(
     h('div.g-pick-h', h('b', p.label), h('button.icon-btn', { type: 'button', 'aria-label': 'Close the list' }, icon('close', 'sm'))),
     h(
       'ul',
-      ...c.choose.map((x) => h('li', h('a', { href: x.href }, h('span', x.name), h('small' + (x.online ? '' : '.crit'), x.online ? 'online' : 'offline')))),
+      ...list.map((x) => h('li', h('a', { href: x.href }, h('span', x.name), h('small' + (x.online ? '' : '.crit'), x.online ? 'online' : 'offline')))),
     ),
   )
   pick.setAttribute('aria-label', `Servers in ${p.label}`)
   pick.hidden = false
+  picked = { key: p.key, sig: pickSig(list) }
   $('button', pick).addEventListener('click', () => closePick(true))
   $$('a', pick).forEach((a) => a.addEventListener('click', () => closePick()))
-  $('a', pick).focus({ preventScroll: true })
+  if (had != null) ($$('a', pick).find((a) => a.getAttribute('href') === had) || $('a', pick)).focus({ preventScroll: true }) // a rebuild keeps the focus in the list
+}
+
+// refreshPick: an open chooser follows each status refresh - rebuilt when its pin's servers or their
+// states changed, closed when the pin is gone or down to one server
+function refreshPick(places: GlobePlace[]) {
+  if (!picked || $('#gPick').hidden) return
+  const p = places.find((x) => x.key === picked!.key)
+  const c = p ? pinChoiceOf(p) : null
+  const what = pickRefresh(picked.sig, c)
+  if (what === 'rebuild' && p && c && 'choose' in c) renderPick(p, c.choose)
+  else if (what === 'close') closePick(!!(document.activeElement as HTMLElement | null)?.closest('#gPick'))
 }
 
 function closePick(refocus = false) {
   const pick = document.getElementById('gPick')
+  picked = null
   if (!pick || pick.hidden) return
   pick.hidden = true
   if (refocus) $('#globe').focus({ preventScroll: true })
@@ -1361,6 +1385,7 @@ function updateGlobe() {
     for (const p of places) globe.updatePlace(p.key, { rate: p.rate, sub: p.sub, state: p.state, ids: p.ids })
   }
   S.places = places
+  refreshPick(places)
 }
 
 function updateGlobeTimes() {
