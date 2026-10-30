@@ -213,8 +213,9 @@ type pingInput struct {
 }
 
 func (p *Panel) applyPingInput(ctx context.Context, m *PingMonitor, in *pingInput) error {
-	oldTarget := m.Target
+	oldTarget, oldName, rawName := m.Target, m.Name, ""
 	if in.Name != nil {
+		rawName = strings.TrimSpace(*in.Name) // before cleanName cuts a long host name to 48 characters
 		m.Name = cleanName(*in.Name, 48)
 	}
 	if in.Target != nil {
@@ -229,7 +230,9 @@ func (p *Panel) applyPingInput(ctx context.Context, m *PingMonitor, in *pingInpu
 	}
 	// a monitor without a name of its own is named after its target, and keeps following it: the edit
 	// form sends that name back, and the old address must not stay behind as the name
-	if m.Name == "" || (oldTarget != "" && oldTarget != m.Target && strings.EqualFold(m.Name, oldTarget)) {
+	// (compared before cleaning: a host name longer than a name may be is sent back whole)
+	sentBack := in.Name == nil || strings.EqualFold(rawName, oldName) || strings.EqualFold(rawName, oldTarget)
+	if m.Name == "" || (oldTarget != "" && oldTarget != m.Target && sentBack && (strings.EqualFold(oldName, oldTarget) || strings.EqualFold(rawName, oldTarget))) {
 		m.Name = m.Target
 	}
 	if in.Kind != nil {

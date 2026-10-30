@@ -311,6 +311,15 @@ func TestPublicPingNameAfterTargetChange(t *testing.T) {
 	if ed["name"] != "1.1.1.1" {
 		t.Errorf("the name stayed the old target: %v", ed["name"])
 	}
+	// a default name longer than a name may be (48): the edit form sends the whole old host name back
+	long := "private-" + strings.Repeat("a", 45) + ".example.com"
+	lm := b.must("POST", "/api/ping-monitors", map[string]any{"target": long, "public": false}, 201)
+	if lm["name"] != long {
+		t.Fatalf("a long target's name: %v", lm["name"])
+	}
+	if ed := b.must("PATCH", fmt.Sprintf("/api/ping-monitors/%d", id(lm["id"])), map[string]any{"name": long, "target": "1.0.0.1", "public": true}, 200); ed["name"] != "1.0.0.1" {
+		t.Errorf("a long default name after the target changed: %v", ed["name"])
+	}
 	named := b.must("POST", "/api/ping-monitors", map[string]any{"name": "Office 10.0.0.2", "target": "9.9.9.9"}, 201)
 	b.must("POST", "/api/ping-monitors", map[string]any{"name": "Quad9", "target": "9.9.9.10"}, 201)
 	// a name of its own stays when the target changes
@@ -326,10 +335,10 @@ func TestPublicPingNameAfterTargetChange(t *testing.T) {
 	for _, p := range pub["ping"].([]any) {
 		names = append(names, fmt.Sprint(p.(map[string]any)["name"]))
 	}
-	if fmt.Sprint(names) != "[Probe 1 Probe 2 Quad9]" {
+	if fmt.Sprint(names) != "[Probe 1 Probe 2 Probe 3 Quad9]" {
 		t.Errorf("the names visitors read: %v", names)
 	}
-	for _, addr := range []string{"10.0.0.1", "10.0.0.2", "1.1.1.1", "8.8.8.8"} {
+	for _, addr := range []string{"10.0.0.1", "10.0.0.2", "1.1.1.1", "8.8.8.8", "private-aaa", "1.0.0.1"} {
 		if strings.Contains(string(raw), addr) {
 			t.Errorf("visitors read %s: %s", addr, raw)
 		}
