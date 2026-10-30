@@ -45,3 +45,11 @@ export function pickRefresh(shown: string, label: string, now: ReturnType<typeof
   if (!now || !('choose' in now)) return 'close'
   return pickSig(label, now.choose) === shown ? 'keep' : 'rebuild'
 }
+
+// globeMayStayOpen says whether the full-screen globe may stay: only on the overview it belongs to,
+// while the status is there to show. Leaving the view, or losing access to the status (a session
+// that ended, a disabled account, a region refused), closes it - else the page stays scroll-locked
+// with no close button in view.
+export function globeMayStayOpen(view: string, hasStatus: boolean): boolean {
+  return view === 'overview' && hasStatus
+}

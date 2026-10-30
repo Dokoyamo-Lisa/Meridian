@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Status page: the full-screen globe closes when the status goes away.** A refresh answered with
+  "not allowed" (a session that ended, a disabled account, a region refused) switched to the sign-in
+  with the globe still "open": the page stayed locked from scrolling with no close button in view.
+  Leaving the overview or losing the status now closes it.
 - **Ping monitors: editing one measured from a deleted server works again.** Deleting a server left
   it in the lists of the monitors measured from it, and saving such a monitor was refused ("there
   is no server ..."). It now saves with its list as it was (never widened to all servers); the edit

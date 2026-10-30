@@ -56,7 +56,7 @@ import { ServerHistory, serverHistory } from './details'
 import { osBadge, virtName } from './os'
 import { TgSession, call as tgCall, telegramPanel, tgLaunch } from './tg'
 import { globeLayoutKey } from './globekeys'
-import { PinChoice, pickRefresh, pickSig, pinChoice, pinStep } from './globenav'
+import { PinChoice, globeMayStayOpen, pickRefresh, pickSig, pinChoice, pinStep } from './globenav'
 
 // ================================================================ state
 
@@ -1305,6 +1305,14 @@ function globeKeys(host: HTMLElement) {
   })
 }
 
+// leaveGlobe closes the full-screen globe when its view goes (another page, or the status lost): no
+// step back in history - the page moves on by itself - but its history entry is made an ordinary one
+function leaveGlobe() {
+  if (!S.globeOpen) return
+  setGlobeOpen(false, true)
+  if (history.state && history.state.globe) history.replaceState(null, '', location.href)
+}
+
 // full screen: wheel / pinch zoom, drag to turn; Esc, the close button or Back leave it
 // opener is what opened it: the globe itself (by click or from the keyboard, which then keeps the
 // keys there) or the full-screen button. Leaving puts the focus back on it - or, when that is gone
@@ -2438,6 +2446,7 @@ function initAuth() {
     }
     S.pub = null
     S.pubState = 'none'
+    leaveGlobe()
     S.live.clear()
     resetCards()
     closeDrawer(true)
@@ -2610,6 +2619,7 @@ function route() {
 }
 
 function showView(v: View) {
+  if (!globeMayStayOpen(v, !!S.pub)) leaveGlobe()
   const changed = S.view !== v || !S.viewSet
   const swap = () => {
     S.view = v

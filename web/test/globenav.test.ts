@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pickRefresh, pickSig, pinChoice, pinStep } from '../src/status/globenav.ts'
+import { globeMayStayOpen, pickRefresh, pickSig, pinChoice, pinStep } from '../src/status/globenav.ts'
 
 // eight servers; the table folds after six, and the shared Tokyo pin holds the last two
 const servers = Array.from({ length: 8 }, (_, i) => ({ id: i + 1, name: `srv-${i + 1}`, online: i !== 7 }))
@@ -52,4 +52,11 @@ test('an open chooser follows a status refresh', () => {
   // down to one server, or the pin gone: closed
   assert.equal(pickRefresh(shown, 'Tokyo JP', pinChoice([7], byId)), 'close')
   assert.equal(pickRefresh(shown, 'Tokyo JP', null), 'close')
+})
+
+test('the full-screen globe closes when the status goes away or its view is left', () => {
+  assert.equal(globeMayStayOpen('overview', true), true)
+  assert.equal(globeMayStayOpen('overview', false), false) // a refresh answered 401 or 403
+  assert.equal(globeMayStayOpen('signin', false), false)
+  assert.equal(globeMayStayOpen('servers', true), false)
 })
