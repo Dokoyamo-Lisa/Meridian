@@ -1,6 +1,7 @@
 package nft
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,7 +123,10 @@ func TestDumpRulesets(t *testing.T) {
 		UDPPorts:  []int{443, 51820},
 		LocalOnly: []int{50000, 50001},
 		Geo:       &GeoSpec{V4: []string{"1.0.1.0-1.0.3.255", "36.0.0.0/8"}, V6: []string{"2400:da00::/32"}, Except: []string{"5.5.5.5"}},
-		Speed:     []proto.SpeedLimit{{Sub: 7, Mbps: 200}, {Sub: 12, Mbps: 1000}},
+		Speed:     []proto.SpeedLimit{{Sub: 7, Mbps: 200}, {Sub: 12, Mbps: 1000}, {Sub: 2, Mbps: 50}},
+		XrayTCP:   []int{443},
+		XrayUDP:   []int{443},
+		WGSpeed:   []WGSpeed{{Sub: 12, Iface: "uwg1", Addrs: []string{"10.66.0.5", "10.66.0.6"}}, {Sub: 12, Iface: "uwg2", Addrs: []string{"10.66.16.5", "fd12:3456:789a::5"}}},
 		Solo: []SoloPort{{Node: 11, Sub: 2, Port: 31000, TCP: true, UDP: true, NoNew: true, Refused: []string{"198.51.100.9"}},
 			{Node: 12, Sub: 3, Port: 31001, TCP: true}},
 		SoloUID:    997,
@@ -135,6 +139,10 @@ func TestDumpRulesets(t *testing.T) {
 		"full":        full,
 	} {
 		script := "add table inet " + Table + "\ndelete table inet " + Table + "\n" + New().render(spec)
+		if name == "full" { // and what SetSpeedIPs adds once devices connect: a limited user's addresses
+			script += fmt.Sprintf("add element inet %s %s { 198.51.100.20 }\nadd element inet %s %s { 2001:db8::20 }\n",
+				Table, speedSet(7, false), Table, speedSet(7, true))
+		}
 		if err := os.WriteFile(filepath.Join(dir, name+".nft"), []byte(script), 0o644); err != nil {
 			t.Fatal(err)
 		}
