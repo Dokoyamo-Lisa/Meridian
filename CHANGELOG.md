@@ -36,7 +36,9 @@
 - **Security: the status page no longer shows a ping monitor's target as its name.** A monitor added
   with only a target is named after it and shown to visitors by default, so the public charts read
   "1.1.1.1" although visitors are never to see the target. Visitors now read "Probe 1", "Probe 2" ...
-  for any monitor whose name is empty or contains its target; the panel shows both as before.
+  for any monitor whose name is empty, contains its target or holds an IP address; the panel shows
+  both as before. A monitor named after its target keeps following it when the target changes, so an
+  old (perhaps internal) address never stays behind as its name.
 - **Security: a disabled account's WireGuard files are no longer served.** `/s/{token}/wg/{node}.conf`
   checked only the token and whether the user was paused; a still-known link of a user whose
   account is disabled returned the full configuration, private key included. Every subscription

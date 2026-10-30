@@ -213,6 +213,7 @@ type pingInput struct {
 }
 
 func (p *Panel) applyPingInput(ctx context.Context, m *PingMonitor, in *pingInput) error {
+	oldTarget := m.Target
 	if in.Name != nil {
 		m.Name = cleanName(*in.Name, 48)
 	}
@@ -226,7 +227,9 @@ func (p *Panel) applyPingInput(ctx context.Context, m *PingMonitor, in *pingInpu
 	if m.Target == "" {
 		return errStatus(http.StatusBadRequest, "give the address to measure")
 	}
-	if m.Name == "" {
+	// a monitor without a name of its own is named after its target, and keeps following it: the edit
+	// form sends that name back, and the old address must not stay behind as the name
+	if m.Name == "" || (oldTarget != "" && oldTarget != m.Target && strings.EqualFold(m.Name, oldTarget)) {
 		m.Name = m.Target
 	}
 	if in.Kind != nil {
@@ -496,13 +499,27 @@ type pingSeries struct {
 	AvgMs  float64   `json:"avg_ms" doc:"The range's average round trip over every probe answered (0: none)"`
 }
 
-// publicPingName is what visitors read for a monitor: its name, unless that gives the target away -
-// a monitor added without a name is named after its target - then "Probe n".
+// publicPingName is what visitors read for a monitor: its name, unless that gives an address away -
+// a monitor added without a name is named after its target, and a name may hold an address (this
+// target's, or one it had before) - then "Probe n".
 func publicPingName(m *PingMonitor, n int) string {
-	if m.Name == "" || strings.Contains(strings.ToLower(m.Name), strings.ToLower(m.Target)) {
+	if m.Name == "" || strings.Contains(strings.ToLower(m.Name), strings.ToLower(m.Target)) || hasAddr(m.Name) {
 		return fmt.Sprintf("Probe %d", n)
 	}
 	return m.Name
+}
+
+// hasAddr says whether a text holds an IP address (v4 or v6, with or without brackets or a port).
+func hasAddr(s string) bool {
+	for _, w := range strings.FieldsFunc(s, func(r rune) bool { return r == ' ' || r == ',' || r == '(' || r == ')' || r == '/' }) {
+		if _, err := netip.ParseAddrPort(w); err == nil {
+			return true
+		}
+		if _, err := netip.ParseAddr(strings.Trim(w, "[]")); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // seriesFor builds a server's charts' data. charts are the ones to include; public leaves out what

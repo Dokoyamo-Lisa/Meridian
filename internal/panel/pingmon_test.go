@@ -294,3 +294,49 @@ func TestPingLatestNoAnswer(t *testing.T) {
 		t.Errorf("an answered last round: %s", val)
 	}
 }
+
+// TestPublicPingNameAfterTargetChange: a public monitor added with only a private target is named
+// after it; its target is then changed, the edit form sending the old name back. The name follows the
+// new target, and visitors never read the old address - nor an address typed into a name.
+func TestPublicPingNameAfterTargetChange(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	h.p.db.Exec1(`UPDATE servers SET first_seen_at = ?, online = 1, status_changed_at = ? WHERE id = ?`, now(), now(), sid)
+	m := b.must("POST", "/api/ping-monitors", map[string]any{"target": "10.0.0.1"}, 201)
+	mid := id(m["id"])
+	// the edit form: every field as it was, the target changed
+	ed := b.must("PATCH", fmt.Sprintf("/api/ping-monitors/%d", mid), map[string]any{"name": "10.0.0.1", "target": "1.1.1.1"}, 200)
+	if ed["name"] != "1.1.1.1" {
+		t.Errorf("the name stayed the old target: %v", ed["name"])
+	}
+	named := b.must("POST", "/api/ping-monitors", map[string]any{"name": "Office 10.0.0.2", "target": "9.9.9.9"}, 201)
+	b.must("POST", "/api/ping-monitors", map[string]any{"name": "Quad9", "target": "9.9.9.10"}, 201)
+	// a name of its own stays when the target changes
+	if ed := b.must("PATCH", fmt.Sprintf("/api/ping-monitors/%d", id(named["id"])), map[string]any{"name": "Office 10.0.0.2", "target": "8.8.8.8"}, 200); ed["name"] != "Office 10.0.0.2" {
+		t.Errorf("a name of its own: %v", ed["name"])
+	}
+	set := b.must("GET", "/api/settings", nil, 200)
+	set["status_page"] = "page"
+	set["status_charts"] = []string{"ping"}
+	b.must("PUT", "/api/settings", set, 200)
+	_, pub, raw := h.browser().do("GET", fmt.Sprintf("/api/status/servers/%d/series?range=1h", sid), nil)
+	var names []string
+	for _, p := range pub["ping"].([]any) {
+		names = append(names, fmt.Sprint(p.(map[string]any)["name"]))
+	}
+	if fmt.Sprint(names) != "[Probe 1 Probe 2 Quad9]" {
+		t.Errorf("the names visitors read: %v", names)
+	}
+	for _, addr := range []string{"10.0.0.1", "10.0.0.2", "1.1.1.1", "8.8.8.8"} {
+		if strings.Contains(string(raw), addr) {
+			t.Errorf("visitors read %s: %s", addr, raw)
+		}
+	}
+	for s, want := range map[string]bool{"Office 10.0.0.2": true, "[2001:db8::1]:443": true, "1.1.1.1:53": true, "dns (8.8.8.8)": true, "Quad9": false, "Tokyo 2": false, "v1.2": false} {
+		if hasAddr(s) != want {
+			t.Errorf("hasAddr(%q) = %v", s, !want)
+		}
+	}
+}
