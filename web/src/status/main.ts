@@ -1218,7 +1218,9 @@ function selectPin(p: GlobePlace | null) {
 
 function renderPick(p: GlobePlace, list: PinChoice[]) {
   const pick = $('#gPick')
-  const had = (document.activeElement as HTMLElement | null)?.closest('#gPick') ? document.activeElement!.getAttribute('href') : null
+  // a rebuild keeps the focus where it was in the list: the same link, or the close button
+  const a = document.activeElement as HTMLElement | null
+  const had = a?.closest('#gPick') ? a.getAttribute('href') || (a.tagName === 'BUTTON' ? 'close' : '') : null
   clear(pick).append(
     h('div.g-pick-h', h('b', p.label), h('button.icon-btn', { type: 'button', 'aria-label': 'Close the list' }, icon('close', 'sm'))),
     h(
@@ -1228,10 +1230,10 @@ function renderPick(p: GlobePlace, list: PinChoice[]) {
   )
   pick.setAttribute('aria-label', `Servers in ${p.label}`)
   pick.hidden = false
-  picked = { key: p.key, sig: pickSig(list) }
+  picked = { key: p.key, sig: pickSig(p.label, list) }
   $('button', pick).addEventListener('click', () => closePick(true))
   $$('a', pick).forEach((a) => a.addEventListener('click', () => closePick()))
-  if (had != null) ($$('a', pick).find((a) => a.getAttribute('href') === had) || $('a', pick)).focus({ preventScroll: true }) // a rebuild keeps the focus in the list
+  if (had != null) (had === 'close' ? $('button', pick) : $$('a', pick).find((x) => x.getAttribute('href') === had) || $('a', pick)).focus({ preventScroll: true })
 }
 
 // refreshPick: an open chooser follows each status refresh - rebuilt when its pin's servers or their
@@ -1240,7 +1242,7 @@ function refreshPick(places: GlobePlace[]) {
   if (!picked || $('#gPick').hidden) return
   const p = places.find((x) => x.key === picked!.key)
   const c = p ? pinChoiceOf(p) : null
-  const what = pickRefresh(picked.sig, c)
+  const what = pickRefresh(picked.sig, p ? p.label : '', c)
   if (what === 'rebuild' && p && c && 'choose' in c) renderPick(p, c.choose)
   else if (what === 'close') closePick(!!(document.activeElement as HTMLElement | null)?.closest('#gPick'))
 }
