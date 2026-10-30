@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Status page globe: a shared pin lists its servers, and the globe works from the keyboard.**
+  Clicking a pin of several servers only highlighted their rows in the server table, which may have
+  them folded away (or, at full screen, out of view). It now opens a small list with a link to each.
+  The globe can be reached with Tab: the arrow keys go from city to city (and say which), Enter
+  opens it, F or the new full-screen button goes full screen, + and - zoom, Esc leaves - and the
+  focus comes back to where it was.
 - **Status page globe: pins follow their servers.** A server replaced by another in the same city, or
   a server joining a shared pin, left the pin's hover and click naming the old servers; and a pin
   whose local time was unknown at first never showed it once known. Both now update in place.

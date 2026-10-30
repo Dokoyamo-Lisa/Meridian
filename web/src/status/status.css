@@ -512,6 +512,17 @@ main { position: relative; padding: 0 var(--pad) 22px; }
 .g-sun { display: none; }
 .g-ctrl { position: absolute; top: 0; right: 0; z-index: 3; display: flex; gap: 8px; }
 .g-ctrl .icon-btn { background: color-mix(in srgb, var(--page) 70%, transparent); }
+.g-open { position: absolute; top: 0; right: 0; z-index: 3; background: color-mix(in srgb, var(--page) 70%, transparent); }
+.globe:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 12px; }
+.g-say { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.g-pick { position: absolute; top: 0; left: 0; z-index: 4; min-width: 200px; max-width: min(320px, 100%); max-height: 70%; overflow: auto; padding: 8px; background: var(--page); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px color-mix(in srgb, var(--ink) 14%, transparent); }
+.g-pick[hidden] { display: none; }
+.g-pick-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 6px 6px; font-size: 12px; }
+.g-pick ul { list-style: none; margin: 0; padding: 0; }
+.g-pick a { display: flex; justify-content: space-between; gap: 12px; padding: 7px 8px; border-radius: 7px; color: var(--ink); text-decoration: none; font-size: 13px; }
+.g-pick a:hover, .g-pick a:focus-visible { background: var(--hover); }
+.g-pick small { color: var(--ink-3); }
+.g-pick small.crit { color: var(--crit); }
 ::view-transition-group(globe-area) { animation-duration: .6s; animation-timing-function: var(--ease-out); }
 .globe-area.expanded { position: fixed; inset: 0; z-index: 45; padding: 20px var(--pad) 18px; background: var(--page); }
 .globe-area.expanded .g-stage { flex: 1; height: auto; }

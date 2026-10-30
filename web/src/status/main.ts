@@ -56,6 +56,7 @@ import { ServerHistory, serverHistory } from './details'
 import { osBadge, virtName } from './os'
 import { TgSession, call as tgCall, telegramPanel, tgLaunch } from './tg'
 import { globeLayoutKey } from './globekeys'
+import { pinChoice, pinStep } from './globenav'
 
 // ================================================================ state
 
@@ -1178,43 +1179,139 @@ function initGlobe() {
     colors: globeColors,
     reduced: motion.reduced,
     onHover: globeHover,
-    onSelect: (p: GlobePlace) => {
-      if (!p || !p.ids) return
-      if (p.ids.length === 1) go(`#/s/${p.ids[0]}`)
-      else {
-        globe!.focus(p.key)
-        highlightRows(p.ids)
-      }
-    },
+    onSelect: (p: GlobePlace) => selectPin(p),
     onEmptyClick: () => {
-      if (!S.globeOpen) setGlobeOpen(true)
+      if (!S.globeOpen) setGlobeOpen(true, false, host)
     },
   })
+  globeKeys(host)
+  $('#gOpen').addEventListener('click', () => setGlobeOpen(true, false, $('#gOpen')))
   $('#gZoomIn').addEventListener('click', () => globe!.zoomBy(1.5))
   $('#gZoomOut').addEventListener('click', () => globe!.zoomBy(1 / 1.5))
   $('#gClose').addEventListener('click', () => setGlobeOpen(false))
 }
 
+// selectPin: a pin of one server opens it; a pin of several shows a chooser with a link to each
+// (their rows in the server table may be folded away, and at full screen the table is not in view)
+function selectPin(p: GlobePlace | null) {
+  if (!p || !p.ids) return
+  const c = pinChoice(p.ids, (id) => {
+    const sv = serverById(id)
+    return sv && { id: sv.id, name: sv.name, online: !!sv.online }
+  })
+  if (!c) return
+  if ('go' in c) {
+    closePick()
+    go(c.go)
+    return
+  }
+  globe!.focus(p.key)
+  highlightRows(p.ids)
+  const pick = $('#gPick')
+  clear(pick).append(
+    h('div.g-pick-h', h('b', p.label), h('button.icon-btn', { type: 'button', 'aria-label': 'Close the list' }, icon('close', 'sm'))),
+    h(
+      'ul',
+      ...c.choose.map((x) => h('li', h('a', { href: x.href }, h('span', x.name), h('small' + (x.online ? '' : '.crit'), x.online ? 'online' : 'offline')))),
+    ),
+  )
+  pick.setAttribute('aria-label', `Servers in ${p.label}`)
+  pick.hidden = false
+  $('button', pick).addEventListener('click', () => closePick(true))
+  $$('a', pick).forEach((a) => a.addEventListener('click', () => closePick()))
+  $('a', pick).focus({ preventScroll: true })
+}
+
+function closePick(refocus = false) {
+  const pick = document.getElementById('gPick')
+  if (!pick || pick.hidden) return
+  pick.hidden = true
+  if (refocus) $('#globe').focus({ preventScroll: true })
+}
+
+// globeKeys: the globe for the keyboard - the arrow keys go from place to place (turning the globe
+// there and saying where), Enter opens the place, F (or the button) goes full screen, + and - zoom.
+// The keys work anywhere on the stage (the globe, its zoom and close buttons), at full screen too.
+function globeKeys(host: HTMLElement) {
+  let cur: string | null = null
+  const say = (p: GlobePlace) => setText($('#gSay'), `${p.label}${p.sub ? ', ' + p.sub : ''}: ${p.ids.length > 1 ? p.ids.length + ' servers' : serverById(p.ids[0])?.name || ''}. Enter to open.`)
+  host.closest('.g-stage')!.addEventListener('keydown', (ev) => {
+    const e = ev as KeyboardEvent
+    const t = e.target as Element
+    if (t.closest('#gPick') || e.altKey || e.ctrlKey || e.metaKey) return
+    const onButton = t !== host && t.tagName === 'BUTTON' // Enter and Space press the button itself
+    const places = S.places || []
+    let dir: 1 | -1 | 0 = 0
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') dir = 1
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') dir = -1
+    if (dir) {
+      e.preventDefault()
+      cur = pinStep(
+        places.map((p) => p.key),
+        cur,
+        dir,
+      )
+      const p = places.find((x) => x.key === cur)
+      if (p) {
+        globe!.focus(p.key)
+        say(p)
+      }
+    } else if (!onButton && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault()
+      const p = places.find((x) => x.key === cur)
+      if (p) selectPin(p)
+      else if (!S.globeOpen) setGlobeOpen(true, false, host)
+    } else if (e.key === 'f' || e.key === 'F') {
+      e.preventDefault()
+      setGlobeOpen(!S.globeOpen, false, host)
+    } else if (S.globeOpen && (e.key === '+' || e.key === '=')) globe!.zoomBy(1.5)
+    else if (S.globeOpen && e.key === '-') globe!.zoomBy(1 / 1.5)
+  })
+  host.addEventListener('blur', () => setText($('#gSay'), ''))
+  $('#gPick').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation() // closes the list, not the full screen
+      closePick(true)
+    }
+  })
+  document.addEventListener('click', (e) => {
+    if (!(e.target as Element).closest('#gPick, #globe')) closePick()
+  })
+}
+
 // full screen: wheel / pinch zoom, drag to turn; Esc, the close button or Back leave it
-function setGlobeOpen(on: boolean, fromHistory = false) {
+// opener is what opened it: the globe itself (by click or from the keyboard, which then keeps the
+// keys there) or the full-screen button. Leaving puts the focus back on it - or, when that is gone
+// from view, on the globe.
+let globeOpener: HTMLElement | null = null
+function setGlobeOpen(on: boolean, fromHistory = false, opener: HTMLElement | null = null) {
   if (!globe || on === S.globeOpen) return
   S.globeOpen = on
   const apply = () => {
     $('#pGlobe').classList.toggle('expanded', on)
     document.documentElement.classList.toggle('globe-open', on)
     $('#gCtrl').classList.toggle('hidden', !on)
+    $('#gOpen').classList.toggle('hidden', on)
     setText($('#gHint'), on ? 'Drag to turn · scroll or pinch to zoom · double-click to reset · Esc to leave' : 'Scroll to zoom · click for full screen')
     globe!.setZoomable(on)
     updateSun()
   }
   hideTip()
+  closePick()
   if (motion.reduced) apply()
   else void transition(apply)
   if (on) {
+    globeOpener = opener
     if (!fromHistory) history.pushState({ globe: 1 }, '', location.href)
-    setTimeout(() => $('#gClose').focus({ preventScroll: true }), 80)
-  } else if (!fromHistory && history.state && history.state.globe) {
-    history.back()
+    const g = $('#globe')
+    // a keyboard visitor on the globe keeps it (its keys go on working); else the close button
+    if (document.activeElement !== g) setTimeout(() => $('#gClose').focus({ preventScroll: true }), 80)
+  } else {
+    if (!fromHistory && history.state && history.state.globe) history.back()
+    const back = globeOpener || $('#gOpen')
+    globeOpener = null
+    const inside = !document.activeElement || document.activeElement === document.body || !!document.activeElement.closest('#pGlobe')
+    if (inside) setTimeout(() => (back.offsetParent ? back : $('#globe')).focus({ preventScroll: true }), 80)
   }
 }
 
