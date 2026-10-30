@@ -74,6 +74,7 @@ type Panel struct {
 	backupMu     sync.Mutex // one backup at a time (backups.go)
 	backupNameMu sync.Mutex // backupName: each name later than the last
 	backupLast   time.Time
+	startedAt    int64       // when this panel started: a server's silence counts from then (markOffline)
 	console      consoleHub  // the supervisor's consoles (console.go)
 	sourceMu     sync.Mutex  // one subscription link refresh at a time (extsources.go)
 	sourcesBusy  atomic.Bool // the scheduled refreshes are running
@@ -84,7 +85,7 @@ type Panel struct {
 func New(cfg Config, d *db.DB) (*Panel, error) {
 	p := &Panel{cfg: cfg, db: d, hub: newHub(), live: newLiveStore(), limiter: newRateLimiter(), notify: newNotifier(), upd: &updater{},
 		nonces: newNonceCache(), digests: newDigestCache(),
-		agentSums: agentSums{at: map[string]time.Time{}, sums: map[string]string{}}}
+		agentSums: agentSums{at: map[string]time.Time{}, sums: map[string]string{}}, startedAt: now()}
 	if err := p.loadSettings(); err != nil {
 		return nil, err
 	}

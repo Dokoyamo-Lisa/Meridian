@@ -15,7 +15,6 @@ import { LogoInfo, animClass, brand, logoSrc, markPieces, openInto, setBrand, tr
 import { $, $$, append, clear, h, icon, numUnit, s, safeHref, setText } from './dom'
 import {
   ago,
-  availLevel,
   availText,
   bparts,
   bytes,
@@ -56,6 +55,7 @@ import { ServerHistory, serverHistory } from './details'
 import { osBadge, virtName } from './os'
 import { TgSession, call as tgCall, telegramPanel, tgLaunch } from './tg'
 import { globeLayoutKey } from './globekeys'
+import { allLevel, dayLevel, downText } from './avail'
 import { PinChoice, globeMayStayOpen, pickRefresh, pickSig, pinChoice, pinStep } from './globenav'
 
 // ================================================================ state
@@ -372,10 +372,13 @@ function updateStatus() {
     days.forEach((_, i) => strip.append(h('i', { style: { '--i': String(i) } })))
   }
   days.forEach((d, i) => {
+    // all servers: a bad day only when every server had one (avail.ts)
+    const levels = p.servers.map((x) => dayLevel(x.availability?.down?.[i]))
     const val = mean(p.servers.map((x) => (x.availability ? x.availability.days[i] : null)))
+    const hit = levels.filter((l) => l === 'warn' || l === 'crit').length
     const cell = strip.children[i] as HTMLElement
-    cell.className = availLevel(val)
-    cell.title = `${isoMD(d)} · ${val == null ? 'no data' : 'up ' + pctText(val, 2) + ' of the time'}`
+    cell.className = allLevel(levels)
+    cell.title = `${isoMD(d)} · ${val == null ? 'no data' : 'up ' + pctText(val, 2) + ' of the time' + (hit ? ` · ${hit} of ${p.servers.length} server${p.servers.length === 1 ? '' : 's'} had downtime` : '')}`
   })
   setText($('#stripFrom'), isoMD(days[0]))
   const attn = clear($('#attn'))
@@ -1565,8 +1568,10 @@ function makeCard(sv: StatusServer): Card {
       clear(strip)
       days.forEach(() => strip.append(h('i')))
     }
-    days.forEach((x, k) => {
-      ;(strip.children[k] as HTMLElement).className = availLevel(x)
+    days.forEach((_, k) => {
+      const cell = strip.children[k] as HTMLElement
+      cell.className = dayLevel(av?.down?.[k])
+      cell.title = `${isoMD(S.pub!.days[k])} · ${downText(av?.down?.[k])}`
     })
     setText(avail, `Up ${availText(av?.h24)} of the last 24 h · ${availText(av?.d30)} of 30 days`)
     const m = mineOf(v.id)
@@ -2243,7 +2248,9 @@ function updateDrawer() {
   clear(R.avail).append(h('h4', 'Availability'))
   R.avail.append(h('div.kv-grid', kv('Last 24 h', availText(av?.h24)), kv('Last 30 days', availText(av?.d30)), kv('Now', sv.online ? 'Online' : 'Offline', sv.online ? undefined : 'warn')))
   const strip = h('div.strip', { role: 'img', 'aria-label': 'Availability per day, last 30 days' })
-  ;(av?.days || []).forEach((v, i) => strip.append(h('i', { cls: availLevel(v), title: `${isoMD(S.pub!.days[i])} · ${v == null ? 'no data' : 'up ' + pctText(v, 2)}` })))
+  ;(av?.days || []).forEach((v, i) =>
+    strip.append(h('i', { cls: dayLevel(av?.down?.[i]), title: `${isoMD(S.pub!.days[i])} · ${v == null ? 'no data' : 'up ' + pctText(v, 2) + ' · ' + downText(av?.down?.[i])}` })),
+  )
   R.avail.append(strip, h('div.strip-foot', h('span', isoMD(S.pub.days[0])), h('span', 'Today')))
 
   const evs = feedItems().filter((e) => e.sid === sv.id).slice(0, 12)

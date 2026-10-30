@@ -95,10 +95,15 @@ func (p *Panel) expireBlocks(ctx context.Context) {
 	}
 }
 
-// markOffline flips servers that stopped reporting. Three missed reports plus slack.
+// markOffline flips servers that stopped reporting. Three missed reports plus slack - counted from
+// when this panel started: a panel that was down (an update, a restart) heard from nobody meanwhile,
+// and every server would be "offline" until its agent reconnected, in the events and the uptime.
 func (p *Panel) markOffline(ctx context.Context) {
 	set := p.settings()
 	limit := now() - int64(set.ReportInterval*3+20)
+	if p.startedAt > limit {
+		return // not long enough since the panel started to miss three reports
+	}
 	rows, err := p.db.QueryContext(ctx, `SELECT id, account_id, name FROM servers WHERE online = 1 AND last_seen_at < ? AND deleted_at = 0`, limit)
 	if err != nil {
 		slog.Error("offline check", "err", err)

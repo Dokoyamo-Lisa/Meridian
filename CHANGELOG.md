@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Status page: a day is red only when it was a bad day.** The availability bars went by each
+  day's share of the time measured, so just after midnight one minute offline read as 80% - red -
+  and the bar for all servers averaged them, so one server down turned it red. After the panel
+  itself was down (an update, a restart), every server counted as "stopped reporting" until its
+  agent reconnected: an offline event for each, and minutes of downtime that never happened. Now
+  a server's silence counts only from when the panel started; a day's colour goes by its minutes
+  down (up to 1: good, up to 14: trouble, more: bad); and the bar for all servers is red only
+  when every server had a bad day.
+- **Monitor › Speed now**: each user's speed and each address's, live (see below).
+
 ## 1.4.2 - 2026-10-30
 
 Security and reliability fixes from an audit of the panel, the agent, the status page and the users'

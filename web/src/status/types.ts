@@ -4,6 +4,8 @@ export interface Availability {
   h24: number | null
   d30: number | null
   days: (number | null)[]
+  /** Minutes down per day (null = no data): what a day's colour goes by (avail.ts). */
+  down?: (number | null)[]
 }
 
 export interface StatusServer {

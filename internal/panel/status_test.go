@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 // get fetches path with a chosen Host header and returns the status and body.
@@ -381,5 +383,51 @@ func TestPortalWireGuard(t *testing.T) {
 	srv := me["servers"].([]any)[0].(map[string]any)
 	if srv["name"] != "Tokyo" || !strings.Contains(fmt.Sprint(srv["protocols"]), "IPLC 01") {
 		t.Errorf("server: %v", srv)
+	}
+}
+
+// TestUptimeAfterPanelRestart: the panel was down for an hour (an update). Its servers kept running;
+// they have not reported to the new panel yet. Until three report intervals have passed since the
+// panel started, none of them is "offline" - not in the events, not in the uptime - while one that
+// stays silent past that is.
+func TestUptimeAfterPanelRestart(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	ctx := context.Background()
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	h.p.db.Exec1(`UPDATE servers SET online = 1, first_seen_at = ?, last_seen_at = ? WHERE id = ?`, now()-86400, now()-3600, sid)
+	online := func() (on bool) {
+		h.p.db.QueryRow(`SELECT online FROM servers WHERE id = ?`, sid).Scan(&on)
+		return
+	}
+	h.p.startedAt = now() // just started
+	h.p.markOffline(ctx)
+	h.p.sampleUptime(ctx)
+	var down int
+	h.p.db.QueryRow(`SELECT samples - up FROM server_uptime WHERE server_id = ?`, sid).Scan(&down)
+	if !online() || down != 0 {
+		t.Errorf("right after a restart: online %v, %d minutes down", online(), down)
+	}
+	h.p.startedAt = now() - 3600 // long enough to have heard from it
+	h.p.markOffline(ctx)
+	if online() {
+		t.Error("silent since the panel started, yet online")
+	}
+}
+
+// TestAvailabilityDownMinutes: a day's colour goes by minutes down - sent with each day - so a few
+// samples early in the day with one down is "1 minute down", not "80%".
+func TestAvailabilityDownMinutes(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	bucket := now() / 600
+	h.p.db.Exec1(`INSERT INTO server_uptime (server_id, bucket, samples, up) VALUES (?, ?, 5, 4)`, sid, bucket)
+	days := []string{time.Unix(bucket*600, 0).In(h.p.loc()).Format("2006-01-02")}
+	av := h.p.availabilityOf(context.Background(), []int64{sid}, days)[sid]
+	if av == nil || av.Down[0] == nil || *av.Down[0] != 1 || *av.Days[0] != 80 {
+		t.Fatalf("the day: %+v", av)
 	}
 }
