@@ -23,3 +23,20 @@ export function gapsOf(t: number[], step: number, every: number, nowTs: number, 
   if (t.length && nowTs - t[t.length - 1] > after + sp) out.push([t[t.length - 1] + sp, to])
   return out
 }
+
+// atStep is the point of ts in the chart's step that holds moment t, or -1: a value counts for the
+// step it was measured in, never for the moments around it - a 10-minute monitor's round at 0 says
+// nothing about 9 minutes later, and a round that was missed has no value.
+export function atStep(ts: number[], t: number, step: number): number {
+  const k = Math.floor(t / step)
+  let lo = 0
+  let hi = ts.length - 1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    const km = Math.floor(ts[mid] / step)
+    if (km === k) return mid
+    if (km < k) lo = mid + 1
+    else hi = mid - 1
+  }
+  return -1
+}

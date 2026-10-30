@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { gapsOf } from '../src/status/chartgaps.ts'
+import { atStep, gapsOf } from '../src/status/chartgaps.ts'
 
 const m = 60
 
@@ -29,4 +29,20 @@ test('rounds in steps: a 150-second interval on minute steps has no false gaps',
 
 test('metrics keep their rule: a gap beyond two and a half steps', () => {
   assert.deepEqual(gapsOf([0, 60, 120, 300, 360], m, 0, 400, 3600), [[180, 300]])
+})
+
+test('hovering a chart of a 1-minute and a 10-minute monitor', () => {
+  const fast = Array.from({ length: 60 }, (_, i) => i * 60) // every minute
+  const slow = [0, 600, 1800, 2400, 3000] // every 10 minutes, the round at 1200 missed
+  const at = (t: number) => [atStep(fast, t, m), atStep(slow, t, m)]
+  assert.deepEqual(at(540), [9, -1]) // 9 minutes after the slow round: no value of its own
+  assert.deepEqual(at(600), [10, 1])
+  assert.deepEqual(at(630), [10, 1]) // inside the step of that round
+  assert.deepEqual(at(1200), [20, -1]) // the missed round
+  assert.deepEqual(at(3599), [59, -1])
+  assert.equal(atStep([], 0, m), -1)
+  // rounds every 90 s on minute steps: the round at 90 is in the step 60..120
+  assert.equal(atStep([0, 90, 180], 60, m), 1)
+  assert.equal(atStep([0, 90, 180], 190, m), 2)
+  assert.equal(atStep([0, 90, 180], 130, m), -1) // no round fell in 120..180
 })

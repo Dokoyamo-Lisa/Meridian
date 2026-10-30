@@ -11,7 +11,7 @@ import { C, TipRow, hideTip, monoPath, rgba, segment, showTip, tangents } from '
 import { bparts, clamp, hm, md, now } from './fmt'
 import { pingLegend } from './pingsum'
 import { historyNote } from './histstate'
-import { gapAfter, gapsOf, spacing } from './chartgaps'
+import { atStep, gapAfter, gapsOf, spacing } from './chartgaps'
 
 export interface PingSeries {
   id: number
@@ -400,7 +400,7 @@ class TimeChart {
     let bd = Infinity
     for (const tr of this.tracks) {
       if (!tr.on) continue
-      const i = nearest(tr.t, t, spacing(this.step, tr.every) * 1.5)
+      const i = nearest(tr.t, t, this.step) // within a step: never onto another monitor's distant round
       if (i >= 0 && Math.abs(tr.t[i] - t) < bd) {
         bd = Math.abs(tr.t[i] - t)
         best = tr.t[i]
@@ -614,7 +614,7 @@ class TimeChart {
     const rows: TipRow[] = []
     let any = false
     on.forEach((tr, k) => {
-      const i = nearest(tr.t, t, spacing(this.step, tr.every) * 1.5)
+      const i = atStep(tr.t, t, this.step) // its value in this step only: "—" for a round not measured then
       const lost = i >= 0 && tr.loss ? tr.loss[i] : 0
       if (i < 0) {
         rows.push([tr.label, '—', '', tr.color])
