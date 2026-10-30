@@ -1150,7 +1150,10 @@ export interface PluginLogLine {
 export interface PingLatest {
   server_id: number
   ts: number
+  /** The last round's average round trip (0 when it had no answer). */
   avg_ms: number
+  /** Share of the last round's probes lost (0-1; 1: no answer now). */
+  last_loss: number
   /** Share of probes lost in the last hour (0-1). */
   loss: number
 }

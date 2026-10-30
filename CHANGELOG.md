@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Ping page: "no answer" when the last round had none.** A target that answered earlier in the
+  hour and then stopped showed "0.0 ms · 50% lost". The list now has each server's last round's loss
+  (`last_loss`): it says "no answer" from that, and the hour's loss reads "lost in the last hour" (in
+  the bot too). Editing a monitor set to another interval through the API (2 minutes, say) showed
+  "1 min" selected while saving kept 2 minutes; the dialog now shows that interval as a choice of its
+  own. The Name hint says visitors never read the address.
 - **Ping charts no longer hatch a slow monitor's normal rounds as outages.** Gaps went by the chart's
   step (a minute on the hour's chart), so a monitor measuring every 10 minutes was hatched between
   each of its rounds as "the server did not report". Each monitor's gaps now go by its own interval:

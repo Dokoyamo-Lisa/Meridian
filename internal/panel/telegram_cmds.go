@@ -1234,16 +1234,7 @@ func (p *Panel) botPing(ctx context.Context) string {
 			b.WriteString("no rounds in the last hour\n")
 		}
 		for _, l := range latest {
-			mark, val := "🟢", fmt.Sprintf("%.1f ms", l.Avg)
-			switch {
-			case l.Loss >= 0.999:
-				mark, val = "🔴", "no answer"
-			case l.Loss >= 0.2:
-				mark = "🟠"
-			}
-			if l.Loss > 0 && l.Loss < 0.999 {
-				val += fmt.Sprintf(" · %.0f%% lost", l.Loss*100)
-			}
+			mark, val := pingLatestText(l)
 			fmt.Fprintf(&b, "%s %s - %s\n", mark, esc(nz(names[l.ServerID], "a removed server")), val)
 		}
 	}

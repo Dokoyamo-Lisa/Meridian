@@ -9668,6 +9668,11 @@
             "type": "integer"
           },
           "avg_ms": {
+            "description": "The last round's average round trip (0 when it had no answer)",
+            "type": "number"
+          },
+          "last_loss": {
+            "description": "Share of the last round's probes lost (0-1; 1: no answer now)",
             "type": "number"
           },
           "loss": {

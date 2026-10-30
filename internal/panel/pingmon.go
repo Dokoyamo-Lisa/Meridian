@@ -300,8 +300,25 @@ func (p *Panel) savePing(ctx context.Context, m *PingMonitor) error {
 type pingLatest struct {
 	ServerID int64   `json:"server_id"`
 	TS       int64   `json:"ts"`
-	Avg      float64 `json:"avg_ms"`
+	Avg      float64 `json:"avg_ms" doc:"The last round's average round trip (0 when it had no answer)"`
+	LastLoss float64 `json:"last_loss" doc:"Share of the last round's probes lost (0-1; 1: no answer now)"`
 	Loss     float64 `json:"loss" doc:"Share of probes lost in the last hour (0-1)"`
+}
+
+// pingLatestText is a server's latest for a monitor in words, for the bot: whether the last round was
+// answered (and how fast), with the hour's loss said as the hour's.
+func pingLatestText(l pingLatest) (mark, val string) {
+	mark, val = "🟢", fmt.Sprintf("%.1f ms", l.Avg)
+	switch {
+	case l.LastLoss >= 0.999:
+		mark, val = "🔴", "no answer"
+	case l.Loss >= 0.2:
+		mark = "🟠"
+	}
+	if l.Loss > 0 && l.Loss < 0.999 {
+		val += fmt.Sprintf(" · %.0f%% lost in the last hour", l.Loss*100)
+	}
+	return mark, val
 }
 
 type pingView struct {
@@ -322,7 +339,7 @@ func (p *Panel) apiPingMonitors(w http.ResponseWriter, r *http.Request, a *Accou
 	return nil
 }
 
-// pingLatestOf is a monitor's last round per server, with the last hour's loss.
+// pingLatestOf is a monitor's last round per server (its latency and loss), with the last hour's loss.
 func (p *Panel) pingLatestOf(ctx context.Context, id int64) []pingLatest {
 	out := []pingLatest{}
 	rows, err := p.db.QueryContext(ctx, `SELECT server_id, MAX(ts), SUM(sent), SUM(lost) FROM ping_samples WHERE monitor_id = ? AND ts >= ?
@@ -342,8 +359,12 @@ func (p *Panel) pingLatestOf(ctx context.Context, id int64) []pingLatest {
 	}
 	rows.Close()
 	for i := range out {
-		_ = p.db.QueryRowContext(ctx, `SELECT avg_ms FROM ping_samples WHERE monitor_id = ? AND server_id = ? AND ts = ?`,
-			id, out[i].ServerID, out[i].TS).Scan(&out[i].Avg)
+		var sent, lost int64
+		_ = p.db.QueryRowContext(ctx, `SELECT avg_ms, sent, lost FROM ping_samples WHERE monitor_id = ? AND server_id = ? AND ts = ?`,
+			id, out[i].ServerID, out[i].TS).Scan(&out[i].Avg, &sent, &lost)
+		if sent > 0 {
+			out[i].LastLoss = float64(lost) / float64(sent)
+		}
 	}
 	return out
 }

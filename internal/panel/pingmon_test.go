@@ -265,3 +265,32 @@ func TestPingSeriesTotals(t *testing.T) {
 		t.Errorf("the range's totals: %d steps, %v sent, %v lost, %v ms", len(ps["t"].([]any)), ps["sent"], ps["lost"], ps["avg_ms"])
 	}
 }
+
+// TestPingLatestNoAnswer: a round of 20 ms, then one with every probe lost. The target does not
+// answer now: the list says so from the last round (last_loss 1), while the hour's loss - half the
+// probes - is labelled as the hour's, in the API and in the bot's words.
+func TestPingLatestNoAnswer(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	mid := id(b.must("POST", "/api/ping-monitors", map[string]any{"name": "DNS", "target": "1.1.1.1"}, 201)["id"])
+	t0 := now() / 60 * 60
+	h.p.db.Exec1(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, 3, 0, 20, 19, 21)`, mid, sid, t0-120)
+	h.p.db.Exec1(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, 3, 3, 0, 0, 0)`, mid, sid, t0-60)
+	_, _, raw := b.do("GET", "/api/ping-monitors", nil)
+	var list []pingView
+	if err := json.Unmarshal(raw, &list); err != nil || len(list) != 1 || len(list[0].Latest) != 1 {
+		t.Fatalf("the list: %s", raw)
+	}
+	l := list[0].Latest[0]
+	if l.LastLoss != 1 || l.Loss != 0.5 || l.Avg != 0 {
+		t.Errorf("the latest: %+v", l)
+	}
+	if mark, val := pingLatestText(l); mark != "🔴" || val != "no answer · 50% lost in the last hour" {
+		t.Errorf("in words: %s %s", mark, val)
+	}
+	if _, val := pingLatestText(pingLatest{Avg: 20, Loss: 0.5}); val != "20.0 ms · 50% lost in the last hour" {
+		t.Errorf("an answered last round: %s", val)
+	}
+}
