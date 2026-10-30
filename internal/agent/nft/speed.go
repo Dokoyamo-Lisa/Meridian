@@ -10,13 +10,18 @@ import (
 	"meridian/internal/proto"
 )
 
-// Users' speed limits. Each limited user gets two address sets (IPv4, IPv6) holding the addresses
-// their devices are connected from, and two named limits - one for each direction - shared by all
-// of them: what comes in from those addresses to a service port above the rate is dropped, and so is
-// what a service sends back to them, so the user's devices together get no more than the limit, each
-// way. Apps slow down to it (TCP and QUIC take dropped packets as a full line). The sets are filled
-// by SetSpeedIPs as devices come and go - small element changes, never the whole table - and filled
-// again after the table is replaced.
+// Users' speed limits. Each limited user gets two named limits - one for each direction - that all
+// of their traffic shares, so their devices together get no more than the limit, each way. Apps
+// slow down to it (TCP and QUIC take dropped packets as a full line). What counts as the user's is
+// told apart per protocol, never by an address alone where another user could be behind it:
+//   - mieru, Snell and AnyTLS: the user's own ports (Solo) - nobody else's traffic uses them.
+//   - WireGuard: the user's tunnel addresses on the interface (WGSpeed), in the forward hook.
+//   - Xray's protocols share their ports: the addresses the user's devices connect from (sets filled
+//     by SetSpeedIPs, which the agent gives only addresses no other user is online from) to Xray's
+//     ports alone (XrayTCP, XrayUDP) - never another protocol's port.
+//   - Hysteria2: no rule here - its sign-in keeps each user to their own rate (agent/hy/limits.go).
+// The address sets change with small element updates as devices come and go, never the whole
+// table, and are filled again after the table is replaced.
 
 const maxMbps = 100_000 // 100 Gbps: anything above is no limit
 
@@ -48,8 +53,19 @@ func speedSet(sub int64, v6 bool) string {
 	return fmt.Sprintf("spd%d_4", sub)
 }
 
-// renderSpeed writes the sets and limits of the table (rules go into guard and guard_out).
-func renderSpeed(w func(string, ...any), list []proto.SpeedLimit) {
+// WGSpeed is a limited user's tunnel addresses on one WireGuard interface.
+type WGSpeed struct {
+	Sub   int64
+	Iface string
+	Addrs []string // their allowed IPs: "10.66.0.2/32", "fd00::2/128"
+}
+
+// renderSpeed writes the sets and limits of the table (rules go into guard, guard_out and guard_fwd).
+func renderSpeed(w func(string, ...any), list []proto.SpeedLimit, xrayTCP, xrayUDP []int) {
+	if len(list) > 0 {
+		w("  set spd_xtcp { type inet_service;%s }", elemsInt(uniqPorts(xrayTCP)))
+		w("  set spd_xudp { type inet_service;%s }", elemsInt(uniqPorts(xrayUDP)))
+	}
 	for _, l := range list {
 		rate, burst := speedRate(l.Mbps)
 		w("  set %s { type ipv4_addr; }", speedSet(l.Sub, false))
@@ -59,30 +75,114 @@ func renderSpeed(w func(string, ...any), list []proto.SpeedLimit) {
 	}
 }
 
-// speedRulesIn are guard's rules: from the user's devices to a service port.
-func speedRulesIn(w func(string, ...any), list []proto.SpeedLimit) {
+// soloPortsOf are a user's own TCP and UDP ports (mieru, Snell, AnyTLS).
+func soloPortsOf(solo []SoloPort, sub int64) (tcp, udp []int) {
+	for _, s := range solo {
+		if s.Sub != sub {
+			continue
+		}
+		if s.TCP {
+			tcp = append(tcp, s.Port)
+		}
+		if s.UDP {
+			udp = append(udp, s.Port)
+		}
+	}
+	return uniqPorts(tcp), uniqPorts(udp)
+}
+
+// speedRulesIn are guard's rules: what the user's devices send - to Xray's ports from their own
+// addresses, and to their own ports from anywhere.
+func speedRulesIn(w func(string, ...any), list []proto.SpeedLimit, solo []SoloPort) {
 	for _, l := range list {
 		for _, fam := range []struct {
 			l3 string
 			v6 bool
 		}{{"ip", false}, {"ip6", true}} {
-			w("    %s saddr @%s tcp dport @svc_tcp limit name \"spd%d_up\" drop", fam.l3, speedSet(l.Sub, fam.v6), l.Sub)
-			w("    %s saddr @%s udp dport @svc_udp limit name \"spd%d_up\" drop", fam.l3, speedSet(l.Sub, fam.v6), l.Sub)
+			w("    %s saddr @%s tcp dport @spd_xtcp limit name \"spd%d_up\" drop", fam.l3, speedSet(l.Sub, fam.v6), l.Sub)
+			w("    %s saddr @%s udp dport @spd_xudp limit name \"spd%d_up\" drop", fam.l3, speedSet(l.Sub, fam.v6), l.Sub)
+		}
+		tcp, udp := soloPortsOf(solo, l.Sub)
+		if len(tcp) > 0 {
+			w("    tcp dport { %s } limit name \"spd%d_up\" drop", joinInts(tcp), l.Sub)
+		}
+		if len(udp) > 0 {
+			w("    udp dport { %s } limit name \"spd%d_up\" drop", joinInts(udp), l.Sub)
 		}
 	}
 }
 
-// speedRulesOut are guard_out's rules: from a service to the user's devices.
-func speedRulesOut(w func(string, ...any), list []proto.SpeedLimit) {
+// speedRulesOut are guard_out's rules: what services send back to the user's devices.
+func speedRulesOut(w func(string, ...any), list []proto.SpeedLimit, solo []SoloPort) {
 	for _, l := range list {
 		for _, fam := range []struct {
 			l3 string
 			v6 bool
 		}{{"ip", false}, {"ip6", true}} {
-			w("    %s daddr @%s tcp sport @own_tcp limit name \"spd%d_dn\" drop", fam.l3, speedSet(l.Sub, fam.v6), l.Sub)
-			w("    %s daddr @%s udp sport @own_udp limit name \"spd%d_dn\" drop", fam.l3, speedSet(l.Sub, fam.v6), l.Sub)
+			w("    %s daddr @%s tcp sport @spd_xtcp limit name \"spd%d_dn\" drop", fam.l3, speedSet(l.Sub, fam.v6), l.Sub)
+			w("    %s daddr @%s udp sport @spd_xudp limit name \"spd%d_dn\" drop", fam.l3, speedSet(l.Sub, fam.v6), l.Sub)
+		}
+		tcp, udp := soloPortsOf(solo, l.Sub)
+		if len(tcp) > 0 {
+			w("    tcp sport { %s } limit name \"spd%d_dn\" drop", joinInts(tcp), l.Sub)
+		}
+		if len(udp) > 0 {
+			w("    udp sport { %s } limit name \"spd%d_dn\" drop", joinInts(udp), l.Sub)
 		}
 	}
+}
+
+// speedRulesFwd are guard_fwd's rules: a WireGuard user's traffic through the tunnel, by their tunnel
+// addresses on its interface - what they send in, what comes back out to them.
+func speedRulesFwd(w func(string, ...any), list []proto.SpeedLimit, wg []WGSpeed) {
+	limited := map[int64]bool{}
+	for _, l := range list {
+		limited[l.Sub] = true
+	}
+	for _, g := range wg {
+		if !limited[g.Sub] || !ifaceRE.MatchString(g.Iface) {
+			continue
+		}
+		v4, v6 := wgPrefixes(g.Addrs)
+		for _, fam := range []struct {
+			l3    string
+			addrs []string
+		}{{"ip", v4}, {"ip6", v6}} {
+			if len(fam.addrs) == 0 {
+				continue
+			}
+			set := strings.Join(fam.addrs, ", ")
+			w("    iifname %q %s saddr { %s } limit name \"spd%d_up\" drop", g.Iface, fam.l3, set, g.Sub)
+			w("    oifname %q %s daddr { %s } limit name \"spd%d_dn\" drop", g.Iface, fam.l3, set, g.Sub)
+		}
+	}
+}
+
+// wgPrefixes keeps a peer's allowed IPs as networks, by family ("10.66.0.2/32"; a bare address is
+// its own /32 or /128).
+func wgPrefixes(list []string) (v4, v6 []string) {
+	seen := map[string]bool{}
+	for _, s := range list {
+		p, err := netip.ParsePrefix(strings.TrimSpace(s))
+		if err != nil {
+			a, err2 := netip.ParseAddr(strings.TrimSpace(s))
+			if err2 != nil || a.Zone() != "" {
+				continue
+			}
+			p = netip.PrefixFrom(a.Unmap(), a.Unmap().BitLen())
+		}
+		p = p.Masked()
+		if !p.IsValid() || seen[p.String()] {
+			continue
+		}
+		seen[p.String()] = true
+		if p.Addr().Is4() {
+			v4 = append(v4, p.String())
+		} else {
+			v6 = append(v6, p.String())
+		}
+	}
+	return v4, v6
 }
 
 // speedAddrs keeps the addresses a set can hold: public ones the agent saw a device connect from.

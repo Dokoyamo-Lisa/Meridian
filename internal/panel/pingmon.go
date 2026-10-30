@@ -113,8 +113,14 @@ func hottest(temps map[string]float64) float64 {
 	return roundTo(t, 1)
 }
 
+// pingRawKeep is how long rounds are kept one by one (rollup5m drops older ones; their five-minute
+// steps stay a month).
+const pingRawKeep = 49 * 3600
+
 // storePings keeps a batch's rounds (of monitors this server measures; each once). Rounds measured
-// while the panel could not be reached come late: their five-minute steps are folded again here.
+// while the panel could not be reached come late: their five-minute steps are folded again here from
+// the rounds - or, for a step whose rounds were already dropped (pingRawKeep), the late round is
+// added to the step's totals, which are all that is left of the others.
 func storePings(tx *sql.Tx, srv *Server, rs []proto.PingResult) error {
 	if len(rs) == 0 {
 		return nil
@@ -132,15 +138,26 @@ func storePings(tx *sql.Tx, srv *Server, rs []proto.PingResult) error {
 	}
 	rows.Close()
 	cut, recent := now()-32*86400, (now()/300-3)*300
+	whole := (now()-pingRawKeep)/300*300 + 300 // the first step whose rounds are all still kept
 	late := int64(0)
 	clampMS := func(v float64) float64 { return min(max(v, 0), 60000) }
 	for _, r := range rs {
 		if !ours[r.ID] || r.TS < cut || r.TS > now()+300 || r.Sent < 1 || r.Sent > 10 || r.Lost < 0 || r.Lost > r.Sent {
 			continue
 		}
-		if _, err := tx.Exec(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(monitor_id, server_id, ts) DO NOTHING`, r.ID, srv.ID, r.TS, r.Sent, r.Lost, clampMS(r.Avg), clampMS(r.Min), clampMS(r.Max)); err != nil {
+		res, err := tx.Exec(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(monitor_id, server_id, ts) DO NOTHING`, r.ID, srv.ID, r.TS, r.Sent, r.Lost, clampMS(r.Avg), clampMS(r.Min), clampMS(r.Max))
+		if err != nil {
 			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			continue // had it already
+		}
+		if r.TS < whole {
+			if err := addPing5m(tx, srv.ID, r, clampMS); err != nil {
+				return err
+			}
+			continue
 		}
 		if r.TS < recent && (late == 0 || r.TS < late) {
 			late = r.TS
@@ -150,6 +167,26 @@ func storePings(tx *sql.Tx, srv *Server, rs []proto.PingResult) error {
 		return rollupPings(tx, `server_id = ? AND ts >= ?`, srv.ID, late/300*300)
 	}
 	return nil
+}
+
+// addPing5m adds one round to its five-minute step's totals: the average over the answered probes,
+// the lowest of the answered ones, the highest.
+func addPing5m(tx *sql.Tx, server int64, r proto.PingResult, clampMS func(float64) float64) error {
+	minMS := 0.0
+	if r.Sent > r.Lost {
+		minMS = clampMS(r.Min)
+	}
+	_, err := tx.Exec(`INSERT INTO ping_5m (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(monitor_id, server_id, ts) DO UPDATE SET
+		avg_ms = CASE WHEN (ping_5m.sent - ping_5m.lost) + (excluded.sent - excluded.lost) > 0
+			THEN (ping_5m.avg_ms * (ping_5m.sent - ping_5m.lost) + excluded.avg_ms * (excluded.sent - excluded.lost)) /
+				((ping_5m.sent - ping_5m.lost) + (excluded.sent - excluded.lost)) ELSE 0 END,
+		min_ms = CASE WHEN excluded.sent > excluded.lost AND (ping_5m.sent = ping_5m.lost OR excluded.min_ms < ping_5m.min_ms)
+			THEN excluded.min_ms ELSE ping_5m.min_ms END,
+		max_ms = MAX(ping_5m.max_ms, excluded.max_ms),
+		sent = ping_5m.sent + excluded.sent, lost = ping_5m.lost + excluded.lost`,
+		r.ID, server, r.TS/300*300, r.Sent, r.Lost, clampMS(r.Avg), minMS, clampMS(r.Max))
+	return err
 }
 
 // rollupPings folds the samples the condition picks into their five-minute steps.
@@ -190,7 +227,7 @@ func (p *Panel) rollup5m(ctx context.Context, from int64) {
 				return err
 			}
 		}
-		_, err := tx.Exec(`DELETE FROM ping_samples WHERE ts < ?`, now()-49*3600)
+		_, err := tx.Exec(`DELETE FROM ping_samples WHERE ts < ?`, now()-pingRawKeep)
 		return err
 	})
 	if err != nil {
@@ -213,7 +250,9 @@ type pingInput struct {
 }
 
 func (p *Panel) applyPingInput(ctx context.Context, m *PingMonitor, in *pingInput) error {
+	oldTarget, oldName, rawName := m.Target, m.Name, ""
 	if in.Name != nil {
+		rawName = strings.TrimSpace(*in.Name) // before cleanName cuts a long host name to 48 characters
 		m.Name = cleanName(*in.Name, 48)
 	}
 	if in.Target != nil {
@@ -226,7 +265,11 @@ func (p *Panel) applyPingInput(ctx context.Context, m *PingMonitor, in *pingInpu
 	if m.Target == "" {
 		return errStatus(http.StatusBadRequest, "give the address to measure")
 	}
-	if m.Name == "" {
+	// a monitor without a name of its own is named after its target, and keeps following it: the edit
+	// form sends that name back, and the old address must not stay behind as the name
+	// (compared before cleaning: a host name longer than a name may be is sent back whole)
+	sentBack := in.Name == nil || strings.EqualFold(rawName, oldName) || strings.EqualFold(rawName, oldTarget)
+	if m.Name == "" || (oldTarget != "" && oldTarget != m.Target && sentBack && (strings.EqualFold(oldName, oldTarget) || strings.EqualFold(rawName, oldTarget))) {
 		m.Name = m.Target
 	}
 	if in.Kind != nil {
@@ -261,7 +304,10 @@ func (p *Panel) applyPingInput(ctx context.Context, m *PingMonitor, in *pingInpu
 		var list []int64
 		for _, id := range *in.Servers {
 			s, err := p.serverByID(ctx, id)
-			if err != nil || s.AccountID != m.AccountID || s.DeletedAt > 0 {
+			// a server removed since stays in a monitor's list as it was (it measures nothing): dropping it
+			// could leave the list empty, which means every server. The edit dialog shows it, to untick.
+			kept := err == nil && s.AccountID == m.AccountID && s.DeletedAt > 0 && slices.Contains(m.Servers, id)
+			if !kept && (err != nil || s.AccountID != m.AccountID || s.DeletedAt > 0) {
 				return errStatus(http.StatusBadRequest, fmt.Sprintf("there is no server %d", id))
 			}
 			if !slices.Contains(list, id) {
@@ -300,8 +346,25 @@ func (p *Panel) savePing(ctx context.Context, m *PingMonitor) error {
 type pingLatest struct {
 	ServerID int64   `json:"server_id"`
 	TS       int64   `json:"ts"`
-	Avg      float64 `json:"avg_ms"`
+	Avg      float64 `json:"avg_ms" doc:"The last round's average round trip (0 when it had no answer)"`
+	LastLoss float64 `json:"last_loss" doc:"Share of the last round's probes lost (0-1; 1: no answer now)"`
 	Loss     float64 `json:"loss" doc:"Share of probes lost in the last hour (0-1)"`
+}
+
+// pingLatestText is a server's latest for a monitor in words, for the bot: whether the last round was
+// answered (and how fast), with the hour's loss said as the hour's.
+func pingLatestText(l pingLatest) (mark, val string) {
+	mark, val = "🟢", fmt.Sprintf("%.1f ms", l.Avg)
+	switch {
+	case l.LastLoss >= 0.999:
+		mark, val = "🔴", "no answer"
+	case l.Loss >= 0.2:
+		mark = "🟠"
+	}
+	if l.Loss > 0 && l.Loss < 0.999 {
+		val += fmt.Sprintf(" · %.0f%% lost in the last hour", l.Loss*100)
+	}
+	return mark, val
 }
 
 type pingView struct {
@@ -322,7 +385,7 @@ func (p *Panel) apiPingMonitors(w http.ResponseWriter, r *http.Request, a *Accou
 	return nil
 }
 
-// pingLatestOf is a monitor's last round per server, with the last hour's loss.
+// pingLatestOf is a monitor's last round per server (its latency and loss), with the last hour's loss.
 func (p *Panel) pingLatestOf(ctx context.Context, id int64) []pingLatest {
 	out := []pingLatest{}
 	rows, err := p.db.QueryContext(ctx, `SELECT server_id, MAX(ts), SUM(sent), SUM(lost) FROM ping_samples WHERE monitor_id = ? AND ts >= ?
@@ -342,8 +405,12 @@ func (p *Panel) pingLatestOf(ctx context.Context, id int64) []pingLatest {
 	}
 	rows.Close()
 	for i := range out {
-		_ = p.db.QueryRowContext(ctx, `SELECT avg_ms FROM ping_samples WHERE monitor_id = ? AND server_id = ? AND ts = ?`,
-			id, out[i].ServerID, out[i].TS).Scan(&out[i].Avg)
+		var sent, lost int64
+		_ = p.db.QueryRowContext(ctx, `SELECT avg_ms, sent, lost FROM ping_samples WHERE monitor_id = ? AND server_id = ? AND ts = ?`,
+			id, out[i].ServerID, out[i].TS).Scan(&out[i].Avg, &sent, &lost)
+		if sent > 0 {
+			out[i].LastLoss = float64(lost) / float64(sent)
+		}
 	}
 	return out
 }
@@ -470,6 +537,32 @@ type pingSeries struct {
 	T      []int64   `json:"t"`
 	Avg    []float64 `json:"avg" doc:"Milliseconds (0 where every probe was lost)"`
 	Loss   []float64 `json:"loss" doc:"Share of probes lost (0-1)"`
+	Sent   int64     `json:"sent" doc:"Probes sent in the whole range"`
+	Lost   int64     `json:"lost" doc:"Probes lost in the whole range"`
+	AvgMs  float64   `json:"avg_ms" doc:"The range's average round trip over every probe answered (0: none)"`
+}
+
+// publicPingName is what visitors read for a monitor: its name, unless that gives an address away -
+// a monitor added without a name is named after its target, and a name may hold an address (this
+// target's, or one it had before) - then "Probe n".
+func publicPingName(m *PingMonitor, n int) string {
+	if m.Name == "" || strings.Contains(strings.ToLower(m.Name), strings.ToLower(m.Target)) || hasAddr(m.Name) {
+		return fmt.Sprintf("Probe %d", n)
+	}
+	return m.Name
+}
+
+// hasAddr says whether a text holds an IP address (v4 or v6, with or without brackets or a port).
+func hasAddr(s string) bool {
+	for _, w := range strings.FieldsFunc(s, func(r rune) bool { return r == ' ' || r == ',' || r == '(' || r == ')' || r == '/' }) {
+		if _, err := netip.ParseAddrPort(w); err == nil {
+			return true
+		}
+		if _, err := netip.ParseAddr(strings.Trim(w, "[]")); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // seriesFor builds a server's charts' data. charts are the ones to include; public leaves out what
@@ -545,12 +638,16 @@ func (p *Panel) seriesFor(ctx context.Context, srv *Server, rng string, charts [
 	if !sr.fine {
 		ptable = "ping_5m"
 	}
+	shown := 0
 	for _, m := range mons {
 		if !m.Enabled || !m.measuredBy(srv.ID) || (public && !m.Public) {
 			continue
 		}
+		shown++
 		ps := pingSeries{ID: m.ID, Name: m.Name, Kind: m.Kind, Every: m.Every, T: []int64{}, Avg: []float64{}, Loss: []float64{}}
-		if !public {
+		if public {
+			ps.Name = publicPingName(m, shown)
+		} else {
 			ps.Target = m.Target
 		}
 		step := sr.step
@@ -564,17 +661,22 @@ func (p *Panel) seriesFor(ctx context.Context, srv *Server, rng string, charts [
 		if err != nil {
 			return nil, err
 		}
+		var answeredMs float64 // the range's totals count each probe once, whatever its step held
 		for prow.Next() {
 			var t, sent, lost int64
 			var avg float64
 			if prow.Scan(&t, &sent, &lost, &avg) != nil || sent == 0 {
 				continue
 			}
+			ps.Sent, ps.Lost, answeredMs = ps.Sent+sent, ps.Lost+lost, answeredMs+avg*float64(sent-lost)
 			ps.T = append(ps.T, t)
 			ps.Avg = append(ps.Avg, roundTo(avg, 1))
 			ps.Loss = append(ps.Loss, roundTo(float64(lost)/float64(sent), 3))
 		}
 		prow.Close()
+		if ps.Sent > ps.Lost {
+			ps.AvgMs = roundTo(answeredMs/float64(ps.Sent-ps.Lost), 1)
+		}
 		out.Ping = append(out.Ping, ps)
 	}
 	return out, nil

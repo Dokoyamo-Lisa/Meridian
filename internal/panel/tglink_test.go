@@ -115,7 +115,7 @@ func TestTelegramUserLinks(t *testing.T) {
 		t.Error("a code worked twice")
 	}
 	u := say(t, h, f, 501, "/usage").Get("text")
-	if !strings.Contains(u, "alice") || !strings.Contains(u, "3.0 GB of 10.0 GB") || !strings.Contains(u, "7.0 GB left") || strings.Contains(u, "bobby") {
+	if !strings.Contains(u, "alice") || !strings.Contains(u, "3.0 GB of 10 GB") || !strings.Contains(u, "7.0 GB left") || strings.Contains(u, "bobby") {
 		t.Errorf("/usage: %s", u)
 	}
 	if m := say(t, h, f, 501, "/status"); strings.Contains(m.Get("text"), "Servers:") {
@@ -312,5 +312,126 @@ func TestTelegramSupervisorChat(t *testing.T) {
 	f.mu.Unlock()
 	if !strings.Contains(cmds, `"command":"unlink"`) {
 		t.Errorf("the supervisor's menu: %s", cmds)
+	}
+}
+
+// TestTelegramDisabledAccount: disabling an account shuts its users out of Telegram as it shuts
+// them out of their page - the Mini App does not sign a linked user in, and the bot does not answer
+// their commands with their data - and enabling it again lets them back in.
+func TestTelegramDisabledAccount(t *testing.T) {
+	h, b, f := botSetup(t, map[string]any{"telegram_user_link": true})
+	set := b.must("GET", "/api/settings", nil, 200)
+	set["public_url"] = "https://panel.example.com"
+	b.must("PUT", "/api/settings", set, 200)
+	b.must("POST", "/api/users", map[string]any{"name": "carol", "username": "carol", "password": "carol-password-1", "quota": 10 << 30}, 201)
+	web := h.browser()
+	web.login("carol", "carol-password-1")
+	code := web.must("POST", "/api/portal/telegram/code", nil, 200)["code"].(string)
+	if m := say(t, h, f, 601, "/start "+code); !strings.Contains(m.Get("text"), "Linked") {
+		t.Fatalf("linking: %v", m)
+	}
+	carol := tgUser{ID: 601, FirstName: "Carol"}
+	miniApp := func() (int, any) {
+		app := h.browser()
+		c, v, _ := app.do("POST", "/api/tg/session", map[string]any{"init_data": initData(botToken, carol, now())})
+		if c == 200 && v["kind"] == "user" {
+			if mc, _, _ := app.do("GET", "/api/portal/me", nil); mc != 200 {
+				t.Errorf("the Mini App's session does not open the page: %d", mc)
+			}
+		}
+		return c, v["kind"]
+	}
+	setEnabled := func(on int) {
+		if _, err := h.p.db.Exec1(`UPDATE accounts SET enabled = ? WHERE username = 'owner'`, on); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// enabled: both work
+	if c, kind := miniApp(); c != 200 || kind != "user" {
+		t.Fatalf("the Mini App, account enabled: %d %v", c, kind)
+	}
+	if u := say(t, h, f, 601, "/usage").Get("text"); !strings.Contains(u, "carol") || !strings.Contains(u, "of 10 GB") {
+		t.Fatalf("the bot, account enabled: %s", u)
+	}
+
+	setEnabled(0)
+	if c, kind := miniApp(); c == 200 && kind == "user" {
+		t.Errorf("the Mini App signed in a disabled account's user")
+	}
+	if u := say(t, h, f, 601, "/usage").Get("text"); strings.Contains(u, "of 10 GB") || !strings.Contains(u, "cannot use this any more") {
+		t.Errorf("the bot answered a disabled account's user: %q", u)
+	}
+
+	setEnabled(1)
+	if c, kind := miniApp(); c != 200 || kind != "user" {
+		t.Errorf("the Mini App, enabled again: %d %v", c, kind)
+	}
+	if u := say(t, h, f, 601, "/usage").Get("text"); !strings.Contains(u, "of 10 GB") {
+		t.Errorf("the bot, enabled again: %s", u)
+	}
+}
+
+// TestTelegramSupervisorDisabled: a disabled supervisor's account cannot go on through Telegram -
+// as a browser session, a token or the Mini App cannot. Its linked Telegram account gets no command
+// answered and no button acted on (one handed out while it was enabled included), and its chat gets
+// no commands or button actions either; enabled again, all of it works.
+func TestTelegramSupervisorDisabled(t *testing.T) {
+	h, b, f := botSetup(t, map[string]any{"telegram_panel": true, "telegram_changes": true, "telegram_users": []int64{operatorID}})
+	b.must("POST", "/api/users", map[string]any{"name": "dave"}, 201)
+	code := b.must("POST", "/api/telegram/code", nil, 200)["code"].(string)
+	if m := say(t, h, f, 701, "/link "+code); !strings.Contains(m.Get("text"), "opens the panel") {
+		t.Fatalf("the supervisor's link: %v", m)
+	}
+	// buttons handed out while the account is enabled: one in private, one in the chat
+	privateYes := buttons(t, say(t, h, f, 701, "/pause dave"))["Yes, pause dave"]
+	f.queue(tgMsg(botChatID, operatorID, "/pause dave"))
+	poll(t, h)
+	sent, _, _ := f.take()
+	if len(sent) != 1 {
+		t.Fatalf("/pause in the chat: %d replies", len(sent))
+	}
+	chatYes := buttons(t, sent[0])["Yes, pause dave"]
+	if privateYes == "" || chatYes == "" {
+		t.Fatalf("no confirm buttons: %q %q; the chat said %q", privateYes, chatYes, sent[0].Get("text"))
+	}
+	paused := func() bool {
+		var p bool
+		h.p.db.QueryRow(`SELECT paused FROM subs WHERE name = 'dave'`).Scan(&p)
+		return p
+	}
+	setEnabled := func(on int) {
+		if _, err := h.p.db.Exec1(`UPDATE accounts SET enabled = ? WHERE username = 'owner'`, on); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	setEnabled(0)
+	if m := say(t, h, f, 701, "/status"); strings.Contains(m.Get("text"), "Servers:") || !strings.Contains(m.Get("text"), "disabled") {
+		t.Errorf("a disabled account's linked Telegram got /status: %q", m.Get("text"))
+	}
+	f.queue(tgPrivatePress(701, 1, privateYes))
+	poll(t, h)
+	f.take()
+	f.queue(tgMsg(botChatID, operatorID, "/status"))
+	poll(t, h)
+	if sent, _, _ := f.take(); len(sent) != 1 || strings.Contains(sent[0].Get("text"), "Servers:") {
+		t.Errorf("a disabled account's chat got /status: %v", sent)
+	}
+	f.queue(tgPress(operatorID, 1, chatYes))
+	poll(t, h)
+	f.take()
+	if paused() {
+		t.Fatal("a button pressed after the account was disabled paused a user")
+	}
+
+	setEnabled(1)
+	if m := say(t, h, f, 701, "/status"); !strings.Contains(m.Get("text"), "Servers:") {
+		t.Errorf("enabled again, /status: %q", m.Get("text"))
+	}
+	f.queue(tgPrivatePress(701, 1, privateYes))
+	poll(t, h)
+	f.take()
+	if !paused() {
+		t.Error("enabled again, the button does nothing")
 	}
 }

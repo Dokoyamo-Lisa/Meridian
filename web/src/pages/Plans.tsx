@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks'
-import { CountMode, GB, Plan, Server, User, bytes, del, get, patch, post } from '../api'
+import { CountMode, GB, Plan, Server, User, size, del, get, patch, post } from '../api'
 import { Icon } from '../icons'
 import { Check, Empty, ErrorBox, Field, Loading, Modal, Seg, ask, errText, run, toast, useAsync } from '../ui'
 import { ScopePicker, ScopeState, scopeBody, scopeState } from './ScopePicker'
@@ -258,7 +258,7 @@ function NodeQuotaFields(props: { v: Limits; set: (v: Limits) => void; servers: 
 /** A short description of a plan or a user's limits. */
 export function limitsSummary(v: HasLimits & { duration?: number; duration_unit?: string }): string {
   const parts: string[] = []
-  parts.push(v.quota ? `${bytes(v.quota, 0)}${v.count_mode && v.count_mode !== 'both' ? ' ' + countName(v.count_mode).toLowerCase() : ''}` : 'unlimited')
+  parts.push(v.quota ? `${size(v.quota)}${v.count_mode && v.count_mode !== 'both' ? ' ' + countName(v.count_mode).toLowerCase() : ''}` : 'unlimited')
   if (v.duration) parts.push(`${v.duration} ${v.duration_unit === 'month' ? 'month' : 'day'}${v.duration === 1 ? '' : 's'}`)
   if (v.reset_every) parts.push(`resets every ${v.reset_every} days`)
   else if (v.reset_day) parts.push(`resets monthly on day ${v.reset_day}`)

@@ -44,6 +44,7 @@ import {
   setClockOffset,
   setPanelZone,
   severity,
+  size,
   tzLabel,
   WEEK,
 } from './fmt'
@@ -54,6 +55,8 @@ import { Check, startCheck } from '../turnstile'
 import { ServerHistory, serverHistory } from './details'
 import { osBadge, virtName } from './os'
 import { TgSession, call as tgCall, telegramPanel, tgLaunch } from './tg'
+import { globeLayoutKey } from './globekeys'
+import { PinChoice, globeMayStayOpen, pickRefresh, pickSig, pinChoice, pinStep } from './globenav'
 
 // ================================================================ state
 
@@ -583,14 +586,14 @@ function updateKpis() {
     setText($('#kUsedLab'), 'You, this cycle')
     if (m.quota) tween(el, (used * 100) / m.quota, (x) => numUnit(el, x.toFixed(1), '%'), 1200)
     else figure(el, used, bsplit(), 1200)
-    setText($('#kUsedSub'), m.quota ? `${bytes(used)} of ${bytes(m.quota)}` : 'No data limit')
+    setText($('#kUsedSub'), m.quota ? `${bytes(used)} of ${size(m.quota)}` : 'No data limit')
   } else {
     const list = p.servers.filter((x) => x.bandwidth)
     const used = list.reduce((a, x) => a + (x.bandwidth?.used || 0), 0)
     const limit = list.reduce((a, x) => a + (x.bandwidth?.limit || 0), 0)
     setText($('#kUsedLab'), 'Bandwidth used')
     if (limit) tween(el, (used * 100) / limit, (x) => numUnit(el, x.toFixed(1), '%'), 1200)
-    setText($('#kUsedSub'), limit ? `${bytes(used)} of ${bytes(limit)} this month` : '')
+    setText($('#kUsedSub'), limit ? `${bytes(used)} of ${size(limit)} this month` : '')
   }
 }
 
@@ -798,7 +801,7 @@ function leftSegments(m: PortalMe): RingSeg[] {
   const segs: RingSeg[] = lims.map((l) => {
     const fill = Math.min(Math.max(0, l.left), l.quota, budget)
     budget -= fill
-    const title = `${l.server} · ${l.name}: ${bytes(l.left)} left of ${bytes(l.quota)}${l.stopped ? ' - used up until the cycle starts over' : ''}`
+    const title = `${l.server} · ${l.name}: ${bytes(l.left)} left of ${size(l.quota)}${l.stopped ? ' - used up until the cycle starts over' : ''}`
     return { size: l.quota / whole, fill: fill / whole, color: colors.get(String(l.id)) || OTHER_COLOR, title }
   })
   if (m.quota && m.quota > sumLim) {
@@ -807,7 +810,7 @@ function leftSegments(m: PortalMe): RingSeg[] {
       size: (m.quota - sumLim) / whole,
       fill: rest / whole,
       color: 'var(--accent)',
-      title: lims.length ? `Everything else: ${bytes(rest)} left` : `${bytes(rest)} left of ${bytes(m.quota)}`,
+      title: lims.length ? `Everything else: ${bytes(rest)} left` : `${bytes(rest)} left of ${size(m.quota)}`,
     }
     // a small limit still gets a segment one can see and point at: taken from everything else
     const MIN = 0.06
@@ -865,7 +868,7 @@ function limitRings(svg: SVGElement, m: PortalMe, key: string) {
     const frac = l.quota > 0 ? clamp(l.left / l.quota, 0, 1) : 0
     svg.append(s('circle', { class: 'r-lim-t', cx: 22, cy: 22, r }))
     const arc = s('circle', { class: 'r-lim', cx: 22, cy: 22, r, style: `stroke:${colors.get(String(l.id)) || OTHER_COLOR}` },
-      s('title', {}, `${l.server} · ${l.name}: ${bytes(l.left)} left of ${bytes(l.quota)}${l.stopped ? ' - used up until the cycle starts over' : ''}`))
+      s('title', {}, `${l.server} · ${l.name}: ${bytes(l.left)} left of ${size(l.quota)}${l.stopped ? ' - used up until the cycle starts over' : ''}`))
     svg.append(arc)
     arcTo(arc, c, frac, `${key}:lim:${l.id}`)
   })
@@ -905,7 +908,7 @@ function limitList(m: PortalMe): HTMLElement | null {
         h('i.ml-dot', { style: { background: color } }),
         h('div.ml-name', h('b', l.name), h('small', l.server)),
         h('div.ml-bar', h('i', { style: { width: (frac * 100).toFixed(1) + '%', background: color } })),
-        h('div.ml-left', h('b', bytes(l.left)), h('small', l.stopped ? `used up - back ${m.next_reset ? inDays(daysUntil(m.next_reset)) : 'next cycle'}` : `left of ${bytes(l.quota)}`)),
+        h('div.ml-left', h('b', bytes(l.left)), h('small', l.stopped ? `used up - back ${m.next_reset ? inDays(daysUntil(m.next_reset)) : 'next cycle'}` : `left of ${size(l.quota)}`)),
       )
     }),
   )
@@ -942,8 +945,8 @@ function updateQuota() {
     const left = Math.max(0, 100 - pct)
     setRing(r.val, left / 100)
     numUnit(r.c, left >= 10 || left === 0 ? Math.floor(left).toFixed(0) : left.toFixed(1), '%')
-    setText(r.used, `${bytes(Math.max(0, b.limit - b.used), 0)} left`)
-    setText(r.sub, `${bytes(b.used, 0)} of ${bytes(b.limit, 0)} used`)
+    setText(r.used, `${bytes(Math.max(0, b.limit - b.used))} left`)
+    setText(r.sub, `${bytes(b.used)} of ${size(b.limit)} used`)
   })
   for (const [sid, r] of QRows) {
     if (!keep.has(sid)) {
@@ -982,7 +985,7 @@ function updateMine() {
       { cls: pct == null ? '' : severity(pct) },
       (gauge = h('div.r-g.lg', svg, c) as HTMLElement),
       m.quota
-        ? h('div.mine-v', h('b', `${bytes(Math.max(0, m.quota - used))} left`), h('small', `of ${bytes(m.quota)} · ${bytes(used)} used this cycle`))
+        ? h('div.mine-v', h('b', `${bytes(Math.max(0, m.quota - used))} left`), h('small', `of ${size(m.quota)} · ${bytes(used)} used this cycle`))
         : h('div.mine-v', h('b', bytes(used)), h('small', (m.limits || []).length ? 'used this cycle · limits on some protocols' : 'used this cycle · no limit')),
     ),
     h('div.mine-lines', lines.map((l) => h('span', l))),
@@ -1176,43 +1179,173 @@ function initGlobe() {
     colors: globeColors,
     reduced: motion.reduced,
     onHover: globeHover,
-    onSelect: (p: GlobePlace) => {
-      if (!p || !p.ids) return
-      if (p.ids.length === 1) go(`#/s/${p.ids[0]}`)
-      else {
-        globe!.focus(p.key)
-        highlightRows(p.ids)
-      }
-    },
+    onSelect: (p: GlobePlace) => selectPin(p),
     onEmptyClick: () => {
-      if (!S.globeOpen) setGlobeOpen(true)
+      if (!S.globeOpen) setGlobeOpen(true, false, host)
     },
   })
+  globeKeys(host)
+  $('#gOpen').addEventListener('click', () => setGlobeOpen(true, false, $('#gOpen')))
   $('#gZoomIn').addEventListener('click', () => globe!.zoomBy(1.5))
   $('#gZoomOut').addEventListener('click', () => globe!.zoomBy(1 / 1.5))
   $('#gClose').addEventListener('click', () => setGlobeOpen(false))
 }
 
+// selectPin: a pin of one server opens it; a pin of several shows a chooser with a link to each
+// (their rows in the server table may be folded away, and at full screen the table is not in view)
+const pinChoiceOf = (p: GlobePlace) =>
+  pinChoice(p.ids, (id) => {
+    const sv = serverById(id)
+    return sv && { id: sv.id, name: sv.name, online: !!sv.online }
+  })
+
+let picked: { key: string; sig: string } | null = null // the pin the open chooser lists, and what it shows
+
+function selectPin(p: GlobePlace | null) {
+  if (!p || !p.ids) return
+  const c = pinChoiceOf(p)
+  if (!c) return
+  if ('go' in c) {
+    closePick()
+    go(c.go)
+    return
+  }
+  globe!.focus(p.key)
+  highlightRows(p.ids)
+  renderPick(p, c.choose)
+  $('a', $('#gPick')).focus({ preventScroll: true })
+}
+
+function renderPick(p: GlobePlace, list: PinChoice[]) {
+  const pick = $('#gPick')
+  // a rebuild keeps the focus where it was in the list: the same link, or the close button
+  const a = document.activeElement as HTMLElement | null
+  const had = a?.closest('#gPick') ? a.getAttribute('href') || (a.tagName === 'BUTTON' ? 'close' : '') : null
+  clear(pick).append(
+    h('div.g-pick-h', h('b', p.label), h('button.icon-btn', { type: 'button', 'aria-label': 'Close the list' }, icon('close', 'sm'))),
+    h(
+      'ul',
+      ...list.map((x) => h('li', h('a', { href: x.href }, h('span', x.name), h('small' + (x.online ? '' : '.crit'), x.online ? 'online' : 'offline')))),
+    ),
+  )
+  pick.setAttribute('aria-label', `Servers in ${p.label}`)
+  pick.hidden = false
+  picked = { key: p.key, sig: pickSig(p.label, list) }
+  $('button', pick).addEventListener('click', () => closePick(true))
+  $$('a', pick).forEach((a) => a.addEventListener('click', () => closePick()))
+  if (had != null) (had === 'close' ? $('button', pick) : $$('a', pick).find((x) => x.getAttribute('href') === had) || $('a', pick)).focus({ preventScroll: true })
+}
+
+// refreshPick: an open chooser follows each status refresh - rebuilt when its pin's servers or their
+// states changed, closed when the pin is gone or down to one server
+function refreshPick(places: GlobePlace[]) {
+  if (!picked || $('#gPick').hidden) return
+  const p = places.find((x) => x.key === picked!.key)
+  const c = p ? pinChoiceOf(p) : null
+  const what = pickRefresh(picked.sig, p ? p.label : '', c)
+  if (what === 'rebuild' && p && c && 'choose' in c) renderPick(p, c.choose)
+  else if (what === 'close') closePick(!!(document.activeElement as HTMLElement | null)?.closest('#gPick'))
+}
+
+function closePick(refocus = false) {
+  const pick = document.getElementById('gPick')
+  picked = null
+  if (!pick || pick.hidden) return
+  pick.hidden = true
+  if (refocus) $('#globe').focus({ preventScroll: true })
+}
+
+// globeKeys: the globe for the keyboard - the arrow keys go from place to place (turning the globe
+// there and saying where), Enter opens the place, F (or the button) goes full screen, + and - zoom.
+// The keys work anywhere on the stage (the globe, its zoom and close buttons), at full screen too.
+function globeKeys(host: HTMLElement) {
+  let cur: string | null = null
+  const say = (p: GlobePlace) => setText($('#gSay'), `${p.label}${p.sub ? ', ' + p.sub : ''}: ${p.ids.length > 1 ? p.ids.length + ' servers' : serverById(p.ids[0])?.name || ''}. Enter to open.`)
+  host.closest('.g-stage')!.addEventListener('keydown', (ev) => {
+    const e = ev as KeyboardEvent
+    const t = e.target as Element
+    if (t.closest('#gPick') || e.altKey || e.ctrlKey || e.metaKey) return
+    const onButton = t !== host && t.tagName === 'BUTTON' // Enter and Space press the button itself
+    const places = S.places || []
+    let dir: 1 | -1 | 0 = 0
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') dir = 1
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') dir = -1
+    if (dir) {
+      e.preventDefault()
+      cur = pinStep(
+        places.map((p) => p.key),
+        cur,
+        dir,
+      )
+      const p = places.find((x) => x.key === cur)
+      if (p) {
+        globe!.focus(p.key)
+        say(p)
+      }
+    } else if (!onButton && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault()
+      const p = places.find((x) => x.key === cur)
+      if (p) selectPin(p)
+      else if (!S.globeOpen) setGlobeOpen(true, false, host)
+    } else if (e.key === 'f' || e.key === 'F') {
+      e.preventDefault()
+      setGlobeOpen(!S.globeOpen, false, host)
+    } else if (S.globeOpen && (e.key === '+' || e.key === '=')) globe!.zoomBy(1.5)
+    else if (S.globeOpen && e.key === '-') globe!.zoomBy(1 / 1.5)
+  })
+  host.addEventListener('blur', () => setText($('#gSay'), ''))
+  $('#gPick').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation() // closes the list, not the full screen
+      closePick(true)
+    }
+  })
+  document.addEventListener('click', (e) => {
+    if (!(e.target as Element).closest('#gPick, #globe')) closePick()
+  })
+}
+
+// leaveGlobe closes the full-screen globe when its view goes (another page, or the status lost): no
+// step back in history - the page moves on by itself - but its history entry is made an ordinary one
+function leaveGlobe() {
+  if (!S.globeOpen) return
+  setGlobeOpen(false, true)
+  if (history.state && history.state.globe) history.replaceState(null, '', location.href)
+}
+
 // full screen: wheel / pinch zoom, drag to turn; Esc, the close button or Back leave it
-function setGlobeOpen(on: boolean, fromHistory = false) {
+// opener is what opened it: the globe itself (by click or from the keyboard, which then keeps the
+// keys there) or the full-screen button. Leaving puts the focus back on it - or, when that is gone
+// from view, on the globe.
+let globeOpener: HTMLElement | null = null
+function setGlobeOpen(on: boolean, fromHistory = false, opener: HTMLElement | null = null) {
   if (!globe || on === S.globeOpen) return
   S.globeOpen = on
   const apply = () => {
     $('#pGlobe').classList.toggle('expanded', on)
     document.documentElement.classList.toggle('globe-open', on)
     $('#gCtrl').classList.toggle('hidden', !on)
+    $('#gOpen').classList.toggle('hidden', on)
     setText($('#gHint'), on ? 'Drag to turn · scroll or pinch to zoom · double-click to reset · Esc to leave' : 'Scroll to zoom · click for full screen')
     globe!.setZoomable(on)
     updateSun()
   }
   hideTip()
+  closePick()
   if (motion.reduced) apply()
   else void transition(apply)
   if (on) {
+    globeOpener = opener
     if (!fromHistory) history.pushState({ globe: 1 }, '', location.href)
-    setTimeout(() => $('#gClose').focus({ preventScroll: true }), 80)
-  } else if (!fromHistory && history.state && history.state.globe) {
-    history.back()
+    const g = $('#globe')
+    // a keyboard visitor on the globe keeps it (its keys go on working); else the close button
+    if (document.activeElement !== g) setTimeout(() => $('#gClose').focus({ preventScroll: true }), 80)
+  } else {
+    if (!fromHistory && history.state && history.state.globe) history.back()
+    const back = globeOpener || $('#gOpen')
+    globeOpener = null
+    const inside = !document.activeElement || document.activeElement === document.body || !!document.activeElement.closest('#pGlobe')
+    if (inside) setTimeout(() => (back.offsetParent ? back : $('#globe')).focus({ preventScroll: true }), 80)
   }
 }
 
@@ -1253,15 +1386,16 @@ function updateGlobe() {
   if (!globe || !S.pub) return
   const places = placesFromServers()
   const hub = hubPlace()
-  // a new layout whenever a pin is added, removed, moved, renamed or becomes exact; else just news
-  const keys = places.map((p) => `${p.key}@${p.lat.toFixed(3)},${p.lon.toFixed(3)}${p.approx ? '~' : ''}=${p.label}`).join('|') + (hub ? `#${hub.lat},${hub.lon}=${hub.label}` : '')
+  // a new layout whenever a pin is added, removed, moved, renamed, becomes exact or changes servers; else just news
+  const keys = globeLayoutKey(places, hub)
   if (keys !== placeKeys) {
     placeKeys = keys
     globe.setPlaces({ hub, places })
   } else {
-    for (const p of places) globe.updatePlace(p.key, { rate: p.rate, sub: p.sub, state: p.state })
+    for (const p of places) globe.updatePlace(p.key, { rate: p.rate, sub: p.sub, state: p.state, ids: p.ids })
   }
   S.places = places
+  refreshPick(places)
 }
 
 function updateGlobeTimes() {
@@ -1275,7 +1409,7 @@ function updateGlobeTimes() {
 function globeLive(fresh: Set<number>) {
   if (!globe || !S.pub) return
   const places = placesFromServers()
-  for (const p of places) globe.updatePlace(p.key, { rate: p.rate, state: p.state })
+  for (const p of places) globe.updatePlace(p.key, { rate: p.rate, state: p.state, ids: p.ids })
   globe.pulse(places.filter((p) => p.online > 0 && p.ids.some((id) => fresh.has(id))).map((p) => p.key))
 }
 
@@ -1406,7 +1540,7 @@ function makeCard(sv: StatusServer): Card {
     if (sh.bandwidth && v.bandwidth) {
       const pct = bwPct(v) || 0
       bw.append(
-        h('div.q-top', h('span.q-l', 'Bandwidth this month'), h('b', pctText(pct)), h('small', `${bytes(v.bandwidth.used)} / ${bytes(v.bandwidth.limit)}`)),
+        h('div.q-top', h('span.q-l', 'Bandwidth this month'), h('b', pctText(pct)), h('small', `${bytes(v.bandwidth.used)} / ${size(v.bandwidth.limit)}`)),
         h('div.meter', { cls: severity(pct) }, h('i', { style: { width: clamp(pct, 0, 100) + '%' } })),
         h('small.c-qsub', [split, today != null ? `today ${bytes(today)}` : '', v.bandwidth.next_reset ? `resets ${inDays(daysUntil(v.bandwidth.next_reset))}` : ''].filter(Boolean).join(' · ')),
       )
@@ -1611,7 +1745,7 @@ function updateMe() {
       'div.left-hero',
       { cls: pct == null ? '' : severity(pct) },
       (gaugeXL = h('div.r-g.xl', svg, c) as HTMLElement),
-      h('div.left-v', big, h('span.of', left != null ? `left of ${bytes(m.quota)} · ${bytes(used)} used this cycle` : `${bytes(used)} used this cycle`)),
+      h('div.left-v', big, h('span.of', left != null ? `left of ${size(m.quota)} · ${bytes(used)} used this cycle` : `${bytes(used)} used this cycle`)),
     ),
   )
   drawUsage(gaugeXL, svg, val, m, pct == null ? (limLeft != null ? limLeft / 100 : 1) : (100 - Math.min(100, pct)) / 100)
@@ -2080,7 +2214,7 @@ function updateDrawer() {
     big.append(h('span.unit', bu))
     append(R.bw, [
       h('h4', 'Monthly bandwidth', h('span.aside', b.reset_day ? `resets on day ${b.reset_day} of each month` : '')),
-      h('div.quota-big', big, h('span.of', `of ${bytes(b.limit)} · ${pctText(pct)} used`)),
+      h('div.quota-big', big, h('span.of', `of ${size(b.limit)} · ${pctText(pct)} used`)),
       h('div.meter.lg', { cls: severity(pct) }, h('i', { style: { width: clamp(pct, 0, 100) + '%' } })),
       h(
         'div.kv-grid',
@@ -2312,6 +2446,7 @@ function initAuth() {
     }
     S.pub = null
     S.pubState = 'none'
+    leaveGlobe()
     S.live.clear()
     resetCards()
     closeDrawer(true)
@@ -2484,6 +2619,7 @@ function route() {
 }
 
 function showView(v: View) {
+  if (!globeMayStayOpen(v, !!S.pub)) leaveGlobe()
   const changed = S.view !== v || !S.viewSet
   const swap = () => {
     S.view = v

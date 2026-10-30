@@ -197,3 +197,232 @@ func TestHottest(t *testing.T) {
 		t.Errorf("no sensors: %v", v)
 	}
 }
+
+// TestPublicPingNameHidesTarget: a monitor added with only a target is named after it, and public by
+// default; visitors of the status page still never read the target - not as the target, not as the
+// name, and not in a name that has it inside. The supervisor's own charts keep both.
+func TestPublicPingNameHidesTarget(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	h.p.db.Exec1(`UPDATE servers SET first_seen_at = ?, online = 1, status_changed_at = ? WHERE id = ?`, now(), now(), sid)
+
+	bare := b.must("POST", "/api/ping-monitors", map[string]any{"target": "1.1.1.1"}, 201)
+	if bare["name"] != "1.1.1.1" || bare["public"] != true {
+		t.Fatalf("a monitor with only a target: %v", bare)
+	}
+	b.must("POST", "/api/ping-monitors", map[string]any{"name": "dns.google (Google)", "target": "dns.google", "kind": "tcp", "port": 443}, 201)
+	b.must("POST", "/api/ping-monitors", map[string]any{"name": "Cloudflare", "target": "9.9.9.9"}, 201)
+	set := b.must("GET", "/api/settings", nil, 200)
+	set["status_page"] = "page"
+	set["status_charts"] = []string{"ping"}
+	b.must("PUT", "/api/settings", set, 200)
+
+	_, pub, raw := h.browser().do("GET", fmt.Sprintf("/api/status/servers/%d/series?range=1h", sid), nil)
+	var names []string
+	for _, p := range pub["ping"].([]any) {
+		names = append(names, fmt.Sprint(p.(map[string]any)["name"]))
+	}
+	if fmt.Sprint(names) != "[Probe 1 Probe 2 Cloudflare]" {
+		t.Errorf("the names visitors read: %v", names)
+	}
+	for _, target := range []string{"1.1.1.1", "dns.google", "9.9.9.9"} {
+		if strings.Contains(string(raw), target) {
+			t.Errorf("a visitor's charts give away %s: %s", target, raw)
+		}
+	}
+	sup := b.must("GET", fmt.Sprintf("/api/servers/%d/series?range=1h", sid), nil, 200)
+	if p := sup["ping"].([]any)[0].(map[string]any); p["name"] != "1.1.1.1" || p["target"] != "1.1.1.1" {
+		t.Errorf("the supervisor's chart: %v", p)
+	}
+}
+
+// TestPingSeriesTotals: the range's loss and latency count every probe once, whatever each step
+// held. One step with its single probe lost, one with six answered at 20 ms and one with three at
+// 50 ms: 1 of 10 lost (not the steps' average, 33%) and 30 ms (not 35).
+func TestPingSeriesTotals(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	h.p.db.Exec1(`UPDATE servers SET first_seen_at = ?, online = 1, status_changed_at = ? WHERE id = ?`, now(), now(), sid)
+	mid := id(b.must("POST", "/api/ping-monitors", map[string]any{"name": "DNS", "target": "1.1.1.1"}, 201)["id"])
+	t0 := now() / 60 * 60
+	for _, r := range []struct {
+		ts         int64
+		sent, lost int
+		avg        float64
+	}{{t0 - 180, 1, 1, 0}, {t0 - 120, 6, 0, 20}, {t0 - 60, 3, 0, 50}} {
+		if _, err := h.p.db.Exec1(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			mid, sid, r.ts, r.sent, r.lost, r.avg, r.avg, r.avg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	v := b.must("GET", fmt.Sprintf("/api/servers/%d/series?range=1h&charts=ping", sid), nil, 200)
+	ps := v["ping"].([]any)[0].(map[string]any)
+	if len(ps["t"].([]any)) != 3 || id(ps["sent"]) != 10 || id(ps["lost"]) != 1 || ps["avg_ms"] != 30.0 {
+		t.Errorf("the range's totals: %d steps, %v sent, %v lost, %v ms", len(ps["t"].([]any)), ps["sent"], ps["lost"], ps["avg_ms"])
+	}
+}
+
+// TestPingLatestNoAnswer: a round of 20 ms, then one with every probe lost. The target does not
+// answer now: the list says so from the last round (last_loss 1), while the hour's loss - half the
+// probes - is labelled as the hour's, in the API and in the bot's words.
+func TestPingLatestNoAnswer(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	mid := id(b.must("POST", "/api/ping-monitors", map[string]any{"name": "DNS", "target": "1.1.1.1"}, 201)["id"])
+	t0 := now() / 60 * 60
+	h.p.db.Exec1(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, 3, 0, 20, 19, 21)`, mid, sid, t0-120)
+	h.p.db.Exec1(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, 3, 3, 0, 0, 0)`, mid, sid, t0-60)
+	_, _, raw := b.do("GET", "/api/ping-monitors", nil)
+	var list []pingView
+	if err := json.Unmarshal(raw, &list); err != nil || len(list) != 1 || len(list[0].Latest) != 1 {
+		t.Fatalf("the list: %s", raw)
+	}
+	l := list[0].Latest[0]
+	if l.LastLoss != 1 || l.Loss != 0.5 || l.Avg != 0 {
+		t.Errorf("the latest: %+v", l)
+	}
+	if mark, val := pingLatestText(l); mark != "🔴" || val != "no answer · 50% lost in the last hour" {
+		t.Errorf("in words: %s %s", mark, val)
+	}
+	if _, val := pingLatestText(pingLatest{Avg: 20, Loss: 0.5}); val != "20.0 ms · 50% lost in the last hour" {
+		t.Errorf("an answered last round: %s", val)
+	}
+}
+
+// TestPublicPingNameAfterTargetChange: a public monitor added with only a private target is named
+// after it; its target is then changed, the edit form sending the old name back. The name follows the
+// new target, and visitors never read the old address - nor an address typed into a name.
+func TestPublicPingNameAfterTargetChange(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	h.p.db.Exec1(`UPDATE servers SET first_seen_at = ?, online = 1, status_changed_at = ? WHERE id = ?`, now(), now(), sid)
+	m := b.must("POST", "/api/ping-monitors", map[string]any{"target": "10.0.0.1"}, 201)
+	mid := id(m["id"])
+	// the edit form: every field as it was, the target changed
+	ed := b.must("PATCH", fmt.Sprintf("/api/ping-monitors/%d", mid), map[string]any{"name": "10.0.0.1", "target": "1.1.1.1"}, 200)
+	if ed["name"] != "1.1.1.1" {
+		t.Errorf("the name stayed the old target: %v", ed["name"])
+	}
+	// a default name longer than a name may be (48): the edit form sends the whole old host name back
+	long := "private-" + strings.Repeat("a", 45) + ".example.com"
+	lm := b.must("POST", "/api/ping-monitors", map[string]any{"target": long, "public": false}, 201)
+	if lm["name"] != long {
+		t.Fatalf("a long target's name: %v", lm["name"])
+	}
+	if ed := b.must("PATCH", fmt.Sprintf("/api/ping-monitors/%d", id(lm["id"])), map[string]any{"name": long, "target": "1.0.0.1", "public": true}, 200); ed["name"] != "1.0.0.1" {
+		t.Errorf("a long default name after the target changed: %v", ed["name"])
+	}
+	named := b.must("POST", "/api/ping-monitors", map[string]any{"name": "Office 10.0.0.2", "target": "9.9.9.9"}, 201)
+	b.must("POST", "/api/ping-monitors", map[string]any{"name": "Quad9", "target": "9.9.9.10"}, 201)
+	// a name of its own stays when the target changes
+	if ed := b.must("PATCH", fmt.Sprintf("/api/ping-monitors/%d", id(named["id"])), map[string]any{"name": "Office 10.0.0.2", "target": "8.8.8.8"}, 200); ed["name"] != "Office 10.0.0.2" {
+		t.Errorf("a name of its own: %v", ed["name"])
+	}
+	set := b.must("GET", "/api/settings", nil, 200)
+	set["status_page"] = "page"
+	set["status_charts"] = []string{"ping"}
+	b.must("PUT", "/api/settings", set, 200)
+	_, pub, raw := h.browser().do("GET", fmt.Sprintf("/api/status/servers/%d/series?range=1h", sid), nil)
+	var names []string
+	for _, p := range pub["ping"].([]any) {
+		names = append(names, fmt.Sprint(p.(map[string]any)["name"]))
+	}
+	if fmt.Sprint(names) != "[Probe 1 Probe 2 Probe 3 Quad9]" {
+		t.Errorf("the names visitors read: %v", names)
+	}
+	for _, addr := range []string{"10.0.0.1", "10.0.0.2", "1.1.1.1", "8.8.8.8", "private-aaa", "1.0.0.1"} {
+		if strings.Contains(string(raw), addr) {
+			t.Errorf("visitors read %s: %s", addr, raw)
+		}
+	}
+	for s, want := range map[string]bool{"Office 10.0.0.2": true, "[2001:db8::1]:443": true, "1.1.1.1:53": true, "dns (8.8.8.8)": true, "Quad9": false, "Tokyo 2": false, "v1.2": false} {
+		if hasAddr(s) != want {
+			t.Errorf("hasAddr(%q) = %v", s, !want)
+		}
+	}
+}
+
+// TestPingEditAfterServerDeleted: a monitor measured from First and Second; First is deleted. Editing
+// the monitor (the form sends its list back, First included) works and keeps the list as it was -
+// never "all servers" - while Second still measures it; unticking First drops it. A server deleted
+// before cannot be added to a list.
+func TestPingEditAfterServerDeleted(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	ctx := context.Background()
+	first := id(b.must("POST", "/api/servers", map[string]any{"name": "First", "address": "203.0.113.21"}, 201)["server"].(map[string]any)["id"])
+	second := id(b.must("POST", "/api/servers", map[string]any{"name": "Second", "address": "203.0.113.22"}, 201)["server"].(map[string]any)["id"])
+	mid := id(b.must("POST", "/api/ping-monitors", map[string]any{"name": "DNS", "target": "1.1.1.1", "servers": []int64{first, second}}, 201)["id"])
+	b.must("DELETE", fmt.Sprintf("/api/servers/%d", first), nil, 200)
+
+	ed := b.must("PATCH", fmt.Sprintf("/api/ping-monitors/%d", mid), map[string]any{"name": "Resolver", "target": "1.1.1.1", "servers": []int64{first, second}}, 200)
+	if ed["name"] != "Resolver" || fmt.Sprint(ed["servers"]) != fmt.Sprint([]any{float64(first), float64(second)}) {
+		t.Errorf("the edit: %v", ed)
+	}
+	st, err := h.p.compileServer(ctx, second)
+	if err != nil || len(st.Ping) != 1 || st.Ping[0].ID != mid {
+		t.Errorf("Second no longer measures it: %+v %v", st.Ping, err)
+	}
+	if ed := b.must("PATCH", fmt.Sprintf("/api/ping-monitors/%d", mid), map[string]any{"servers": []int64{second}}, 200); fmt.Sprint(ed["servers"]) != fmt.Sprint([]any{float64(second)}) {
+		t.Errorf("unticking the removed server: %v", ed["servers"])
+	}
+	// once gone from the list, or for another monitor, a deleted server is no server
+	if code, _, _ := b.do("PATCH", fmt.Sprintf("/api/ping-monitors/%d", mid), map[string]any{"servers": []int64{first, second}}); code != 400 {
+		t.Errorf("a deleted server added back: %d", code)
+	}
+	if code, _, _ := b.do("POST", "/api/ping-monitors", map[string]any{"target": "8.8.8.8", "servers": []int64{first}}); code != 400 {
+		t.Errorf("a new monitor on a deleted server: %d", code)
+	}
+}
+
+// TestLatePingAfterRawDropped: a five-minute step 50 hours old holds two rounds (6 probes answered,
+// 15 ms); its rounds are dropped one by one after 49 hours and only its totals are left. A round of
+// that step arriving late (every probe lost) is added to them - 9 sent, 3 lost, still 15 ms - not
+// folded from the rounds left (which would make the step that one round). Sent again, it counts once.
+func TestLatePingAfterRawDropped(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	ctx := context.Background()
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.20"}, 201)["server"].(map[string]any)["id"])
+	mid := id(b.must("POST", "/api/ping-monitors", map[string]any{"name": "DNS", "target": "1.1.1.1"}, 201)["id"])
+	step := (now() - 50*3600) / 300 * 300
+	for _, ts := range []int64{step, step + 60} {
+		h.p.db.Exec1(`INSERT INTO ping_samples (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, 3, 0, 15, 14, 16)`, mid, sid, ts)
+	}
+	h.p.rollup5m(ctx, step) // folds the step, and drops rounds older than 49 hours
+	read := func() (sent, lost int, avg, mn, mx float64) {
+		h.p.db.QueryRow(`SELECT sent, lost, avg_ms, min_ms, max_ms FROM ping_5m WHERE monitor_id = ? AND ts = ?`, mid, step).Scan(&sent, &lost, &avg, &mn, &mx)
+		return
+	}
+	var n int
+	h.p.db.QueryRow(`SELECT COUNT(*) FROM ping_samples`).Scan(&n)
+	if sent, lost, avg, _, _ := read(); sent != 6 || lost != 0 || avg != 15 || n != 0 {
+		t.Fatalf("before: %d sent, %d lost, %v ms, %d rounds kept", sent, lost, avg, n)
+	}
+	srv, _ := h.p.serverByID(ctx, sid)
+	late := []proto.PingResult{{ID: mid, TS: step + 120, Sent: 3, Lost: 3}}
+	for seq := int64(1); seq <= 2; seq++ { // the same batch twice
+		if _, err := h.p.ingest(ctx, srv, &proto.Report{Instance: "p", Batch: &proto.Batch{Seq: seq, To: now(), Pings: late}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if sent, lost, avg, mn, mx := read(); sent != 9 || lost != 3 || avg != 15 || mn != 14 || mx != 16 {
+		t.Errorf("after the late round: %d sent, %d lost, %v ms (min %v, max %v); want 9, 3, 15 (14, 16)", sent, lost, avg, mn, mx)
+	}
+	// an answered late round in the same step weighs by its answered probes: (6×15 + 3×30) / 9 = 20
+	late = []proto.PingResult{{ID: mid, TS: step + 180, Sent: 3, Avg: 30, Min: 10, Max: 40}}
+	h.p.ingest(ctx, srv, &proto.Report{Instance: "p", Batch: &proto.Batch{Seq: 3, To: now(), Pings: late}})
+	if sent, lost, avg, mn, mx := read(); sent != 12 || lost != 3 || avg != 20 || mn != 10 || mx != 40 {
+		t.Errorf("after an answered late round: %d sent, %d lost, %v ms (min %v, max %v)", sent, lost, avg, mn, mx)
+	}
+}

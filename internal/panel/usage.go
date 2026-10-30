@@ -24,13 +24,14 @@ type nodeUsage struct {
 	LastAt    int64  `json:"last_at" doc:"When it last carried traffic (0: not since this was counted)"`
 }
 
-// addNodeUsage counts a report's traffic on the protocol it went through.
-func addNodeUsage(tx *sql.Tx, sub, node, server, up, down, ts int64) error {
+// addNodeUsage counts a report's traffic on the protocol it went through: cycleUp/cycleDown in this
+// cycle (0 for traffic from before it began), up/down in the totals.
+func addNodeUsage(tx *sql.Tx, sub, node, server, cycleUp, cycleDown, up, down, ts int64) error {
 	_, err := tx.Exec(`INSERT INTO sub_node_usage (sub_id, node_id, server_id, cycle_up, cycle_down, total_up, total_down, last_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(sub_id, node_id) DO UPDATE SET cycle_up = cycle_up + excluded.cycle_up,
 		cycle_down = cycle_down + excluded.cycle_down, total_up = total_up + excluded.total_up,
-		total_down = total_down + excluded.total_down, server_id = excluded.server_id, last_at = excluded.last_at`,
-		sub, node, server, up, down, up, down, ts)
+		total_down = total_down + excluded.total_down, server_id = excluded.server_id, last_at = MAX(last_at, excluded.last_at)`,
+		sub, node, server, cycleUp, cycleDown, up, down, ts)
 	return err
 }
 

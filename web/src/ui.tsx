@@ -731,7 +731,7 @@ export function BarChart(props: { days: { day: string; a: number; b: number }[];
       <svg class="chart" style={{ height: h + 'px' }} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" onMouseLeave={() => setHover(null)}>
         <line class="grid-l" x1="0" x2={w} y1={pad.t} y2={pad.t} />
         <text x="2" y={pad.t + 10}>
-          {bytes(max, 0)}
+          {bytes(max) /* one decimal under 100: the scale is decimal, the units binary */}
         </text>
         {props.days.map((d, i) => {
           const ha = y(d.a)
@@ -846,7 +846,7 @@ export function StackChart(props: { days: string[]; series: StackSeries[]; heigh
           <>
             <line class="grid-l" x1={pad.l} x2={w - pad.r} y1={y(max * f)} y2={y(max * f)} />
             <text x={pad.l - 6} y={y(max * f) + 3.5} text-anchor="end">
-              {bytes(max * f, 0)}
+              {bytes(max * f)}
             </text>
           </>
         ))}

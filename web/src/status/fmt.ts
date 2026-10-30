@@ -20,6 +20,19 @@ export const bytes = (n: number | null | undefined, d?: number) => {
   return u ? `${v} ${u}` : v
 }
 
+// size is a configured amount - a bandwidth limit, a quota - as it was entered: in the largest unit
+// that shows it exactly with at most two decimals (1500 GB stays "1500 GB", not a rounded "1 TB"),
+// else to two decimals. Measured amounts use bytes().
+export const size = (n: number | null | undefined) => {
+  if (n == null || !isFinite(n)) return bytes(n)
+  const a = Math.abs(n)
+  for (let i = UNITS.length - 1; i > 0; i--) {
+    const v = a / 1024 ** i
+    if (v >= 1 && Math.abs(Math.round(v * 100) - v * 100) < 1e-6) return (n < 0 ? '-' : '') + String(Math.round(v * 100) / 100) + ' ' + UNITS[i]
+  }
+  return bytes(n, 2)
+}
+
 export const rate = (n: number | null | undefined, d?: number) => {
   const [v, u] = bparts(n, d)
   return u ? `${v} ${u}/s` : v

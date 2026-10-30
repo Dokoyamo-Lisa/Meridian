@@ -900,6 +900,20 @@ export function bytes(n: number | undefined | null, digits = 1): string {
   return (n < 0 ? '-' : '') + (i === 0 ? String(Math.round(v)) : v.toFixed(v >= 100 ? 0 : digits)) + ' ' + u[i]
 }
 
+// size is a configured amount - a quota, a bandwidth limit - as it was entered: in the largest unit
+// that shows it exactly with at most two decimals (1500 GB stays "1500 GB", not a rounded "1 TB";
+// 1.5 TB is "1.5 TB"), else to two decimals. Measured amounts use bytes().
+export function size(n: number | undefined | null): string {
+  if (n === undefined || n === null || !isFinite(n)) return '—'
+  const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+  const a = Math.abs(n)
+  for (let i = u.length - 1; i > 0; i--) {
+    const v = a / 1024 ** i
+    if (v >= 1 && Math.abs(Math.round(v * 100) - v * 100) < 1e-6) return (n < 0 ? '-' : '') + String(Math.round(v * 100) / 100) + ' ' + u[i]
+  }
+  return bytes(n, 2)
+}
+
 export function rate(n: number | undefined): string {
   if (!n) return '0 B/s'
   return bytes(n) + '/s'
@@ -1136,7 +1150,10 @@ export interface PluginLogLine {
 export interface PingLatest {
   server_id: number
   ts: number
+  /** The last round's average round trip (0 when it had no answer). */
   avg_ms: number
+  /** Share of the last round's probes lost (0-1; 1: no answer now). */
+  last_loss: number
   /** Share of probes lost in the last hour (0-1). */
   loss: number
 }

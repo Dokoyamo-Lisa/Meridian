@@ -394,7 +394,7 @@ func (p *Panel) tgSignIn(w http.ResponseWriter, r *http.Request, c notifyConfig,
 		return "", errStatus(http.StatusForbidden, "not available in your region")
 	}
 	s, err := p.subByID(r.Context(), l.SubID)
-	if err != nil || !s.CanSignIn {
+	if err != nil || !p.userMaySignIn(r.Context(), s) {
 		return "", errStatus(http.StatusForbidden, "your account cannot sign in any more - ask whoever runs this service")
 	}
 	if err := p.db.Write(r.Context(), func(tx *sql.Tx) error {

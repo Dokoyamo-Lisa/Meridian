@@ -46,7 +46,7 @@ func (p *Panel) alerts(ctx context.Context, accountID int64, servers []*Server, 
 		}
 		if s.BwLimit > 0 && s.BwUsed() >= s.BwLimit*9/10 {
 			out = append(out, alert{Level: "warn", Kind: "bandwidth", ServerID: s.ID,
-				Message: fmt.Sprintf("%s has used %s of its %s monthly bandwidth", s.Name, fmtBytes(s.BwUsed()), fmtBytes(s.BwLimit))})
+				Message: fmt.Sprintf("%s has used %s of its %s monthly bandwidth", s.Name, fmtBytes(s.BwUsed()), fmtSize(s.BwLimit))})
 		}
 		out = append(out, p.dnsAlerts(s)...) // a dynamic DNS name that points elsewhere (ddns.go)
 	}
@@ -62,7 +62,7 @@ func (p *Panel) alerts(ctx context.Context, accountID int64, servers []*Server, 
 			case "over_ip_limit":
 				a.Message = fmt.Sprintf("%s is connected from %d IPs (limit %d) - possible sharing", s.Name, n, s.IPLimit)
 			case "over_quota": // suspended by itself until the data starts over (outofdata.go)
-				a.Message = fmt.Sprintf("%s used all of their %s - suspended, back %s", s.Name, fmtBytes(s.Quota), p.backOn(s))
+				a.Message = fmt.Sprintf("%s used all of their %s - suspended, back %s", s.Name, fmtSize(s.Quota), p.backOn(s))
 			case "expired":
 				a.Message = fmt.Sprintf("%s expired on %s", s.Name, time.Unix(s.ExpiresAt, 0).UTC().Format("Jan 2"))
 			default:
@@ -74,7 +74,7 @@ func (p *Panel) alerts(ctx context.Context, accountID int64, servers []*Server, 
 			if l.Used < l.Quota {
 				continue
 			}
-			msg := fmt.Sprintf("%s used all of their %s on %s · %s", s.Name, fmtBytes(l.Quota), l.Server, l.Protocol)
+			msg := fmt.Sprintf("%s used all of their %s on %s · %s", s.Name, fmtSize(l.Quota), l.Server, l.Protocol)
 			if l.Stopped {
 				msg += " - it does not serve them until their cycle starts over"
 			}
@@ -92,6 +92,21 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// fmtSize is a configured amount - a quota, a bandwidth limit - as it was entered: in the largest
+// unit that shows it exactly with at most two decimals (1500 GB stays "1500 GB", not a rounded
+// "1.5 TB"; 1.5 TB is "1.5 TB"), else as fmtBytes. web/src/api.ts size() does the same.
+func fmtSize(b int64) string {
+	units := []string{"KB", "MB", "GB", "TB", "PB"}
+	for i := len(units) - 1; i >= 0; i-- {
+		div := int64(1) << (10 * (i + 1))
+		if b < div || (b*100)%div != 0 { // b*100 stays far from overflow for any real quota
+			continue
+		}
+		return strconv.FormatFloat(float64(b*100/div)/100, 'f', -1, 64) + " " + units[i]
+	}
+	return fmtBytes(b)
 }
 
 func fmtBytes(b int64) string {

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rosélune API",
-    "version": "1.4.1",
+    "version": "1.4.2",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -9578,6 +9578,20 @@
               "type": "number"
             },
             "type": "array"
+          },
+          "sent": {
+            "description": "Probes sent in the whole range",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lost": {
+            "description": "Probes lost in the whole range",
+            "format": "int64",
+            "type": "integer"
+          },
+          "avg_ms": {
+            "description": "The range's average round trip over every probe answered (0: none)",
+            "type": "number"
           }
         }
       },
@@ -9654,6 +9668,11 @@
             "type": "integer"
           },
           "avg_ms": {
+            "description": "The last round's average round trip (0 when it had no answer)",
+            "type": "number"
+          },
+          "last_loss": {
+            "description": "Share of the last round's probes lost (0-1; 1: no answer now)",
             "type": "number"
           },
           "loss": {
@@ -11559,7 +11578,7 @@
                 "$ref": "#/components/schemas/Usage"
               }
             ],
-            "description": "Since the start of the current cycle (whole days)"
+            "description": "This cycle, exactly as the quota counts it: a reset of the usage clears it at once"
           },
           "days30": {
             "$ref": "#/components/schemas/Usage"

@@ -47,7 +47,7 @@ step-by-step procedures.
 
 ```bash
 make                 # UI + panel + agents
-make test            # go test -race ./... + UI typecheck   (MERIDIAN_NO_GEO_DOWNLOAD=1 is set)
+make test            # go test -race ./... + UI typecheck + UI tests (web/test, node --test)
 make check           # + vet, staticcheck, govulncheck (Go + Linux), npm audit
 make docs            # regenerate docs/openapi.json after API changes
 make release         # dist/release tarballs + Linux CLI builds + SHA256SUMS(.sig - needs the release key)

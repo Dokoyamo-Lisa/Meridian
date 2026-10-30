@@ -381,9 +381,15 @@ func (a *Agent) applyNft(ctx context.Context) {
 		return
 	}
 	geo, _ := a.geoSpec(ctx, st.Geo)
+	if holdFirewall(st.Geo, geoOf(geo), a.nft.Active()) {
+		slog.Warn("security mode: nftables left as it was until the country list can be read, so the country rule stays in force")
+		return
+	}
 	spec := a.nftSpec(full)
-	spec.Geo = geo
+	spec.Geo = geoOf(geo)
 	if err := a.nft.Apply(spec); err != nil {
 		slog.Warn("security mode: nftables", "err", err)
+		return
 	}
+	a.setGeoActive(geo)
 }

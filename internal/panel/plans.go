@@ -113,9 +113,19 @@ func (pl *Plan) ends(start int64) int64 {
 	}
 	t := time.Unix(start, 0)
 	if pl.DurationUnit == "month" {
-		return t.AddDate(0, pl.Duration, 0).Unix()
+		return addMonths(t, pl.Duration).Unix()
 	}
 	return t.AddDate(0, 0, pl.Duration).Unix()
+}
+
+// addMonths is t n calendar months later, on the same day clamped to the month's length as the
+// monthly reset is (monthDay): a month from Jan 31 is Feb 28 (29), from Mar 31 Apr 30 - where
+// AddDate would run over into Mar 3 and May 1. The time of day stays.
+func addMonths(t time.Time, n int) time.Time {
+	y, m, d := t.Date()
+	first := time.Date(y, m+time.Month(n), 1, 0, 0, 0, 0, t.Location())
+	last := first.AddDate(0, 1, -1).Day()
+	return time.Date(first.Year(), first.Month(), min(d, last), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
 }
 
 // fill copies what the plan sets into a user request wherever the request leaves it out: what is

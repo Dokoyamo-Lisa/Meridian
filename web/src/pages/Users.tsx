@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks'
-import { Plan, Server, User, bytes, date, get, patch, pct, post } from '../api'
+import { Plan, Server, User, bytes, size, date, get, patch, pct, post } from '../api'
 import { Icon } from '../icons'
 import { userURL } from '../session'
 import { navigate, setQuery, useLocation } from '../router'
@@ -174,7 +174,7 @@ function UserList() {
                     <td class="hide-sm" style="min-width:130px">
                       <div class="nowrap">
                         {bytes(s.used)}
-                        {s.quota > 0 && <span class="faint"> / {bytes(s.quota, 0)}</span>}
+                        {s.quota > 0 && <span class="faint"> / {size(s.quota)}</span>}
                       </div>
                       {s.quota > 0 && <Meter pct={pct(s.used, s.quota)} label="Quota used" />}
                     </td>

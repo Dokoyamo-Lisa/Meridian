@@ -36,7 +36,7 @@ agents:
 
 test:
 	MERIDIAN_NO_GEO_DOWNLOAD=1 $(GO) test -race -count=1 ./...
-	cd web && npm run typecheck
+	cd web && npm run typecheck && npm test
 
 vet:
 	$(GO) vet ./...

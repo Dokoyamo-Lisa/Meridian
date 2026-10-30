@@ -1,25 +1,12 @@
 import { useMemo, useState } from 'preact/hooks'
 import { PingMonitor, Server, del, get, patch, post } from '../api'
 import { Icon } from '../icons'
+import { everyOptions, everyText, latestText } from '../pingfmt'
 import { Check, Empty, ErrorBox, Field, Loading, Modal, Seg, ask, errText, run, toast, useAsync, usePoll } from '../ui'
 
 // Ping monitors: addresses the servers measure the way to at fixed intervals - three ICMP echoes or
 // three TCP connections a round. The status page charts them in a server's details (those marked
 // public, without their addresses); rounds measured while a server cannot reach the panel arrive later.
-
-const EVERY: [number, string][] = [
-  [10, '10 s'],
-  [30, '30 s'],
-  [60, '1 min'],
-  [300, '5 min'],
-  [900, '15 min'],
-  [3600, '1 h'],
-]
-const everyText = (s: number) => EVERY.find((e) => e[0] === s)?.[1] || (s % 60 ? `${s} s` : `${s / 60} min`)
-
-function lossClass(l: number) {
-  return l >= 0.5 ? 'crit' : l > 0 ? 'warn' : 'good'
-}
 
 export function PingTab(props: { servers: Server[] }) {
   const list = useAsync(() => get<PingMonitor[]>('/api/ping-monitors'))
@@ -80,16 +67,15 @@ export function PingTab(props: { servers: Server[] }) {
                     </div>
                   </td>
                   <td class="nowrap muted">{everyText(m.every_secs)}</td>
-                  <td class="muted">{m.servers.length ? m.servers.map((id) => names.get(id) || `#${id}`).join(', ') : 'All servers'}</td>
+                  <td class="muted">{m.servers.length ? m.servers.map((id) => names.get(id) || `removed server #${id}`).join(', ') : 'All servers'}</td>
                   <td>
                     {m.latest.length === 0 ? (
                       <span class="faint">{m.enabled ? 'waiting for the first rounds' : '—'}</span>
                     ) : (
                       <div class="ping-latest">
                         {m.latest.map((l) => (
-                          <span class={'badge ' + lossClass(l.loss)} title={`Last round ${new Date(l.ts * 1000).toLocaleTimeString()}`}>
-                            {names.get(l.server_id) || `#${l.server_id}`} · {l.loss >= 1 ? 'no answer' : `${l.avg_ms.toFixed(1)} ms`}
-                            {l.loss > 0 && l.loss < 1 ? ` · ${Math.round(l.loss * 100)}% lost` : ''}
+                          <span class={'badge ' + latestText(l).cls} title={`Last round ${new Date(l.ts * 1000).toLocaleTimeString()}`}>
+                            {names.get(l.server_id) || `#${l.server_id}`} · {latestText(l).text}
                           </span>
                         ))}
                       </div>
@@ -166,7 +152,7 @@ function PingModal(props: { monitor: PingMonitor | null; servers: Server[]; onCl
         <Field label="Address" hint="A host name or an IP address on the internet, e.g. 1.1.1.1 or www.example.com.">
           <input class="input mono" value={target} placeholder="1.1.1.1" onInput={(e) => setTarget(e.currentTarget.value)} autoComplete="off" spellcheck={false} required />
         </Field>
-        <Field label="Name" hint="What the charts call it - on the status page too. Empty: the address.">
+        <Field label="Name" hint="What the charts call it. Empty: the address - which the status page never shows: visitors read 'Probe 1', 'Probe 2' instead.">
           <input class="input" value={name} maxLength={48} placeholder={target.trim() || 'Cloudflare DNS'} onInput={(e) => setName(e.currentTarget.value)} />
         </Field>
         <div class="inline-fields">
@@ -187,7 +173,7 @@ function PingModal(props: { monitor: PingMonitor | null; servers: Server[]; onCl
           )}
         </div>
         <Field label="Every" hint="How often each server measures it. A round is three probes.">
-          <Seg<number> value={EVERY.some((e) => e[0] === every) ? every : 60} onChange={setEvery} options={EVERY} />
+          <Seg<number> value={every} onChange={setEvery} options={everyOptions(m?.every_secs)} />
         </Field>
         <Field label="Measured from">
           <Check checked={all} onChange={setAll} label="All servers" hint="New servers too." />
@@ -201,6 +187,16 @@ function PingModal(props: { monitor: PingMonitor | null; servers: Server[]; onCl
                   hint={s.guest ? 'Shared with you: it measures public addresses only' : undefined}
                 />
               ))}
+              {(m?.servers || [])
+                .filter((id) => !props.servers.some((s) => s.id === id))
+                .map((id) => (
+                  <Check
+                    checked={picked.includes(id)}
+                    onChange={(v) => setPicked(v ? [...picked, id] : picked.filter((x) => x !== id))}
+                    label={`Removed server #${id}`}
+                    hint="Deleted since: it measures nothing. Untick it to drop it from the list."
+                  />
+                ))}
             </div>
           )}
         </Field>

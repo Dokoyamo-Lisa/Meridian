@@ -1,5 +1,126 @@
 # Changelog
 
+## 1.4.2 - 2026-10-30
+
+Security and reliability fixes from an audit of the panel, the agent, the status page and the users'
+area. Upgrade the panel (**Settings › Updates** - nobody is disconnected), then the agents (server
+page › More actions › Upgrade agent - nobody is disconnected): the fixes that end in *Needs agent
+1.4.2* (the country rule, speed limits, shared servers' checks) take effect only then.
+
+- **Security: a shared server's guest panel cannot reach this host through DNS rebinding.** A guest's
+  ping monitor was checked against public addresses by name, then each probe looked the name up
+  again - an answer that changed in between could send it to this host or a private network. A round
+  now resolves once and probes the address it checked. The guest's camouflage check works the same
+  way: Xray gets the checked address, not the name. Needs agent 1.4.2.
+- **Security: the status page no longer shows a ping monitor's target as its name.** A monitor added
+  with only a target is named after it and shown to visitors by default, so the public charts read
+  "1.1.1.1" although visitors are never to see the target. Visitors now read "Probe 1", "Probe 2" ...
+  for any monitor whose name is empty, contains its target or holds an IP address; the panel shows
+  both as before. A monitor named after its target keeps following it when the target changes, so an
+  old (perhaps internal) address never stays behind as its name.
+- **Security: a disabled account's WireGuard files are no longer served.** `/s/{token}/wg/{node}.conf`
+  checked only the token and whether the user was paused; a still-known link of a user whose
+  account is disabled returned the full configuration, private key included. Every subscription
+  route now goes through the same check (rate limit, token, account enabled), and a paused user's
+  page never shows WireGuard keys as QR codes or links.
+- **Security: a country rule stays in force when its list cannot be read.** After an agent restart,
+  with the server's copy of the country list missing or damaged and the panel out of reach, the
+  agent replaced its firewall table with one without the rule - the server was open to every country
+  until the list came back. And when a changed rule's new list could not be fetched, the newest list
+  on disk was applied under the new rule - a block list for one country could end up as the rule for
+  others, or as an allow rule. The agent now records the rule nftables last applied (countries, mode,
+  exceptions) next to its list; until the new list can be read that rule stays in force, after a
+  restart and after a reboot too, and a list on disk that was never applied is never used for another
+  rule. With no rule in force it leaves the firewall as it was (and says so); re-applying the firewall
+  for SSH blocks follows the same rule. Needs agent 1.4.2.
+- **Security: a disabled account's users are shut out of their own page and the bot.** Disabling an
+  account stopped its subscription links, but its users could still sign in, keep an open session
+  reading their page and link, and use the Telegram bot. Signing in (password or Telegram), every
+  request of an open session and the bot's commands now need the account enabled; enabling it again
+  lets them back in as they were.
+- **Security: a disabled supervisor's account cannot use the Telegram bot.** A browser session, a
+  token and the Mini App already refused it, but its linked Telegram account and its chat still got
+  commands (servers, users, traffic, events) and could press a button handed out before - pausing a
+  user, say. Commands and buttons, in private and in the chat, now need the account enabled.
+- **Ping history: a late round no longer rewrites an older five-minute step.** Rounds are kept one
+  by one for 49 hours and as five-minute steps for a month; a round older than 49 hours arriving
+  late (a server that could not reach the panel for days) refolded its step from the rounds still
+  kept - only itself - so a step of 6 answered probes became "3 sent, 3 lost". Such a round is now
+  added to the step's totals.
+- **Status page: the full-screen globe closes when the status goes away.** A refresh answered with
+  "not allowed" (a session that ended, a disabled account, a region refused) switched to the sign-in
+  with the globe still "open": the page stayed locked from scrolling with no close button in view.
+  Leaving the overview or losing the status now closes it.
+- **Ping monitors: editing one measured from a deleted server works again.** Deleting a server left
+  it in the lists of the monitors measured from it, and saving such a monitor was refused ("there
+  is no server ..."). It now saves with its list as it was (never widened to all servers); the edit
+  dialog shows the deleted server as "Removed server #n", to untick.
+- **Ping page: "no answer" when the last round had none.** A target that answered earlier in the
+  hour and then stopped showed "0.0 ms · 50% lost". The list now has each server's last round's loss
+  (`last_loss`): it says "no answer" from that, and the hour's loss reads "lost in the last hour" (in
+  the bot too). Editing a monitor set to another interval through the API (2 minutes, say) showed
+  "1 min" selected while saving kept 2 minutes; the dialog now shows that interval as a choice of its
+  own. The Name hint says visitors never read the address.
+- **Ping charts no longer hatch a slow monitor's normal rounds as outages.** Gaps went by the chart's
+  step (a minute on the hour's chart), so a monitor measuring every 10 minutes was hatched between
+  each of its rounds as "the server did not report". Each monitor's gaps now go by its own interval:
+  only a missed round is hatched, and the note no longer says why data is missing.
+- **Server history: a failed load no longer passes for the range you picked.** Picking 1 h when its
+  request failed left the selector on 1 h and the 24 h charts on screen, with no sign. The charts
+  that stay are now dimmed, and a note names the range they really show and says it is trying again.
+- **Status page globe: a shared pin lists its servers, and the globe works from the keyboard.**
+  Clicking a pin of several servers only highlighted their rows in the server table, which may have
+  them folded away (or, at full screen, out of view). It now opens a small list with a link to each.
+  The globe can be reached with Tab: the arrow keys go from city to city (and say which), Enter
+  opens it, F or the new full-screen button goes full screen, + and - zoom, Esc leaves - and the
+  focus comes back to where it was.
+- **Status page globe: pins follow their servers.** A server replaced by another in the same city, or
+  a server joining a shared pin, left the pin's hover and click naming the old servers; and a pin
+  whose local time was unknown at first never showed it once known. Both now update in place.
+- **The ping legend counts probes, not chart steps.** The latency and loss under a ping chart averaged
+  each step's figures equally, so a step with one lost probe weighed as much as one with six answered
+  (50% lost instead of 1 in 7). The panel now sends each monitor's totals for the range (`sent`,
+  `lost`, `avg_ms`), and the legend shows those.
+- **Backups: retention removes only this panel's own encrypted backups.** Two panels sending
+  backups to the same WebDAV folder or S3 prefix counted - and removed - each other's; and a plain
+  ZIP took one of the kept places while only encrypted backups were removed, so fewer were kept
+  than set. Now only names this panel makes count and go.
+- **Backups made close together no longer overwrite each other.** Names carried the time to the
+  second, so two backups in the same second went to one file and the destination kept only the
+  second. Names now carry milliseconds and never repeat; retention orders old and new names together.
+- **Backups › Test checks that the destination really lists and removes files.** A destination that
+  took the test file but listed nothing - or answered a removal but kept the file - was reported as
+  working, though it would show no backups to restore and never remove old ones. Test now says what
+  is wrong with it.
+- **Quotas and limits read as entered.** A 1500 GB quota or bandwidth limit showed as "1 TB" or
+  "1.5 TB" - on the panel's users, user, plans and servers pages, the status page and users' page,
+  subscription pages, alerts, events and Telegram messages; it now shows "1500 GB", and 1.5 TB
+  "1.5 TB". Traffic charts label their gridlines with a decimal where rounding misled (a line at
+  1.4 TB read "1 TB").
+- **Monitor › Online now** shows the IPs and users online and what all servers receive and send right
+  now, refreshed every 10 seconds.
+- **A speed limit no longer slows down other people on the same network.** Limits were enforced on
+  the addresses a limited user connected from, for every protocol - so anyone else behind that
+  address (one home or office network, a carrier's shared address) was slowed down too, and two
+  limited users there shared one rate. Now WireGuard is limited by the person's tunnel address and
+  mieru, Snell and AnyTLS by their own port - exact wherever they connect from; Hysteria2 keeps its
+  own per-user check at sign-in; and on VLESS, VMess, Trojan and Shadowsocks an address another user
+  is connected from too is left unlimited, with a note on the user's timeline. Needs agent 1.4.2.
+- **Plans counted in months end in the right month.** A one-month plan starting on Jan 31 ran until
+  Mar 3, one starting on Mar 31 until May 1. A month from the 29th-31st now ends on the shorter
+  month's last day (Feb 28 or 29, Apr 30), as the monthly usage reset already did.
+- **Traffic from before a reset no longer fills the new cycle.** A server that was offline and sent
+  what it had counted after the user's usage was reset (or a new cycle began) added it to the new
+  cycle - the user could find themselves out of data at once. It now stays in their totals and
+  history only; "last online" no longer moves back with such a report either.
+- **Users' page: each server's traffic this cycle restarts with a usage reset.** It was summed from
+  whole days since the cycle began, so after a reset in the middle of a day the user saw that day's
+  earlier traffic still counted on their servers while their data left showed it gone. It now comes
+  from the same counters as the quota, which every reset clears at once.
+- **A user's page:** the Online now tab counts devices as the IP limit does (one per address, however
+  many servers it is connected to), and Usage by protocol gives each protocol's share of the cycle's
+  traffic both ways - shares add up to 100% - and says when the quota counts only one way.
+
 ## 1.4.1 - 2026-10-29
 
 A new look, a new logo, fixes and more apps; upgrade the panel (**Settings › Updates** - nobody is

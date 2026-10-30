@@ -201,3 +201,34 @@ func TestScheduleChangeKeepsUsage(t *testing.T) {
 		t.Errorf("reset_every lost: %d", s.ResetEvery)
 	}
 }
+
+// TestPlanMonthEnds: a plan counted in months ends on the same day so many calendar months later,
+// clamped to a shorter month's last day the way the monthly reset is - a month from Jan 31 ends on
+// Feb 28 (29 in a leap year), from Mar 31 on Apr 30 - never running over into the month after. The
+// time of day stays; plans counted in days are unchanged.
+func TestPlanMonthEnds(t *testing.T) {
+	at := func(y int, m time.Month, d int) int64 { return time.Date(y, m, d, 10, 30, 0, 0, time.Local).Unix() }
+	day := func(u int64) string { return time.Unix(u, 0).Format("2006-01-02 15:04") }
+	for _, c := range []struct {
+		n          int
+		unit       string
+		start, end int64
+	}{
+		{1, "month", at(2027, 1, 31), at(2027, 2, 28)}, // Jan/Feb: AddDate gave Mar 3
+		{1, "month", at(2028, 1, 31), at(2028, 2, 29)}, // a leap year
+		{1, "month", at(2027, 3, 31), at(2027, 4, 30)}, // Mar/Apr: AddDate gave May 1
+		{1, "month", at(2027, 1, 15), at(2027, 2, 15)},
+		{1, "month", at(2027, 12, 31), at(2028, 1, 31)}, // across the year
+		{3, "month", at(2026, 11, 30), at(2027, 2, 28)},
+		{12, "month", at(2028, 2, 29), at(2029, 2, 28)},
+		{30, "day", at(2027, 1, 31), at(2027, 3, 2)},
+	} {
+		pl := &Plan{Duration: c.n, DurationUnit: c.unit}
+		if got := pl.ends(c.start); got != c.end {
+			t.Errorf("%d %s from %s: ends %s, want %s", c.n, c.unit, day(c.start), day(got), day(c.end))
+		}
+	}
+	if (&Plan{DurationUnit: "month"}).ends(at(2027, 1, 31)) != 0 {
+		t.Error("a plan without a duration ends")
+	}
+}

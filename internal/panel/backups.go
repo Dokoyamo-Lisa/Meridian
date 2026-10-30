@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -84,8 +86,36 @@ func (c backupConf) remote() backup.Remote {
 
 // ---------------------------------------------------------------- making one
 
-// backupName is a backup file's name: the panel's host and the time.
-func (p *Panel) backupName(encrypted bool) string {
+// backupStamp is the time in a backup's name, to the millisecond, so two backups made in the same
+// second do not land on one name - a destination would keep only the second. backupStampSec is how
+// names were stamped before 1.4.2: retention still knows those.
+const (
+	backupStamp    = "20060102-150405.000"
+	backupStampSec = "20060102-150405"
+)
+
+// backupStampOf is the time a name of this panel's (prefix) carries, if it is a backup's name.
+func backupStampOf(name, prefix, suffix string) (time.Time, bool) {
+	stamp, ok := strings.CutPrefix(name, prefix)
+	if !ok {
+		return time.Time{}, false
+	}
+	if stamp, ok = strings.CutSuffix(stamp, suffix); !ok {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{backupStamp, backupStampSec} {
+		if len(stamp) == len(layout) {
+			if t, err := time.Parse(layout, stamp); err == nil {
+				return t, true
+			}
+		}
+	}
+	return time.Time{}, false
+}
+
+// backupPrefix is how this panel's backup names start: "meridian-", its host, "-". Another panel
+// sending backups to the same folder or bucket has a prefix of its own.
+func (p *Panel) backupPrefix() string {
 	host := urlHost(p.settings().PublicURL)
 	var b strings.Builder
 	for _, r := range strings.ToLower(host) {
@@ -93,11 +123,54 @@ func (p *Panel) backupName(encrypted bool) string {
 			b.WriteRune(r)
 		}
 	}
-	name := "meridian-" + nz(strings.Trim(b.String(), ".-"), "panel") + "-" + time.Now().UTC().Format("20060102-150405") + ".zip"
+	return "meridian-" + nz(strings.Trim(b.String(), ".-"), "panel") + "-"
+}
+
+// backupName is a backup file's name: the panel's host and the time. Each name is later than the
+// last this panel gave, by a millisecond if the clock has not moved on (or went back), so no two are
+// ever the same.
+func (p *Panel) backupName(encrypted bool) string {
+	p.backupNameMu.Lock()
+	t := time.Now().UTC().Truncate(time.Millisecond)
+	if !t.After(p.backupLast) {
+		t = p.backupLast.Add(time.Millisecond)
+	}
+	p.backupLast = t
+	p.backupNameMu.Unlock()
+	name := p.backupPrefix() + t.Format(backupStamp) + ".zip"
 	if encrypted {
 		name += ".age"
 	}
 	return name
+}
+
+// staleBackups are this panel's encrypted backups beyond the newest keep, oldest last. Only names
+// this panel makes count - its prefix, then exactly a time, then ".zip.age" - so another panel's
+// backups in the same place (its prefix may even start like this one's: "a-" and "a-b-") are never
+// counted or removed, and plain ZIPs (downloads, or files put there by hand) neither take a place
+// among those kept nor go.
+func staleBackups(list []backup.Object, prefix string, keep int) []string {
+	type named struct {
+		name string
+		at   time.Time
+	}
+	var ours []named
+	for _, o := range list {
+		if t, ok := backupStampOf(o.Name, prefix, ".zip.age"); ok {
+			ours = append(ours, named{o.Name, t})
+		}
+	}
+	if keep <= 0 || len(ours) <= keep {
+		return nil
+	}
+	// the newest first, by the time in the name: names from before 1.4.2 (to the second) and since
+	// (to the millisecond) sort together
+	sort.Slice(ours, func(i, j int) bool { return ours[i].at.After(ours[j].at) })
+	var out []string
+	for _, o := range ours[keep:] {
+		out = append(out, o.name)
+	}
+	return out
 }
 
 // writeBackup writes a backup to w, encrypted when passphrase is set.
@@ -159,9 +232,9 @@ func (p *Panel) backupNow(ctx context.Context, by int64) (string, error) {
 	c.LastOK, c.LastName, c.LastError = now(), name, ""
 	_ = p.saveBackupConf(c)
 	removed := 0
-	if list, err := r.List(ctx); err == nil && c.Keep > 0 && len(list) > c.Keep {
-		for _, o := range list[c.Keep:] {
-			if strings.HasSuffix(o.Name, ".zip.age") && r.Delete(ctx, o.Name) == nil {
+	if list, err := r.List(ctx); err == nil {
+		for _, old := range staleBackups(list, p.backupPrefix(), c.Keep) {
+			if r.Delete(ctx, old) == nil {
 				removed++
 			}
 		}
@@ -386,17 +459,32 @@ func (p *Panel) apiTestBackups(w http.ResponseWriter, r *http.Request, a *Accoun
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), time.Minute)
 	defer cancel()
-	name := ".meridian-write-test-" + randToken(6)
+	// a name the listing shows (backup.Ours) that no panel's retention ever counts: it carries no time
+	name := "meridian-write-test-" + strings.ToLower(randToken(8)) + ".zip"
 	const probe = "Rosélune checks that it can write here."
 	if err := rem.Put(ctx, name, strings.NewReader(probe), int64(len(probe))); err != nil { // bytes, not letters
 		return errStatus(http.StatusBadGateway, err.Error())
 	}
-	if _, err := rem.List(ctx); err != nil {
+	listed := func() (bool, error) {
+		list, err := rem.List(ctx)
+		return slices.ContainsFunc(list, func(o backup.Object) bool { return o.Name == name }), err
+	}
+	// a destination that takes a file but does not list it would take every backup and show none to
+	// restore or to remove when too many are kept: it does not work, whatever it answers
+	if ok, err := listed(); err != nil || !ok {
 		_ = rem.Delete(ctx, name)
-		return errStatus(http.StatusBadGateway, err.Error())
+		if err != nil {
+			return errStatus(http.StatusBadGateway, "writing works but listing does not: "+err.Error())
+		}
+		return errStatus(http.StatusBadGateway, "the destination took a test file but does not list it - check the folder or prefix, "+
+			"and that this account may list it")
 	}
 	if err := rem.Delete(ctx, name); err != nil {
 		return errStatus(http.StatusBadGateway, "writing works but removing does not: "+err.Error())
+	}
+	if ok, err := listed(); err == nil && ok {
+		return errStatus(http.StatusBadGateway, "the destination says it removed a test file but still lists it ("+name+
+			") - old backups would never go; remove that file by hand and check this account may delete")
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "The panel can write, list and remove files there."})
 	return nil

@@ -365,3 +365,134 @@ func TestOutOfDataLoose(t *testing.T) {
 		t.Errorf("grace while paused: %v", g)
 	}
 }
+
+// TestPortalCycleAfterReset: a user's own page shows each server's traffic this cycle exactly as
+// the quota counts it. Usage reset in the middle of a day starts every server's cycle over at once -
+// the day's traffic from before the reset stays in today's and the 30 days' figures, not in the
+// cycle's - and what comes after counts again.
+func TestPortalCycleAfterReset(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	ctx := context.Background()
+	s := b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.160", "protocols": []string{"vless"}}, 201)["server"].(map[string]any)
+	sid, node := id(s["id"]), id(s["nodes"].([]any)[0].(map[string]any)["id"])
+	var made []map[string]any
+	_, _, raw := b.do("POST", "/api/users", map[string]any{"name": "gil", "username": "gilgil", "password": "gil-password-123", "quota": 10 << 30})
+	if err := json.Unmarshal(raw, &made); err != nil || len(made) != 1 {
+		t.Fatalf("user: %s", raw)
+	}
+	uid := id(made[0]["id"])
+	seq := int64(0)
+	report := func(up, down int64) {
+		t.Helper()
+		seq++
+		srv, _ := h.p.serverByID(ctx, sid)
+		if _, err := h.p.ingest(ctx, srv, &proto.Report{Instance: "cy", Batch: &proto.Batch{Seq: seq, To: now(),
+			Traffic: []proto.UserTraffic{{Sub: uid, Node: node, Up: up, Down: down}}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gil := h.browser()
+	gil.login("gilgil", "gil-password-123")
+	tokyo := func() (me, cycle, today map[string]any) {
+		t.Helper()
+		me = gil.must("GET", "/api/portal/me", nil, 200)
+		for _, x := range me["servers"].([]any) {
+			if srv := x.(map[string]any); id(srv["id"]) == sid {
+				return me, srv["cycle"].(map[string]any), srv["today"].(map[string]any)
+			}
+		}
+		t.Fatalf("no Tokyo on the page: %v", me["servers"])
+		return
+	}
+	is := func(m map[string]any, up, down int64) bool { return id(m["up"]) == up && id(m["down"]) == down }
+
+	report(100, 200)
+	if me, cycle, _ := tokyo(); !is(cycle, 100, 200) || id(me["counted"]) != 300 {
+		t.Fatalf("before the reset: cycle %v, counted %v", cycle, me["counted"])
+	}
+	b.must("POST", fmt.Sprintf("/api/users/%d/reset-usage", uid), nil, 200)
+	me, cycle, today := tokyo()
+	if !is(cycle, 0, 0) || id(me["counted"]) != 0 || !is(me["used"].(map[string]any), 0, 0) {
+		t.Errorf("after the reset: cycle %v, counted %v, used %v", cycle, me["counted"], me["used"])
+	}
+	if !is(today, 100, 200) {
+		t.Errorf("today lost the traffic from before the reset: %v", today)
+	}
+	report(10, 20)
+	if me, cycle, today := tokyo(); !is(cycle, 10, 20) || id(me["counted"]) != 30 || !is(today, 110, 220) {
+		t.Errorf("after more traffic: cycle %v, counted %v, today %v", cycle, me["counted"], today)
+	}
+}
+
+// TestDelayedReport: an agent that was offline flushes traffic it counted before the user's usage
+// was reset. That traffic stays in the user's and the protocol's totals and in the history, but
+// does not fill the new cycle - neither the user's used nor the protocol's cycle - and does not
+// move "last online" back. A report from after the reset counts as usual.
+func TestDelayedReport(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	ctx := context.Background()
+	s := b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.170", "protocols": []string{"vless"}}, 201)["server"].(map[string]any)
+	sid, node := id(s["id"]), id(s["nodes"].([]any)[0].(map[string]any)["id"])
+	var made []map[string]any
+	_, _, raw := b.do("POST", "/api/users", map[string]any{"name": "hal", "quota": 10 << 30})
+	if err := json.Unmarshal(raw, &made); err != nil || len(made) != 1 {
+		t.Fatalf("user: %s", raw)
+	}
+	uid := id(made[0]["id"])
+	seq := int64(0)
+	report := func(to, up, down int64) {
+		t.Helper()
+		seq++
+		srv, _ := h.p.serverByID(ctx, sid)
+		if _, err := h.p.ingest(ctx, srv, &proto.Report{Instance: "dl", Batch: &proto.Batch{Seq: seq, From: to - 60, To: to,
+			Traffic: []proto.UserTraffic{{Sub: uid, Node: node, Up: up, Down: down}}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	detail := func() (user, pu map[string]any) {
+		t.Helper()
+		d := b.must("GET", fmt.Sprintf("/api/users/%d", uid), nil, 200)
+		user = d["user"].(map[string]any)
+		for _, x := range d["usage"].([]any) {
+			if u := x.(map[string]any); id(u["node_id"]) == node {
+				return user, u
+			}
+		}
+		t.Fatalf("no usage on the protocol: %v", d["usage"])
+		return
+	}
+
+	report(now(), 1, 2)
+	b.must("POST", fmt.Sprintf("/api/users/%d/reset-usage", uid), nil, 200)
+	var start int64
+	if err := h.p.db.QueryRow(`SELECT cycle_start FROM subs WHERE id = ?`, uid).Scan(&start); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := detail()
+
+	report(start-60, 100, 200) // counted a minute before the reset, sent after it
+	user, pr := detail()
+	if id(user["used"]) != 0 || id(pr["cycle_up"]) != 0 || id(pr["cycle_down"]) != 0 {
+		t.Errorf("a delayed report filled the new cycle: used %v, protocol cycle %v/%v", user["used"], pr["cycle_up"], pr["cycle_down"])
+	}
+	if id(user["total_up"]) != 101 || id(user["total_down"]) != 202 || id(pr["total_up"]) != 101 || id(pr["total_down"]) != 202 {
+		t.Errorf("lost from the totals: user %v/%v, protocol %v/%v", user["total_up"], user["total_down"], pr["total_up"], pr["total_down"])
+	}
+	if id(user["last_online_at"]) != id(before["last_online_at"]) {
+		t.Errorf("last online moved back: %v, was %v", user["last_online_at"], before["last_online_at"])
+	}
+	var hist int64
+	h.p.db.QueryRow(`SELECT COALESCE(SUM(up + down), 0) FROM traffic_daily WHERE sub_id = ?`, uid).Scan(&hist)
+	if hist != 303 {
+		t.Errorf("history: %d bytes, want 303", hist)
+	}
+
+	report(start+5, 10, 20) // after the reset: counts
+	if user, pr := detail(); id(user["used"]) != 30 || id(pr["cycle_up"]) != 10 || id(pr["cycle_down"]) != 20 || id(user["total_up"]) != 111 {
+		t.Errorf("a report after the reset: used %v, protocol cycle %v/%v, total up %v", user["used"], pr["cycle_up"], pr["cycle_down"], user["total_up"])
+	}
+}

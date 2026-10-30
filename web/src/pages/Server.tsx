@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks'
-import { AccessView, PanelEvent, Forward, Place, Server, bits, bytes, date, del, duration, flag, get, patch, pct, post } from '../api'
+import { AccessView, PanelEvent, Forward, Place, Server, bits, bytes, size, date, del, duration, flag, get, patch, pct, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import {
@@ -398,7 +398,7 @@ export function ServerPage(props: { id: number }) {
           <div class="kpi">
             <div class="v">{bytes(srv.bw_used)}</div>
             <div class="l">
-              this cycle{srv.bw_limit > 0 ? ` of ${bytes(srv.bw_limit, 0)}` : ''} · resets day {srv.bw_reset_day || 1}
+              this cycle{srv.bw_limit > 0 ? ` of ${size(srv.bw_limit)}` : ''} · resets day {srv.bw_reset_day || 1}
             </div>
             {srv.bw_limit > 0 && <Meter pct={pct(srv.bw_used, srv.bw_limit)} label="Bandwidth" />}
           </div>
@@ -588,7 +588,7 @@ export function ServerPage(props: { id: number }) {
           <dl class="kv">
             <dt>Bandwidth</dt>
             <dd>
-              {srv.bw_limit > 0 ? `${bytes(srv.bw_limit, 0)} per month` : 'Unlimited'}
+              {srv.bw_limit > 0 ? `${size(srv.bw_limit)} per month` : 'Unlimited'}
               <span class="faint"> · counts {({ both: 'in + out', up: 'out only', down: 'in only', max: 'the larger direction' } as Record<string, string>)[srv.bw_mode || 'both']}</span>
             </dd>
             <dt>Resets</dt>

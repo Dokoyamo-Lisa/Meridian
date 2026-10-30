@@ -180,3 +180,21 @@ func TestPostgresRoundTrip(t *testing.T) {
 		t.Errorf("back in SQLite: %d servers, %q", n, title)
 	}
 }
+
+// TestRewritePing5mAdd: the upsert that adds a late round to its five-minute step (panel addPing5m)
+// keeps its qualified columns, and its scalar MAX becomes GREATEST.
+func TestRewritePing5mAdd(t *testing.T) {
+	got := rewrite(`INSERT INTO ping_5m (monitor_id, server_id, ts, sent, lost, avg_ms, min_ms, max_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(monitor_id, server_id, ts) DO UPDATE SET
+		avg_ms = CASE WHEN (ping_5m.sent - ping_5m.lost) + (excluded.sent - excluded.lost) > 0 THEN 1 ELSE 0 END,
+		max_ms = MAX(ping_5m.max_ms, excluded.max_ms),
+		sent = ping_5m.sent + excluded.sent`).sql
+	for _, want := range []string{"GREATEST(ping_5m.max_ms, excluded.max_ms)", "sent = ping_5m.sent + excluded.sent", "(ping_5m.sent - ping_5m.lost)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in %s", want, got)
+		}
+	}
+	if strings.Contains(got, "ping_5m.ping_5m") || strings.Contains(got, "excluded.ping_5m") {
+		t.Errorf("qualified twice: %s", got)
+	}
+}

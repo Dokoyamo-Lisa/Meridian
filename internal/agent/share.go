@@ -295,18 +295,10 @@ func (a *Agent) runGuestAction(ctx context.Context, g *guest, act proto.Action) 
 	case proto.ActionCheckTarget:
 		var req proto.TargetCheck
 		_ = json.Unmarshal(act.Args, &req)
-		for _, t := range req.Targets {
-			host, _, err := net.SplitHostPort(t.Addr)
-			if err != nil {
-				host = t.Addr
-			}
-			if t.Own {
-				return "", errors.New("a site of your own on this server cannot be checked on a shared server")
-			}
-			if err := publicTarget(ctx, host); err != nil {
-				return "", err
-			}
+		if err := pinTargets(ctx, req.Targets, lookupIPs); err != nil {
+			return "", err
 		}
+		act.Args, _ = json.Marshal(req)
 	case proto.ActionRestartXray, proto.ActionRestartPending: // Xray serves every panel: the home is told
 		a.event("core_restart_asked", "warn", fmt.Sprintf("The panel %s this server is shared with asked for a restart (%s)", panelHost(g.link.Panel), act.Kind))
 	}
@@ -317,6 +309,50 @@ func (a *Agent) runGuestAction(ctx context.Context, g *guest, act proto.Action) 
 		home = &proto.State{}
 	}
 	return a.runAction(ctx, home, act)
+}
+
+// pinTargets checks a guest's sites to test and puts in each the address it checked: Xray would look
+// the name up again, and a new answer (DNS rebinding) could lead it to this host or a private
+// network. The site's name still goes in the handshake (SNI). One lookup per site; every address it
+// gives must be public.
+func pinTargets(ctx context.Context, targets []proto.TargetSpec, lookup func(context.Context, string) ([]netip.Addr, error)) error {
+	for i, t := range targets {
+		if t.Own {
+			return errors.New("a site of your own on this server cannot be checked on a shared server")
+		}
+		host, port, err := net.SplitHostPort(t.Addr)
+		if err != nil {
+			return fmt.Errorf("%q is not host:port", t.Addr)
+		}
+		ips, err := lookup(ctx, host)
+		if err != nil || len(ips) == 0 {
+			return fmt.Errorf("%s cannot be found", host)
+		}
+		for _, ip := range ips {
+			if !publicIP(ip) {
+				return fmt.Errorf("%s leads to %s, not a public address", host, ip)
+			}
+		}
+		pick := ips[0].Unmap()
+		for _, ip := range ips {
+			if ip.Unmap().Is4() {
+				pick = ip.Unmap()
+				break
+			}
+		}
+		targets[i].Addr = net.JoinHostPort(pick.String(), port)
+	}
+	return nil
+}
+
+// lookupIPs is a host's addresses (an address is its own).
+func lookupIPs(ctx context.Context, host string) ([]netip.Addr, error) {
+	if a, err := netip.ParseAddr(strings.Trim(host, "[]")); err == nil {
+		return []netip.Addr{a}, nil
+	}
+	rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return net.DefaultResolver.LookupNetIP(rctx, "ip", host)
 }
 
 // publicTarget refuses a host that is, or resolves to, anything but a public address.

@@ -109,10 +109,10 @@ func (p *Panel) quotaReached(ctx context.Context, s *Sub) {
 		return
 	}
 	msg := fmt.Sprintf("%s used all of their %s - suspended: no server serves them until you give them more data (raise their quota or reset their usage)",
-		s.Name, fmtBytes(s.Quota))
+		s.Name, fmtSize(s.Quota))
 	if back := nextPeriod(s, p.localNow()); back > 0 {
 		msg = fmt.Sprintf("%s used all of their %s this cycle - suspended: no server serves them until their data starts over on %s",
-			s.Name, fmtBytes(s.Quota), p.dateText(back))
+			s.Name, fmtSize(s.Quota), p.dateText(back))
 	}
 	set := p.settings()
 	if until := graceUntil(s, set, now()); until > 0 {

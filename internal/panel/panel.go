@@ -71,12 +71,14 @@ type Panel struct {
 	passkeys passkeyCeremonies // passkey challenges handed out and not yet answered (passkeys.go)
 	css      cssCache          // the operator's own style sheets (customcss.go)
 
-	backupMu    sync.Mutex  // one backup at a time (backups.go)
-	console     consoleHub  // the supervisor's consoles (console.go)
-	sourceMu    sync.Mutex  // one subscription link refresh at a time (extsources.go)
-	sourcesBusy atomic.Bool // the scheduled refreshes are running
-	dyn         dynState    // dynamic DNS names, Cloudflare and the panel's own address (ddns.go)
-	tg          tgState     // codes that link Telegram accounts (tglink.go)
+	backupMu     sync.Mutex // one backup at a time (backups.go)
+	backupNameMu sync.Mutex // backupName: each name later than the last
+	backupLast   time.Time
+	console      consoleHub  // the supervisor's consoles (console.go)
+	sourceMu     sync.Mutex  // one subscription link refresh at a time (extsources.go)
+	sourcesBusy  atomic.Bool // the scheduled refreshes are running
+	dyn          dynState    // dynamic DNS names, Cloudflare and the panel's own address (ddns.go)
+	tg           tgState     // codes that link Telegram accounts (tglink.go)
 }
 
 func New(cfg Config, d *db.DB) (*Panel, error) {

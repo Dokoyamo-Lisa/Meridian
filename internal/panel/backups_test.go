@@ -3,6 +3,7 @@ package panel
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,10 +19,12 @@ import (
 	"meridian/internal/backup"
 )
 
-// davStore is a WebDAV folder in memory.
+// davStore is a WebDAV folder in memory. hide and keep make it a broken one: it lists no files, or
+// answers a removal without removing.
 type davStore struct {
-	mu    sync.Mutex
-	files map[string][]byte
+	mu         sync.Mutex
+	files      map[string][]byte
+	hide, keep bool
 }
 
 func (d *davStore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -40,12 +43,17 @@ func (d *davStore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(404)
 	case "DELETE":
-		delete(d.files, name)
+		if !d.keep {
+			delete(d.files, name)
+		}
 		w.WriteHeader(204)
 	case "PROPFIND":
 		w.WriteHeader(207)
 		io.WriteString(w, `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">`)
 		for n, b := range d.files {
+			if d.hide {
+				break
+			}
 			fmt.Fprintf(w, `<d:response><d:href>/dav/%s</d:href><d:propstat><d:prop><d:getcontentlength>%d</d:getcontentlength><d:getlastmodified>Fri, 09 Oct 2026 10:00:00 GMT</d:getlastmodified></d:prop></d:propstat></d:response>`, n, len(b))
 		}
 		io.WriteString(w, `</d:multistatus>`)
@@ -193,3 +201,138 @@ func TestBackups(t *testing.T) {
 }
 
 func waitShort() { time.Sleep(100 * time.Millisecond) }
+
+// TestStaleBackups: retention counts and removes only this panel's encrypted backups. Another
+// panel's in the same folder or bucket - even one whose host starts like this one's - and plain
+// ZIPs neither take a kept place nor go.
+func TestStaleBackups(t *testing.T) {
+	obj := func(names ...string) []backup.Object {
+		var l []backup.Object
+		for _, n := range names {
+			l = append(l, backup.Object{Name: n})
+		}
+		return l
+	}
+	const me = "meridian-a.example.com-"
+	// a shared destination, listed in no particular order
+	shared := obj(
+		"meridian-b.example.com-20261029-040000.zip.age", // another panel's, newer than all of mine
+		me+"20261027-040000.zip.age",
+		"meridian-b.example.com-20261028-040000.zip.age",
+		me+"20261029-040000.zip.age",
+		"meridian-a.example.com-x-20261029-050000.zip.age", // a host that starts like mine
+		me+"20261028-040000.zip.age",
+		me+"notes.zip.age", // not a time
+	)
+	got := staleBackups(shared, me, 2)
+	if len(got) != 1 || got[0] != me+"20261027-040000.zip.age" {
+		t.Errorf("shared destination, keep 2: %v", got)
+	}
+	// mixed: the newest encrypted, a plain ZIP, an older encrypted - keep 2 keeps both encrypted
+	mixed := obj(me+"20261029-040000.zip.age", me+"20261028-120000.zip", me+"20261027-040000.zip.age")
+	if got := staleBackups(mixed, me, 2); len(got) != 0 {
+		t.Errorf("a plain ZIP took an encrypted backup's place: %v", got)
+	}
+	if got := staleBackups(mixed, me, 1); len(got) != 1 || got[0] != me+"20261027-040000.zip.age" {
+		t.Errorf("mixed, keep 1: %v", got)
+	}
+	if got := staleBackups(mixed, me, 0); got != nil {
+		t.Errorf("keep 0 removes nothing: %v", got)
+	}
+}
+
+// davBackups points the panel's backups at a WebDAV store in memory, keeping keep of them.
+func davBackups(t *testing.T, b *client, dav *davStore, keep int) {
+	t.Helper()
+	srv := httptest.NewTLSServer(dav)
+	t.Cleanup(srv.Close)
+	oldClient := backup.Client
+	backup.Client = srv.Client()
+	t.Cleanup(func() { backup.Client = oldClient })
+	b.must("PUT", "/api/backups", map[string]any{"kind": "webdav", "webdav_url": srv.URL + "/dav/", "webdav_user": "u",
+		"webdav_password": "dav-secret", "passphrase": "correct horse battery staple", "keep": keep}, 200)
+}
+
+// TestBackupNamesUnique: backups made in quick succession - in the same second, even the same
+// millisecond - get names of their own, later and later, so a destination keeps each one; retention
+// orders names stamped to the second (before 1.4.2) and to the millisecond together.
+func TestBackupNamesUnique(t *testing.T) {
+	h := newHarness(t)
+	prefix := h.p.backupPrefix()
+	seen := map[string]bool{}
+	var last time.Time
+	for i := 0; i < 200; i++ {
+		n := h.p.backupName(true)
+		at, ok := backupStampOf(n, prefix, ".zip.age")
+		if seen[n] || !ok || !at.After(last) {
+			t.Fatalf("name %d: %s (repeated %v, a time %v, later %v)", i, n, seen[n], ok, at.After(last))
+		}
+		seen[n], last = true, at
+	}
+
+	// two backups run at once after another reach the destination as two
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	dav := &davStore{files: map[string][]byte{}}
+	davBackups(t, b, dav, 5)
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if _, err := h.p.backupNow(ctx, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dav.mu.Lock()
+	n := len(dav.files)
+	dav.mu.Unlock()
+	if n != 2 {
+		t.Errorf("two quick backups left %d file(s) at the destination", n)
+	}
+
+	// old and new names together: by time, not by text
+	obj := func(names ...string) []backup.Object {
+		var l []backup.Object
+		for _, x := range names {
+			l = append(l, backup.Object{Name: x})
+		}
+		return l
+	}
+	mixed := obj(prefix+"20261029-152015.zip.age", prefix+"20261029-152015.500.zip.age", prefix+"20261029-152016.zip.age",
+		prefix+"20261029-152014.999.zip.age")
+	if got := staleBackups(mixed, prefix, 2); len(got) != 2 || got[0] != prefix+"20261029-152015.zip.age" || got[1] != prefix+"20261029-152014.999.zip.age" {
+		t.Errorf("old and new names: %v", got)
+	}
+}
+
+// TestBackupDestinationCheck: "test" says a destination works only when the file it writes shows in
+// the listing and is gone after removing it - a destination that takes files but lists none, or that
+// answers a removal but keeps the file, is said not to work, and why.
+func TestBackupDestinationCheck(t *testing.T) {
+	for _, c := range []struct {
+		name       string
+		hide, keep bool
+		code       int
+		says       string
+	}{
+		{"a working destination", false, false, 200, "can write, list and remove"},
+		{"one that lists nothing", true, false, 502, "does not list it"},
+		{"one that keeps what it removes", false, true, 502, "still lists it"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			b := h.browser()
+			b.login("owner", "owner-password-1")
+			dav := &davStore{files: map[string][]byte{}, hide: c.hide, keep: c.keep}
+			davBackups(t, b, dav, 3)
+			code, m, raw := b.do("POST", "/api/backups/test", nil)
+			if code != c.code || !strings.Contains(string(raw), c.says) {
+				t.Errorf("%d %v", code, m)
+			}
+			dav.mu.Lock()
+			left := len(dav.files)
+			dav.mu.Unlock()
+			if !c.keep && left != 0 {
+				t.Errorf("the test file was left behind (%d)", left)
+			}
+		})
+	}
+}

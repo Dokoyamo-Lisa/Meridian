@@ -440,16 +440,17 @@ func (p *Panel) applyBatch(tx *sql.Tx, srv *Server, b *proto.Batch, set Settings
 	}
 	day := p.dayKey(time.Unix(ts, 0))
 
-	// which subscriptions and nodes this server may report on
+	// which subscriptions and nodes this server may report on, and when each user's cycle began
 	subOK := map[int64]bool{}
-	rows, err := tx.Query(`SELECT id FROM subs WHERE account_id = ?`, srv.AccountID)
+	cycleStart := map[int64]int64{}
+	rows, err := tx.Query(`SELECT id, cycle_start FROM subs WHERE account_id = ?`, srv.AccountID)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
-		var id int64
-		if rows.Scan(&id) == nil {
-			subOK[id] = true
+		var id, start int64
+		if rows.Scan(&id, &start) == nil {
+			subOK[id], cycleStart[id] = true, start
 		}
 	}
 	rows.Close()
@@ -470,8 +471,15 @@ func (p *Panel) applyBatch(tx *sql.Tx, srv *Server, b *proto.Batch, set Settings
 		if !subOK[u.Sub] || u.Up < 0 || u.Down < 0 || (u.Up == 0 && u.Down == 0) {
 			continue
 		}
+		// traffic from before the user's cycle began - an agent that was offline flushing what it
+		// counted before a usage reset or a new cycle - stays in the history and the totals but does
+		// not fill the new cycle. A batch is dated by its end (To): one that spans the start counts.
+		cu, cd := u.Up, u.Down
+		if ts < cycleStart[u.Sub] {
+			cu, cd = 0, 0
+		}
 		if _, err := tx.Exec(`UPDATE subs SET cycle_up = cycle_up + ?, cycle_down = cycle_down + ?, total_up = total_up + ?,
-			total_down = total_down + ?, last_online_at = ? WHERE id = ?`, u.Up, u.Down, u.Up, u.Down, ts, u.Sub); err != nil {
+			total_down = total_down + ?, last_online_at = MAX(last_online_at, ?) WHERE id = ?`, cu, cd, u.Up, u.Down, ts, u.Sub); err != nil {
 			return err
 		}
 		node := u.Node
@@ -483,7 +491,7 @@ func (p *Panel) applyBatch(tx *sql.Tx, srv *Server, b *proto.Batch, set Settings
 			server_id = excluded.server_id`, day, u.Sub, node, srv.ID, u.Up, u.Down); err != nil {
 			return err
 		}
-		if err := addNodeUsage(tx, u.Sub, node, srv.ID, u.Up, u.Down, ts); err != nil {
+		if err := addNodeUsage(tx, u.Sub, node, srv.ID, cu, cd, u.Up, u.Down, ts); err != nil {
 			return err
 		}
 	}
@@ -576,7 +584,7 @@ func (p *Panel) applyBatch(tx *sql.Tx, srv *Server, b *proto.Batch, set Settings
 			lvl = "info"
 		}
 		msg, sub := e.Message, int64(0)
-		if e.Kind == "hy_over_speed" { // "... of user 5: ..." - named, and on the user's timeline
+		if e.Kind == "hy_over_speed" || e.Kind == "speed_shared" { // "... of user 5 ..." - named, and on the user's timeline
 			if m := agentUserRE.FindStringSubmatch(msg); m != nil {
 				id, _ := strconv.ParseInt(m[1], 10, 64)
 				var name string

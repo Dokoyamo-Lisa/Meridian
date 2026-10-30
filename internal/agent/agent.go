@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -122,27 +123,30 @@ type Agent struct {
 	done        map[int64]int64 // actions started: id -> when the panel made it (0: not known)
 	events      []proto.AgentEvent
 	lastHello   time.Time
-	limitWarned time.Time  // when a speed limit failure was last logged (limits.go)
-	cons        consoles   // the supervisor's consoles open now (console.go)
-	lastCaps    proto.Caps // what the last hello said the host supports
-	lastAddrs   []string   // the addresses the last hello listed
+	limitWarned time.Time            // when a speed limit failure was last logged (limits.go)
+	sharedTold  map[string]time.Time // speed limits left off an address another user shares, when last told (limits.go)
+	cons        consoles             // the supervisor's consoles open now (console.go)
+	lastCaps    proto.Caps           // what the last hello said the host supports
+	lastAddrs   []string             // the addresses the last hello listed
 	cores       map[string]proto.CoreStatus
 	kick        chan struct{}
 	applyMu     sync.Mutex
-	geo         *geoCache
-	scanned     map[string]bool // units the last scan found: the only ones a takeover may stop
-	shared      sharedCerts     // the panel's shared certificates this server holds and serves
-	relay       *relayServer    // passes other servers' agents through to the panel (relay.go)
-	actions     string          // the actions file (empty: in DataDir; tests keep their own)
-	actionsMu   sync.Mutex      // one write of the actions file at a time
-	health      *health.Monitor // signs of a break-in or abuse, reported to the panel
-	solo        *solo.Engine    // mieru, Snell and AnyTLS: one process per user (solo/)
-	protect     *protect.Engine // fixes of health findings the supervisor confirmed (protect/)
-	resolvers   []string        // the host's name servers the nftables table lets that account ask
-	pub         publicAddrs     // the public addresses between hellos (publicaddr.go)
-	prep        preparer        // preparing the server: its cores and what the host offers (prepare.go)
-	guard       guardian        // the server's security mode, when the supervisor turned it on (guard.go)
-	setup       runner          // the supervisor's setup script (setup.go)
+	geo         *geoCache                                     // the country list last read, built for the rule that asked for it
+	geoActive   *geoCache                                     // the country rule in force: the last one nftables applied (geoRecord on disk)
+	fetchGeo    func(context.Context, string) ([]byte, error) // the country list from the panel (nil: client.GeoList; tests replace it)
+	scanned     map[string]bool                               // units the last scan found: the only ones a takeover may stop
+	shared      sharedCerts                                   // the panel's shared certificates this server holds and serves
+	relay       *relayServer                                  // passes other servers' agents through to the panel (relay.go)
+	actions     string                                        // the actions file (empty: in DataDir; tests keep their own)
+	actionsMu   sync.Mutex                                    // one write of the actions file at a time
+	health      *health.Monitor                               // signs of a break-in or abuse, reported to the panel
+	solo        *solo.Engine                                  // mieru, Snell and AnyTLS: one process per user (solo/)
+	protect     *protect.Engine                               // fixes of health findings the supervisor confirmed (protect/)
+	resolvers   []string                                      // the host's name servers the nftables table lets that account ask
+	pub         publicAddrs                                   // the public addresses between hellos (publicaddr.go)
+	prep        preparer                                      // preparing the server: its cores and what the host offers (prepare.go)
+	guard       guardian                                      // the server's security mode, when the supervisor turned it on (guard.go)
+	setup       runner                                        // the supervisor's setup script (setup.go)
 
 	// the panels the server is shared with (share.go): their links, and the state the host runs -
 	// the home's with theirs laid over it - with what of theirs could not run
@@ -380,13 +384,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.apply(ctx, st, false)
 	}
 	a.runCtx = ctx
-	a.ping.check = func(ctx context.Context, t proto.PingTarget) error { // a guest's monitors measure the internet only
-		if slot, _ := slotOf(t.ID); slot > 0 {
-			return publicTarget(ctx, t.Target)
-		}
-		return nil
-	}
-	a.startGuests(ctx) // the panels it is shared with (share.go)
+	a.ping.check = guestPingCheck // a guest's monitors measure the internet only
+	a.startGuests(ctx)            // the panels it is shared with (share.go)
 	go a.watch(ctx)
 	go a.reconcileLoop(ctx)
 	go a.certs.Run(ctx)
@@ -555,12 +554,21 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 		// nftables is optional (a bare Alpine has none): without it, country rules, IP blocks and kernel
 		// forwards do not apply here - the panel says so on the server page - and the rest runs
 		if nft.Available() {
-			spec := a.nftSpec(full)
-			spec.Geo = geo
-			note("nftables", a.nft.Apply(spec))
-			a.mu.Lock()
-			a.resolvers = spec.Resolvers // what the users' servers' account may ask (nft solo_out)
-			a.mu.Unlock()
+			if holdFirewall(st.Geo, geoOf(geo), a.nft.Active()) {
+				// a new table would leave the country rule out: the one in force stays, rules and all
+				note("nftables", errors.New("left as it was until the country list can be read, so the country rule stays in force"))
+			} else {
+				spec := a.nftSpec(full)
+				spec.Geo = geoOf(geo)
+				err := a.nft.Apply(spec)
+				note("nftables", err)
+				if err == nil {
+					a.setGeoActive(geo)
+				}
+				a.mu.Lock()
+				a.resolvers = spec.Resolvers // what the users' servers' account may ask (nft solo_out)
+				a.mu.Unlock()
+			}
 		}
 	}
 	note("relay for other servers", a.relay.Apply(st.Relay, a.relayTaken(full)))
@@ -661,53 +669,154 @@ func (a *Agent) prepare(ctx context.Context, st *proto.State) prepared {
 	return p
 }
 
-// geoSpec turns the country rule into firewall sets. When the list cannot be fetched, the last one
-// that was applied stays in force, so a panel outage never opens the server up.
-func (a *Agent) geoSpec(ctx context.Context, r *proto.GeoRule) (*nft.GeoSpec, error) {
-	if r == nil || (r.Mode != "block" && r.Mode != "allow") {
+// guestPingCheck refuses a guest panel's monitor an address that is not public: the address the
+// probes go to, resolved once for the round (pinger.round).
+func guestPingCheck(t proto.PingTarget, addr netip.Addr) error {
+	if slot, _ := slotOf(t.ID); slot > 0 && !publicIP(addr) {
+		return fmt.Errorf("%s is not a public address", addr)
+	}
+	return nil
+}
+
+// geoWanted says whether a state asks for a country rule.
+func geoWanted(r *proto.GeoRule) bool { return r != nil && (r.Mode == "block" || r.Mode == "allow") }
+
+// holdFirewall says whether to leave the firewall as it is instead of applying a new table: the state
+// wants a country rule, there is no list to build it from (geoSpec), and a table is in force - one
+// this agent applied, or one left from before a restart, whose geo chains may be all that keeps the
+// rule. A new table would drop them until the list came back. With no table at all there is no rule
+// to keep, and the rest - IP blocks, forwards, the users' servers' guard - had better apply.
+func holdFirewall(r *proto.GeoRule, geo *nft.GeoSpec, active bool) bool {
+	return geoWanted(r) && geo == nil && active
+}
+
+// geoOf is a country rule's firewall sets, or nil for none.
+func geoOf(g *geoCache) *nft.GeoSpec {
+	if g == nil {
+		return nil
+	}
+	return g.spec
+}
+
+// geoSpec turns the country rule into firewall sets, from the list the rule names: in memory, on
+// disk (whole) or fetched. When that list cannot be had, it is the rule in force that stays - the
+// last one nftables applied, its own countries, mode and exceptions, from memory or after a restart
+// from disk - never another list that happens to be on disk: an old block list applied as a new
+// allow rule (or as a block rule for other countries) would let in the very countries kept out.
+// With no rule in force it is nil, and holdFirewall decides.
+func (a *Agent) geoSpec(ctx context.Context, r *proto.GeoRule) (*geoCache, error) {
+	if !geoWanted(r) {
 		a.geo = nil
 		return nil, nil
 	}
 	if a.geo != nil && a.geo.hash == r.List {
 		g := *a.geo.spec
 		g.Allow, g.Except = r.Mode == "allow", r.Except
-		return &g, nil
+		return &geoCache{hash: r.List, spec: &g}, nil
 	}
 	path := filepath.Join(DataDir, "geo-"+r.List+".json")
-	body, err := os.ReadFile(path)
-	if err == nil {
-		sum := sha256.Sum256(body)
-		if hex.EncodeToString(sum[:]) != r.List {
-			body, err = nil, errors.New("damaged copy")
-		}
-	}
+	body, err := readGeoList(r.List)
 	if err != nil {
+		fetch := a.fetchGeo
+		if fetch == nil {
+			fetch = a.client.GeoList
+		}
 		fctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-		body, err = a.client.GeoList(fctx, r.List)
+		body, err = fetch(fctx, r.List)
 		cancel()
 		if err != nil {
-			if a.geo != nil {
-				return a.geo.spec, fmt.Errorf("keeping the previous country list: %w", err)
+			if in := a.geoInForce(); in != nil {
+				return in, fmt.Errorf("the country rule in force stays until the new country list can be fetched: %w", err)
 			}
 			return nil, fmt.Errorf("cannot fetch the country list: %w", err)
 		}
+		if sum := sha256.Sum256(body); hex.EncodeToString(sum[:]) != r.List {
+			return a.geoInForce(), errors.New("the country list from the panel does not match the rule")
+		}
 		tmp := path + ".tmp"
-		if os.WriteFile(tmp, body, 0o600) == nil && os.Rename(tmp, path) == nil {
-			old, _ := filepath.Glob(filepath.Join(DataDir, "geo-*.json"))
-			for _, f := range old {
-				if f != path {
-					os.Remove(f)
-				}
-			}
+		if os.WriteFile(tmp, body, 0o600) == nil {
+			_ = os.Rename(tmp, path) // the list in force stays on disk until another one is applied (setGeoActive)
 		}
 	}
 	var list proto.GeoList
 	if err := json.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("country list: %w", err)
+		return a.geoInForce(), fmt.Errorf("country list: %w", err)
 	}
-	g := &nft.GeoSpec{Allow: r.Mode == "allow", V4: list.V4, V6: list.V6, Except: r.Except}
-	a.geo = &geoCache{hash: r.List, spec: g}
+	g := &geoCache{hash: r.List, spec: &nft.GeoSpec{Allow: r.Mode == "allow", V4: list.V4, V6: list.V6, Except: r.Except}}
+	a.geo = g
 	return g, nil
+}
+
+// readGeoList is the country list kept on disk under its hash, if it is whole.
+func readGeoList(hash string) ([]byte, error) {
+	if !hexRE.MatchString(hash) {
+		return nil, errors.New("not a country list")
+	}
+	body, err := os.ReadFile(filepath.Join(DataDir, "geo-"+hash+".json"))
+	if err != nil {
+		return nil, err
+	}
+	if sum := sha256.Sum256(body); hex.EncodeToString(sum[:]) != hash {
+		return nil, errors.New("damaged copy")
+	}
+	return body, nil
+}
+
+// geoRecord is the country rule in force, kept in DataDir next to its list so that a restart (or a
+// reboot, which empties nftables) puts the same rule back while the panel is out of reach.
+type geoRecord struct {
+	List   string   `json:"list"`
+	Allow  bool     `json:"allow"`
+	Except []string `json:"except,omitempty"`
+}
+
+func geoRecordPath() string { return filepath.Join(DataDir, "geo-in-force") }
+
+// setGeoActive notes the country rule nftables just applied (nil: none), and keeps only its list.
+func (a *Agent) setGeoActive(g *geoCache) {
+	a.geoActive = g
+	if g == nil {
+		os.Remove(geoRecordPath())
+		return
+	}
+	body, _ := json.Marshal(geoRecord{List: g.hash, Allow: g.spec.Allow, Except: g.spec.Except})
+	tmp := geoRecordPath() + ".tmp"
+	if os.WriteFile(tmp, body, 0o600) != nil || os.Rename(tmp, geoRecordPath()) != nil {
+		return
+	}
+	keep := filepath.Join(DataDir, "geo-"+g.hash+".json")
+	old, _ := filepath.Glob(filepath.Join(DataDir, "geo-*.json"))
+	for _, f := range old {
+		if f != keep {
+			os.Remove(f)
+		}
+	}
+}
+
+// geoInForce is the country rule nftables last applied: in memory, or after a restart from its record
+// and its whole list on disk. Nil when there is none, or what is on disk cannot be trusted.
+func (a *Agent) geoInForce() *geoCache {
+	if a.geoActive != nil {
+		return a.geoActive
+	}
+	raw, err := os.ReadFile(geoRecordPath())
+	if err != nil {
+		return nil
+	}
+	var rec geoRecord
+	if json.Unmarshal(raw, &rec) != nil {
+		return nil
+	}
+	body, err := readGeoList(rec.List)
+	if err != nil {
+		return nil
+	}
+	var list proto.GeoList
+	if json.Unmarshal(body, &list) != nil {
+		return nil
+	}
+	a.geoActive = &geoCache{hash: rec.List, spec: &nft.GeoSpec{Allow: rec.Allow, V4: list.V4, V6: list.V6, Except: rec.Except}}
+	return a.geoActive
 }
 
 // nftSpec derives the nftables table from the state.
@@ -731,11 +840,15 @@ func (a *Agent) nftSpec(st *proto.State) nft.Spec {
 			switch {
 			case obj.Protocol == "hysteria":
 				spec.UDPPorts = append(spec.UDPPorts, obj.Port)
+				spec.XrayUDP = append(spec.XrayUDP, obj.Port)
 			case obj.Protocol == "shadowsocks", obj.Protocol == "socks" && obj.Settings.UDP:
 				spec.TCPPorts = append(spec.TCPPorts, obj.Port)
 				spec.UDPPorts = append(spec.UDPPorts, obj.Port)
+				spec.XrayTCP = append(spec.XrayTCP, obj.Port)
+				spec.XrayUDP = append(spec.XrayUDP, obj.Port)
 			default:
 				spec.TCPPorts = append(spec.TCPPorts, obj.Port)
+				spec.XrayTCP = append(spec.XrayTCP, obj.Port)
 			}
 		}
 	}
@@ -773,7 +886,16 @@ func (a *Agent) nftSpec(st *proto.State) nft.Spec {
 		spec.Solo = append(spec.Solo, nft.SoloPort{Node: i.Node, Sub: i.Sub, Port: i.Port, TCP: i.TCP(), UDP: i.UDP(), NoNew: noNew[i.Key()],
 			Refused: refused[i.Sub]})
 	}
+	limited := map[int64]bool{}
+	for _, l := range st.Speed {
+		limited[l.Sub] = true
+	}
 	for _, w := range st.WireGuard {
+		for _, peer := range w.Peers { // a limited user's speed, by their own tunnel addresses
+			if limited[peer.SubID] {
+				spec.WGSpeed = append(spec.WGSpeed, nft.WGSpeed{Sub: peer.SubID, Iface: w.Name, Addrs: peer.AllowedIPs})
+			}
+		}
 		spec.UDPPorts = append(spec.UDPPorts, w.ListenPort)
 		g := nft.WGNat{NodeID: w.NodeID, Iface: w.Name, SNAT: w.SNAT}
 		for _, ad := range w.Address {

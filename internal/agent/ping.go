@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/netip"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -35,7 +34,8 @@ type pinger struct {
 	mu      sync.Mutex
 	tasks   map[int64]*pingTask
 	results []proto.PingResult
-	check   func(ctx context.Context, t proto.PingTarget) error // what a target may be (a guest's: public only)
+	check   func(t proto.PingTarget, addr netip.Addr) error            // what a target's address may be (a guest's: public only)
+	resolve func(ctx context.Context, host string) (netip.Addr, error) // nil: resolveOne (tests replace it)
 }
 
 type pingTask struct {
@@ -122,26 +122,33 @@ func (p *pinger) run(ctx context.Context, t proto.PingTarget) {
 	}
 }
 
-// round sends the probes of one round and sums them up.
+// round sends the probes of one round and sums them up. The target is resolved once, and that
+// address - the one check approves - is the one probed: a name that resolves anew for each probe could
+// lead a guest's monitor to this host or a private network after its check.
 func (p *pinger) round(ctx context.Context, t proto.PingTarget) proto.PingResult {
-	r := proto.PingResult{Sent: pingProbes}
-	if p.check != nil {
-		if err := p.check(ctx, t); err != nil {
-			r.Lost = pingProbes
-			return r
-		}
+	r := proto.PingResult{Sent: pingProbes, Lost: pingProbes}
+	resolve := p.resolve
+	if resolve == nil {
+		resolve = resolveOne
+	}
+	addr, err := resolve(ctx, t.Target)
+	if err != nil {
+		return r
+	}
+	if p.check != nil && p.check(t, addr) != nil {
+		return r
 	}
 	var rtts []float64
 	switch t.Kind {
 	case "tcp":
 		for i := 0; i < pingProbes; i++ {
-			if d, err := tcpProbe(ctx, t.Target, t.Port); err == nil {
+			if d, err := tcpProbe(ctx, addr, t.Port); err == nil {
 				rtts = append(rtts, d)
 			}
 			sleepCtx(ctx, 300*time.Millisecond)
 		}
 	default:
-		rtts = icmpProbes(ctx, t.Target, pingProbes)
+		rtts = icmpProbes(ctx, addr, pingProbes)
 	}
 	r.Lost = pingProbes - len(rtts)
 	if len(rtts) > 0 {
@@ -164,11 +171,11 @@ func sleepCtx(ctx context.Context, d time.Duration) {
 	}
 }
 
-func tcpProbe(ctx context.Context, host string, port int) (float64, error) {
+func tcpProbe(ctx context.Context, addr netip.Addr, port int) (float64, error) {
 	dctx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()
 	start := time.Now()
-	c, err := (&net.Dialer{}).DialContext(dctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	c, err := (&net.Dialer{}).DialContext(dctx, "tcp", netip.AddrPortFrom(addr, uint16(port)).String())
 	if err != nil {
 		return 0, err
 	}
@@ -177,13 +184,9 @@ func tcpProbe(ctx context.Context, host string, port int) (float64, error) {
 	return float64(d.Microseconds()) / 1000, nil
 }
 
-// icmpProbes sends n ICMP echo requests to host (its first address; IPv4 first) and returns the round
-// trips of those answered, in milliseconds.
-func icmpProbes(ctx context.Context, host string, n int) []float64 {
-	addr, err := resolveOne(ctx, host)
-	if err != nil {
-		return nil
-	}
+// icmpProbes sends n ICMP echo requests to addr and returns the round trips of those answered, in
+// milliseconds.
+func icmpProbes(ctx context.Context, addr netip.Addr, n int) []float64 {
 	network, laddr, proto, echo := "ip4:icmp", "0.0.0.0", 1, icmp.Type(ipv4.ICMPTypeEcho)
 	reply := icmp.Type(ipv4.ICMPTypeEchoReply)
 	if addr.Is6() {
@@ -259,5 +262,5 @@ func resolveOne(ctx context.Context, host string) (netip.Addr, error) {
 			return ip.Unmap(), nil
 		}
 	}
-	return ips[0], nil
+	return ips[0].Unmap(), nil
 }
