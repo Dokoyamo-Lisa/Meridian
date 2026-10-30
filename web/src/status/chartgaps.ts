@@ -40,3 +40,21 @@ export function atStep(ts: number[], t: number, step: number): number {
   }
   return -1
 }
+
+// sharedGaps are the stretches no shown track has data for - each track's gaps by its own interval,
+// intersected - so a 1-minute monitor that stopped does not hatch time a 10-minute one measured.
+// A track without points has no data anywhere in from..to.
+export function sharedGaps(tracks: { t: number[]; every?: number }[], step: number, nowTs: number, from: number, to: number): [number, number][] {
+  let out: [number, number][] | null = null
+  for (const tr of tracks) {
+    const g: [number, number][] = tr.t.length ? gapsOf(tr.t, step, tr.every || 0, nowTs, to) : [[from, to]]
+    if (!out) {
+      out = g
+      continue
+    }
+    const both: [number, number][] = []
+    for (const [a, b] of out) for (const [c, d] of g) if (Math.max(a, c) < Math.min(b, d)) both.push([Math.max(a, c), Math.min(b, d)])
+    out = both
+  }
+  return out || []
+}

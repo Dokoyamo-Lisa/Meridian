@@ -11,7 +11,7 @@ import { C, TipRow, hideTip, monoPath, rgba, segment, showTip, tangents } from '
 import { bparts, clamp, hm, md, now } from './fmt'
 import { pingLegend } from './pingsum'
 import { historyNote } from './histstate'
-import { atStep, gapAfter, gapsOf, spacing } from './chartgaps'
+import { atStep, gapAfter, sharedGaps, spacing } from './chartgaps'
 
 export interface PingSeries {
   id: number
@@ -490,10 +490,9 @@ class TimeChart {
       ctx.fillText(span > 86400 ? md(t) : hm(t), x, H - 4)
     }
 
-    // time nobody reported: hatched (between points, and since the last one)
-    const ref = on.reduce<Track | null>((a, tr) => (!a || tr.t.length > a.t.length ? tr : a), null)
-    if (ref && ref.t.length) {
-      const gaps = gapsOf(ref.t, this.step, ref.every || 0, now(), this.to)
+    // time no shown track has data for: hatched (between points, and since the last one)
+    if (on.some((tr) => tr.t.length)) {
+      const gaps = sharedGaps(on, this.step, now(), this.from, this.to)
       for (const [a, b] of gaps) {
         const xa = Math.max(x0, X(a))
         const xb = Math.min(x1, X(b))

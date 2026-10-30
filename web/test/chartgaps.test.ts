@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { atStep, gapsOf } from '../src/status/chartgaps.ts'
+import { atStep, gapsOf, sharedGaps } from '../src/status/chartgaps.ts'
 
 const m = 60
 
@@ -45,4 +45,21 @@ test('hovering a chart of a 1-minute and a 10-minute monitor', () => {
   assert.equal(atStep([0, 90, 180], 60, m), 1)
   assert.equal(atStep([0, 90, 180], 190, m), 2)
   assert.equal(atStep([0, 90, 180], 130, m), -1) // no round fell in 120..180
+})
+
+test('a 1-minute monitor that stopped does not hatch what a 10-minute one measured', () => {
+  const fast = { t: Array.from({ length: 30 }, (_, i) => i * 60) } // 0..1740, then nothing
+  const slow = { t: [0, 600, 1200, 1800, 2400, 3000], every: 600 }
+  // the fast one alone would hatch from 1800 to the end
+  assert.deepEqual(gapsOf(fast.t, m, 0, 3300, 3600), [[1800, 3600]])
+  // with the slow one still measuring, nothing is hatched
+  assert.deepEqual(sharedGaps([fast, slow], m, 3300, 0, 3600), [])
+  // both stopped: hatched from when the last of them stopped
+  const slowStopped = { t: [0, 600, 1200], every: 600 }
+  assert.deepEqual(sharedGaps([fast, slowStopped], m, 3300, 0, 3600), [[1800, 3600]])
+  // the slow one misses a round while the fast one runs: no gap; when both are missing: a gap
+  assert.deepEqual(sharedGaps([{ t: [0, 600, 1800], every: 600 }, { t: Array.from({ length: 20 }, (_, i) => i * 60) }], m, 1900, 0, 3600), [[1200, 1800]])
+  // a track with no points at all hides nothing
+  assert.deepEqual(sharedGaps([{ t: [] }, slow], m, 3300, 0, 3600), [])
+  assert.deepEqual(sharedGaps([], m, 3300, 0, 3600), [])
 })
