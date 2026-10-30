@@ -230,12 +230,13 @@ type wgItem struct {
 func (p *Panel) subPage(w http.ResponseWriter, r *http.Request, s *Sub) {
 	link := p.subBase(r) + "/s/" + s.Token
 	eps, _ := p.endpointsFor(r.Context(), s)
-	var wgs []wgItem
-	for _, e := range eps {
-		if e.WG == nil || s.Paused {
-			continue
+	var wgs []wgItem // each holds a private key, in the file link and in its QR code
+	if !s.Paused {
+		for _, e := range eps {
+			if e.WG != nil {
+				wgs = append(wgs, wgItem{Name: e.Name, URL: fmt.Sprintf("%s/wg/%d.conf", link, e.NodeID), QR: qrSVG(subgen.WGConf(e))})
+			}
 		}
-		wgs = append(wgs, wgItem{Name: e.Name, URL: fmt.Sprintf("%s/wg/%d.conf", link, e.NodeID), QR: qrSVG(subgen.WGConf(e))})
 	}
 	servers := map[string]bool{}
 	for _, e := range eps {

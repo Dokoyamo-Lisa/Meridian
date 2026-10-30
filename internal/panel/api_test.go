@@ -932,3 +932,54 @@ func TestDisabledAccountUsers(t *testing.T) {
 	open.must("GET", "/api/portal/me", nil, 200)
 	h.browser().login("dana", "dana-password-1")
 }
+
+// TestSubPagePaused: however a browser reaches the subscription page (?client=html, ?target=html, or
+// a browser's own User-Agent), a paused user's page carries no WireGuard config: not as a file link
+// and not as a QR code, which holds the same private key. The only QR code left is the link's own.
+func TestSubPagePaused(t *testing.T) {
+	h := newHarness(t)
+	owner := h.browser()
+	owner.login("owner", "owner-password-1")
+	sid := id(owner.must("POST", "/api/servers", map[string]any{"name": "Oslo", "address": "203.0.113.45"}, 201)["server"].(map[string]any)["id"])
+	if _, err := h.p.db.Exec1(`UPDATE servers SET caps = '{"nftables":true,"wireguard":true,"certs":true}', first_seen_at = ? WHERE id = ?`, now(), sid); err != nil {
+		t.Fatal(err)
+	}
+	owner.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "wireguard"}, 201)
+	owner.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "wireguard", "port": 51821}, 201)
+	owner.must("POST", "/api/users", map[string]any{"name": "Eli"}, 201)
+	var token string
+	var subID int64
+	if err := h.p.db.QueryRow(`SELECT id, token FROM subs WHERE name = 'Eli'`).Scan(&subID, &token); err != nil {
+		t.Fatal(err)
+	}
+	get := func(path, ua string) string {
+		req, _ := http.NewRequest("GET", h.srv.URL+path, nil)
+		req.Header.Set("User-Agent", ua)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != 200 || !strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
+			t.Fatalf("page: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+		}
+		return string(body)
+	}
+	const browser = "Mozilla/5.0 (Macintosh) AppleWebKit/605 Safari/605"
+	pages := []string{"/s/" + token + "?client=html", "/s/" + token + "?target=html", "/s/" + token}
+	if body := get(pages[0], browser); strings.Count(body, `class="qr"`) != 3 || strings.Count(body, "/wg/") < 2 {
+		t.Fatalf("an active user's page: %d QR codes, want the link's and two WireGuard configs", strings.Count(body, `class="qr"`))
+	}
+	owner.must("POST", fmt.Sprintf("/api/users/%d/pause", subID), nil, 200)
+	for i, page := range pages {
+		body := get(page, browser)
+		page := []string{"?client=html", "?target=html", "a browser's User-Agent"}[i] // the token stays out of the log
+		if !strings.Contains(body, "Paused by your administrator") {
+			t.Errorf("%s: no pause notice", page)
+		}
+		if n := strings.Count(body, `class="qr"`); n != 1 || strings.Contains(body, "/wg/") || strings.Contains(body, "PrivateKey") {
+			t.Errorf("%s: a paused user's page has %d QR codes (want 1), WireGuard link: %v", page, n, strings.Contains(body, "/wg/"))
+		}
+	}
+}
