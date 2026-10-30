@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { atStep, gapsOf, sharedGaps } from '../src/status/chartgaps.ts'
+import { atStep, gapsOf, lossMarks, sharedGaps } from '../src/status/chartgaps.ts'
 
 const m = 60
 
@@ -62,4 +62,20 @@ test('a 1-minute monitor that stopped does not hatch what a 10-minute one measur
   // a track with no points at all hides nothing
   assert.deepEqual(sharedGaps([{ t: [] }, slow], m, 3300, 0, 3600), [])
   assert.deepEqual(sharedGaps([], m, 3300, 0, 3600), [])
+})
+
+test('two monitors losing probes in the same step: the worst loss is on top, in any order', () => {
+  const a = { t: [0, 60], loss: [1, 0] } // every probe lost at 0
+  const b = { t: [0, 60], loss: [1 / 3, 0] } // one probe lost at 0
+  for (const order of [
+    [a, b],
+    [b, a],
+  ]) {
+    const marks = lossMarks(order, m, 0)
+    assert.equal(marks.length, 2)
+    assert.equal(marks[marks.length - 1].loss, 1) // drawn last
+  }
+  // a 10-minute monitor's mark covers its round, the step its value stands for
+  assert.deepEqual(lossMarks([{ t: [600], loss: [1], every: 600 }], m, 0), [{ t: 600, to: 1200, loss: 1 }])
+  assert.deepEqual(lossMarks([{ t: [0], loss: [1] }], m, 60), []) // before the window
 })

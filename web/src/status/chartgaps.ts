@@ -58,3 +58,19 @@ export function sharedGaps(tracks: { t: number[]; every?: number }[], step: numb
   }
   return out || []
 }
+
+// lossMarks are the ping rounds that lost probes, for the lane under a chart: one mark per round, over
+// the time it stands for, in drawing order - the mildest first, so where monitors overlap the worst
+// loss is the one on top (a round with every probe lost is never hidden by another's single loss).
+export function lossMarks(tracks: { t: number[]; loss?: number[]; every?: number }[], step: number, from: number): { t: number; to: number; loss: number }[] {
+  const out: { t: number; to: number; loss: number }[] = []
+  for (const tr of tracks) {
+    if (!tr.loss) continue
+    const sp = spacing(step, tr.every)
+    tr.t.forEach((t, i) => {
+      const l = tr.loss![i]
+      if (l > 0 && t >= from) out.push({ t, to: t + sp, loss: l })
+    })
+  }
+  return out.sort((a, b) => a.loss - b.loss)
+}

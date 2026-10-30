@@ -11,7 +11,7 @@ import { C, TipRow, hideTip, monoPath, rgba, segment, showTip, tangents } from '
 import { bparts, clamp, hm, md, now } from './fmt'
 import { pingLegend } from './pingsum'
 import { historyNote } from './histstate'
-import { atStep, gapAfter, sharedGaps, spacing } from './chartgaps'
+import { atStep, gapAfter, lossMarks, sharedGaps } from './chartgaps'
 
 export interface PingSeries {
   id: number
@@ -571,16 +571,12 @@ class TimeChart {
     if (lane) {
       const sc = stateColors()
       const ly = y1 + 3
-      for (const tr of on) {
-        if (!tr.loss) continue
-        tr.t.forEach((t, i) => {
-          const l = tr.loss![i]
-          if (!(l > 0) || t < this.from) return
-          const xa = X(t)
-          const w = Math.max(2, X(t + spacing(this.step, tr.every)) - xa - 0.5)
-          ctx.fillStyle = l >= 0.999 ? sc.crit : rgba(sc.warn, 0.35 + 0.65 * l)
-          ctx.fillRect(xa, ly, w, lane - 2)
-        })
+      for (const mk of lossMarks(on, this.step, this.from)) {
+        // the worst loss last, on top: a step with every probe lost stays red under any other monitor's
+        const xa = X(mk.t)
+        const w = Math.max(2, X(mk.to) - xa - 0.5)
+        ctx.fillStyle = mk.loss >= 0.999 ? sc.crit : rgba(sc.warn, 0.35 + 0.65 * mk.loss)
+        ctx.fillRect(xa, ly, w, lane - 2)
       }
     }
 
