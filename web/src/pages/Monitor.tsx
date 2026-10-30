@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { DestRow, PanelEvent, IPRow, OnlineIP, Server, User, bits, bytes, dateTime, del, flag, get, post } from '../api'
+import { DestRow, PanelEvent, IPRow, OnlineIP, Server, User, bits, dateTime, del, flag, get, post } from '../api'
 import { Icon } from '../icons'
-import { setQuery, useLocation } from '../router'
+import { navigate, setQuery, useLocation } from '../router'
 import { Ago, Empty, ErrorBox, Field, Loading, Modal, PageHead, Search, Seg, Tabs, ask, errText, run, toast, useAsync, usePoll } from '../ui'
 import { HealthTab } from './Health'
 import { PingTab } from './Ping'
@@ -112,36 +112,64 @@ export function BlockIPModal(props: { ip?: string; onClose: () => void; onSaved?
 
 // ---------------------------------------------------------------- page
 
-type Tab = 'live' | 'ips' | 'dests' | 'events' | 'blocks' | 'health' | 'ping'
+// Five tabs: who is on now and how fast (Live), what was seen before (History: addresses,
+// destinations, blocked addresses), Events, Health and Ping. Old links (?tab=speed, ips, dests,
+// blocks) land where those went.
+type Tab = 'live' | 'history' | 'events' | 'health' | 'ping'
+type View = 'ips' | 'dests' | 'blocks'
 
 export function Monitor() {
   const loc = useLocation()
-  const tab = (loc.query.get('tab') as Tab) || 'live'
+  const raw = loc.query.get('tab') || 'live'
+  const old = raw === 'ips' || raw === 'dests' || raw === 'blocks'
+  const tab = (old ? 'history' : raw === 'speed' ? 'live' : raw) as Tab
+  const view = (old ? raw : loc.query.get('view') || 'ips') as View
   const subs = useAsync(() => get<User[]>('/api/users'))
   const servers = useAsync(() => get<Server[]>('/api/servers'))
   const subName = useMemo(() => new Map((subs.data || []).map((s) => [s.id, s])), [subs.data])
   const srvName = useMemo(() => new Map((servers.data || []).map((s) => [s.id, s.name])), [servers.data])
   return (
     <>
-      <PageHead title="Monitor" sub="Who is connected, from where, as which user - and where the traffic goes." />
+      <PageHead title="Monitor" sub="Who is on now and how fast, what they reached, and how the servers are." />
       <Tabs<Tab>
         value={tab}
         onChange={(t) => setQuery('tab', t === 'live' ? null : t)}
         tabs={[
-          ['live', 'Online now'],
-          ['ips', 'IP history'],
-          ['dests', 'Destinations'],
+          ['live', 'Live'],
+          ['history', 'History'],
           ['events', 'Events'],
-          ['blocks', 'Blocked IPs'],
           ['health', 'Health'],
           ['ping', 'Ping'],
         ]}
       />
       {tab === 'live' && <LiveTab />}
-      {tab === 'ips' && <IPsTab subName={subName} srvName={srvName} servers={servers.data || []} />}
-      {tab === 'dests' && <DestsTab subName={subName} subs={subs.data || []} servers={servers.data || []} />}
+      {tab === 'history' && (
+        <>
+          <div class="row wrap" style="margin-bottom:14px">
+            <Seg<View>
+              value={view}
+              onChange={(v) => {
+                // an old link's ?tab=dests becomes tab=history&view=…
+                const q = new URLSearchParams(location.search)
+                q.set('tab', 'history')
+                if (v === 'ips') q.delete('view')
+                else q.set('view', v)
+                navigate(`${location.pathname}?${q}`, { replace: true })
+              }}
+              options={[
+                ['ips', 'Addresses'],
+                ['dests', 'Destinations'],
+                ['blocks', 'Blocked'],
+              ]}
+              label="Show"
+            />
+          </div>
+          {view === 'ips' && <IPsTab subName={subName} srvName={srvName} servers={servers.data || []} />}
+          {view === 'dests' && <DestsTab subName={subName} subs={subs.data || []} servers={servers.data || []} />}
+          {view === 'blocks' && <BlocksTab />}
+        </>
+      )}
       {tab === 'events' && <EventsTab servers={servers.data || []} />}
-      {tab === 'blocks' && <BlocksTab />}
       {tab === 'health' && <HealthTab servers={servers.data || []} />}
       {tab === 'ping' && <PingTab servers={servers.data || []} />}
     </>
@@ -155,105 +183,183 @@ interface LiveRow extends OnlineIP {
   user_ips: number
 }
 
-// LiveNow is the part of /api/overview the Online now tab shows: who is connected, and what all
-// servers' network interfaces receive and send right now (bytes per second).
+// SpeedView is GET /api/live/speed: what the agents measured over their last report, per user (all
+// their servers and protocols, each user once - a proxy pass does not count twice) and per address
+// they are online from, per server.
+interface SpeedIP {
+  ip: string
+  server_id: number
+  up: number
+  down: number
+  shared: number
+}
+
+interface SpeedView {
+  up: number
+  down: number
+  users: { user_id: number; up: number; down: number; ips: SpeedIP[] }[]
+  unmeasured: string[]
+  interval: number
+}
+
+// LiveNow is the part of /api/overview the Live tab shows: what all servers' network carries now.
 interface LiveNow {
   rx: number
   tx: number
-  online_users: number
-  online_ips: number
 }
 
+const updown = (d: number, u: number) => (
+  <>
+    <span title="Download">↓ {bits(d)}</span> <span class="faint" title="Upload">↑ {bits(u)}</span>
+  </>
+)
+
+// LiveTab: everyone connected now, grouped by user - each user's speed (all servers and protocols,
+// counted once), and under them each connection with its address's speed on that server.
 function LiveTab() {
   const live = useAsync(() => get<LiveRow[]>('/api/live'))
+  const speed = useAsync(() => get<SpeedView>('/api/live/speed'))
   const now = useAsync(() => get<LiveNow>('/api/overview'))
   const [q, setQ] = useState('')
   const [block, setBlock] = useState<LiveRow | null>(null)
   usePoll(() => {
     void live.reload()
+    void speed.reload()
     void now.reload()
-  }, 10000)
+  }, 5000)
   if (!live.data) return live.error ? <ErrorBox error={live.error} retry={live.reload} /> : <Loading />
+  const sp = speed.data
+  const userSpeed = new Map((sp?.users || []).map((u) => [u.user_id, u]))
+  const ipSpeed = (r: LiveRow) => userSpeed.get(r.user_id)?.ips.find((x) => x.ip === r.ip && x.server_id === r.server_id)
   const t = q.trim().toLowerCase()
-  const rows = live.data.filter((r) => !t || [r.ip, r.user, r.server, r.country, r.city, r.org].some((x) => (x || '').toLowerCase().includes(t)))
-  const subsOnline = new Set(live.data.map((r) => r.user_id)).size
+  const rows = live.data.filter((r) => !t || [r.ip, r.user, r.server, r.protocol, r.country, r.city, r.org].some((x) => (x || '').toLowerCase().includes(t)))
+  const groups = new Map<number, LiveRow[]>()
+  for (const r of rows) groups.set(r.user_id, [...(groups.get(r.user_id) || []), r])
+  const total = (id: number) => {
+    const u = userSpeed.get(id)
+    return u ? u.up + u.down : 0
+  }
+  const order = [...groups.keys()].sort((a, b) => total(b) - total(a) || groups.get(a)![0].user.localeCompare(groups.get(b)![0].user))
+  const usersOnline = new Set(live.data.map((r) => r.user_id)).size
   const over = new Set(live.data.filter((r) => r.ip_limit > 0 && r.user_ips > r.ip_limit).map((r) => r.user_id)).size
-  const n = now.data
   return (
     <>
       <div class="kpis">
         <div class="kpi">
-          <div class="v num">{new Set(live.data.map((r) => r.ip)).size}</div>
-          <div class="l">IPs online</div>
-          <div class="s">one per address, as IP limits count</div>
-        </div>
-        <div class="kpi">
-          <div class="v num">{subsOnline}</div>
+          <div class="v num">{usersOnline}</div>
           <div class="l">Users online</div>
           <div class="s">{over > 0 ? <span class="crit-ink">{over} over their IP limit</span> : 'with at least one connection'}</div>
         </div>
         <div class="kpi">
-          <div class="v num">{n ? bits(n.rx) : '—'}</div>
-          <div class="l">Servers receiving</div>
-          <div class="s">all servers' network, now</div>
+          <div class="v num">{new Set(live.data.map((r) => r.ip)).size}</div>
+          <div class="l">Addresses online</div>
+          <div class="s">one per address, as IP limits count</div>
         </div>
         <div class="kpi">
-          <div class="v num">{n ? bits(n.tx) : '—'}</div>
-          <div class="l">Servers sending</div>
-          <div class="s">all servers' network, now</div>
+          <div class="v num">{sp ? bits(sp.down) : '—'}</div>
+          <div class="l">Users downloading</div>
+          <div class="s">all users, each counted once</div>
+        </div>
+        <div class="kpi">
+          <div class="v num">{sp ? bits(sp.up) : '—'}</div>
+          <div class="l">Users uploading</div>
+          <div class="s">all users, each counted once</div>
         </div>
       </div>
+      {sp && sp.unmeasured.length > 0 && (
+        <div class="callout warn" style="margin-bottom:12px">
+          Speed is not measured on {sp.unmeasured.join(', ')}: their agent is older. Upgrade it (server page › More actions › Upgrade agent - nobody is disconnected).
+        </div>
+      )}
       <div class="row wrap" style="margin-bottom:12px">
-        <span class="muted grow">Refreshes every 10 s</span>
-        <Search value={q} onInput={setQ} placeholder="IP, user, place…" />
+        <span class="muted grow" style="font-size:12.5px">
+          Updates every 5 s{sp ? ` · speed over each server's last ${sp.interval} s` : ''}
+          {now.data && (
+            <span title="What every server's network carries now. A proxy pass counts on both its servers - the users' speed above counts each user once.">
+              {' '}
+              · servers' network {updown(now.data.rx, now.data.tx)}
+            </span>
+          )}
+        </span>
+        <Search value={q} onInput={setQ} placeholder="User, IP, server, place…" />
       </div>
-      {rows.length === 0 ? (
+      {order.length === 0 ? (
         <Empty title={live.data.length ? 'Nothing matches' : 'Nobody is connected right now'} />
       ) : (
         <div class="table-wrap">
-          <table class="t">
+          <table class="t live-t">
             <thead>
               <tr>
-                <th>User</th>
-                <th>IP</th>
+                <th>User · address</th>
                 <th>From</th>
                 <th class="hide-sm">Server · protocol</th>
+                <th class="right">Speed now</th>
                 <th class="hide-sm">Connected</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
-                const overLimit = r.ip_limit > 0 && r.user_ips > r.ip_limit
-                return (
-                  <tr>
-                    <td>
-                      <a class="cell-main" href={`/users/${r.user_id}`}>
-                        {r.user}
+              {order.map((id) => {
+                const list = groups.get(id)!
+                const r0 = list[0]
+                const u = userSpeed.get(id)
+                const overLimit = r0.ip_limit > 0 && r0.user_ips > r0.ip_limit
+                const shown = new Set<string>()
+                return [
+                  <tr class="group">
+                    <td colSpan={3}>
+                      <a class="cell-main" href={`/users/${id}`}>
+                        {r0.user}
                       </a>
-                      <div class={'cell-sub' + (overLimit ? ' crit-ink' : '')}>
-                        {r.user_ips} IP{r.user_ips === 1 ? '' : 's'}
-                        {r.ip_limit > 0 ? ` of ${r.ip_limit} allowed` : ''}
-                      </div>
+                      <span class={'cell-sub' + (overLimit ? ' crit-ink' : '')} style="margin-left:8px">
+                        {r0.user_ips} IP{r0.user_ips === 1 ? '' : 's'}
+                        {r0.ip_limit > 0 ? ` of ${r0.ip_limit} allowed` : ''}
+                      </span>
                     </td>
-                    <td class="mono">{r.ip}</td>
-                    <td>
-                      <Where country={r.country} city={r.city} org={r.org} asn={r.asn} />
+                    <td class="right nowrap num">
+                      <b>{u ? updown(u.down, u.up) : <span class="faint">—</span>}</b>
                     </td>
-                    <td class="hide-sm">
-                      <a href={`/servers/${r.server_id}`}>{r.server}</a> <span class="faint">· {r.protocol}</span>
-                    </td>
-                    <td class="hide-sm nowrap muted">
-                      <Ago ts={r.since} />
-                    </td>
-                    <td class="actions">
-                      <button class="btn sm ghost" onClick={() => setBlock(r)}>
-                        <Icon name="ban" size="sm" />
-                        Block
-                      </button>
-                    </td>
-                  </tr>
-                )
+                    <td class="hide-sm" />
+                    <td />
+                  </tr>,
+                  ...list.map((r) => {
+                    // an address's speed is per server, every protocol together: once per address and server
+                    const key = `${r.ip}|${r.server_id}`
+                    const x = shown.has(key) ? undefined : ipSpeed(r)
+                    const first = !shown.has(key)
+                    shown.add(key)
+                    return (
+                      <tr>
+                        <td class="mono" style="padding-left:24px">
+                          {r.ip}
+                          {x && x.shared > 0 && (
+                            <span class="badge warn" style="margin-left:6px" title={`${x.shared} other user${x.shared === 1 ? ' is' : 's are'} online from this address on this server: its speed is theirs too`}>
+                              shared
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <Where country={r.country} city={r.city} org={r.org} asn={r.asn} />
+                        </td>
+                        <td class="hide-sm">
+                          <a href={`/servers/${r.server_id}`}>{r.server}</a> <span class="faint">· {r.protocol}</span>
+                        </td>
+                        <td class="right nowrap num" title="This address on this server, every protocol, all that crossed the network">
+                          {x ? updown(x.down, x.up) : first ? <span class="faint">—</span> : null}
+                        </td>
+                        <td class="hide-sm nowrap muted">
+                          <Ago ts={r.since} />
+                        </td>
+                        <td class="actions">
+                          <button class="btn sm ghost" onClick={() => setBlock(r)} title={`Block ${r.ip}`}>
+                            <Icon name="ban" size="sm" />
+                            <span class="hide-sm">Block</span>
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  }),
+                ]
               })}
             </tbody>
           </table>
@@ -364,16 +470,17 @@ function IPsTab(props: { subName: Map<number, User>; srvName: Map<number, string
   )
 }
 
+// DestTable lists destinations by visits (connections): every protocol counts those, while bytes per
+// destination are measured for WireGuard only - a traffic column would leave the rest blank.
 export function DestTable(props: { rows: DestRow[]; subName?: Map<number, User>; showSubs?: boolean }) {
-  const max = Math.max(1, ...props.rows.map((r) => r.bytes))
+  const max = Math.max(1, ...props.rows.map((r) => r.conns))
   return (
     <div class="table-wrap">
       <table class="t">
         <thead>
           <tr>
             <th>Destination</th>
-            <th class="right">Traffic</th>
-            <th class="right hide-sm">Connections</th>
+            <th class="right">Visits</th>
             {props.showSubs && <th class="hide-sm">Users</th>}
             <th class="hide-sm">Last</th>
           </tr>
@@ -386,14 +493,11 @@ export function DestTable(props: { rows: DestRow[]; subName?: Map<number, User>;
                 <span class="faint">
                   :{r.port} {r.network !== 'tcp' ? r.network : ''}
                 </span>
-                {r.bytes > 0 && (
-                  <div class="meter" style="margin-top:5px;max-width:220px">
-                    <i style={{ width: (r.bytes * 100) / max + '%' }} />
-                  </div>
-                )}
+                <div class="meter" style="margin-top:5px;max-width:220px">
+                  <i style={{ width: (r.conns * 100) / max + '%' }} />
+                </div>
               </td>
-              <td class="right nowrap">{r.bytes > 0 ? bytes(r.bytes) : <span class="faint" title="Xray and Hysteria2 report connections, not bytes, per destination">—</span>}</td>
-              <td class="right hide-sm">{r.conns.toLocaleString()}</td>
+              <td class="right nowrap num">{r.conns.toLocaleString()}</td>
               {props.showSubs && (
                 <td class="hide-sm">
                   <div class="row wrap" style="gap:4px">

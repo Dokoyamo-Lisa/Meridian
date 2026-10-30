@@ -1,6 +1,23 @@
 # Meridian status
 
-Last updated 2026-10-30 (version 1.4.2).
+Last updated 2026-10-30 (version 1.4.3).
+
+## Tested for 1.4.3 (a local panel, two VMs running agents 1.4.3, real clients)
+
+- **Speed now, through a proxy pass**: Tokyo passing a Shadowsocks protocol on to Osaka (VLESS
+  REALITY), sing-box in a client namespace downloading at a set rate. A 2 MB/s download read
+  2.1 MB/s for the user, once, from their one address on Tokyo; the servers' network read about
+  4.4 MB/s (the data arrives at both servers). Osaka's counting table held Tokyo's address, and its
+  agent left it out of the report. With a direct protocol too, the user's total was both downloads.
+- **The counting table** (`inet meridian_rate`) checked by nftables 1.1.6 on Linux 7.0 and loaded in
+  a network namespace: 1 MB sent through a veth counted under the sender's address.
+- **Monitor** in a browser with that traffic: Live grouped by user, History's three views, old
+  links (`?tab=dests`) landing in History; Destinations by visits.
+- **Vampire Princess**: the panel (overview, Monitor) at 1360 px and 375 px, the status page (no
+  globe) and the users' page.
+- **Status page availability**: the restart and downtime rules by tests (Go and `node --test`);
+  shared certificates filling in the domain by tests and in the protocol editor's logic.
+- **Not run**: the PostgreSQL suite; the look on Safari's own fonts (checked in the app's browser).
 
 ## Tested for 1.4.2 (an audit's findings, each with a regression test)
 

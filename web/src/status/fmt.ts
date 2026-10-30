@@ -171,7 +171,6 @@ export function inDays(d: number | null | undefined) {
 
 export const pctText = (v: number | null | undefined, d = 1) => (v == null || !isFinite(v) ? '—' : `${v.toFixed(d)}%`)
 export const availText = (v: number | null | undefined) => (v == null ? '—' : pctText(v, v >= 99.995 ? 0 : 2))
-export const availLevel = (v: number | null | undefined) => (v == null ? 'none' : v >= 99.9 ? 'good' : v >= 99 ? 'warn' : 'crit')
 export const severity = (pct: number | null | undefined) => (pct == null ? '' : pct >= 90 ? 'crit' : pct >= 75 ? 'warn' : '')
 export const loadSev = (v: number | null | undefined) => (v == null ? '' : v >= 95 ? 'crit' : v >= 85 ? 'warn' : '')
 export const diskSev = (v: number | null | undefined) => (v == null ? '' : v >= 97 ? 'crit' : v >= 90 ? 'warn' : '')

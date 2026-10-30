@@ -213,3 +213,60 @@ func TestOwnCertExpiring(t *testing.T) {
 		t.Errorf("message: %q", msg)
 	}
 }
+
+// TestSharedCertFillsName: a protocol that chooses a shared certificate needs no domain typed in -
+// the certificate says it. A wildcard alone gives the server's name under it; a certificate with a
+// name of its own gives that; the server's own domain wins when the certificate covers it. A name
+// it covers stays; a REALITY site left from before gives way.
+func TestSharedCertFillsName(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	wildPEM, wildKey := privateCACert(t, "*.example.com")
+	wild := id(b.must("POST", "/api/certs", map[string]any{"name": "Wildcard", "cert_pem": wildPEM, "key_pem": wildKey}, 201)["id"])
+	ownPEM, ownKey := privateCACert(t, "vpn.example.net")
+	own := id(b.must("POST", "/api/certs", map[string]any{"name": "Own", "cert_pem": ownPEM, "key_pem": ownKey}, 201)["id"])
+	var srvs []int64
+	for _, s := range [][2]string{{"Tokyo 2", "203.0.113.80"}, {"Osaka", "jp-osaka.example.com"}} {
+		sv := b.must("POST", "/api/servers", map[string]any{"name": s[0], "address": s[1]}, 201)["server"].(map[string]any)
+		srvs = append(srvs, id(sv["id"]))
+		reported(t, h, id(sv["id"]), nil, `{"nftables":true,"certs":true}`)
+	}
+	sniOfNode := func(n map[string]any) string { return fmt.Sprint(n["settings"].(map[string]any)["sni"]) }
+	shared := func(cert int64) map[string]any {
+		return map[string]any{"security": "tls", "cert_mode": "shared", "cert_id": cert}
+	}
+	for _, c := range []struct {
+		srv  int64
+		cert int64
+		kind string
+		want string
+	}{
+		{srvs[0], wild, "trojan", "tokyo-2.example.com"},
+		{srvs[1], wild, "trojan", "jp-osaka.example.com"},
+		{srvs[0], own, "trojan", "vpn.example.net"},
+		{srvs[0], wild, "hysteria2", "tokyo-2.example.com"},
+	} {
+		set := shared(c.cert)
+		if c.kind == "hysteria2" {
+			delete(set, "security")
+		}
+		n := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", c.srv), map[string]any{"kind": c.kind, "settings": set}, 201)
+		if got := sniOfNode(n); got != c.want {
+			t.Errorf("%s with certificate %d on server %d: %q, want %q", c.kind, c.cert, c.srv, got, c.want)
+		}
+	}
+	// a name typed in that the certificate covers stays, through an edit too
+	n := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", srvs[0]), map[string]any{"kind": "vless",
+		"settings": map[string]any{"security": "tls", "cert_mode": "shared", "cert_id": wild, "sni": "edge.example.com"}}, 201)
+	ed := b.must("PATCH", fmt.Sprintf("/api/nodes/%d", id(n["id"])), map[string]any{"settings": map[string]any{"cert_mode": "shared", "cert_id": wild, "sni": ""}}, 200)
+	if got := sniOfNode(ed); got != "edge.example.com" {
+		t.Errorf("a covered name was replaced: %q", got)
+	}
+	// a REALITY protocol switched to TLS with the certificate: its camouflage site gives way
+	r := b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", srvs[0]), map[string]any{"kind": "vless", "settings": map[string]any{"security": "reality"}}, 201)
+	ed = b.must("PATCH", fmt.Sprintf("/api/nodes/%d", id(r["id"])), map[string]any{"settings": shared(own)}, 200)
+	if got := sniOfNode(ed); got != "vpn.example.net" {
+		t.Errorf("from REALITY to the certificate: %q", got)
+	}
+}

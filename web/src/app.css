@@ -269,6 +269,11 @@ table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
 .t tbody tr.click:hover { background: var(--hover); }
 .t .num { font-family: var(--font); font-weight: 400; }
 .t td.right, .t th.right { text-align: right; padding-right: 16px; }
+/* Monitor › Live: a user's row, then their connections - lighter, closer together */
+.live-t tr.group td { padding-top: 14px; padding-bottom: 8px; border-bottom-color: transparent; }
+.live-t tr:not(.group) td { padding-top: 6px; padding-bottom: 6px; font-size: 13px; }
+.live-t tr:not(.group) + tr.group td { border-top: 1px solid var(--line); }
+.live-t tr:not(.group) td { border-bottom-color: transparent; }
 .t td:last-child, .t th:last-child { padding-right: 0; }
 .t td.actions { text-align: right; white-space: nowrap; padding-right: 0; }
 .cell-main { font-weight: 500; }

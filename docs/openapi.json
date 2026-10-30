@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rosélune API",
-    "version": "1.4.2",
+    "version": "1.4.3",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -930,6 +930,38 @@
         }
       }
     },
+    "/api/live/speed": {
+      "get": {
+        "tags": [
+          "Monitoring"
+        ],
+        "summary": "Speed now, per user and per client address",
+        "description": "What the agents measured over their last report. A user going through a proxy pass is counted once, where they connect; the servers' network rates and the bandwidth counters are not part of it.",
+        "operationId": "getLiveSpeed",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeedView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        }
+      }
+    },
     "/api/ips": {
       "get": {
         "tags": [
@@ -997,7 +1029,7 @@
           "Monitoring"
         ],
         "summary": "Destinations",
-        "description": "Where traffic went, by bytes then connections (at most 500). Bytes are exact for WireGuard; Xray and Hysteria2 report connections.",
+        "description": "Where traffic went, by visits (connections), most first (at most 500). Every protocol counts visits; bytes are measured for WireGuard only (0 elsewhere).",
         "operationId": "getDests",
         "parameters": [
           {
@@ -8048,6 +8080,107 @@
           }
         }
       },
+      "SpeedView": {
+        "type": "object",
+        "properties": {
+          "up": {
+            "description": "All users' upload now, bytes per second (each user counted once)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "description": "All users' download now, bytes per second",
+            "format": "int64",
+            "type": "integer"
+          },
+          "users": {
+            "description": "Users with any speed now, fastest first",
+            "items": {
+              "$ref": "#/components/schemas/UserSpeed"
+            },
+            "type": "array"
+          },
+          "unmeasured": {
+            "description": "Online servers whose agent does not measure speed yet (upgrade it)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "interval": {
+            "description": "Seconds each measurement covers (the agents' report interval)",
+            "type": "integer"
+          }
+        }
+      },
+      "UserSpeed": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "user": {
+            "type": "string"
+          },
+          "up": {
+            "description": "Bytes per second, all servers and protocols",
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ips": {
+            "description": "The addresses the user is online from, with their speed on each server",
+            "items": {
+              "$ref": "#/components/schemas/IpSpeed"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "IpSpeed": {
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "server_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "server": {
+            "type": "string"
+          },
+          "up": {
+            "description": "Bytes per second from this address on this server, every protocol",
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "shared": {
+            "description": "Other users online from the same address on this server (its speed is theirs too)",
+            "type": "integer"
+          },
+          "country": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "org": {
+            "type": "string"
+          },
+          "asn": {
+            "type": "integer"
+          }
+        }
+      },
       "IPHistoryRow": {
         "type": "object",
         "properties": {
@@ -8982,6 +9115,9 @@
             "type": "boolean"
           },
           "setup": {
+            "type": "boolean"
+          },
+          "rates": {
             "type": "boolean"
           }
         }
@@ -12029,6 +12165,14 @@
               "type": "number"
             },
             "type": "array"
+          },
+          "down": {
+            "description": "Minutes down per day, oldest first (null = no data): what a day's colour goes by - a few minutes early today are not a bad day",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
           }
         }
       },
@@ -13672,7 +13816,7 @@
             "type": "integer"
           },
           "default_tone": {
-            "description": "The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern - or auto: Ice, or Paper on a device set to light",
+            "description": "The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, vampire - or auto: Ice, or Paper on a device set to light",
             "type": "string"
           },
           "logo_mark": {

@@ -48,6 +48,7 @@ func (p *Panel) Handler() http.Handler {
 	// overview & monitoring
 	handle("GET /api/overview", p.authed(p.apiOverview))
 	handle("GET /api/live", p.authed(p.apiLive))
+	handle("GET /api/live/speed", p.authed(p.apiLiveSpeed))
 	handle("GET /api/ips", p.authed(p.apiIPs))
 	handle("GET /api/dests", p.authed(p.apiDests))
 	handle("GET /api/events", p.authed(p.apiEvents))

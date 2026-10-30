@@ -1,0 +1,288 @@
+/* The Vampire Princess look for the panel (its colour tokens and night sky are in themes.css). It
+   redraws the whole page, not just its colours: on a wide screen the top bar becomes a gallery's
+   façade - the name centred in a Didone italic between gold rules, the menu in small capitals under
+   it; panels become arched boards in a double gold frame; figures sit in gold corner brackets;
+   buttons are crimson velvet. Only classes the other looks share are used, so switching looks never
+   changes what is on the page. */
+
+/* ------------------------------------------------------------------ type */
+:root[data-theme="vampire"] body { font-size: 13.5px; letter-spacing: .005em; }
+:root[data-theme="vampire"] :focus-visible { outline: 1.5px solid var(--vp-gold); outline-offset: 3px; }
+:root[data-theme="vampire"] .num { font-variant-numeric: lining-nums tabular-nums; }
+:root[data-theme="vampire"] .page-head { margin: 30px 0 34px; }
+:root[data-theme="vampire"] .page-head h1 {
+  font: italic 400 48px/1.05 var(--font-d);
+  letter-spacing: -.01em;
+  color: var(--ink);
+  text-shadow: 0 0 28px rgba(181, 23, 63, .35);
+}
+/* a gold flourish under the title: a rule, a lozenge, a rule */
+:root[data-theme="vampire"] .page-head h1::after {
+  content: "";
+  display: block;
+  width: 168px;
+  height: 9px;
+  margin-top: 12px;
+  background:
+    linear-gradient(45deg, transparent 0 34%, var(--vp-gold) 34% 66%, transparent 66%) 80px 0 / 9px 9px no-repeat,
+    linear-gradient(-45deg, transparent 0 34%, var(--vp-gold) 34% 66%, transparent 66%) 80px 0 / 9px 9px no-repeat,
+    linear-gradient(90deg, var(--vp-gold), transparent) 92px 4px / 76px 1px no-repeat,
+    linear-gradient(270deg, var(--vp-gold), transparent) 0 4px / 76px 1px no-repeat;
+}
+:root[data-theme="vampire"] .page-head .sub { font: italic 400 15px/1.45 var(--font-d); color: var(--ink-2); margin-top: 10px; }
+:root[data-theme="vampire"] :is(h2.h, .ph .h) { font: 400 15px/1.2 var(--font-d); font-variant: small-caps; letter-spacing: .12em; color: var(--vp-gold-2); }
+:root[data-theme="vampire"] .pn { font: italic 400 13px/1 var(--font-d); color: var(--vp-gold); }
+:root[data-theme="vampire"] .crumb { font: 400 13px/1 var(--font-d); font-variant: small-caps; letter-spacing: .1em; color: var(--ink-3); }
+:root[data-theme="vampire"] .crumb:hover { color: var(--vp-gold-2); }
+:root[data-theme="vampire"] :is(.empty b, .modal-head h3, .step b, .setup-step h3, .api-group h3) { font-family: var(--font-d); font-weight: 400; font-style: italic; }
+:root[data-theme="vampire"] .empty b { font-size: 21px; }
+:root[data-theme="vampire"] a.linkish, :root[data-theme="vampire"] .linkish { color: var(--accent-ink); text-decoration: underline; text-decoration-color: rgba(214, 178, 110, .5); text-underline-offset: 3px; }
+
+/* ------------------------------------------------------------------ the façade: the top bar */
+@media (min-width: 1001px) {
+  :root[data-theme="vampire"] { --top: 112px; }
+  :root[data-theme="vampire"] .top {
+    flex-wrap: wrap;
+    justify-content: center;
+    align-content: center;
+    gap: 6px 28px;
+    padding: 18px var(--pad) 0;
+    background: linear-gradient(var(--page) 78%, transparent);
+  }
+  :root[data-theme="vampire"] .top .brand {
+    flex: 1 0 100%;
+    justify-content: center;
+    gap: 14px;
+    font: italic 400 25px/1 var(--font-d);
+    letter-spacing: .02em;
+    text-transform: none;
+    color: var(--ink);
+  }
+  /* gold rules either side of the name */
+  :root[data-theme="vampire"] .top .brand::before,
+  :root[data-theme="vampire"] .top .brand::after { content: ""; width: min(14vw, 180px); height: 1px; background: linear-gradient(90deg, transparent, var(--vp-gold)); }
+  :root[data-theme="vampire"] .top .brand::after { background: linear-gradient(270deg, transparent, var(--vp-gold)); order: 3; }
+  :root[data-theme="vampire"] .top .brand :is(svg, .logo-img) { width: 28px; height: 28px; color: var(--vp-gold); }
+  :root[data-theme="vampire"] .nav { flex: none; justify-content: center; gap: 4px; }
+  :root[data-theme="vampire"] .nav a { padding: 9px 12px 11px; font: 400 14.5px/1 var(--font-d); font-variant: small-caps; letter-spacing: .11em; color: var(--ink-3); }
+  :root[data-theme="vampire"] .tools { position: absolute; right: var(--pad); top: 22px; }
+}
+@media (max-width: 1000px) {
+  :root[data-theme="vampire"] .top { background: linear-gradient(var(--page) 78%, transparent); }
+  :root[data-theme="vampire"] .top .brand { font: italic 400 19px/1 var(--font-d); letter-spacing: .01em; text-transform: none; color: var(--ink); }
+  :root[data-theme="vampire"] .top .brand :is(svg, .logo-img) { color: var(--vp-gold); }
+  :root[data-theme="vampire"] .nav a { font: 400 14px/1 var(--font-d); font-variant: small-caps; letter-spacing: .08em; }
+  :root[data-theme="vampire"] .page-head h1 { font-size: 36px; }
+}
+:root[data-theme="vampire"] .nav a:hover { color: var(--vp-gold-2); }
+:root[data-theme="vampire"] .nav a[aria-current="page"] { color: var(--ink); }
+/* the current page: a crimson thread with a gold lozenge on it */
+:root[data-theme="vampire"] .nav a::after { left: 14px; right: 14px; bottom: 2px; height: 1px; background: linear-gradient(90deg, transparent, var(--accent-ink), transparent); }
+:root[data-theme="vampire"] .nav a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  width: 6px;
+  height: 6px;
+  translate: -50% 0;
+  rotate: 45deg;
+  background: var(--vp-gold);
+  box-shadow: 0 0 8px rgba(214, 178, 110, .6);
+}
+
+/* ------------------------------------------------------------------ boards: arched, in a double gold frame */
+:root[data-theme="vampire"] .panel {
+  position: relative;
+  margin-bottom: 38px;
+  padding: 0 22px 22px;
+  border-radius: 140px 140px 10px 10px / 30px 30px 10px 10px;
+  background: linear-gradient(180deg, rgba(181, 23, 63, .07), transparent 140px), var(--surface);
+  box-shadow: var(--vp-frame), var(--vp-glow);
+}
+:root[data-theme="vampire"] .ph { margin: 0 -22px 18px; padding: 16px 22px 12px; min-height: 52px; border-bottom: 1px solid var(--line); }
+:root[data-theme="vampire"] .ph .pm { color: var(--ink-3); font: italic 400 13px/1 var(--font-d); }
+:root[data-theme="vampire"] .grid { gap: 0 38px; }
+:root[data-theme="vampire"] :is(.card, .proto, .src-card, .proto-user, .brand-preview, .setup-step, .step, .subsection, .check-panel, .proto-adv, .preset, .app, .pick label) {
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--raised);
+}
+:root[data-theme="vampire"] :is(.card, .proto, .src-card, .proto-user, .brand-preview, .setup-step, .app) { box-shadow: 0 16px 36px -26px rgba(0, 0, 0, .9); }
+:root[data-theme="vampire"] :is(.proto, .app, .card.click, a.card) { transition: border-color .3s, box-shadow .3s, transform .3s var(--ease-out); }
+:root[data-theme="vampire"] :is(.proto, .app, .card.click, a.card):hover { border-color: var(--vp-gold-line); transform: translateY(-2px); box-shadow: 0 0 0 1px rgba(214, 178, 110, .25), 0 22px 44px -26px rgba(181, 23, 63, .7); }
+:root[data-theme="vampire"] .proto .head b { font: italic 400 18px/1.2 var(--font-d); }
+:root[data-theme="vampire"] .proto .kv span:nth-child(odd) { font-variant: small-caps; letter-spacing: .08em; color: var(--ink-3); }
+:root[data-theme="vampire"] .pick label.on { border-color: var(--vp-gold); background: rgba(214, 178, 110, .08); }
+:root[data-theme="vampire"] .check-panel.good { background: var(--good-soft); border-color: rgba(132, 211, 162, .35); }
+:root[data-theme="vampire"] .check-panel.bad { background: var(--crit-soft); border-color: rgba(255, 111, 134, .4); }
+
+/* figures in gold corner brackets */
+:root[data-theme="vampire"] .kpis { gap: 18px; border: 0; margin-bottom: 38px; }
+:root[data-theme="vampire"] .kpi, :root[data-theme="vampire"] .kpi:first-child {
+  padding: 18px 20px 16px;
+  border: 0;
+  background:
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 0 0 / 14px 1px no-repeat,
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 0 0 / 1px 14px no-repeat,
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 100% 0 / 14px 1px no-repeat,
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 100% 0 / 1px 14px no-repeat,
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 0 100% / 14px 1px no-repeat,
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 0 100% / 1px 14px no-repeat,
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 100% 100% / 14px 1px no-repeat,
+    linear-gradient(var(--vp-gold), var(--vp-gold)) 100% 100% / 1px 14px no-repeat,
+    radial-gradient(120% 90% at 50% 0%, rgba(181, 23, 63, .12), transparent 70%),
+    var(--surface);
+}
+:root[data-theme="vampire"] .kpi .v { font: 400 40px/1 var(--font-d); letter-spacing: -.01em; color: var(--ink); }
+:root[data-theme="vampire"] .kpi .l { font: 400 14px/1.3 var(--font-d); font-variant: small-caps; letter-spacing: .1em; color: var(--vp-gold-2); margin-top: 10px; }
+:root[data-theme="vampire"] .kpi .s { color: var(--ink-3); font-style: italic; }
+@media (max-width: 1000px) { :root[data-theme="vampire"] .kpi:nth-child(n) { border: 0; padding-left: 20px; } }
+
+/* ------------------------------------------------------------------ controls: crimson velvet, gold thread */
+:root[data-theme="vampire"] .btn {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--raised);
+  color: var(--ink);
+  font: 400 14.5px/1 var(--font-d);
+  font-variant: small-caps;
+  letter-spacing: .08em;
+  transition: background .2s, border-color .2s, box-shadow .25s, color .2s;
+}
+:root[data-theme="vampire"] .btn:is(:enabled, a, label):not([aria-disabled="true"]):hover { border-color: var(--vp-gold); color: var(--vp-gold-2); background: var(--raised); box-shadow: 0 0 18px -6px rgba(214, 178, 110, .45); }
+:root[data-theme="vampire"] .btn.primary { background: var(--vp-velvet); border-color: rgba(240, 217, 162, .45); color: var(--on-accent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 10px 26px -14px rgba(181, 23, 63, .9); }
+:root[data-theme="vampire"] .btn.primary:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: var(--vp-velvet-hover); border-color: var(--vp-gold-2); color: #fff; }
+:root[data-theme="vampire"] :is(.btn, .btn.primary):is(:disabled, [aria-disabled="true"]) { background: var(--hover); border-color: var(--line); color: var(--ink-4); box-shadow: none; opacity: 1; }
+:root[data-theme="vampire"] .btn.danger { color: var(--crit); border-color: rgba(255, 111, 134, .45); }
+:root[data-theme="vampire"] .btn.danger:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: rgba(181, 23, 63, .25); color: #fff; border-color: var(--crit); }
+:root[data-theme="vampire"] .btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+:root[data-theme="vampire"] .btn.ghost:is(:enabled, a, label):not([aria-disabled="true"]):hover { border-color: var(--line-2); background: var(--hover); }
+:root[data-theme="vampire"] .btn.sm { height: 28px; padding: 0 11px; font-size: 13.5px; }
+:root[data-theme="vampire"] .icon-btn { border: 1px solid var(--line-2); border-radius: 50%; background: var(--raised); color: var(--ink-2); transition: color .2s, border-color .2s, box-shadow .25s; }
+:root[data-theme="vampire"] .icon-btn:hover { color: var(--vp-gold-2); border-color: var(--vp-gold); box-shadow: 0 0 16px -4px rgba(214, 178, 110, .5); }
+:root[data-theme="vampire"] .icon-btn.sm { border-color: transparent; background: transparent; }
+
+:root[data-theme="vampire"] :is(.input, select.input, textarea.input) { border: 1px solid var(--line-2); border-radius: 4px; background: rgba(0, 0, 0, .28); height: 38px; }
+:root[data-theme="vampire"] textarea.input { height: auto; }
+:root[data-theme="vampire"] .input:focus { border-color: var(--vp-gold); box-shadow: 0 0 0 3px rgba(214, 178, 110, .14); }
+:root[data-theme="vampire"] .input::placeholder { color: var(--ink-4); font-style: italic; }
+:root[data-theme="vampire"] :is(.field > label, .label) { font: 400 14px/1.3 var(--font-d); font-variant: small-caps; letter-spacing: .09em; color: var(--vp-gold-2); }
+:root[data-theme="vampire"] .check input, .pick input { accent-color: var(--accent); }
+:root[data-theme="vampire"] .toggle { border: 1px solid var(--line-2); background: rgba(0, 0, 0, .35); }
+:root[data-theme="vampire"] .toggle::after { background: var(--ink-3); }
+:root[data-theme="vampire"] .toggle[aria-checked="true"] { background: var(--vp-velvet); border-color: rgba(240, 217, 162, .45); }
+:root[data-theme="vampire"] .toggle[aria-checked="true"]::after { background: var(--vp-moon); }
+:root[data-theme="vampire"] .seg { border: 1px solid var(--line-2); border-radius: 4px; background: rgba(0, 0, 0, .25); padding: 2px; }
+:root[data-theme="vampire"] .seg button { border-radius: 3px; color: var(--ink-3); font: 400 14px/1 var(--font-d); font-variant: small-caps; letter-spacing: .07em; }
+:root[data-theme="vampire"] .seg button[aria-pressed="true"] { background: var(--vp-velvet); color: var(--on-accent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .15); }
+:root[data-theme="vampire"] .search .ic { color: var(--vp-gold); }
+:root[data-theme="vampire"] :is(.chip, .chip-pick, .tone-opt, .badge) { border: 1px solid var(--line-2); border-radius: 999px; color: var(--ink-2); background: transparent; }
+:root[data-theme="vampire"] .badge { font-variant: small-caps; letter-spacing: .06em; }
+:root[data-theme="vampire"] .badge.good { color: var(--good); border-color: rgba(132, 211, 162, .45); background: var(--good-soft); }
+:root[data-theme="vampire"] .badge.warn { color: var(--warn); border-color: rgba(233, 189, 100, .45); background: var(--warn-soft); }
+:root[data-theme="vampire"] .badge.crit { color: var(--crit); border-color: rgba(255, 111, 134, .5); background: var(--crit-soft); }
+:root[data-theme="vampire"] .badge.accent { color: var(--vp-gold-2); border-color: var(--vp-gold-line); background: rgba(214, 178, 110, .08); }
+:root[data-theme="vampire"] :is(.chip-pick.on, .tone-opt.on) { border-color: var(--vp-gold); color: var(--ink); background: rgba(214, 178, 110, .1); }
+:root[data-theme="vampire"] :is(.chip-pick, .tone-opt):hover { color: var(--ink); border-color: var(--vp-gold-line); }
+
+/* state: jewels; meters as a crimson thread on velvet */
+:root[data-theme="vampire"] .dot { box-shadow: 0 0 6px currentColor; }
+:root[data-theme="vampire"] .dot.good { background: var(--good); color: rgba(132, 211, 162, .7); }
+:root[data-theme="vampire"] .dot.warn { background: var(--warn); color: rgba(233, 189, 100, .7); }
+:root[data-theme="vampire"] .dot.crit { background: var(--crit); color: rgba(255, 111, 134, .8); }
+:root[data-theme="vampire"] .meter { height: 5px; border-radius: 3px; background: rgba(0, 0, 0, .4); box-shadow: inset 0 0 0 1px var(--line); }
+:root[data-theme="vampire"] .meter i { border-radius: 3px; background: linear-gradient(90deg, #8f0f30, #e4466c); box-shadow: 0 0 10px rgba(228, 70, 108, .45); }
+:root[data-theme="vampire"] .meter.warn i { background: linear-gradient(90deg, #a2731f, var(--warn)); box-shadow: none; }
+:root[data-theme="vampire"] .meter.crit i { background: linear-gradient(90deg, #b5173f, var(--crit)); }
+
+/* ------------------------------------------------------------------ tables: gold small capitals over a double rule */
+:root[data-theme="vampire"] .t th { font: 400 13px/1.2 var(--font-d); font-variant: small-caps; text-transform: none; letter-spacing: .1em; color: var(--vp-gold-2); border-bottom: 3px double var(--vp-gold-line); padding-bottom: 10px; }
+:root[data-theme="vampire"] .t td { border-bottom: 1px solid var(--line); }
+:root[data-theme="vampire"] .t tbody tr:hover { background: linear-gradient(90deg, rgba(181, 23, 63, .1), transparent 80%); }
+:root[data-theme="vampire"] .cell-main { font: italic 400 15.5px/1.25 var(--font-d); color: var(--ink); }
+:root[data-theme="vampire"] .li { border-bottom: 1px solid var(--line); }
+:root[data-theme="vampire"] .li.click:hover { background: linear-gradient(90deg, rgba(181, 23, 63, .12), transparent 80%); }
+:root[data-theme="vampire"] .tabs { gap: 4px; border-bottom: 1px solid var(--line-2); }
+:root[data-theme="vampire"] .tabs button { font: 400 15px/1.1 var(--font-d); font-variant: small-caps; letter-spacing: .1em; color: var(--ink-3); }
+:root[data-theme="vampire"] .tabs button:hover { color: var(--vp-gold-2); }
+:root[data-theme="vampire"] .tabs button[aria-selected="true"] { color: var(--ink); }
+:root[data-theme="vampire"] .tabs button[aria-selected="true"]::after { height: 2px; background: linear-gradient(90deg, transparent, var(--accent-ink), transparent); }
+:root[data-theme="vampire"] :is(details.adv, .test-results) { border-top: 1px solid var(--line); }
+
+/* ------------------------------------------------------------------ windows, menus, notes: portraits in gold */
+:root[data-theme="vampire"] .scrim { background: var(--scrim); backdrop-filter: blur(3px); }
+:root[data-theme="vampire"] .modal { border: 0; border-radius: 10px; background: var(--surface); box-shadow: var(--vp-frame), 0 40px 100px -30px rgba(0, 0, 0, .95), 0 0 60px -20px rgba(181, 23, 63, .45); }
+:root[data-theme="vampire"] .modal-head { padding: 16px 22px 12px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, rgba(181, 23, 63, .12), transparent); }
+:root[data-theme="vampire"] .modal-head h3 { font: italic 400 22px/1.25 var(--font-d); color: var(--ink); }
+:root[data-theme="vampire"] .modal-foot { border-top: 1px solid var(--line); }
+:root[data-theme="vampire"] .menu { border: 1px solid var(--vp-gold-line); border-radius: 8px; background: var(--raised); box-shadow: 0 24px 60px -24px rgba(0, 0, 0, .95); }
+:root[data-theme="vampire"] :is(.menu button, .menu a):hover { background: linear-gradient(90deg, rgba(181, 23, 63, .2), transparent); color: var(--ink); }
+:root[data-theme="vampire"] .menu .sep { background: var(--line); }
+:root[data-theme="vampire"] .callout { border: 1px solid var(--line-2); border-left: 3px solid var(--vp-gold); border-radius: 6px; background: var(--raised); }
+:root[data-theme="vampire"] .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+:root[data-theme="vampire"] .callout.crit { border-left-color: var(--crit); background: var(--crit-soft); }
+:root[data-theme="vampire"] .callout.good { border-left-color: var(--good); background: var(--good-soft); }
+:root[data-theme="vampire"] .toast { border: 1px solid var(--vp-gold-line); border-radius: 6px; background: var(--raised); box-shadow: 0 20px 50px -20px rgba(0, 0, 0, .95); font-style: italic; }
+:root[data-theme="vampire"] .code { border: 1px solid var(--line-2); border-radius: 6px; background: rgba(0, 0, 0, .35); }
+:root[data-theme="vampire"] .qr { border-radius: 6px; box-shadow: 0 0 0 1px var(--vp-gold-line), 0 0 0 5px var(--surface), 0 0 0 6px rgba(214, 178, 110, .2); }
+:root[data-theme="vampire"] .bulkbar { border: 1px solid var(--vp-gold-line); border-radius: 8px; background: var(--raised); box-shadow: 0 20px 50px -20px rgba(0, 0, 0, .95); }
+:root[data-theme="vampire"] .sw { box-shadow: inset 0 0 0 1px rgba(214, 178, 110, .5); }
+:root[data-theme="vampire"] .app-foot { font: italic 400 13px/1.4 var(--font-d); color: var(--ink-3); }
+
+/* ------------------------------------------------------------------ charts: crimson ink, gold hairlines */
+:root[data-theme="vampire"] .chart .grid-l { stroke: var(--line); }
+:root[data-theme="vampire"] .chart .line { stroke-width: 1.8; filter: drop-shadow(0 0 4px rgba(228, 70, 108, .5)); }
+:root[data-theme="vampire"] .chart .area { fill: rgba(181, 23, 63, .18); }
+:root[data-theme="vampire"] .chart .line2 { stroke: var(--vp-gold); stroke-dasharray: 4 4; }
+:root[data-theme="vampire"] .chart .bar { fill: #c81f4a; }
+:root[data-theme="vampire"] .chart .bar2 { fill: var(--vp-gold); }
+:root[data-theme="vampire"] .chart text { fill: var(--ink-3); font-family: var(--font-d); }
+
+/* ------------------------------------------------------------------ the sign-in: a portrait under the moon */
+:root[data-theme="vampire"] .login { position: relative; overflow: hidden; }
+:root[data-theme="vampire"] .login::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150px;
+  height: 150px;
+  translate: -50% calc(-50% - 260px);
+  border-radius: 50%;
+  background: radial-gradient(circle at 70% 38%, var(--page) 0 52px, transparent 53px), radial-gradient(circle, var(--vp-moon) 0 60px, transparent 61px);
+  filter: drop-shadow(0 0 40px rgba(244, 231, 207, .35));
+}
+:root[data-theme="vampire"] .login-box {
+  position: relative;
+  z-index: 1;
+  width: min(390px, 100%);
+  padding: 46px 34px 30px;
+  border-radius: 190px 190px 12px 12px / 60px 60px 12px 12px;
+  background: linear-gradient(180deg, rgba(181, 23, 63, .14), transparent 180px), var(--surface);
+  box-shadow: var(--vp-frame), 0 50px 120px -40px rgba(0, 0, 0, 1), 0 0 80px -30px rgba(181, 23, 63, .6);
+  text-align: center;
+}
+:root[data-theme="vampire"] .login-box .brand { justify-content: center; font: italic 400 34px/1.05 var(--font-d); letter-spacing: 0; text-transform: none; color: var(--ink); }
+:root[data-theme="vampire"] .login-box .brand :is(svg, .logo-img) { color: var(--vp-gold); }
+:root[data-theme="vampire"] .login-box .lead { font: italic 400 15px/1.45 var(--font-d); color: var(--ink-2); }
+:root[data-theme="vampire"] .login-box :is(.field, form) { text-align: left; }
+:root[data-theme="vampire"] .login-or { font: 400 14px/1 var(--font-d); font-variant: small-caps; letter-spacing: .1em; color: var(--vp-gold); }
+:root[data-theme="vampire"] .login-or::before, :root[data-theme="vampire"] .login-or::after { border-top: 1px solid var(--vp-gold-line); }
+:root[data-theme="vampire"] .login-box .btn { height: 42px !important; }
+
+/* ------------------------------------------------------------------ a phone (last: it overrides the sizes above) */
+@media (max-width: 700px) {
+  :root[data-theme="vampire"] .kpis { gap: 12px; }
+  :root[data-theme="vampire"] :is(.kpi, .kpi:first-child, .kpi:nth-child(n)) { padding: 14px 14px 12px; }
+  :root[data-theme="vampire"] .kpi .v { font-size: 27px; }
+  :root[data-theme="vampire"] .panel { padding: 0 14px 16px; border-radius: 70px 70px 8px 8px / 20px 20px 8px 8px; }
+  :root[data-theme="vampire"] .ph { margin: 0 -14px 14px; padding: 14px 14px 10px; }
+  :root[data-theme="vampire"] .login::before { display: none; }
+  :root[data-theme="vampire"] .login-box { padding: 36px 22px 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="vampire"] :is(.proto, .app, .card.click, a.card):hover { transform: none; }
+}

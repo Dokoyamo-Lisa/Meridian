@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.4.3 - 2026-10-30
+
+Live speed per user and per address, a calmer Monitor, a new look, and fixes. Upgrade the panel
+(**Settings › Updates** - nobody is disconnected), then the agents (server page › More actions ›
+Upgrade agent - nobody is disconnected): speed now is measured by agents 1.4.3; until then the
+Monitor names the servers that do not measure it yet.
+
+- **Speed now, per user and per address** (Monitor › Live). Each user's download and upload right
+  now, over all their servers and protocols, and under it each address they connect from with its
+  speed on that server. A user going through a proxy pass is counted once - on the server they
+  connect to, not again on the exit (the exit counts that traffic as the pass's own, never a
+  user's, and its view of the entry server is no device). The servers' network rates and the
+  bandwidth counters are unchanged. Agents measure it from 1.4.3: per user from what their
+  protocols carried, per address with a small firewall table of its own (`inet meridian_rate`,
+  counting only the users' protocols' ports) that cannot touch the main one. *Needs agent 1.4.3.*
+- **Monitor, calmer: five tabs instead of eight.** **Live** puts who is online and how fast in one
+  table, by user; **History** holds addresses, destinations and blocked addresses behind one switch;
+  **Events**, **Health** and **Ping** stay. The servers' network rate is a line under the figures,
+  saying that a proxy pass counts there twice. Old links still land in the right place.
+- **A new look: Vampire Princess.** Black velvet with a plum depth, moonlit ivory type in a
+  high-contrast Didone, blood crimson and antique gold, under a crescent moon and a scatter of
+  stars. It lays the pages out anew: on a wide screen the panel's name sits centred between gold
+  rules with the menu in small capitals beneath it; panels are arched boards in a double gold
+  frame; figures sit in gold corner brackets; buttons are crimson velvet; tables have gold
+  small-capital headers over a double rule; the sign-in is a portrait under the moon. The status
+  page shows no globe in this look (the moon moves beside the clock), and the users' page and
+  subscription pages follow. Text keeps 4.5:1 (WCAG AA). Pick it with the palette button, or make
+  it everyone's in **Settings › Panel › Look**. Romance stays the default.
+- **Status page: a day is red only when it was a bad day.** The availability bars went by each
+  day's share of the time measured, so just after midnight one minute offline read as 80% - red -
+  and the bar for all servers averaged them, so one server down turned it red. After the panel
+  itself was down (an update, a restart), every server counted as "stopped reporting" until its
+  agent reconnected: an offline event for each, and minutes of downtime that never happened. Now
+  a server's silence counts only from when the panel started; a day's colour goes by its minutes
+  down (up to 1: good, up to 14: trouble, more: bad); and the bar for all servers is red only
+  when every server had a bad day.
+- **Destinations count visits.** The list had a Traffic column, but only WireGuard measures bytes
+  per site: every Xray and Hysteria2 destination showed "—", and ranking by bytes put every
+  WireGuard site above them all. Destinations are now listed and ranked by visits (connections),
+  which every protocol counts; bytes are not shown.
+- **Shared certificates fill in the domain.** Choosing a shared certificate for a protocol still
+  asked for its domain, though the certificate names it. It is now filled in: the server's own
+  domain when the certificate covers it, else the certificate's name, else - a wildcard alone - the
+  server's name under it (Tokyo 2 with *.example.com: tokyo-2.example.com). A name typed in that the
+  certificate covers stays; the API fills it in the same way when none is sent.
+
 ## 1.4.2 - 2026-10-30
 
 Security and reliability fixes from an audit of the panel, the agent, the status page and the users'

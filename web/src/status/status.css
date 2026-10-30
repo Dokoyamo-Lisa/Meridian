@@ -1177,6 +1177,7 @@ body[data-view="signin"] .signin-btn { display: none; }
 [data-tone="romance"] .sw { --sw-a: #c13a66; --sw-b: #fbf0f2; }
 [data-tone="umbrella"] .sw { --sw-a: #d42a33; --sw-b: #0a0a0b; }
 [data-tone="postmodern"] .sw { --sw-a: #2346d8; --sw-b: #ffd23f; }
+[data-tone="vampire"] .sw { --sw-a: #b5173f; --sw-b: #0d090f; }
 
 :root[data-theme="umbrella"] .top { box-shadow: 0 1px 0 rgba(212, 42, 51, .35); background: linear-gradient(#0a0a0b 80%, rgba(10, 10, 11, .5)); }
 :root[data-theme="umbrella"] .nav a { text-transform: uppercase; font-size: 11.5px; letter-spacing: .14em; }

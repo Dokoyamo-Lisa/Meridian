@@ -55,6 +55,7 @@ type availability struct {
 	H24  *float64   `json:"h24" doc:"Percent of the last 24 hours the server was up; null = no data"`
 	D30  *float64   `json:"d30" doc:"Percent of the last 30 days"`
 	Days []*float64 `json:"days" doc:"Percent per day, oldest first, 30 days; null = no data"`
+	Down []*int64   `json:"down" doc:"Minutes down per day, oldest first (null = no data): what a day's colour goes by - a few minutes early today are not a bad day"`
 }
 
 // availabilityOf computes 24 h, 30 d and per-day availability for servers.
@@ -113,9 +114,13 @@ func (p *Panel) availabilityOf(ctx context.Context, ids []int64, days []string) 
 		return &v
 	}
 	for _, id := range ids {
-		av := &availability{H24: pct(h24[id]), D30: pct(d30[id]), Days: make([]*float64, len(days))}
+		av := &availability{H24: pct(h24[id]), D30: pct(d30[id]), Days: make([]*float64, len(days)), Down: make([]*int64, len(days))}
 		for i, d := range days {
 			av.Days[i] = pct(perDay[id][d])
+			if a := perDay[id][d]; a != nil && a.n > 0 {
+				down := a.n - a.up // a sample a minute (sampleUptime)
+				av.Down[i] = &down
+			}
 		}
 		out[id] = av
 	}

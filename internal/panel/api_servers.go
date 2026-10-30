@@ -1284,6 +1284,7 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 			return errStatus(http.StatusBadRequest, k.Label+" needs nftables on this server (each user's traffic is counted on their port there): "+nftMissing)
 		}
 	}
+	p.fillSharedName(r.Context(), s, in.Kind, in.Settings, nil) // the shared certificate's own name, when none was given
 	settings, err := newSettings(in.Kind, in.Settings, nodes)
 	if err != nil {
 		return errStatus(http.StatusBadRequest, err.Error())
@@ -1426,6 +1427,7 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	oldSettings := n.Settings
 	if in.Settings != nil {
+		p.fillSharedName(r.Context(), s, n.Kind, in.Settings, n.Settings)
 		updated, err := updateSettings(n.Kind, n.Settings, in.Settings)
 		if err != nil {
 			return errStatus(http.StatusBadRequest, err.Error())
