@@ -215,7 +215,7 @@ export interface GlobeHub {
 
 export interface Globe {
   setPlaces(p: { hub: GlobeHub | null; places: GlobePlace[] }): void
-  updatePlace(key: string, patch: Partial<Pick<GlobePlace, 'rate' | 'sub' | 'state'>>): void
+  updatePlace(key: string, patch: Partial<Pick<GlobePlace, 'rate' | 'sub' | 'state' | 'ids'>>): void
   setClients(list: unknown[]): void
   setLabel(key: string, sub: string): void
   pulse(keys: string[]): void

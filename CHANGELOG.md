@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Status page globe: pins follow their servers.** A server replaced by another in the same city, or
+  a server joining a shared pin, left the pin's hover and click naming the old servers; and a pin
+  whose local time was unknown at first never showed it once known. Both now update in place.
 - **The ping legend counts probes, not chart steps.** The latency and loss under a ping chart averaged
   each step's figures equally, so a step with one lost probe weighed as much as one with six answered
   (50% lost instead of 1 in 7). The panel now sends each monitor's totals for the range (`sent`,

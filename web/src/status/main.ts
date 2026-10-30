@@ -55,6 +55,7 @@ import { Check, startCheck } from '../turnstile'
 import { ServerHistory, serverHistory } from './details'
 import { osBadge, virtName } from './os'
 import { TgSession, call as tgCall, telegramPanel, tgLaunch } from './tg'
+import { globeLayoutKey } from './globekeys'
 
 // ================================================================ state
 
@@ -1254,13 +1255,13 @@ function updateGlobe() {
   if (!globe || !S.pub) return
   const places = placesFromServers()
   const hub = hubPlace()
-  // a new layout whenever a pin is added, removed, moved, renamed or becomes exact; else just news
-  const keys = places.map((p) => `${p.key}@${p.lat.toFixed(3)},${p.lon.toFixed(3)}${p.approx ? '~' : ''}=${p.label}`).join('|') + (hub ? `#${hub.lat},${hub.lon}=${hub.label}` : '')
+  // a new layout whenever a pin is added, removed, moved, renamed, becomes exact or changes servers; else just news
+  const keys = globeLayoutKey(places, hub)
   if (keys !== placeKeys) {
     placeKeys = keys
     globe.setPlaces({ hub, places })
   } else {
-    for (const p of places) globe.updatePlace(p.key, { rate: p.rate, sub: p.sub, state: p.state })
+    for (const p of places) globe.updatePlace(p.key, { rate: p.rate, sub: p.sub, state: p.state, ids: p.ids })
   }
   S.places = places
 }
@@ -1276,7 +1277,7 @@ function updateGlobeTimes() {
 function globeLive(fresh: Set<number>) {
   if (!globe || !S.pub) return
   const places = placesFromServers()
-  for (const p of places) globe.updatePlace(p.key, { rate: p.rate, state: p.state })
+  for (const p of places) globe.updatePlace(p.key, { rate: p.rate, state: p.state, ids: p.ids })
   globe.pulse(places.filter((p) => p.online > 0 && p.ids.some((id) => fresh.has(id))).map((p) => p.key))
 }
 

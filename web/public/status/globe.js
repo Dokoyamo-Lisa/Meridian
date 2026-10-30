@@ -13,6 +13,7 @@
 
    const g = new LSGlobe(host, { landUrl, coastUrl, colors: () => ({...}), onHover(item, x, y), onSelect(place) });
    g.setPlaces({ hub: {lat, lon, label, sub} | null, places: [{key, lat, lon, label, sub, state, rate, approx}] });
+   g.updatePlace(key, {rate, sub, state, ids});  g.setLabel(key | "hub", sub);
    g.setClients([{key?, lat, lon, n, to}]);  g.pulse([key, ...]);  g.focus(key | null);  g.setColors();
    The wheel zooms whenever the pointer is over the globe (zooming out at full size passes the wheel on to the
    page); g.setZoomable(true) adds pinch zoom (full screen); g.zoomBy(f) / g.setZoom(z) step it;
@@ -359,6 +360,7 @@ void main() {
       if (!p) return;
       if (patch.sub != null) this.setLabel(key, patch.sub);       // re-measures the label only when it changed
       if (patch.rate != null) p.rate = patch.rate;
+      if (patch.ids) p.ids = patch.ids.slice();                  // hover and click name the pin's servers now
       if (patch.state && patch.state !== p.state) {
         p.state = patch.state;
         if (p.el) p.el.className = "lsg-label place " + p.state + (p.key === this.focusKey ? " on" : "");
@@ -942,9 +944,14 @@ void main() {
       const it = key === "hub" ? this.hub : this.places.find((p) => p.key === key);
       if (!it || !it.el || it.sub === sub) return;
       it.sub = sub;
-      const span = it.el.querySelector("span");
-      if (span) span.textContent = sub;
-      it.lw = 0;
+      let span = it.el.querySelector("span");
+      if (sub && !span) {                                         // a line that was empty at first (no local time yet)
+        span = document.createElement("span");
+        it.el.append(span);
+      }
+      if (span && !sub) span.remove();
+      else if (span) span.textContent = sub;
+      it.lw = 0;                                                  // measured again on the next frame
     }
 
     // ------------------------------------------------------------------ pointer
