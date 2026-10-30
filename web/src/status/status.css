@@ -1153,6 +1153,8 @@ body[data-view="signin"] .signin-btn { display: none; }
 .tc-skel { height: 214px; border-radius: 12px; border: 1px solid var(--line); background: linear-gradient(100deg, transparent 30%, var(--hover) 50%, transparent 70%) 0 0 / 300% 100%; animation: tc-shimmer 1.6s linear infinite; }
 @keyframes tc-shimmer { to { background-position: -150% 0; } }
 .tc-note { margin-top: 10px; font-size: 11px; color: var(--ink-3); }
+.tc-grid.stale { opacity: .5; }
+.tc-stale { display: inline-flex; align-items: center; gap: 6px; color: var(--warn); }
 @media (max-width: 560px) {
   .hist h4 { align-items: flex-start; }
   .tc-ctl { margin-left: 0; width: 100%; justify-content: space-between; }

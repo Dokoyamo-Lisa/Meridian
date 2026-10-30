@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Server history: a failed load no longer passes for the range you picked.** Picking 1 h when its
+  request failed left the selector on 1 h and the 24 h charts on screen, with no sign. The charts
+  that stay are now dimmed, and a note names the range they really show and says it is trying again.
 - **Status page globe: a shared pin lists its servers, and the globe works from the keyboard.**
   Clicking a pin of several servers only highlighted their rows in the server table, which may have
   them folded away (or, at full screen, out of view). It now opens a small list with a link to each.

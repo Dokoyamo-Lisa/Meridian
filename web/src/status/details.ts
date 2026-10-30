@@ -9,6 +9,7 @@ import { append, clear, h, icon } from './dom'
 import { C, TipRow, hideTip, monoPath, rgba, segment, showTip, tangents } from './chart'
 import { bparts, clamp, hm, md, now } from './fmt'
 import { pingLegend } from './pingsum'
+import { historyNote } from './histstate'
 
 export interface PingSeries {
   id: number
@@ -734,7 +735,7 @@ export function serverHistory(sid: number, name: string, index: number): ServerH
   const custom = h('button.icon-btn.tc-cust', { type: 'button', 'aria-label': 'Choose the charts', title: 'Choose the charts', 'aria-expanded': 'false' }, icon('sliders', 'sm'))
   const pick = h('div.tc-pick.hidden')
   const grid = h('div.tc-grid')
-  const note = h('div.tc-note')
+  const note = h('div.tc-note', { role: 'status' })
   const el = h('section.d-sec.hist', { style: { '--i': String(index) } }, h('h4', 'History', h('div.tc-ctl', rangeSeg, custom)), pick, grid, note)
 
   let data: SeriesPayload | null = null
@@ -925,6 +926,10 @@ export function serverHistory(sid: number, name: string, index: number): ServerH
       c.update(d)
     }
     clear(note)
+    const rangeLabel = (r: string) => RANGES.find((x) => x[0] === r)?.[1] || r
+    const hn = historyNote(d.range, prefs.range, failed, rangeLabel)
+    grid.classList.toggle('stale', hn.stale)
+    if (hn.text) note.append(h('span.tc-stale', icon('alert', 'sm'), hn.text), h('br'))
     if (!kinds.length) note.append('No history yet: it builds up while the server reports.')
     else if (!want.length) note.append('Every chart is hidden - pick some with the button next to the range.')
     else note.append(`${stepText(d.step)} · hatched: the server did not report · times are this device's`)
