@@ -10,6 +10,18 @@
   a server's silence counts only from when the panel started; a day's colour goes by its minutes
   down (up to 1: good, up to 14: trouble, more: bad); and the bar for all servers is red only
   when every server had a bad day.
+- **Speed now, per user and per address** (Monitor › Live). Each user's download and upload right
+  now, over all their servers and protocols, and under it each address they connect from with its
+  speed on that server. A user going through a proxy pass is counted once - on the server they
+  connect to, not again on the exit (the exit counts that traffic as the pass's own, never a
+  user's, and its view of the entry server is no device). The servers' network rates and the
+  bandwidth counters are unchanged. Agents measure it from 1.4.3: per user from what their
+  protocols carried, per address with a small firewall table of its own (`inet meridian_rate`,
+  counting only the users' protocols' ports) that cannot touch the main one. *Needs agent 1.4.3.*
+- **Monitor, calmer: five tabs instead of eight.** **Live** puts who is online and how fast in one
+  table, by user; **History** holds addresses, destinations and blocked addresses behind one switch;
+  **Events**, **Health** and **Ping** stay. The servers' network rate is a line under the figures,
+  saying that a proxy pass counts there twice. Old links still land in the right place.
 - **Destinations count visits.** The list had a Traffic column, but only WireGuard measures bytes
   per site: every Xray and Hysteria2 destination showed "—", and ranking by bytes put every
   WireGuard site above them all. Destinations are now listed and ranked by visits (connections),
