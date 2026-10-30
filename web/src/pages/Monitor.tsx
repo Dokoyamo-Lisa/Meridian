@@ -219,7 +219,8 @@ function SpeedTab() {
       <div class="row wrap" style="margin-bottom:12px">
         <span class="muted grow">
           Measured by each server over its last report ({d.interval} s), refreshes every 5 s. A user going through a proxy pass is counted once, on the
-          server they connect to.
+          server they connect to. A user's speed is what their protocols carried; an address's is all that crossed the network, with the protocols' own
+          overhead.
         </span>
         <Search value={q} onInput={setQ} placeholder="User, IP, server, place…" />
       </div>
