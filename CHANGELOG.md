@@ -10,8 +10,13 @@
 - **Security: a country rule stays in force when its list cannot be read.** After an agent restart,
   with the server's copy of the country list missing or damaged and the panel out of reach, the
   agent replaced its firewall table with one without the rule - the server was open to every country
-  until the list came back. It now keeps the last good list it has on disk, and with none leaves the
-  firewall as it was (and says so) until the list can be read. Needs agent 1.4.2.
+  until the list came back. And when a changed rule's new list could not be fetched, the newest list
+  on disk was applied under the new rule - a block list for one country could end up as the rule for
+  others, or as an allow rule. The agent now records the rule nftables last applied (countries, mode,
+  exceptions) next to its list; until the new list can be read that rule stays in force, after a
+  restart and after a reboot too, and a list on disk that was never applied is never used for another
+  rule. With no rule in force it leaves the firewall as it was (and says so); re-applying the firewall
+  for SSH blocks follows the same rule. Needs agent 1.4.2.
 - **Security: a disabled account's users are shut out of their own page and the bot.** Disabling an
   account stopped its subscription links, but its users could still sign in, keep an open session
   reading their page and link, and use the Telegram bot. Signing in (password or Telegram), every

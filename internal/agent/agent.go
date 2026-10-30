@@ -130,7 +130,8 @@ type Agent struct {
 	cores       map[string]proto.CoreStatus
 	kick        chan struct{}
 	applyMu     sync.Mutex
-	geo         *geoCache
+	geo         *geoCache                                     // the country list last read, built for the rule that asked for it
+	geoActive   *geoCache                                     // the country rule in force: the last one nftables applied (geoRecord on disk)
 	fetchGeo    func(context.Context, string) ([]byte, error) // the country list from the panel (nil: client.GeoList; tests replace it)
 	scanned     map[string]bool                               // units the last scan found: the only ones a takeover may stop
 	shared      sharedCerts                                   // the panel's shared certificates this server holds and serves
@@ -557,13 +558,17 @@ func (a *Agent) apply(ctx context.Context, st *proto.State, fresh bool) {
 		// nftables is optional (a bare Alpine has none): without it, country rules, IP blocks and kernel
 		// forwards do not apply here - the panel says so on the server page - and the rest runs
 		if nft.Available() {
-			if holdFirewall(st.Geo, geo, a.nft.Active()) {
+			if holdFirewall(st.Geo, geoOf(geo), a.nft.Active()) {
 				// a new table would leave the country rule out: the one in force stays, rules and all
 				note("nftables", errors.New("left as it was until the country list can be read, so the country rule stays in force"))
 			} else {
 				spec := a.nftSpec(full)
-				spec.Geo = geo
-				note("nftables", a.nft.Apply(spec))
+				spec.Geo = geoOf(geo)
+				err := a.nft.Apply(spec)
+				note("nftables", err)
+				if err == nil {
+					a.setGeoActive(geo)
+				}
 				a.mu.Lock()
 				a.resolvers = spec.Resolvers // what the users' servers' account may ask (nft solo_out)
 				a.mu.Unlock()
@@ -680,10 +685,21 @@ func holdFirewall(r *proto.GeoRule, geo *nft.GeoSpec, active bool) bool {
 	return geoWanted(r) && geo == nil && active
 }
 
-// geoSpec turns the country rule into firewall sets. When the list cannot be fetched, the last one
-// that was applied stays in force, so a panel outage never opens the server up: the one in memory,
-// or after a restart the last good copy on disk.
-func (a *Agent) geoSpec(ctx context.Context, r *proto.GeoRule) (*nft.GeoSpec, error) {
+// geoOf is a country rule's firewall sets, or nil for none.
+func geoOf(g *geoCache) *nft.GeoSpec {
+	if g == nil {
+		return nil
+	}
+	return g.spec
+}
+
+// geoSpec turns the country rule into firewall sets, from the list the rule names: in memory, on
+// disk (whole) or fetched. When that list cannot be had, it is the rule in force that stays - the
+// last one nftables applied, its own countries, mode and exceptions, from memory or after a restart
+// from disk - never another list that happens to be on disk: an old block list applied as a new
+// allow rule (or as a block rule for other countries) would let in the very countries kept out.
+// With no rule in force it is nil, and holdFirewall decides.
+func (a *Agent) geoSpec(ctx context.Context, r *proto.GeoRule) (*geoCache, error) {
 	if !geoWanted(r) {
 		a.geo = nil
 		return nil, nil
@@ -691,16 +707,10 @@ func (a *Agent) geoSpec(ctx context.Context, r *proto.GeoRule) (*nft.GeoSpec, er
 	if a.geo != nil && a.geo.hash == r.List {
 		g := *a.geo.spec
 		g.Allow, g.Except = r.Mode == "allow", r.Except
-		return &g, nil
+		return &geoCache{hash: r.List, spec: &g}, nil
 	}
 	path := filepath.Join(DataDir, "geo-"+r.List+".json")
-	body, err := os.ReadFile(path)
-	if err == nil {
-		sum := sha256.Sum256(body)
-		if hex.EncodeToString(sum[:]) != r.List {
-			body, err = nil, errors.New("damaged copy")
-		}
-	}
+	body, err := readGeoList(r.List)
 	if err != nil {
 		fetch := a.fetchGeo
 		if fetch == nil {
@@ -710,59 +720,98 @@ func (a *Agent) geoSpec(ctx context.Context, r *proto.GeoRule) (*nft.GeoSpec, er
 		body, err = fetch(fctx, r.List)
 		cancel()
 		if err != nil {
-			if a.geo != nil {
-				return a.geo.spec, fmt.Errorf("keeping the previous country list: %w", err)
-			}
-			if prev := lastGeoList(r); prev != nil { // after a restart: the last good copy on disk
-				a.geo = &geoCache{hash: prev.hash, spec: prev.spec}
-				return prev.spec, fmt.Errorf("keeping the previous country list: %w", err)
+			if in := a.geoInForce(); in != nil {
+				return in, fmt.Errorf("the country rule in force stays until the new country list can be fetched: %w", err)
 			}
 			return nil, fmt.Errorf("cannot fetch the country list: %w", err)
 		}
+		if sum := sha256.Sum256(body); hex.EncodeToString(sum[:]) != r.List {
+			return a.geoInForce(), errors.New("the country list from the panel does not match the rule")
+		}
 		tmp := path + ".tmp"
-		if os.WriteFile(tmp, body, 0o600) == nil && os.Rename(tmp, path) == nil {
-			old, _ := filepath.Glob(filepath.Join(DataDir, "geo-*.json"))
-			for _, f := range old {
-				if f != path {
-					os.Remove(f)
-				}
-			}
+		if os.WriteFile(tmp, body, 0o600) == nil {
+			_ = os.Rename(tmp, path) // the list in force stays on disk until another one is applied (setGeoActive)
 		}
 	}
 	var list proto.GeoList
 	if err := json.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("country list: %w", err)
+		return a.geoInForce(), fmt.Errorf("country list: %w", err)
 	}
-	g := &nft.GeoSpec{Allow: r.Mode == "allow", V4: list.V4, V6: list.V6, Except: r.Except}
-	a.geo = &geoCache{hash: r.List, spec: g}
+	g := &geoCache{hash: r.List, spec: &nft.GeoSpec{Allow: r.Mode == "allow", V4: list.V4, V6: list.V6, Except: r.Except}}
+	a.geo = g
 	return g, nil
 }
 
-// lastGeoList is the newest country list kept in DataDir that is whole - its contents hash to its
-// name - built for rule r, or nil. A list that changed while the panel was out of reach still has
-// its predecessor on disk until the new one is fetched.
-func lastGeoList(r *proto.GeoRule) *geoCache {
-	files, _ := filepath.Glob(filepath.Join(DataDir, "geo-*.json"))
-	var best *geoCache
-	var bestAt time.Time
-	for _, f := range files {
-		hash := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), "geo-"), ".json")
-		body, err := os.ReadFile(f)
-		if err != nil || !hexRE.MatchString(hash) {
-			continue
-		}
-		sum := sha256.Sum256(body)
-		var list proto.GeoList
-		if hex.EncodeToString(sum[:]) != hash || json.Unmarshal(body, &list) != nil {
-			continue
-		}
-		info, err := os.Stat(f)
-		if err != nil || (best != nil && !info.ModTime().After(bestAt)) {
-			continue
-		}
-		best, bestAt = &geoCache{hash: hash, spec: &nft.GeoSpec{Allow: r.Mode == "allow", V4: list.V4, V6: list.V6, Except: r.Except}}, info.ModTime()
+// readGeoList is the country list kept on disk under its hash, if it is whole.
+func readGeoList(hash string) ([]byte, error) {
+	if !hexRE.MatchString(hash) {
+		return nil, errors.New("not a country list")
 	}
-	return best
+	body, err := os.ReadFile(filepath.Join(DataDir, "geo-"+hash+".json"))
+	if err != nil {
+		return nil, err
+	}
+	if sum := sha256.Sum256(body); hex.EncodeToString(sum[:]) != hash {
+		return nil, errors.New("damaged copy")
+	}
+	return body, nil
+}
+
+// geoRecord is the country rule in force, kept in DataDir next to its list so that a restart (or a
+// reboot, which empties nftables) puts the same rule back while the panel is out of reach.
+type geoRecord struct {
+	List   string   `json:"list"`
+	Allow  bool     `json:"allow"`
+	Except []string `json:"except,omitempty"`
+}
+
+func geoRecordPath() string { return filepath.Join(DataDir, "geo-in-force") }
+
+// setGeoActive notes the country rule nftables just applied (nil: none), and keeps only its list.
+func (a *Agent) setGeoActive(g *geoCache) {
+	a.geoActive = g
+	if g == nil {
+		os.Remove(geoRecordPath())
+		return
+	}
+	body, _ := json.Marshal(geoRecord{List: g.hash, Allow: g.spec.Allow, Except: g.spec.Except})
+	tmp := geoRecordPath() + ".tmp"
+	if os.WriteFile(tmp, body, 0o600) != nil || os.Rename(tmp, geoRecordPath()) != nil {
+		return
+	}
+	keep := filepath.Join(DataDir, "geo-"+g.hash+".json")
+	old, _ := filepath.Glob(filepath.Join(DataDir, "geo-*.json"))
+	for _, f := range old {
+		if f != keep {
+			os.Remove(f)
+		}
+	}
+}
+
+// geoInForce is the country rule nftables last applied: in memory, or after a restart from its record
+// and its whole list on disk. Nil when there is none, or what is on disk cannot be trusted.
+func (a *Agent) geoInForce() *geoCache {
+	if a.geoActive != nil {
+		return a.geoActive
+	}
+	raw, err := os.ReadFile(geoRecordPath())
+	if err != nil {
+		return nil
+	}
+	var rec geoRecord
+	if json.Unmarshal(raw, &rec) != nil {
+		return nil
+	}
+	body, err := readGeoList(rec.List)
+	if err != nil {
+		return nil
+	}
+	var list proto.GeoList
+	if json.Unmarshal(body, &list) != nil {
+		return nil
+	}
+	a.geoActive = &geoCache{hash: rec.List, spec: &nft.GeoSpec{Allow: rec.Allow, V4: list.V4, V6: list.V6, Except: rec.Except}}
+	return a.geoActive
 }
 
 // nftSpec derives the nftables table from the state.
