@@ -13,7 +13,6 @@ every feature has a page of its own: [protocols](guide/more-protocols.md),
 [sending traffic elsewhere](guide/send-traffic-elsewhere.md), [the status page](guide/status-page.md)
 and more - all in the menu.
 
-Try the demo: [the panel](https://deep.losantos.space/overview) · [the status page](https://deep.losantos.space/) ·
 [Releases](https://github.com/Dokoyamo-Lisa/Meridian/releases) · [Source on GitHub](https://github.com/Dokoyamo-Lisa/Meridian)
 
 ## Install
@@ -28,17 +27,6 @@ sudo bash install-panel.sh --domain panel.example.com
 The installer checks the release, sets up HTTPS and PostgreSQL, and prints your first sign-in. The
 panel then shows the one command that installs each server's agent.
 [Install the panel](guide/install.md) goes through every step, with what you should see.
-
-## The demo
-
-A Rosélune panel to look around in: eight servers and sixteen people that do not exist, a month of
-history, and agents reporting live. You are let in without signing in, and nothing there can be
-changed. It has two sides:
-
-- **[The panel](https://deep.losantos.space/overview)** - what you, the supervisor, work in: servers and
-  their protocols, users and their limits, traffic rules, monitoring and settings.
-- **[The status page](https://deep.losantos.space/)** - what everyone may see: the servers on a globe,
-  whether they are up, their load and a month of history.
 
 ## What it does
 

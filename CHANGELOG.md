@@ -514,7 +514,7 @@ Also in the repository, outside the panel and the agents:
 
 - **The guide as a website**: [doc.losantos.space](https://doc.losantos.space), built from these very
   documents (`site/`: `cd site && go run ./build`).
-- **A public demo**: [deep.losantos.space](https://deep.losantos.space) - eight servers and sixteen
+- **A public demo** (retired since) - eight servers and sixteen
   people that do not exist, a month of history and agents reporting live, on a panel visitors may
   look around in and nobody can change. `demo/` is the kit to run one.
 
