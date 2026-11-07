@@ -3,6 +3,7 @@ import { Icon } from '../icons'
 import { navigate } from '../router'
 import { AreaChart, BarChart, Empty, ErrorBox, Loading, PageHead, useAsync, usePoll } from '../ui'
 import { EventList } from './Monitor'
+import { topServers } from '../topservers'
 
 interface OverviewData {
   servers: { total: number; online: number; pending: number }
@@ -19,6 +20,9 @@ interface OverviewData {
   days: DayTraffic[]
   map: { id: number; name: string; status: string; rx: number; tx: number; online: number }[]
 }
+
+// the servers the overview lists: enough to see what matters, however many there are
+const SERVERS_SHOWN = 8
 
 export function AlertList(props: { alerts: Alert[] }) {
   if (props.alerts.length === 0)
@@ -54,6 +58,7 @@ export function Overview() {
 
   if (!o.data) return o.error ? <ErrorBox error={o.error} retry={o.reload} /> : <Loading />
   const d = o.data
+  const list = topServers(d.map, SERVERS_SHOWN)
   const rates = (d.rates || []).map((r) => ({ t: r.t, a: r.rx, b: r.tx }))
 
   if (d.servers.total === 0)
@@ -158,24 +163,34 @@ export function Overview() {
               <h2 class="h">Needs attention</h2>
               <span class="pm">{d.alerts.length || ''}</span>
             </div>
-            <AlertList alerts={d.alerts} />
+            <div class="alerts-box">
+              <AlertList alerts={d.alerts} />
+            </div>
           </section>
           <section class="panel">
             <div class="ph">
               <span class="pn">04</span>
               <h2 class="h">Servers</h2>
               <a class="pm" href="/servers">
-                All servers
+                All {d.map.length}
               </a>
             </div>
             <div class="list">
-              {d.map.map((m) => (
+              {list.shown.map((m) => (
                 <a class="li click" href={`/servers/${m.id}`}>
                   <span class={'dot ' + (m.status === 'online' ? 'good' : m.status === 'offline' ? 'crit' : '')} />
                   <span class="grow ellipsis">{m.name}</span>
                   <span class="muted nowrap">{m.status === 'online' ? `${m.online} online · ${bits(m.tx)}` : m.status}</span>
                 </a>
               ))}
+              {list.more > 0 && (
+                <a class="li click muted" href="/servers">
+                  <span class="grow">
+                    {list.more} more server{list.more === 1 ? '' : 's'}
+                  </span>
+                  <Icon name="forward" size="sm" class="faint" />
+                </a>
+              )}
             </div>
           </section>
         </div>

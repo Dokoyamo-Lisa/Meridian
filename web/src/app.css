@@ -852,3 +852,6 @@ label.btn.disabled { opacity: .55; pointer-events: none; }
 .muted-pick { opacity: .55; }
 /* a segmented control in a form is as wide as its choices, not the form */
 .field > .seg { align-self: flex-start; }
+
+/* the overview's alerts scroll inside their panel: a bad day must not push everything else away */
+.alerts-box { max-height: 300px; overflow: auto; scrollbar-width: thin; }

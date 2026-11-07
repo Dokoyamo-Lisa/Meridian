@@ -213,7 +213,7 @@ func (p *Panel) soloNode(ctx context.Context, n *Node, all, serving []*Sub) (pro
 			continue
 		}
 		name, secret := soloCreds(n, s)
-		out.Users = append(out.Users, proto.SoloUser{Sub: s.ID, Port: port, Name: name, Secret: secret})
+		out.Users = append(out.Users, proto.SoloUser{Sub: s.ID, Port: port, Name: name, Secret: secret, Blocked: s.SiteBlock.on(n.ID)})
 	}
 	slices.SortFunc(out.Users, func(a, b proto.SoloUser) int { return a.Port - b.Port })
 	return out, nil

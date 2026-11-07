@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rosélune API",
-    "version": "1.4.3",
+    "version": "1.4.4",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -10695,6 +10695,14 @@
             "format": "int64",
             "type": "integer"
           },
+          "site_block": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SiteBlock"
+              }
+            ],
+            "description": "Sites this user alone does not reach, on the protocols chosen"
+          },
           "node_limits": {
             "description": "(One user) each limit per protocol with what was used of it this cycle",
             "items": {
@@ -10781,6 +10789,26 @@
           },
           "none": {
             "type": "boolean"
+          }
+        }
+      },
+      "SiteBlock": {
+        "type": "object",
+        "properties": {
+          "sites": {
+            "description": "Each with its subdomains",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "protocols": {
+            "description": "Protocol ids",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
           }
         }
       },
@@ -11104,6 +11132,14 @@
             },
             "description": "Limits per protocol: protocol id -\u003e bytes per cycle, counted like the quota (0 takes one away); the whole set is replaced",
             "type": "object"
+          },
+          "site_block": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SiteBlock"
+              }
+            ],
+            "description": "Editing: sites this user alone does not reach, each with its subdomains, and the protocols that holds on (Xray protocols, mieru, AnyTLS). Empty sites = none"
           },
           "node_quota_mode": {
             "description": "alert (default: an alert only when one is used up) or stop (that protocol stops serving the user until the cycle starts over; their other protocols keep working)",
@@ -13979,6 +14015,10 @@
             "description": "Servers' Xray and Hysteria upgrade themselves to the versions here, at night (03:00 to 05:00 panel time), one server at a time - each restarts once and its users reconnect by themselves. Off: only a person upgrades them",
             "type": "boolean"
           },
+          "agent_auto_upgrade": {
+            "description": "Servers' agents follow the panel by themselves, within minutes of it changing version, with nobody asked and nobody disconnected: the proxies keep running. On by default",
+            "type": "boolean"
+          },
           "auto_update": {
             "description": "Install new Rosélune releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts",
             "type": "boolean"
@@ -14731,6 +14771,10 @@
           },
           "auto_update": {
             "description": "Whether new releases install by themselves (Settings › auto_update)",
+            "type": "boolean"
+          },
+          "agent_auto_upgrade": {
+            "description": "Whether agents follow the panel by themselves (Settings › agent_auto_upgrade)",
             "type": "boolean"
           },
           "ready": {

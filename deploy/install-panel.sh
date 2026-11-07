@@ -229,7 +229,7 @@ systemctl daemon-reload
 systemctl enable --now meridian-update.path >/dev/null 2>&1 || die "could not start the updater (meridian-update.path)"
 if [ "$ACTION" = "upgrade" ]; then
   systemctl restart meridian
-  say "Rosélune upgraded. Servers keep running; upgrade their agents in Settings > Updates (Upgrade all agents) when convenient."
+  say "Rosélune upgraded. Servers keep running; their agents follow by themselves within minutes (Settings > Updates)."
   exit 0
 fi
 if systemctl is-active --quiet meridian; then

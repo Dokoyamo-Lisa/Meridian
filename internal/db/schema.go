@@ -813,6 +813,8 @@ ALTER TABLE servers ADD COLUMN setup_version INTEGER NOT NULL DEFAULT 0;
 `,
 	// a protocol's blocked sites
 	`ALTER TABLE nodes ADD COLUMN blocked_sites TEXT NOT NULL DEFAULT '[]';`,
+	// the sites one user does not reach on protocols of the supervisor's choice
+	`ALTER TABLE subs ADD COLUMN site_block TEXT NOT NULL DEFAULT '';`,
 }
 
 // NextID is an SQL expression for the id of a new row of nodes or subs: above every id the table

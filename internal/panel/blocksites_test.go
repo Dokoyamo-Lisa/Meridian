@@ -165,3 +165,93 @@ func TestHyBlockedKeepsItsOwnACL(t *testing.T) {
 		t.Errorf("nothing to block: %s", x)
 	}
 }
+
+// TestUserBlockedSites: a user's own list reaches their rule on the protocols chosen and nobody else's,
+// their own process on mieru, and is refused where it could not hold.
+func TestUserBlockedSites(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.9"}, 201)["server"].(map[string]any)["id"])
+	if _, err := h.p.db.Exec1(`UPDATE servers SET first_seen_at = ?, caps = ? WHERE id = ?`, now(), `{"solo":true,"anytls":true,"nftables":true,"block_sites":true}`, sid); err != nil {
+		t.Fatal(err)
+	}
+	node := func(kind string) int64 {
+		return id(b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": kind}, 201)["id"])
+	}
+	vless, ss, hy, mieru := node("vless"), node("shadowsocks"), node("hysteria2"), node("mieru")
+	mk := func(name string) int64 {
+		code, _, raw := b.do("POST", "/api/users", map[string]any{"name": name})
+		var list []struct {
+			ID int64 `json:"id"`
+		}
+		if code != 201 || json.Unmarshal(raw, &list) != nil || len(list) != 1 {
+			t.Fatalf("%d %s", code, raw)
+		}
+		return list[0].ID
+	}
+	alice, bob := mk("Alice"), mk("Bob")
+	path := fmt.Sprintf("/api/users/%d", alice)
+	patch := func(sites []string, protocols []int64) (int, string) {
+		code, _, raw := b.do("PATCH", path, map[string]any{"site_block": map[string]any{"sites": sites, "protocols": protocols}})
+		return code, string(raw)
+	}
+	if code, raw := patch([]string{"google.com"}, []int64{hy}); code != 400 || !strings.Contains(raw, "Hysteria2") {
+		t.Errorf("hysteria: %d %s", code, raw)
+	}
+	if code, raw := patch([]string{"google.com"}, nil); code != 400 {
+		t.Errorf("no protocols: %d %s", code, raw)
+	}
+	if code, raw := patch([]string{"google.com"}, []int64{9999}); code != 400 {
+		t.Errorf("an unknown protocol: %d %s", code, raw)
+	}
+	if code, raw := patch([]string{"https://Anthropic.com/x", "google.com"}, []int64{vless, mieru, vless}); code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	st, err := h.p.compileServer(t.Context(), sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var base struct {
+		Routing struct {
+			Rules []struct {
+				RuleTag string   `json:"ruleTag"`
+				User    []string `json:"user"`
+				Domain  []string `json:"domain"`
+			} `json:"rules"`
+		} `json:"routing"`
+	}
+	if err := json.Unmarshal(st.Xray.Base, &base); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range base.Routing.Rules {
+		if r.RuleTag == fmt.Sprintf("sites-s%d", alice) {
+			found = true
+			if !slices.Equal(r.User, []string{proto.Email(alice, vless)}) || !slices.Equal(r.Domain, []string{"domain:anthropic.com", "domain:google.com"}) {
+				t.Errorf("the rule: %+v", r)
+			}
+		}
+		if slices.Contains(r.User, proto.Email(alice, ss)) || slices.Contains(r.User, proto.Email(bob, vless)) {
+			t.Errorf("reached too far: %+v", r)
+		}
+	}
+	if !found {
+		t.Errorf("no rule: %+v", base.Routing.Rules)
+	}
+	for _, sn := range st.Solo {
+		for _, u := range sn.Users {
+			if want := u.Sub == alice; want != (len(u.Blocked) == 2) {
+				t.Errorf("mieru user %d: %v", u.Sub, u.Blocked)
+			}
+		}
+	}
+	// emptied: gone
+	if code, raw := patch([]string{}, nil); code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	st, _ = h.p.compileServer(t.Context(), sid)
+	if strings.Contains(string(st.Xray.Base), "sites-s") {
+		t.Error("the rule stayed")
+	}
+}

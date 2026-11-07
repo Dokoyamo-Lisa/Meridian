@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { DestRow, PanelEvent, IPRow, OnlineIP, Server, User, bits, dateTime, del, flag, get, post } from '../api'
+import { DestRow, PanelEvent, IPRow, OnlineIP, Server, SpeedView, User, bits, dateTime, del, flag, get, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import { Ago, Empty, ErrorBox, Field, Loading, Modal, PageHead, Search, Seg, Tabs, ask, errText, run, toast, useAsync, usePoll } from '../ui'
@@ -181,25 +181,6 @@ interface LiveRow extends OnlineIP {
   user: string
   ip_limit: number
   user_ips: number
-}
-
-// SpeedView is GET /api/live/speed: what the agents measured over their last report, per user (all
-// their servers and protocols, each user once - a proxy pass does not count twice) and per address
-// they are online from, per server.
-interface SpeedIP {
-  ip: string
-  server_id: number
-  up: number
-  down: number
-  shared: number
-}
-
-interface SpeedView {
-  up: number
-  down: number
-  users: { user_id: number; up: number; down: number; ips: SpeedIP[] }[]
-  unmeasured: string[]
-  interval: number
 }
 
 // LiveNow is the part of /api/overview the Live tab shows: what all servers' network carries now.

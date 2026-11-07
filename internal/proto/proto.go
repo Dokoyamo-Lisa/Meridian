@@ -114,6 +114,8 @@ type SoloUser struct {
 	Port   int    `json:"port"`
 	Name   string `json:"name,omitempty"` // mieru's user name
 	Secret string `json:"secret"`         // mieru's and AnyTLS's password, Snell's PSK
+	// Blocked are the sites this user alone does not reach, on top of SoloNode.Blocked
+	Blocked []string `json:"blocked,omitempty"`
 }
 
 // SoloKinds are the protocols a SoloNode can be.

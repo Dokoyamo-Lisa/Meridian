@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'preact/hooks'
-import { Plan, Server, User, bytes, size, date, get, patch, pct, post } from '../api'
+import { Plan, Server, SpeedView, User, bits, bytes, size, date, get, patch, pct, post } from '../api'
 import { Icon } from '../icons'
 import { userURL } from '../session'
 import { navigate, setQuery, useLocation } from '../router'
 import { Ago, Code, CopyButton, Empty, ErrorBox, Field, Loading, Meter, Modal, PageHead, Search, Seg, Tabs, Toggle, errText, toast, useAsync, usePoll } from '../ui'
 import { Limits, LimitFields, Plans, limitsBody, limitsOf, limitsSummary } from './Plans'
 import { ScopePicker, ScopeState, scopeBody, scopeState } from './ScopePicker'
+import { SiteBlockFields, SiteBlockState, siteBlockBody, siteBlockState } from './SiteBlock'
 
 export const flagText: Record<string, [string, string]> = {
   over_quota: ['Out of data', 'crit'],
@@ -69,13 +70,28 @@ function UsersTabs() {
   )
 }
 
+// SpeedNow is a user's speed in the list: nothing to show while they move no data.
+function SpeedNow(props: { speed?: { up: number; down: number } }) {
+  const v = props.speed
+  if (!v || (!v.up && !v.down)) return <span class="faint">—</span>
+  return (
+    <>
+      <div title="Download">↓ {bits(v.down)}</div>
+      <div class="faint" title="Upload">↑ {bits(v.up)}</div>
+    </>
+  )
+}
+
 function UserList() {
   const loc = useLocation()
   const list = useAsync(() => get<User[]>('/api/users'))
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [newUsers, setNewUsers] = useState<User[] | null>(null)
+  const speed = useAsync(() => get<SpeedView>('/api/live/speed'))
   usePoll(() => void list.reload(), 10000)
+  usePoll(() => void speed.reload(), 5000)
+  const speedOf = new Map((speed.data?.users || []).map((u) => [u.user_id, u]))
   const all = list.data || []
   const rows = all.filter((s) => {
     if (filter === 'online' && s.online_ips === 0) return false
@@ -144,6 +160,7 @@ function UserList() {
                   <th>User</th>
                   <th>Status</th>
                   <th class="right">Online</th>
+                  <th class="right" title="Each user's download and upload now, all servers and protocols together">Speed now</th>
                   <th class="right hide-sm">IPs 24 h</th>
                   <th class="hide-sm">This cycle</th>
                   <th class="hide-sm">Expires</th>
@@ -170,6 +187,9 @@ function UserList() {
                       {s.online_ips}
                       {s.ip_limit > 0 && <span class="faint"> / {s.ip_limit}</span>}
                     </td>
+                    <td class="right num nowrap">
+                      <SpeedNow speed={speedOf.get(s.id)} />
+                    </td>
                     <td class="right hide-sm">{s.ips_24h}</td>
                     <td class="hide-sm" style="min-width:130px">
                       <div class="nowrap">
@@ -189,6 +209,11 @@ function UserList() {
             </table>
             {rows.length === 0 && <Empty title="Nothing matches" />}
           </div>
+          {!!speed.data?.unmeasured.length && (
+            <p class="muted" style="margin-top:10px;font-size:12px">
+              Speed is not measured on {speed.data.unmeasured.join(', ')}: their agent is older. Upgrade it (server page › More actions › Upgrade agent - nobody is disconnected).
+            </p>
+          )}
         </>
       )}
       {loc.query.get('add') === '1' && (
@@ -236,6 +261,7 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
   const [count, setCount] = useState('1')
   const [signIn, setSignIn] = useState(v ? v.can_sign_in : true)
   const [username, setUsername] = useState(v?.username || '')
+  const [siteBlock, setSiteBlock] = useState<SiteBlockState>(siteBlockState(v?.site_block))
   const [password, setPassword] = useState('')
   const [limits, setLimits] = useState<Limits>(limitsOf(v))
   const [starts, setStarts] = useState(toDateInput(v?.starts_at || v?.created_at || 0))
@@ -311,6 +337,7 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
       if (planId) body.plan_id = planId
       if (accessTouched) Object.assign(body, scopeBody(scope, servers))
       if (v) {
+        body.site_block = siteBlockBody(siteBlock, servers)
         // an empty username keeps the current one; a user without one gets one made from the name
         // (with a generated password) - never a sign-in removed by an empty field
         const newSignIn = signIn && !v.can_sign_in && !username.trim()
@@ -409,6 +436,7 @@ export function UserForm(props: { user?: User; onClose: () => void; onSaved: (us
             <input class="input" type="date" value={expires} onInput={(e) => setExpires(e.currentTarget.value)} />
           </Field>
         </div>
+        {v && <SiteBlockFields servers={servers} value={siteBlock} onChange={setSiteBlock} name={v.name} />}
         <div class="callout">
           <Icon name="info" size="sm" />
           <div>

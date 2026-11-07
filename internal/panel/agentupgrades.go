@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"meridian/internal/proto"
+	"meridian/internal/update"
 )
 
 // Agent upgrades that lost their result. An upgrade restarts the agent right after it reports the
@@ -142,4 +143,47 @@ func skippedText(list []agentSkipped) string {
 		parts[i] = s.Name + " (" + s.Why + ")"
 	}
 	return strings.Join(parts, ", ")
+}
+
+const (
+	agentAutoBatch = 10          // servers a minute: a big fleet does not fetch its agents all at once
+	agentAutoRetry = 6 * 60 * 60 // seconds before an upgrade the panel started is tried again
+)
+
+// agentAutoUpgrade brings online agents up to the panel's version by itself, whenever that is: an
+// agent's upgrade never touches traffic, so nobody needs to be asked and no night needs waiting for.
+// It only ever goes up, never onto a server another panel owns, and an upgrade that did not take is
+// left alone for a while. It says so once in the timeline, and notifies nobody.
+func (p *Panel) agentAutoUpgrade(ctx context.Context) {
+	if !p.settings().AgentAutoUpgrade {
+		return
+	}
+	sums := p.agentSHA256()
+	if len(sums) == 0 {
+		return
+	}
+	list, err := p.outdatedAgents(ctx, 0)
+	if err != nil {
+		return
+	}
+	var names []string
+	for _, s := range list {
+		if len(names) == agentAutoBatch {
+			break
+		}
+		if !s.Online || s.Guest || !update.Newer(Version, s.AgentVersion) {
+			continue
+		}
+		var recent int
+		if err := p.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM actions WHERE server_id = ? AND kind = ? AND created_by = 0 AND created_at > ?`,
+			s.ID, proto.ActionUpgradeAgent, now()-agentAutoRetry).Scan(&recent); err != nil || recent > 0 {
+			continue
+		}
+		if _, skip, err := p.queueAgentUpgrade(ctx, s, sums, 0, false); err == nil && skip == "" {
+			names = append(names, s.Name)
+		}
+	}
+	if len(names) > 0 {
+		p.event(0, "info", "agents_upgrading", 0, 0, 0, fmt.Sprintf("Upgrading the agent to %s by itself on %s - nobody is disconnected", Version, strings.Join(names, ", ")), nil)
+	}
 }

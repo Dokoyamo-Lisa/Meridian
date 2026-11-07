@@ -513,7 +513,7 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 	outs := append(append(codeOut, plan.outbounds...), passOut...)
 	rules := append(append(codeRules, plan.rules...), passRules...)
 	// a protocol's blocked sites come before all of those: nothing it carries reaches them
-	rules = append(blockedRules(nodes), rules...)
+	rules = append(append(blockedRules(nodes), userBlockedRules(nodes, subs)...), rules...)
 	// devices over a user's limit are turned away before anything else (limits.go)
 	rules = append(p.limitsFor(srv, nodes, subs, st), rules...)
 	xr.Base = xrayBase(srv, outs, rules, plan.balancers, plan.observe)
