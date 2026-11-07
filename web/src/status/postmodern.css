@@ -1,4 +1,4 @@
-/* The Postmodern look for the status page and the users' page (its colour tokens and paper are in
+/* The Postmodernism look for the status page and the users' page (its colour tokens and paper are in
    ../themes.css). The header is a canary band; the overview keeps its one-screen grid, its panels
    under a heavy black rule with their name on a coloured tag (a box would not fit the screen); the
    users' page, the server cards and the drawers become outlined boards with hard shadows. */
@@ -35,7 +35,7 @@
 :root[data-theme="postmodern"] .verdict[data-level="crit"] .v-ic { background: var(--pm-tomato); color: var(--pm-edge); }
 
 /* ------------------------------------------------------------------ no globe
-   Postmodern's overview has no globe: the middle column is the figures and the servers, and the
+   Postmodernism's overview has no globe: the middle column is the figures and the servers, and the
    servers' list takes the room. The figures under the globe stay; the globe pauses itself while it
    is not shown, and its panel no longer takes a number. */
 :root[data-theme="postmodern"] .globe-area { flex: none; min-height: 0; counter-increment: none; }

@@ -320,12 +320,12 @@ a.dl{color:var(--accent)}
 .look-postmodern .app,.look-postmodern .link input,.look-postmodern .qr{border:2px solid #17151a;border-radius:0;background:#fff;box-shadow:4px 4px 0 #17151a}
 .look-postmodern .app:hover{background:#ffd23f}.look-postmodern button.btn{border:2px solid #17151a;border-radius:999px;background:#fff;box-shadow:2px 2px 0 #17151a;font-weight:600}
 .look-postmodern .bar{height:10px;border:1.5px solid #17151a;border-radius:0;background:#fff}.look-postmodern .bar i{background:repeating-linear-gradient(-45deg,#2346d8 0 5px,#4a68ec 5px 10px)}
-.look-time .brand{font:300 12px/1 var(--display);letter-spacing:.32em;text-transform:uppercase;color:var(--ink)}.look-time .brand .mark{color:var(--ink2)}
-.look-time h1{font-size:28px;font-weight:200;letter-spacing:.2em;text-transform:uppercase}
-.look-time section{border-top:1px solid var(--line2)}.look-time h2{font:500 10.5px/1.3 -apple-system,system-ui,sans-serif;letter-spacing:.22em;text-transform:uppercase;color:var(--ink2)}
-.look-time .app{border-radius:2px;background:#0d1116}.look-time .app:hover{background:#131920;box-shadow:none}
-.look-time .link input{border-radius:2px;background:rgba(0,0,0,.3)}.look-time button.btn{border-radius:2px;border-color:#e0a458;background:#e0a458;color:#14100a;font-size:11px;letter-spacing:.14em;text-transform:uppercase}
-.look-time .qr{border-radius:2px}.look-time .bar{height:2px;border-radius:0;background:var(--line2)}.look-time .bar i{border-radius:0;background:#e0a458}
+.look-time .brand{font:400 20px/1 var(--display);letter-spacing:0;text-transform:none;color:var(--ink)}
+.look-time h1{font-size:56px;letter-spacing:-.01em}
+.look-time section{border-top:1px solid var(--line2)}.look-time h2{font:400 24px/1.15 var(--display);letter-spacing:0;text-transform:none;color:var(--ink)}
+.look-time .app{border-radius:0;border-color:var(--line2);background:none}.look-time .app:hover{background:rgba(242,244,248,.06);box-shadow:none}
+.look-time .link input{border-radius:0;background:none}.look-time button.btn{border:1px solid #f2f4f8;border-radius:0;background:#f2f4f8;color:#020305}
+.look-time .qr{border-radius:0}.look-time .bar{height:1px;border-radius:0;background:var(--line2);overflow:visible}.look-time .bar i{height:3px;margin-top:-1px;border-radius:0;background:#f2f4f8}
 </style></head><body><main>
 <div class="brand">{{if .Logo}}<img class="mark" src="{{.Logo}}" alt="">{{else}}{{.Mark}}{{end}}{{.Site}}</div>
 <h1>{{.Name}}</h1>

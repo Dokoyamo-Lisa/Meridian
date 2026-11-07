@@ -11,7 +11,7 @@ people's apps. Press **Save changes** at the bottom.
 ## 2. Logo
 
 Under **Logo**, choose a built-in one - **Rose** (Rosélune's own), **Umbrella** or **Confetti** (a
-cobalt crescent moon cradling a canary sun, in the Postmodern look's colours) - or **Upload your
+cobalt crescent moon cradling a canary sun, in the Postmodernism look's colours) - or **Upload your
 logo**: SVG, PNG, JPEG or WebP, up to 128 KB. It shows in the top bar, on sign-in and loading screens,
 on the status page, on subscription pages and in the browser tab.
 
@@ -26,14 +26,14 @@ back to a built-in one, press **Use the** *Rose* (or *Umbrella*).
 ## 3. The look
 
 **Look** sets the colours everyone starts with: **Romance** (Rosélune's own, the default),
-**Umbrella**, **Ice**, **Celadon**, **Ink**, **Paper**, **Mist**, **Postmodern**, **Time** - or **Follow the device** (Ice in the dark, Paper in the light). Click one to try it.
+**Umbrella**, **Ice**, **Celadon**, **Ink**, **Paper**, **Mist**, **Postmodernism**, **Time** - or **Follow the device** (Ice in the dark, Paper in the light). Click one to try it.
 Two go further than colours, and show no globe on the status page:
 
-- **Postmodern** - black outlines and blocks of bright colour, the panel's menu down the left side
+- **Postmodernism** - black outlines and blocks of bright colour, the panel's menu down the left side
   on a wide screen.
-- **Time** - the slow build of a film score: near-black with a cold steel cast, titles in thin wide
-  capitals, one amber note for what matters, hairlines instead of boxes, and a streak of light that
-  slowly swells behind the page. The sign-in opens between black bars.
+- **Time** - three quarters of a very large, plain watch dial stand at the left edge of every page, on
+  near black, and tell the time of your browser. Over it the page is set like a fine journal: great white type, fine rules and double
+  rules, a masthead with the menu beneath it.
 
 Each person can still pick their own look with the palette button at the top of the page; yours is
 what they see until they do.

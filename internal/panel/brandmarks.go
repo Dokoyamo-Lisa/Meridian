@@ -9,7 +9,7 @@ import (
 // draws the same; TestBuiltinMarksMatchWeb keeps them alike):
 //   - the rose, Rosélune's own: five rose petals, a blush bloom inside them, the moon at its heart
 //   - the umbrella: a canopy seen from above, eight panels alternating red and white
-//   - confetti, in the Postmodern look's colours: a canary sun with a black rim, a cobalt crescent
+//   - confetti, in the Postmodernism look's colours: a canary sun with a black rim, a cobalt crescent
 //     moon cradling it, a mint zigzag, a pink triangle and a cobalt dot
 // The pages that are not the app - the loading screens before it starts, subscription pages - get
 // them from here.
