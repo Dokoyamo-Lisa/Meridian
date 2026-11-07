@@ -30,8 +30,13 @@ follow.
 
 ### Agents that are older than the panel
 
-If **Agents** says *1 server runs an older agent* (or more), press **Upgrade all agents**. The panel
-asks *Upgrade the agent on 1 server?* and says what happens: each agent fetches the new agent from
+Agents follow the panel by themselves: when one is older than the panel it is upgraded within a few
+minutes, at any hour, without asking and without disconnecting anyone - a server that was offline
+when it comes back. Each time is noted in the timeline. To decide yourself, untick **Upgrade agents
+by themselves** under **Agents**.
+
+If **Agents** still says *1 server runs an older agent* (or more) after a few minutes, or the box is
+unticked, press **Upgrade all agents**. The panel asks *Upgrade the agent on 1 server?* and says what happens: each agent fetches the new agent from
 the panel and restarts itself, while the proxies keep running. Press **Upgrade agents**.
 
 **You should see**, within a minute, *Every server runs this panel's agent (1.4.0).* It is safe at any
@@ -113,7 +118,7 @@ sudo bash install-panel.sh --upgrade
 
 ```text
 Installing Rosélune 1.4.0
-Rosélune upgraded. Servers keep running; upgrade their agents in Settings > Updates (Upgrade all agents) when convenient.
+Rosélune upgraded. Servers keep running; their agents follow by themselves within minutes (Settings > Updates).
 ```
 
 ## If something goes wrong

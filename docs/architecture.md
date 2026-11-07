@@ -290,7 +290,9 @@ of its ACL, through its custom configuration, so any agent since 0.6 does it, an
 own settings. mieru (`egress` rules) and AnyTLS (a `sniff` and a `reject` route rule) get them in
 `SoloNode.Blocked` (`Caps.BlockSites`): a change of the list alone is written and waits for a
 confirmed restart (`Inst.Waits`, reported as pending). Snell and WireGuard refuse a list: nothing in
-them can act on it.
+them can act on it. A user can have a list of their own on chosen protocols (`subs.site_block`): the
+rule `sites-s<id>` on that user's emails, or `SoloUser.Blocked` added to the protocol's in their own
+process. Hysteria2's ACL knows no users, so it refuses that.
 
 Rules and balancers apply live (`adrules` replaces both together). A fastest-first balancer needs
 Xray's `observatory` (it probes the `lb` outbounds every minute), which Xray reads only when it

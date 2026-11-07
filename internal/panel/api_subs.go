@@ -328,6 +328,7 @@ type subInput struct {
 	Count      int      `json:"count" doc:"On create: how many users (1-500)"`
 	// limits per protocol (nodequota.go)
 	NodeQuotas    *map[string]int64 `json:"node_quotas" doc:"Limits per protocol: protocol id -> bytes per cycle, counted like the quota (0 takes one away); the whole set is replaced"`
+	SiteBlock     *SiteBlock        `json:"site_block" doc:"Editing: sites this user alone does not reach, each with its subdomains, and the protocols that holds on (Xray protocols, mieru, AnyTLS). Empty sites = none"`
 	NodeQuotaMode *string           `json:"node_quota_mode" doc:"alert (default: an alert only when one is used up) or stop (that protocol stops serving the user until the cycle starts over; their other protocols keep working)"`
 }
 
@@ -805,6 +806,13 @@ func (p *Panel) apiUpdateSub(w http.ResponseWriter, r *http.Request, a *Account)
 		}
 		touch = true
 	}
+	if in.SiteBlock != nil {
+		b, err := p.siteBlockFrom(r.Context(), s.AccountID, *in.SiteBlock)
+		if err != nil {
+			return err
+		}
+		s.SiteBlock, touch = b, true // the servers keep it
+	}
 	if in.NodeQuotas != nil {
 		q, err := p.nodeQuotasFrom(r.Context(), s.AccountID, *in.NodeQuotas, s.NodeQuotas)
 		if err != nil {
@@ -825,9 +833,9 @@ func (p *Panel) apiUpdateSub(w http.ResponseWriter, r *http.Request, a *Account)
 	err = p.db.Write(r.Context(), func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`UPDATE subs SET name = ?, note = ?, quota = ?, reset_day = ?, expires_at = ?, ip_limit = ?,
 			scope = ?, login = ?, password_hash = ?, updated_at = ?, count_mode = ?, starts_at = ?, reset_every = ?, speed_limit = ?,
-			device_mode = ?, cycle_start = ?, node_quotas = ?, node_quota_mode = ? WHERE id = ?`, s.Name, s.Note, s.Quota, s.ResetDay,
+			device_mode = ?, cycle_start = ?, node_quotas = ?, node_quota_mode = ?, site_block = ? WHERE id = ?`, s.Name, s.Note, s.Quota, s.ResetDay,
 			s.ExpiresAt, s.IPLimit, s.Scope.String(), s.Login, s.PasswordHash, s.UpdatedAt, s.CountMode, s.StartsAt, s.ResetEvery,
-			s.SpeedLimit, s.DeviceMode, s.CycleStart, s.NodeQuotas.String(), s.NodeQuotaMode, s.ID); err != nil {
+			s.SpeedLimit, s.DeviceMode, s.CycleStart, s.NodeQuotas.String(), s.NodeQuotaMode, s.SiteBlock.String(), s.ID); err != nil {
 			return err
 		}
 		if signOut { // a new name or password signs the user out everywhere

@@ -21,11 +21,19 @@ type speedView struct {
 }
 
 type userSpeed struct {
-	UserID int64     `json:"user_id"`
-	User   string    `json:"user"`
-	Up     int64     `json:"up" doc:"Bytes per second, all servers and protocols"`
-	Down   int64     `json:"down"`
-	IPs    []ipSpeed `json:"ips" doc:"The addresses the user is online from, with their speed on each server"`
+	UserID int64       `json:"user_id"`
+	User   string      `json:"user"`
+	Up     int64       `json:"up" doc:"Bytes per second, all servers and protocols"`
+	Down   int64       `json:"down"`
+	IPs    []ipSpeed   `json:"ips" doc:"The addresses the user is online from, with their speed on each server"`
+	Nodes  []nodeSpeed `json:"protocols" doc:"Their speed on each protocol (agents 1.4.5 and later)"`
+}
+
+type nodeSpeed struct {
+	ServerID int64 `json:"server_id"`
+	NodeID   int64 `json:"node_id"`
+	Up       int64 `json:"up" doc:"Bytes per second, all the user's addresses on this protocol"`
+	Down     int64 `json:"down"`
 }
 
 type ipSpeed struct {
@@ -66,6 +74,7 @@ func (p *Panel) apiLiveSpeed(w http.ResponseWriter, r *http.Request, a *Account)
 	out := speedView{Users: []userSpeed{}, Unmeasured: []string{}, Interval: every}
 	userRate := map[int64][2]int64{}
 	ipRate := map[ipKey][2]int64{}
+	nodeRate := map[int64][]nodeSpeed{}
 	for _, s := range servers {
 		if !s.Online {
 			continue
@@ -84,6 +93,11 @@ func (p *Panel) apiLiveSpeed(w http.ResponseWriter, r *http.Request, a *Account)
 			}
 			v := userRate[x.Sub]
 			userRate[x.Sub] = [2]int64{v[0] + x.Up, v[1] + x.Down}
+		}
+		for _, x := range ls.Live.NodeRates {
+			if _, ours := names[x.Sub]; ours && x.Up >= 0 && x.Down >= 0 {
+				nodeRate[x.Sub] = append(nodeRate[x.Sub], nodeSpeed{ServerID: s.ID, NodeID: x.Node, Up: x.Up, Down: x.Down})
+			}
 		}
 		for _, x := range ls.Live.IPRates {
 			ip, err := netip.ParseAddr(x.IP)
@@ -105,7 +119,10 @@ func (p *Panel) apiLiveSpeed(w http.ResponseWriter, r *http.Request, a *Account)
 		}
 	}
 	for sub, name := range names {
-		u := userSpeed{UserID: sub, User: name, IPs: []ipSpeed{}}
+		u := userSpeed{UserID: sub, User: name, IPs: []ipSpeed{}, Nodes: nodeRate[sub]}
+		if u.Nodes == nil {
+			u.Nodes = []nodeSpeed{}
+		}
 		v := userRate[sub]
 		u.Up, u.Down = v[0], v[1]
 		seen := map[ipKey]bool{}

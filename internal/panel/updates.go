@@ -326,6 +326,7 @@ type updateView struct {
 	CheckedAt  int64           `json:"checked_at"`
 	CheckError string          `json:"check_error"`
 	Auto       bool            `json:"auto_update" doc:"Whether new releases install by themselves (Settings › auto_update)"`
+	AgentAuto  bool            `json:"agent_auto_upgrade" doc:"Whether agents follow the panel by themselves (Settings › agent_auto_upgrade)"`
 	Ready      bool            `json:"ready" doc:"Whether this panel can install updates itself"`
 	NotReady   string          `json:"not_ready" doc:"Why it cannot, and what to do"`
 	State      string          `json:"state" doc:"idle | downloading (the panel fetches and checks the release) | installing (the updater service has it; the panel restarts)"`
@@ -345,7 +346,7 @@ func (p *Panel) viewOfUpdate(ctx context.Context, accountID int64) (*updateView,
 	st := p.updateState()
 	v := &updateView{Database: p.db.ServerVersion(), Current: Version, Latest: st.Latest, Newer: update.Newer(st.Latest, Version), URL: st.URL,
 		Published: st.Published, Notes: st.Notes, CheckedAt: st.CheckedAt, CheckError: st.CheckErr,
-		Auto: p.settings().AutoUpdate, State: "idle", Outdated: []outdatedAgent{}}
+		Auto: p.settings().AutoUpdate, AgentAuto: p.settings().AgentAutoUpgrade, State: "idle", Outdated: []outdatedAgent{}}
 	v.Ready, v.NotReady = p.updaterReady()
 	p.upd.mu.Lock()
 	if p.upd.busy {

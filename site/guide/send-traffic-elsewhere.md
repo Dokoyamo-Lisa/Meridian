@@ -85,6 +85,23 @@ protocol:
 > and AnyTLS. An app that connects to a bare address without naming the site is not
 > stopped: block that address with a traffic rule.
 
+### For one user only
+
+1. **Users** › the person › **Edit**.
+2. Open **Blocked sites** and write the sites, as above.
+3. Under **On these protocols**, tick one or several (**All** ticks every one that can).
+4. **Save**.
+
+**You should see** **Blocked sites (2 on 3 protocols)**, say, when you open **Edit** again. That person
+no longer reaches the sites through those protocols; everyone else still does. Xray protocols take
+it at once; for mieru and AnyTLS click **Restart now** on the server page.
+
+> **Good to know:** Hysteria2's rules are the same for everyone, so its box is greyed out here: block
+> sites for the whole protocol instead. Snell and WireGuard cannot block sites at all.
+
+> **If it says *choose the protocols*:** tick at least one protocol, or empty the sites to remove
+> the block.
+
 ## Load balancers
 
 1. **Routing** › **Add load balancer**.

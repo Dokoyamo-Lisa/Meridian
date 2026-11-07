@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks'
-import { DestRow, PanelEvent, IPRow, OnlineIP, Server, User, bits, dateTime, del, flag, get, post } from '../api'
+import { mergeByAddress } from '../livegroup'
+import { DestRow, PanelEvent, IPRow, OnlineIP, Server, SpeedView, User, bits, dateTime, del, flag, get, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import { Ago, Empty, ErrorBox, Field, Loading, Modal, PageHead, Search, Seg, Tabs, ask, errText, run, toast, useAsync, usePoll } from '../ui'
@@ -183,25 +184,6 @@ interface LiveRow extends OnlineIP {
   user_ips: number
 }
 
-// SpeedView is GET /api/live/speed: what the agents measured over their last report, per user (all
-// their servers and protocols, each user once - a proxy pass does not count twice) and per address
-// they are online from, per server.
-interface SpeedIP {
-  ip: string
-  server_id: number
-  up: number
-  down: number
-  shared: number
-}
-
-interface SpeedView {
-  up: number
-  down: number
-  users: { user_id: number; up: number; down: number; ips: SpeedIP[] }[]
-  unmeasured: string[]
-  interval: number
-}
-
 // LiveNow is the part of /api/overview the Live tab shows: what all servers' network carries now.
 interface LiveNow {
   rx: number
@@ -215,7 +197,7 @@ const updown = (d: number, u: number) => (
 )
 
 // LiveTab: everyone connected now, grouped by user - each user's speed (all servers and protocols,
-// counted once), and under them each connection with its address's speed on that server.
+// counted once), and under them each address once, with the protocols it uses and their speeds.
 function LiveTab() {
   const live = useAsync(() => get<LiveRow[]>('/api/live'))
   const speed = useAsync(() => get<SpeedView>('/api/live/speed'))
@@ -230,7 +212,6 @@ function LiveTab() {
   if (!live.data) return live.error ? <ErrorBox error={live.error} retry={live.reload} /> : <Loading />
   const sp = speed.data
   const userSpeed = new Map((sp?.users || []).map((u) => [u.user_id, u]))
-  const ipSpeed = (r: LiveRow) => userSpeed.get(r.user_id)?.ips.find((x) => x.ip === r.ip && x.server_id === r.server_id)
   const t = q.trim().toLowerCase()
   const rows = live.data.filter((r) => !t || [r.ip, r.user, r.server, r.protocol, r.country, r.city, r.org].some((x) => (x || '').toLowerCase().includes(t)))
   const groups = new Map<number, LiveRow[]>()
@@ -304,7 +285,7 @@ function LiveTab() {
                 const r0 = list[0]
                 const u = userSpeed.get(id)
                 const overLimit = r0.ip_limit > 0 && r0.user_ips > r0.ip_limit
-                const shown = new Set<string>()
+                const addresses = mergeByAddress(list, u?.ips || [])
                 return [
                   <tr class="group">
                     <td colSpan={3}>
@@ -316,24 +297,29 @@ function LiveTab() {
                         {r0.ip_limit > 0 ? ` of ${r0.ip_limit} allowed` : ''}
                       </span>
                     </td>
-                    <td class="right nowrap num">
-                      <b>{u ? updown(u.down, u.up) : <span class="faint">—</span>}</b>
+                    <td class="right nowrap num live-total" title="This user now: all their servers and protocols, counted once">
+                      {u ? (
+                        <>
+                          <span title="Download">↓ {bits(u.down)}</span>
+                          <span class="lt-up" title="Upload">
+                            ↑ {bits(u.up)}
+                          </span>
+                        </>
+                      ) : (
+                        <span class="faint">idle</span>
+                      )}
                     </td>
                     <td class="hide-sm" />
                     <td />
                   </tr>,
-                  ...list.map((r) => {
-                    // an address's speed is per server, every protocol together: once per address and server
-                    const key = `${r.ip}|${r.server_id}`
-                    const x = shown.has(key) ? undefined : ipSpeed(r)
-                    const first = !shown.has(key)
-                    shown.add(key)
+                  ...addresses.map((a) => {
+                    const r = a.first
                     return (
                       <tr>
                         <td class="mono" style="padding-left:24px">
-                          {r.ip}
-                          {x && x.shared > 0 && (
-                            <span class="badge warn" style="margin-left:6px" title={`${x.shared} other user${x.shared === 1 ? ' is' : 's are'} online from this address on this server: its speed is theirs too`}>
+                          {a.ip}
+                          {a.shared > 0 && (
+                            <span class="badge warn" style="margin-left:6px" title={`${a.shared} other user${a.shared === 1 ? ' is' : 's are'} online from this address: its speed is theirs too`}>
                               shared
                             </span>
                           )}
@@ -342,16 +328,30 @@ function LiveTab() {
                           <Where country={r.country} city={r.city} org={r.org} asn={r.asn} />
                         </td>
                         <td class="hide-sm">
-                          <a href={`/servers/${r.server_id}`}>{r.server}</a> <span class="faint">· {r.protocol}</span>
+                          <div class="live-conns">
+                            {a.conns.map((c) => {
+                              const n = u?.protocols.find((x) => x.node_id === c.node_id && x.server_id === c.server_id)
+                              return (
+                                <span class="live-conn">
+                                  <a href={`/servers/${c.server_id}`}>{c.server}</a> <span class="faint">· {c.protocol}</span>
+                                  {n && (
+                                    <span class="num lc-speed" title="This user on this protocol, all their addresses">
+                                      ↓ {bits(n.down)} ↑ {bits(n.up)}
+                                    </span>
+                                  )}
+                                </span>
+                              )
+                            })}
+                          </div>
                         </td>
-                        <td class="right nowrap num" title="This address on this server, every protocol, all that crossed the network">
-                          {x ? updown(x.down, x.up) : first ? <span class="faint">—</span> : null}
+                        <td class="right nowrap num" title="This address, every protocol, all that crossed the network">
+                          {a.up || a.down ? updown(a.down, a.up) : <span class="faint">—</span>}
                         </td>
                         <td class="hide-sm nowrap muted">
-                          <Ago ts={r.since} />
+                          <Ago ts={a.since} />
                         </td>
                         <td class="actions">
-                          <button class="btn sm ghost" onClick={() => setBlock(r)} title={`Block ${r.ip}`}>
+                          <button class="btn sm ghost" onClick={() => setBlock(r)} title={`Block ${a.ip}`}>
                             <Icon name="ban" size="sm" />
                             <span class="hide-sm">Block</span>
                           </button>

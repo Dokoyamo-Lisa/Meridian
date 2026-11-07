@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.4.5 - 2026-11-07
+
+Agents that keep up by themselves, blocked sites for one user, each user's speed in the list of users,
+and an Overview that keeps its shape. Upgrade the panel (**Settings › Updates** - nobody is
+disconnected): from then on the agents follow by themselves. Blocking sites for one user on mieru or
+AnyTLS takes the restart the page asks for.
+
+- **Block sites for one user.** A user's **Edit** has **Blocked sites** too: write the sites, tick one
+  protocol or several, and that user alone no longer reaches them there - nobody else is affected.
+  It works on VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP (at once) and mieru and AnyTLS (at the
+  next **Restart now**). Hysteria2's rules are the same for everyone, so it can only block for the
+  whole protocol; Snell and WireGuard cannot block sites.
+- **A README worth reading,** with pictures of the panel from the demo fleet. The demo agents report
+  speed now as real ones do.
+- **Monitor › Live takes less room.** An address connected through several protocols is one line now,
+  with each protocol and its own speed beside it (from agents 1.4.5) and the address's speed at the
+  end. Each user's total stands out on their own band, in larger figures.
+- **Agents upgrade by themselves.** An agent older than the panel is now upgraded without asking,
+  within minutes and at any hour - a server that was offline when it comes back. Upgrading an agent
+  never touches traffic, so nobody is disconnected; it is only noted in the timeline. On by default;
+  **Settings › Updates › Upgrade agents by themselves** turns it off. Agents are only ever moved up,
+  and servers shared by another panel follow that panel.
+- **The Overview's list of servers stays short.** It shows eight servers, those in trouble first,
+  then the busiest, and a line to the rest; **Needs attention** scrolls inside its panel. The page
+  keeps its shape with any number of servers.
+- **Speed now in the list of users.** **Users** has a new column with each user's download and
+  upload right now, over all their servers and protocols, updated every 5 seconds: the same figures
+  as Monitor › Live, each user counted once.
+
 ## 1.4.4 - 2026-11-07
 
 Block sites on one protocol, a network profile on the status page, and a new look. Upgrade the panel

@@ -1,6 +1,21 @@
 # Meridian status
 
-Last updated 2026-11-07 (version 1.4.4).
+Last updated 2026-11-07 (version 1.4.5).
+
+## Tested for 1.4.5 (a local panel, a VM running the agent, real clients)
+
+- **Agents upgrading by themselves**: a panel built as a newer version; the VM's older agent upgraded
+  itself 25 seconds after the panel came up, with nobody asked. The agent's process changed; those of
+  Xray, Hysteria2 and AnyTLS did not. By tests: offline, newer, shared and current agents left alone,
+  the setting off, no retry within six hours.
+- **Blocked sites for one user**: `test/e2e/sites-live.sh` with two users, the list on one of them on
+  VLESS, AnyTLS and mieru: blocked there; not on the protocols left unticked; nothing for the other
+  user. In mieru the name asked for counts, not one in the connection.
+- **Overview**: 41 servers at 1440 px: the two columns equal, eight servers and a line to the rest;
+  the status page's list folded at 1440 and 800 px. The user's form in a browser.
+- **Speed in the list of users**: sample figures in a browser, at desktop and phone width; the figures
+  themselves are Monitor › Live's, tested for 1.4.3.
+- **Not run**: the PostgreSQL suite; an upgrade from 1.4.4 on a real panel.
 
 ## Tested for 1.4.4 (a local panel, a VM running agent 1.4.4, real clients)
 

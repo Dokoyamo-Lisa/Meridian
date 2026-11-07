@@ -55,3 +55,21 @@ func TestIPRates(t *testing.T) {
 		t.Error("speeds with nobody online, or nothing counted")
 	}
 }
+
+func TestNodeRates(t *testing.T) {
+	traffic := []proto.UserTraffic{
+		{Sub: 7, Node: 1, Up: 10_000, Down: 100_000},
+		{Sub: 7, Node: 1, Up: 10_000, Down: 100_000}, // the same protocol, reported twice
+		{Sub: 7, Node: 2, Up: 10_000},
+		{Sub: 0, Node: 3, Up: 99_000}, // a proxy pass: no user
+		{Sub: 9, Node: 1},             // idle
+	}
+	got := nodeRates(traffic, 10)
+	want := []proto.NodeRate{{Sub: 7, Node: 1, Up: 2000, Down: 20000}, {Sub: 7, Node: 2, Up: 1000}}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("%+v, want %+v", got, want)
+	}
+	if nodeRates(traffic, 0) != nil {
+		t.Error("a speed with no interval")
+	}
+}

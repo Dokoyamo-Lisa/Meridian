@@ -41,6 +41,39 @@ func userRates(traffic []proto.UserTraffic, secs float64) []proto.UserRate {
 	return out
 }
 
+// nodeRates is the same speed protocol by protocol.
+func nodeRates(traffic []proto.UserTraffic, secs float64) []proto.NodeRate {
+	if secs < 1 {
+		return nil
+	}
+	by := map[[2]int64]*proto.NodeRate{}
+	for _, t := range traffic {
+		if t.Sub <= 0 {
+			continue
+		}
+		k := [2]int64{t.Sub, t.Node}
+		if by[k] == nil {
+			by[k] = &proto.NodeRate{Sub: t.Sub, Node: t.Node}
+		}
+		by[k].Up += t.Up
+		by[k].Down += t.Down
+	}
+	out := make([]proto.NodeRate, 0, len(by))
+	for _, r := range by {
+		r.Up, r.Down = int64(float64(r.Up)/secs), int64(float64(r.Down)/secs)
+		if r.Up > 0 || r.Down > 0 {
+			out = append(out, *r)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Sub != out[j].Sub {
+			return out[i].Sub < out[j].Sub
+		}
+		return out[i].Node < out[j].Node
+	})
+	return out
+}
+
 // ipRates is the speed of each client address users are online from (online), from what the
 // firewall counted on the users' protocols' ports (nft.TakeIPBytes). Any other sender is left out: a
 // proxy pass's entry server talking to this exit, a scanner, a panel - none of them is a user's device.

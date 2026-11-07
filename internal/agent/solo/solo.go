@@ -24,6 +24,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -113,6 +114,17 @@ var (
 	keyRE  = regexp.MustCompile(`^[0-9]{1,15}-[0-9]{1,15}$`)
 	siteRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
 )
+
+// allSites is a protocol's blocked sites and a user's own, each once.
+func allSites(node, user []string) []string {
+	out := slices.Clone(node)
+	for _, d := range user {
+		if !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
 
 // sites is an instance's blocked sites as a list.
 func (i Inst) sites() []string {
@@ -428,7 +440,7 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.SoloNode, c proto.Core
 		}
 		for _, u := range n.Users {
 			i := Inst{Kind: n.Kind, Transport: n.Transport, Bind: n.Bind, Node: n.NodeID, Sub: u.Sub, Port: u.Port, Name: u.Name, Secret: u.Secret,
-				Blocked: strings.Join(n.Blocked, ",")}
+				Blocked: strings.Join(allSites(n.Blocked, u.Blocked), ",")}
 			if err := clean(i); err != nil {
 				errs = append(errs, fmt.Sprintf("n%d user %d: %v", n.NodeID, u.Sub, err))
 				continue

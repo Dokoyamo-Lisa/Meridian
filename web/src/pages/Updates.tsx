@@ -19,6 +19,7 @@ interface UpdateView {
   checked_at: number
   check_error: string
   auto_update: boolean
+  agent_auto_upgrade: boolean
   ready: boolean
   not_ready: string
   state: 'idle' | 'downloading' | 'installing'
@@ -111,6 +112,14 @@ export function Updates() {
       await put<PanelSettings>('/api/settings', { ...cur, auto_update: on })
       v.set({ ...u, auto_update: on })
       toast(on ? 'New releases install by themselves at night' : 'Automatic updates are off')
+    })
+
+  const setAgentAuto = (on: boolean) =>
+    act('auto', async () => {
+      const cur = await get<PanelSettings>('/api/settings')
+      await put<PanelSettings>('/api/settings', { ...cur, agent_auto_upgrade: on })
+      v.set({ ...u, agent_auto_upgrade: on })
+      toast(on ? 'Agents follow the panel by themselves' : 'Agents now wait for you')
     })
 
   const working = u.state === 'downloading' || u.state === 'installing'
@@ -229,11 +238,12 @@ export function Updates() {
           )}
         </div>
         {u.outdated_agents.length === 0 ? (
-          <p class="muted" style="margin:0">Every server runs this panel's agent ({u.current}).</p>
+          <p class="muted" style="margin:0 0 12px">Every server runs this panel's agent ({u.current}).</p>
         ) : (
           <>
             <p class="muted" style="margin-top:0">
               {u.outdated_agents.length} server{u.outdated_agents.length === 1 ? ' runs' : 's run'} an older agent. Upgrading never disconnects anyone.
+              {u.agent_auto_upgrade ? ' Online servers catch up by themselves within a few minutes.' : ''}
             </p>
             <div class="table-wrap">
               <table class="t">
@@ -254,6 +264,13 @@ export function Updates() {
             </div>
           </>
         )}
+        <Check
+          checked={u.agent_auto_upgrade}
+          disabled={busy !== ''}
+          onChange={(on) => void setAgentAuto(on)}
+          label="Upgrade agents by themselves"
+          hint="When an agent is older than the panel, it is upgraded without asking: within minutes, at any hour, a server that was offline when it comes back. The proxies keep running, so nobody is disconnected. It is noted in the timeline. Servers another panel shares with you follow that panel."
+        />
       </section>
     </>
   )

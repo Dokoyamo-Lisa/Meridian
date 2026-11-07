@@ -17,27 +17,28 @@ import (
 // Settings are panel-wide. They are always written out in full, so what the UI shows is what is
 // stored - no field silently falls back to a frontend default.
 type Settings struct {
-	SiteTitle       string `json:"site_title" doc:"Panel name shown on pages and in apps"`
-	PublicURL       string `json:"public_url" doc:"How agents and browsers reach the panel, e.g. https://panel.example.com"`
-	SubURL          string `json:"sub_url" doc:"Optional separate base URL for subscription links"`
-	Timezone        string `json:"timezone" doc:"IANA timezone for day boundaries, e.g. Asia/Shanghai"`
-	ConnLog         bool   `json:"conn_log" doc:"Record connecting IPs"`
-	DestLog         bool   `json:"dest_log" doc:"Record destinations"`
-	LogRetention    int    `json:"log_retention" doc:"Days to keep IP and destination history (1-400)"`
-	ReportInterval  int    `json:"report_interval" doc:"Seconds between agent reports (5-120)"`
-	XrayVersion     string `json:"xray_version" doc:"Xray version new servers install, e.g. 26.3.27"`
-	HysteriaVersion string `json:"hysteria_version" doc:"Hysteria version new servers install"`
-	RealmVersion    string `json:"realm_version" doc:"realm version new servers install"`
-	MitaVersion     string `json:"mita_version" doc:"mieru server (mita) version servers install for mieru"`
-	SnellVersion    string `json:"snell_version" doc:"snell-server version servers install for Snell - one Rosélune can verify (5.0.1)"`
-	SingBoxVersion  string `json:"singbox_version" doc:"sing-box version servers install for AnyTLS"`
-	Mirror          bool   `json:"mirror" doc:"Agents may download cores through the panel, when their official release does not answer"`
-	CoreAutoUpgrade bool   `json:"core_auto_upgrade" doc:"Servers' Xray and Hysteria upgrade themselves to the versions here, at night (03:00 to 05:00 panel time), one server at a time - each restarts once and its users reconnect by themselves. Off: only a person upgrades them"`
-	AutoUpdate      bool   `json:"auto_update" doc:"Install new Rosélune releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts"`
-	AutoRelay       int64  `json:"auto_relay" doc:"A server that keeps losing the panel (see panel_trouble on servers) is switched to reach it through this server, once - by itself, with an event; switch it back on its page at any time. 0 = off: the panel only tells"`
-	Maintenance     bool   `json:"maintenance" doc:"Maintenance mode: only the supervisor can sign in; everyone else - users on their own pages, other accounts - sees \"Maintenance in progress\" and is signed out. Servers, protocols and subscriptions keep working"`
-	MaintenanceNote string `json:"maintenance_note" doc:"A line added to the maintenance message, e.g. when it ends"`
-	AgentTransport  string `json:"agent_transport" doc:"How agents talk to the panel: ws = each over one lasting WebSocket (the default; an agent makes HTTP requests by itself while its WebSocket cannot be opened, e.g. behind a proxy that does not pass WebSockets) | http = HTTP requests only. Agents follow within a minute; nothing restarts"`
+	SiteTitle        string `json:"site_title" doc:"Panel name shown on pages and in apps"`
+	PublicURL        string `json:"public_url" doc:"How agents and browsers reach the panel, e.g. https://panel.example.com"`
+	SubURL           string `json:"sub_url" doc:"Optional separate base URL for subscription links"`
+	Timezone         string `json:"timezone" doc:"IANA timezone for day boundaries, e.g. Asia/Shanghai"`
+	ConnLog          bool   `json:"conn_log" doc:"Record connecting IPs"`
+	DestLog          bool   `json:"dest_log" doc:"Record destinations"`
+	LogRetention     int    `json:"log_retention" doc:"Days to keep IP and destination history (1-400)"`
+	ReportInterval   int    `json:"report_interval" doc:"Seconds between agent reports (5-120)"`
+	XrayVersion      string `json:"xray_version" doc:"Xray version new servers install, e.g. 26.3.27"`
+	HysteriaVersion  string `json:"hysteria_version" doc:"Hysteria version new servers install"`
+	RealmVersion     string `json:"realm_version" doc:"realm version new servers install"`
+	MitaVersion      string `json:"mita_version" doc:"mieru server (mita) version servers install for mieru"`
+	SnellVersion     string `json:"snell_version" doc:"snell-server version servers install for Snell - one Rosélune can verify (5.0.1)"`
+	SingBoxVersion   string `json:"singbox_version" doc:"sing-box version servers install for AnyTLS"`
+	Mirror           bool   `json:"mirror" doc:"Agents may download cores through the panel, when their official release does not answer"`
+	CoreAutoUpgrade  bool   `json:"core_auto_upgrade" doc:"Servers' Xray and Hysteria upgrade themselves to the versions here, at night (03:00 to 05:00 panel time), one server at a time - each restarts once and its users reconnect by themselves. Off: only a person upgrades them"`
+	AgentAutoUpgrade bool   `json:"agent_auto_upgrade" doc:"Servers' agents follow the panel by themselves, within minutes of it changing version, with nobody asked and nobody disconnected: the proxies keep running. On by default"`
+	AutoUpdate       bool   `json:"auto_update" doc:"Install new Rosélune releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts"`
+	AutoRelay        int64  `json:"auto_relay" doc:"A server that keeps losing the panel (see panel_trouble on servers) is switched to reach it through this server, once - by itself, with an event; switch it back on its page at any time. 0 = off: the panel only tells"`
+	Maintenance      bool   `json:"maintenance" doc:"Maintenance mode: only the supervisor can sign in; everyone else - users on their own pages, other accounts - sees \"Maintenance in progress\" and is signed out. Servers, protocols and subscriptions keep working"`
+	MaintenanceNote  string `json:"maintenance_note" doc:"A line added to the maintenance message, e.g. when it ends"`
+	AgentTransport   string `json:"agent_transport" doc:"How agents talk to the panel: ws = each over one lasting WebSocket (the default; an agent makes HTTP requests by itself while its WebSocket cannot be opened, e.g. behind a proxy that does not pass WebSockets) | http = HTTP requests only. Agents follow within a minute; nothing restarts"`
 
 	StatusPage    string          `json:"status_page" doc:"off | home (the site's front page is the status page; the panel stays at /overview) | page (at /status)"`
 	StatusDomain  string          `json:"status_domain" doc:"Optional domain that shows only the status page and the users' sign-in, e.g. status.example.com (point it at the panel)"`
@@ -67,32 +68,33 @@ type Settings struct {
 
 func defaultSettings() Settings {
 	return Settings{
-		SiteTitle:       productName,
-		Timezone:        "UTC",
-		ConnLog:         true,
-		DestLog:         true,
-		LogRetention:    30,
-		ReportInterval:  10,
-		XrayVersion:     "26.3.27",
-		HysteriaVersion: "2.13.0",
-		RealmVersion:    "2.9.6",
-		MitaVersion:     "3.38.0",
-		SnellVersion:    "5.0.1",
-		SingBoxVersion:  "1.14.2",
-		Mirror:          true,
-		StatusPage:      "off",
-		StatusPublic:    true,
-		StatusOverview:  true,
-		StatusEvents:    true,
-		StatusCharts:    slices.Clone(chartKinds),
-		DefaultTone:     "romance",
-		LogoMark:        "rose",
-		LogoAnimation:   "assemble",
-		AgentPort:       50000,
-		AgentTransport:  "ws",
-		QuotaMode:       "strict",
-		QuotaGraceMin:   10,
-		QuotaGraceGB:    5,
+		SiteTitle:        productName,
+		Timezone:         "UTC",
+		ConnLog:          true,
+		DestLog:          true,
+		LogRetention:     30,
+		ReportInterval:   10,
+		XrayVersion:      "26.3.27",
+		HysteriaVersion:  "2.13.0",
+		RealmVersion:     "2.9.6",
+		MitaVersion:      "3.38.0",
+		SnellVersion:     "5.0.1",
+		SingBoxVersion:   "1.14.2",
+		Mirror:           true,
+		StatusPage:       "off",
+		StatusPublic:     true,
+		StatusOverview:   true,
+		StatusEvents:     true,
+		StatusCharts:     slices.Clone(chartKinds),
+		DefaultTone:      "romance",
+		AgentAutoUpgrade: true,
+		LogoMark:         "rose",
+		LogoAnimation:    "assemble",
+		AgentPort:        50000,
+		AgentTransport:   "ws",
+		QuotaMode:        "strict",
+		QuotaGraceMin:    10,
+		QuotaGraceGB:     5,
 	}
 }
 
@@ -549,6 +551,7 @@ type Sub struct {
 	NodeQuotas    NodeQuotas `json:"node_quotas" doc:"Limits per protocol: protocol id -> bytes per cycle, counted like the quota"`
 	NodeQuotaMode string     `json:"node_quota_mode" doc:"When a protocol's limit is used up: '' = an alert only; stop = that protocol stops serving the user until the cycle starts over"`
 	OutAt         int64      `json:"out_at" doc:"When the user's data ran out (Unix seconds); 0 = it has not"`
+	SiteBlock     SiteBlock  `json:"site_block" doc:"Sites this user alone does not reach, on the protocols chosen"`
 }
 
 // start is when the user's period started: starts_at, or their creation.
@@ -616,20 +619,21 @@ func usersOf(subs []*Sub, n *Node) []*Sub {
 const subCols = `id, account_id, name, note, token, uuid, secret, paused, paused_at, quota, reset_day, expires_at,
 ip_limit, scope, cycle_up, cycle_down, cycle_start, total_up, total_down, last_online_at, last_fetch_at,
 last_fetch_ip, last_fetch_ua, created_at, updated_at, login, password_hash, last_login_at, last_login_ip,
-count_mode, starts_at, reset_every, speed_limit, device_mode, plan_id, node_quotas, node_quota_mode, out_at`
+count_mode, starts_at, reset_every, speed_limit, device_mode, plan_id, node_quotas, node_quota_mode, out_at, site_block`
 
 func scanSub(r interface{ Scan(...any) error }) (*Sub, error) {
 	s := &Sub{}
-	var scope, nq string
+	var scope, nq, block string
 	err := r.Scan(&s.ID, &s.AccountID, &s.Name, &s.Note, &s.Token, &s.UUID, &s.Secret, &s.Paused, &s.PausedAt,
 		&s.Quota, &s.ResetDay, &s.ExpiresAt, &s.IPLimit, &scope, &s.CycleUp, &s.CycleDown,
 		&s.CycleStart, &s.TotalUp, &s.TotalDown, &s.LastOnlineAt, &s.LastFetchAt, &s.LastFetchIP, &s.LastFetchUA,
 		&s.CreatedAt, &s.UpdatedAt, &s.Login, &s.PasswordHash, &s.LastLoginAt, &s.LastLoginIP,
-		&s.CountMode, &s.StartsAt, &s.ResetEvery, &s.SpeedLimit, &s.DeviceMode, &s.PlanID, &nq, &s.NodeQuotaMode, &s.OutAt)
+		&s.CountMode, &s.StartsAt, &s.ResetEvery, &s.SpeedLimit, &s.DeviceMode, &s.PlanID, &nq, &s.NodeQuotaMode, &s.OutAt, &block)
 	if err != nil {
 		return nil, err
 	}
 	s.NodeQuotas = parseNodeQuotas(nq)
+	s.SiteBlock = parseSiteBlock(block)
 	s.CanSignIn = s.Login != "" && s.PasswordHash != ""
 	if scope != "" {
 		_ = json.Unmarshal([]byte(scope), &s.Scope)

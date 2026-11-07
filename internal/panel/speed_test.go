@@ -38,9 +38,10 @@ func TestLiveSpeed(t *testing.T) {
 	dana, eli := subs[0], subs[1]
 	const phone, entry = "198.51.100.7", "203.0.113.10"
 	h.p.live.put(tokyo, proto.Live{TS: now(),
-		Online:  []proto.OnlineUser{{Sub: dana, Node: 1, IPs: []proto.OnlineIP{{IP: phone}}}, {Sub: eli, Node: 1, IPs: []proto.OnlineIP{{IP: phone}}}},
-		Rates:   []proto.UserRate{{Sub: dana, Up: 2_000, Down: 500_000}, {Sub: eli, Up: 100, Down: 1_000}, {Sub: 9999, Up: 1, Down: 1}},
-		IPRates: []proto.IPRate{{IP: phone, Up: 2_100, Down: 501_000}, {IP: "not an address", Up: 5, Down: 5}},
+		Online:    []proto.OnlineUser{{Sub: dana, Node: 1, IPs: []proto.OnlineIP{{IP: phone}}}, {Sub: eli, Node: 1, IPs: []proto.OnlineIP{{IP: phone}}}},
+		NodeRates: []proto.NodeRate{{Sub: dana, Node: 77, Up: 2_000, Down: 500_000}, {Sub: 9999, Node: 77, Up: 1, Down: 1}},
+		Rates:     []proto.UserRate{{Sub: dana, Up: 2_000, Down: 500_000}, {Sub: eli, Up: 100, Down: 1_000}, {Sub: 9999, Up: 1, Down: 1}},
+		IPRates:   []proto.IPRate{{IP: phone, Up: 2_100, Down: 501_000}, {IP: "not an address", Up: 5, Down: 5}},
 	})
 	h.p.live.put(osaka, proto.Live{TS: now(), // the exit: the pass's traffic is no user's; Tokyo is a sender
 		IPRates: []proto.IPRate{{IP: entry, Up: 2_100, Down: 501_000}},
@@ -59,6 +60,9 @@ func TestLiveSpeed(t *testing.T) {
 	ips := d["ips"].([]any)
 	if len(ips) != 1 {
 		t.Fatalf("Dana's addresses: %v", ips)
+	}
+	if nodes := d["protocols"].([]any); len(nodes) != 1 || id(nodes[0].(map[string]any)["node_id"]) != 77 || id(nodes[0].(map[string]any)["down"]) != 500_000 {
+		t.Errorf("Dana's protocols: %v", d["protocols"])
 	}
 	ip := ips[0].(map[string]any)
 	if ip["ip"] != phone || ip["server"] != "Tokyo" || id(ip["down"]) != 501_000 || id(ip["shared"]) != 1 {

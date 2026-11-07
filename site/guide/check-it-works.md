@@ -5,8 +5,9 @@ not work".
 
 ## 1. See them online
 
-Open **Users**. The person's row says **Online**, with the number of devices online and the data
-used this cycle going up.
+Open **Users**. The person's row says **Online**, with the number of devices online, their
+**Speed now** (download and upload, updated every 5 seconds, a dash while they move no data) and the
+data used this cycle going up.
 
 ![The Users list with a user online](../img/guide/works-users.webp)
 

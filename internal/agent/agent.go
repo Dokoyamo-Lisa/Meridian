@@ -1357,7 +1357,7 @@ func (a *Agent) report(ctx context.Context) {
 		secs = time.Since(a.rateAt).Seconds()
 	}
 	a.rateAt = time.Now()
-	live.Rates, live.IPRates = userRates(traffic, secs), ipRates(ipBytes, live.Online, secs)
+	live.Rates, live.IPRates, live.NodeRates = userRates(traffic, secs), ipRates(ipBytes, live.Online, secs), nodeRates(traffic, secs)
 	pings := a.ping.Take()
 	var homePings []proto.PingResult
 	guestPings := map[int][]proto.PingResult{}
@@ -1385,7 +1385,7 @@ func (a *Agent) report(ctx context.Context) {
 		gConn, gDest := g.state != nil && g.state.Agent.ConnLog, g.state != nil && g.state.Agent.DestLog
 		gl := host
 		gl.Online, gl.Certs = p.online, p.certs
-		gl.Rates, gl.IPRates = userRates(p.traffic, secs), ipRates(ipBytes, p.online, secs)
+		gl.Rates, gl.IPRates, gl.NodeRates = userRates(p.traffic, secs), ipRates(ipBytes, p.online, secs), nodeRates(p.traffic, secs)
 		gl.Cores = map[string]proto.CoreStatus{}
 		for k, v := range host.Cores {
 			gl.Cores[k] = v

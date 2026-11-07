@@ -232,3 +232,12 @@ func TestBlockedSites(t *testing.T) {
 		t.Error("snell took a list")
 	}
 }
+
+func TestAllSites(t *testing.T) {
+	if got := allSites([]string{"a.com", "b.com"}, []string{"b.com", "c.com"}); strings.Join(got, ",") != "a.com,b.com,c.com" {
+		t.Errorf("%v", got)
+	}
+	if got := allSites(nil, nil); len(got) != 0 {
+		t.Errorf("%v", got)
+	}
+}

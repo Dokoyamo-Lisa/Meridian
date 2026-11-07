@@ -599,6 +599,13 @@ func (p *Panel) apiPutSettings(w http.ResponseWriter, r *http.Request, a *Accoun
 	case !s.CoreAutoUpgrade && old.CoreAutoUpgrade:
 		p.event(0, "info", "settings", 0, 0, a.ID, a.Username+" turned automatic core upgrades off: only a person upgrades servers' cores", nil)
 	}
+	if s.AgentAutoUpgrade != old.AgentAutoUpgrade {
+		what := "turned automatic agent upgrades off: only a person upgrades agents"
+		if s.AgentAutoUpgrade {
+			what = "let agents follow the panel by themselves"
+		}
+		p.event(0, "info", "settings", 0, 0, a.ID, a.Username+" "+what, nil)
+	}
 	_ = p.compileAll(r.Context())
 	writeJSON(w, http.StatusOK, p.settings())
 	return nil

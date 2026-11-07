@@ -518,6 +518,8 @@ export interface User {
   reset_every: number
   /** When usage next resets; 0 = never. */
   next_reset: number
+  /** Sites this user alone does not reach, on the protocols chosen. */
+  site_block?: { sites: string[]; protocols: number[] }
   /** Mbps for the user's devices together on each server; 0 = no limit. */
   speed_limit: number
   /** Devices over ip_limit: '' = an alert only, refuse = turned away. */
@@ -665,6 +667,7 @@ export interface Settings {
   default_tone: string
   agent_port: number
   auto_update: boolean
+  agent_auto_upgrade: boolean
   /** A server that keeps losing the panel is moved to reach it through this server, once; 0 = off. */
   auto_relay: number
   /** How agents talk to the panel: ws = one lasting WebSocket each (the default), http = HTTP requests. */
@@ -915,6 +918,25 @@ export function size(n: number | undefined | null): string {
     if (v >= 1 && Math.abs(Math.round(v * 100) - v * 100) < 1e-6) return (n < 0 ? '-' : '') + String(Math.round(v * 100) / 100) + ' ' + u[i]
   }
   return bytes(n, 2)
+}
+
+// SpeedView is GET /api/live/speed: what the agents measured over their last report, per user (all
+// their servers and protocols, each user once - a proxy pass does not count twice) and per address
+// they are online from, per server.
+export interface SpeedIP {
+  ip: string
+  server_id: number
+  up: number
+  down: number
+  shared: number
+}
+
+export interface SpeedView {
+  up: number
+  down: number
+  users: { user_id: number; up: number; down: number; ips: SpeedIP[]; protocols: { server_id: number; node_id: number; up: number; down: number }[] }[]
+  unmeasured: string[]
+  interval: number
 }
 
 export function rate(n: number | undefined): string {

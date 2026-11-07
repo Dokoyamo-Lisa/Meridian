@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -25,6 +26,10 @@ import (
 //     settings, saving restarts it once (the panel's window asks first);
 //   - mieru and AnyTLS: rules in each user's configuration (agents with Caps.BlockSites), waiting as
 //     pending restart for a click (internal/agent/solo).
+//
+// A user can have a list of their own too (Sub.SiteBlock), on protocols the supervisor picks: Xray by a
+// rule on that user's email on those protocols, mieru and AnyTLS in that user's own process. Hysteria2's
+// ACL knows no users, so it takes only the whole protocol's list.
 //
 // Snell and WireGuard have nothing to do it with, so they are refused: a list that does nothing would
 // be worse than none. Whole addresses and countries stay with the traffic rules (routing.go).
@@ -177,4 +182,110 @@ func (c *mcpCall) hyBlockedChange(id int64, a map[string]any) bool {
 		}
 	}
 	return !slices.Equal(want, n.Blocked)
+}
+
+// SiteBlock is one user's own list, and the protocols it holds on.
+type SiteBlock struct {
+	Sites     []string `json:"sites" doc:"Each with its subdomains"`
+	Protocols []int64  `json:"protocols" doc:"Protocol ids"`
+}
+
+func (b SiteBlock) String() string {
+	if len(b.Sites) == 0 {
+		return ""
+	}
+	j, _ := json.Marshal(b)
+	return string(j)
+}
+
+func parseSiteBlock(s string) SiteBlock {
+	b := SiteBlock{Sites: []string{}, Protocols: []int64{}}
+	if s != "" {
+		_ = json.Unmarshal([]byte(s), &b)
+	}
+	return b
+}
+
+// on is the user's sites on a protocol.
+func (b SiteBlock) on(node int64) []string {
+	if slices.Contains(b.Protocols, node) {
+		return b.Sites
+	}
+	return nil
+}
+
+// siteBlockFrom checks a user's list: real sites, on protocols of this account that can do it.
+func (p *Panel) siteBlockFrom(ctx context.Context, acct int64, in SiteBlock) (SiteBlock, error) {
+	out := SiteBlock{Sites: []string{}, Protocols: []int64{}}
+	for _, raw := range in.Sites {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		v, err := cleanSite(raw)
+		if err != nil {
+			return out, err
+		}
+		if !slices.Contains(out.Sites, v) {
+			out.Sites = append(out.Sites, v)
+		}
+	}
+	if len(out.Sites) == 0 {
+		return out, nil
+	}
+	if len(out.Sites) > maxBlocked {
+		return out, errStatus(http.StatusBadRequest, fmt.Sprintf("a user can have %d blocked sites at most", maxBlocked))
+	}
+	if len(in.Protocols) == 0 {
+		return out, errStatus(http.StatusBadRequest, "choose the protocols to block these sites on")
+	}
+	for _, id := range in.Protocols {
+		if slices.Contains(out.Protocols, id) {
+			continue
+		}
+		n, err := p.nodeByID(ctx, id)
+		if err != nil {
+			return out, errStatus(http.StatusBadRequest, fmt.Sprintf("there is no protocol %d", id))
+		}
+		s, err := p.serverByID(ctx, n.ServerID)
+		if err != nil || s.AccountID != acct {
+			return out, errStatus(http.StatusBadRequest, fmt.Sprintf("there is no protocol %d", id))
+		}
+		k, _ := kindOf(n.Kind)
+		switch {
+		case n.Kind == subgen.KindHysteria2:
+			return out, errStatus(http.StatusBadRequest, "Hysteria2 cannot block sites for one user: its rules are the same for everyone. Block them on the whole protocol instead (Protocols › Edit › Blocked sites)")
+		case !canBlockSites(n.Kind):
+			return out, errStatus(http.StatusBadRequest, k.Label+" cannot block sites: it carries traffic without knowing which site it is for")
+		case k.Engine == "solo" && s.FirstSeenAt > 0:
+			var caps proto.Caps
+			_ = json.Unmarshal([]byte(s.Caps), &caps)
+			if !caps.BlockSites {
+				return out, errStatus(http.StatusBadRequest, "Blocking sites on "+k.Label+" on "+s.Name+" needs agent 1.4.4 or later: upgrade its agent first (Settings › Updates › Upgrade all agents)")
+			}
+		}
+		out.Protocols = append(out.Protocols, id)
+	}
+	return out, nil
+}
+
+// userBlockedRules are the users' own lists on a server's Xray protocols, one rule each.
+func userBlockedRules(nodes []*Node, subs []*Sub) []map[string]any {
+	var out []map[string]any
+	for _, s := range subs {
+		var emails []string
+		for _, n := range nodes {
+			if k, ok := kindOf(n.Kind); ok && k.Engine == "xray" && n.Enabled && s.SiteBlock.on(n.ID) != nil {
+				emails = append(emails, proto.Email(s.ID, n.ID))
+			}
+		}
+		if len(emails) == 0 {
+			continue
+		}
+		domains := make([]string, len(s.SiteBlock.Sites))
+		for i, d := range s.SiteBlock.Sites {
+			domains[i] = "domain:" + d
+		}
+		out = append(out, map[string]any{"ruleTag": fmt.Sprintf("sites-s%d", s.ID), "user": emails, "domain": domains, "outboundTag": "block"})
+	}
+	return out
 }
