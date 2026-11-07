@@ -32,7 +32,7 @@ Add servers, give each person a link, and see everything that happens - for a te
 
 **It only accepts what works.** The forms refuse any combination that would fail, and every protocol lists exactly which apps can use it, computed by the same code that writes their configs. Tests run every combination through sing-box, mihomo and Xray themselves.
 
-**It keeps itself up to date.** New releases install at night, only when signed with Rosélune's key. Agents follow by themselves, without asking, and without disconnecting anyone.
+**It keeps itself up to date.** Agents follow the panel by themselves, without asking and without disconnecting anyone. Turn on automatic updates and the panel installs new releases at night too, only when they carry Rosélune's signature.
 
 **It shows you the truth.** Traffic is counted exactly once per user, protocol and day. You see each person's speed now, every address they connect from, and where they went.
 
