@@ -1,5 +1,5 @@
-/* Four looks beyond the quiet tones: Romance - Rosélune's own, the default - Umbrella, Postmodernism
-   and Time. Each is a tone like the others (the colour tokens the panel and the status page share,
+/* Five looks beyond the quiet tones: Romance - Rosélune's own, the default - Umbrella, Postmodernism,
+   Time and Minecraft. Each is a tone like the others (the colour tokens the panel and the status page share,
    the globe's, the charts') plus a character of its own - type, corners, light, a few details -
    written against the classes both pages have. Postmodernism and Time go furthest: they lay
    the pages out anew (postmodern.css, time.css and their status/ twins). No image or font is loaded: everything here is drawn by
@@ -308,3 +308,152 @@
 :root[data-theme="time"] { --tm-sheet: rgba(0, 0, 0, .3); }
 :root[data-theme="time"] body { font-weight: 500; text-shadow: 0 0 4px rgba(2, 3, 5, .7); }
 :root[data-theme="time"] :is(.btn.primary, .gate-form .btn.primary) { text-shadow: none; }
+
+/* ------------------------------------------------------------------ Minecraft
+   A world of blocks: the page is dug out of dark earth with grass along its top edge, and everything
+   on it is built like a game menu - stone slabs with a light top-left bevel and a dark bottom-right
+   one, a black outline, square corners, block type with a hard drop shadow, and text that turns
+   yellow under the pointer. Emerald is the accent. Text keeps 4.5:1 on the stone, the faintest 3:1.
+   The textures are tiny pixel drawings inlined here, scaled up without smoothing; no font is loaded. */
+:root[data-theme="minecraft"] {
+  color-scheme: dark;
+  --page: #1d1610;
+  --surface: #2c2c2c;
+  --raised: #363636;
+  --hover: rgba(255, 255, 255, .07);
+  --line: rgba(255, 255, 255, .1);
+  --line-2: rgba(255, 255, 255, .22);
+  --ink: #f4f4f4;
+  --ink-2: #cfcfcf;
+  --ink-3: #a8a8a8;
+  --ink-4: #858585;
+  --accent: #3fae4a;
+  --accent-ink: #7fe08a;
+  --accent-soft: rgba(63, 174, 74, .18);
+  --on-accent: #ffffff;
+  --grid: rgba(255, 255, 255, .07);
+  --baseline: rgba(255, 255, 255, .22);
+  --good: #6fdc6a;
+  --warn: #ffd23f;
+  --crit: #ff6b5e;
+  --good-soft: rgba(111, 220, 106, .14);
+  --warn-soft: rgba(255, 210, 63, .14);
+  --crit-soft: rgba(255, 107, 94, .15);
+  --scrim: rgba(0, 0, 0, .72);
+  --shadow-pop: 0 0 0 2px #000, inset 2px 2px 0 #4a4a4a, inset -2px -2px 0 #1b1b1b, 8px 8px 0 rgba(0, 0, 0, .45);
+  --pool: transparent;
+  --g-day: #5d9e34;
+  --g-night: #2f4d24;
+  --g-night-lum: .5;
+  --g-rim: rgba(255, 255, 255, .12);
+  --g-halo: rgba(111, 220, 106, .06);
+  --g-arc: #4fd36b;
+  --g-accent: #ffff55;
+  --g-hub: #ffffff;
+  --g-client: #ffaa00;
+  --g-back: .03;
+  --font-d: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Courier New", monospace;
+  --num-weight: 700;
+  --mc-yellow: #ffff55;
+  --mc-shadow: 2px 2px 0 rgba(0, 0, 0, .75);
+  /* a stone slab: light from the top left, a black outline round it */
+  --mc-slab: 0 0 0 2px #000, inset 2px 2px 0 #474747, inset -2px -2px 0 #1a1a1a;
+  --mc-btn: 0 0 0 2px #000, inset 2px 2px 0 #9a9a9a, inset -2px -3px 0 #3c3c3c;
+  --mc-btn-green: 0 0 0 2px #000, inset 2px 2px 0 #6cc25a, inset -2px -3px 0 #22561b;
+  --mc-dirt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%23241a12'/%3E%3Cpath fill='%2333261b' d='M1 0h1v1h-1zM3 0h1v1h-1zM6 0h1v1h-1zM8 0h1v1h-1zM10 0h1v1h-1zM11 0h1v1h-1zM14 0h1v1h-1zM5 1h1v1h-1zM8 1h1v1h-1zM9 1h1v1h-1zM1 2h1v1h-1zM2 2h1v1h-1zM3 3h1v1h-1zM6 3h1v1h-1zM8 3h1v1h-1zM6 4h1v1h-1zM14 4h1v1h-1zM1 5h1v1h-1zM2 5h1v1h-1zM4 5h1v1h-1zM8 5h1v1h-1zM3 6h1v1h-1zM10 6h1v1h-1zM3 7h1v1h-1zM10 7h1v1h-1zM12 7h1v1h-1zM13 7h1v1h-1zM1 8h1v1h-1zM2 8h1v1h-1zM3 8h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM9 8h1v1h-1zM13 8h1v1h-1zM2 9h1v1h-1zM3 9h1v1h-1zM8 9h1v1h-1zM11 9h1v1h-1zM13 9h1v1h-1zM3 11h1v1h-1zM4 11h1v1h-1zM8 12h1v1h-1zM8 13h1v1h-1zM9 13h1v1h-1zM12 13h1v1h-1zM2 14h1v1h-1zM3 14h1v1h-1zM2 15h1v1h-1zM13 15h1v1h-1z'/%3E%3Cpath fill='%2318110b' d='M15 0h1v1h-1zM12 1h1v1h-1zM3 2h1v1h-1zM12 2h1v1h-1zM0 5h1v1h-1zM5 5h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM14 7h1v1h-1zM15 7h1v1h-1zM10 8h1v1h-1zM7 9h1v1h-1zM4 10h1v1h-1zM9 10h1v1h-1zM0 11h1v1h-1zM6 11h1v1h-1zM14 11h1v1h-1zM15 11h1v1h-1zM0 12h1v1h-1zM1 12h1v1h-1zM14 12h1v1h-1zM7 13h1v1h-1zM11 14h1v1h-1zM12 14h1v1h-1zM14 14h1v1h-1zM0 15h1v1h-1zM15 15h1v1h-1z'/%3E%3Cpath fill='%233d2e21' d='M7 1h1v1h-1zM9 2h1v1h-1zM1 3h1v1h-1zM11 4h1v1h-1zM14 5h1v1h-1zM9 6h1v1h-1zM5 9h1v1h-1zM2 10h1v1h-1zM5 11h1v1h-1zM13 14h1v1h-1z'/%3E%3C/svg%3E");
+  --c1: #55dd55; --c2: #55dddd; --c3: #ffaa00; --c4: #ff77ff; --c5: #8c8cff; --c6: #ff6b5e; --c7: #ffff55; --c8: #a8a8a8;
+  scrollbar-color: #6f6f6f #1d1610;
+  caret-color: var(--mc-yellow);
+}
+:root[data-theme="minecraft"] ::selection { background: #3a5fcd; color: #fff; }
+:root[data-theme="minecraft"] :focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 0; }
+
+/* the earth under everything, and grass along the top edge */
+:root[data-theme="minecraft"] body::before {
+  background: linear-gradient(rgba(0, 0, 0, .1), rgba(0, 0, 0, .45)), var(--mc-dirt) 0 0 / 64px 64px;
+  image-rendering: pixelated;
+}
+:root[data-theme="minecraft"] body::after {
+  content: "";
+  position: fixed;
+  z-index: 60;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 16px;
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='16' viewBox='0 0 16 4' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='1' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='2' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='3' y='0' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='4' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='4' y='1' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='5' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='5' y='1' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='5' y='2' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='6' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='7' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='7' y='1' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='7' y='2' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='8' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='9' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='9' y='1' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='10' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='10' y='1' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='10' y='2' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='11' y='0' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='11' y='1' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='11' y='2' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='12' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='12' y='1' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='12' y='2' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='13' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='13' y='1' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='14' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='15' y='0' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='15' y='1' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='15' y='2' width='1' height='1' fill='%235d9e34'/%3E%3C/svg%3E") 0 4px / 64px 16px repeat-x, linear-gradient(#6cb33d 0 4px, transparent 4px);
+  image-rendering: pixelated;
+}
+
+/* block type: square, a hard shadow under it, yellow under the pointer */
+:root[data-theme="minecraft"] :is(h1, h2, h3, .brand, .kpi .v, .num, .nav a, .btn, .pill-btn, .badge, .chip, .seg button) { text-shadow: var(--mc-shadow); }
+:root[data-theme="minecraft"] :is(.page-head h1, .page-h h1, .gate h1, .login-box .brand) { font-family: var(--font-d); font-weight: 700; letter-spacing: 0; }
+:root[data-theme="minecraft"] :is(.page-head h1, .page-h h1)::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 14px;
+  vertical-align: -.08em;
+  background: linear-gradient(#6cb33d 0 5px, #4f8a2b 5px 7px, #8a5f3c 7px 12px, #6f4a2d 12px);
+  box-shadow: 0 0 0 2px #000, 3px 3px 0 2px rgba(0, 0, 0, .5);
+}
+:root[data-theme="minecraft"] :is(.ph .h, .ph h2, h2.h) { font-family: var(--font-d); font-weight: 700; letter-spacing: .02em; }
+:root[data-theme="minecraft"] .top { background: linear-gradient(#1d1610 78%, rgba(29, 22, 16, 0)); padding-top: 6px; }
+:root[data-theme="minecraft"] .top .brand { font-family: var(--font-d); font-weight: 700; letter-spacing: .12em; color: var(--ink); }
+:root[data-theme="minecraft"] .nav a { font-family: var(--font-d); color: var(--ink-2); }
+:root[data-theme="minecraft"] .nav a:hover, :root[data-theme="minecraft"] .nav a[aria-current="page"] { color: var(--mc-yellow); }
+:root[data-theme="minecraft"] .nav a::after { height: 3px; bottom: -2px; background: var(--mc-yellow); box-shadow: 2px 2px 0 rgba(0, 0, 0, .7); }
+
+/* sections stand on a stone ledge; cards and dialogs are stone slabs */
+:root[data-theme="minecraft"] .panel { border-top: 0; }
+:root[data-theme="minecraft"] .panel::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: #555; box-shadow: 0 -2px 0 #7a7a7a, 0 2px 0 #000; }
+:root[data-theme="minecraft"] .panel { padding-top: 18px; }
+:root[data-theme="minecraft"] :is(.card, .proto, .src-card, .proto-user, .subsection, .setup-step, .step, .check-panel, .tc-card, .tc-pick, .brand-preview, .preset, .app) {
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  box-shadow: var(--mc-slab);
+}
+:root[data-theme="minecraft"] .card:hover { background: var(--raised); }
+:root[data-theme="minecraft"] :is(.modal, .menu, .pal-pop, .toast, .panel-d, .dlg) { border: 0; border-radius: 0; background: var(--surface); box-shadow: var(--shadow-pop); }
+:root[data-theme="minecraft"] .kpis { border: 0; background: rgba(0, 0, 0, .35); box-shadow: 0 0 0 2px #000, inset 2px 2px 0 rgba(0, 0, 0, .4), inset -2px -2px 0 rgba(255, 255, 255, .08); }
+:root[data-theme="minecraft"] .kpi { border-left-color: rgba(255, 255, 255, .08); }
+:root[data-theme="minecraft"] .kpi:first-child { padding-left: 18px; }
+:root[data-theme="minecraft"] .kpi .v { font-family: var(--font-d); }
+:root[data-theme="minecraft"] .kpi .l { font-family: var(--font-d); text-transform: uppercase; letter-spacing: .06em; font-size: 10.5px; }
+
+/* buttons: stone, emerald for the main one, blue-white under the pointer as in a game menu */
+:root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn, .gate-form .btn.primary) {
+  border: 0;
+  border-radius: 0;
+  background: #6b6b6b;
+  color: #fff;
+  font-family: var(--font-d);
+  box-shadow: var(--mc-btn);
+}
+:root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn):is(:hover, :focus-visible):not(:disabled) { background: #3f4f9a; color: var(--mc-yellow); box-shadow: 0 0 0 2px #fff, inset 2px 2px 0 #6b7bc8, inset -2px -3px 0 #26306b; }
+:root[data-theme="minecraft"] :is(.btn.primary, .gate-form .btn.primary) { background: #3c8a2e; box-shadow: var(--mc-btn-green); color: #fff; }
+:root[data-theme="minecraft"] .btn.primary:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: #347a28; border-color: transparent; }
+:root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn):active:not(:disabled) { transform: translateY(1px); }
+:root[data-theme="minecraft"] .btn:disabled, :root[data-theme="minecraft"] .btn[aria-disabled="true"] { background: #3a3a3a; color: #8a8a8a; box-shadow: 0 0 0 2px #000; text-shadow: none; }
+:root[data-theme="minecraft"] .icon-btn { color: #fff; }
+
+/* fields: black wells with a grey rim, white when typing - like a sign's edit box */
+:root[data-theme="minecraft"] :is(.input, .gate-form .field input, .link input) { border-radius: 0; border: 2px solid #a0a0a0; background: #000; color: #fff; font-family: var(--font-d); }
+:root[data-theme="minecraft"] :is(.input, .gate-form .field input):focus { border-color: #fff; box-shadow: none; }
+:root[data-theme="minecraft"] :is(.seg, .badge, .chip, .code, .chip-pick, .stack-key, .callout, .tc-pc, .menu button, .menu a, .pal-pop button) { border-radius: 0; }
+:root[data-theme="minecraft"] .tone-opt { border-radius: 0; border: 0; background: rgba(0, 0, 0, .4); box-shadow: 0 0 0 2px #000; }
+:root[data-theme="minecraft"] .tone-opt:hover { color: var(--mc-yellow); }
+:root[data-theme="minecraft"] .tone-opt.on { background: #6b6b6b; color: #fff; box-shadow: var(--mc-btn); }
+:root[data-theme="minecraft"] :is(.tone-opt, .pal-pop) .sw { border-radius: 0; }
+:root[data-theme="minecraft"] .seg { background: rgba(0, 0, 0, .4); border: 0; box-shadow: 0 0 0 2px #000; }
+:root[data-theme="minecraft"] .seg button[aria-pressed="true"] { background: #6b6b6b; color: #fff; box-shadow: inset 2px 2px 0 #9a9a9a, inset -2px -2px 0 #3c3c3c; }
+
+/* bars fill like the experience bar: segmented green on black */
+:root[data-theme="minecraft"] .meter { height: 6px; border-radius: 0; background: #111; box-shadow: 0 0 0 1px #000; }
+:root[data-theme="minecraft"] .meter i { border-radius: 0; background: repeating-linear-gradient(90deg, #80ff20 0 9px, #3d8a10 9px 10px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .3); }
+:root[data-theme="minecraft"] .meter.warn i { background: repeating-linear-gradient(90deg, #ffd23f 0 9px, #8a6a10 9px 10px); }
+:root[data-theme="minecraft"] .meter.crit i { background: repeating-linear-gradient(90deg, #ff5555 0 9px, #8a1f1f 9px 10px); }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn):active { transform: none; } }

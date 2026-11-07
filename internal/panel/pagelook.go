@@ -47,6 +47,9 @@ var pageTones = map[string]pageTone{
 	"time": {"dark", "#020305", "#090b10", "rgba(242,244,248,.14)", "rgba(242,244,248,.34)", "#f2f4f8", "#dfe3ea", "#c0c6d0", "#c8a96e", "#a9d6a3", "#e6c074",
 		`Didot,"Bodoni 72","Bodoni MT","Playfair Display","Big Caslon","Palatino Linotype",Georgia,serif`, "normal", "700",
 		"none"},
+	// Minecraft: the earth, the grass edge and the stone slabs come from the page's .look-minecraft rules (subserve.go)
+	"minecraft": {"dark", "#1d1610", "#2c2c2c", "rgba(255,255,255,.1)", "rgba(255,255,255,.22)", "#f4f4f4", "#cfcfcf", "#a8a8a8", "#7fe08a", "#6fdc6a", "#ffd23f",
+		`ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,"Courier New",monospace`, "normal", "700", "none"},
 }
 
 func (t pageTone) vars() string {

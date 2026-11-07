@@ -2524,7 +2524,7 @@ function toast(msg: string, warn = false) {
 
 startTimeDial()
 
-const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist', 'postmodern', 'time']
+const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist', 'postmodern', 'time', 'minecraft']
 function initTones() {
   const root = document.documentElement
   const btn = $('#palBtn')

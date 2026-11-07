@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **A new look: Minecraft.** A world of blocks: the pages are dug out of dark earth with a row of
+  grass along the top, cards and dialogs are stone slabs with a black outline and a bevel, buttons
+  are stone (emerald for the main one) and turn blue with yellow type under the pointer, fields are
+  black wells, titles stand in block type with a hard shadow beside a small grass block, and bars
+  fill like an experience bar. In the palette button, in **Settings › Panel › Look**, on users' pages
+  and subscription pages; `default_tone` and the MCP tool accept `minecraft`. No image or font is
+  downloaded: the textures are tiny pixel drawings inside the stylesheet.
+
 ## 1.4.7 - 2026-11-07
 
 Time is drawn again, and Postmodernism has its right name. Upgrade the panel (**Settings ›
