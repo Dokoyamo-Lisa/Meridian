@@ -1,0 +1,132 @@
+/* The Time look for the status page and the users' page (its colour tokens and the light behind the
+   page are in ../themes.css; the panel's half is ../time.css). There is no globe: the overview keeps
+   its one-screen grid with hairlines and air, the clock is the first thing you read, titles are title
+   cards, and the sign-in is an opening shot between black bars. */
+
+/* ------------------------------------------------------------------ the header */
+:root[data-theme="time"] .top { background: linear-gradient(var(--page) 74%, transparent); border-bottom: 0; }
+:root[data-theme="time"] .c-time { font: 200 30px/1 var(--font-d); font-variant-numeric: tabular-nums; letter-spacing: .1em; color: var(--ink); }
+:root[data-theme="time"] .c-meta { font: 500 10px/1.5 var(--font); text-transform: uppercase; letter-spacing: .18em; color: var(--ink-3); }
+:root[data-theme="time"] .nav a { font: 500 10.5px/1 var(--font); text-transform: uppercase; letter-spacing: .18em; color: var(--ink-3); transition: color .5s; }
+:root[data-theme="time"] .nav a:hover, :root[data-theme="time"] .nav a[aria-current="page"] { color: var(--ink); }
+:root[data-theme="time"] .nav a::after { height: 1px; background: var(--accent); box-shadow: 0 0 10px rgba(224, 164, 88, .7); }
+:root[data-theme="time"] .live { font: 500 10px/1 var(--font); text-transform: uppercase; letter-spacing: .18em; color: var(--ink-3); }
+:root[data-theme="time"] .live i { background: var(--accent); }
+:root[data-theme="time"] .live i::after { border-color: var(--accent); }
+:root[data-theme="time"] .live.stale i { background: var(--crit); }
+:root[data-theme="time"] .mnav { background: var(--page); }
+:root[data-theme="time"] .mnav a { font: 500 10.5px/1 var(--font); text-transform: uppercase; letter-spacing: .14em; color: var(--ink-3); }
+:root[data-theme="time"] .mnav a[aria-current="page"] { color: var(--ink); background: none; box-shadow: inset 0 -1px 0 var(--accent); }
+
+/* ------------------------------------------------------------------ type */
+:root[data-theme="time"] :focus-visible { outline: 1px solid var(--accent-ink); outline-offset: 3px; }
+:root[data-theme="time"] :is(.page-h h1, .gate h1) { font: 200 30px/1.25 var(--font-d); text-transform: uppercase; letter-spacing: .24em; color: var(--ink); animation: tm-card 2.4s var(--ease-out) both; }
+:root[data-theme="time"] .page-h h1::after { content: ""; display: block; width: min(320px, 70%); height: 22px; margin-top: 12px; color: var(--tm-steel); background: var(--tm-bars); clip-path: var(--tm-crescendo); opacity: .75; }
+:root[data-theme="time"] .page-h p { font-size: 13px; color: var(--ink-3); }
+:root[data-theme="time"] .ph h2 { font: 500 10.5px/1.3 var(--font); text-transform: uppercase; letter-spacing: .22em; color: var(--ink-2); }
+:root[data-theme="time"] .pn { font: 300 11px/1 var(--font); letter-spacing: .1em; color: var(--accent-ink); }
+:root[data-theme="time"] :is(.a-num, .k-val, .mine-v b, .left-hero .value, .quota-big .value, .t-val, .tc-now) { font-family: var(--font-d); font-weight: 200; letter-spacing: .01em; }
+:root[data-theme="time"] :is(.d-sec h4, .sub-h) { font: 500 10px/1.4 var(--font); text-transform: uppercase; letter-spacing: .2em; color: var(--ink-3); }
+:root[data-theme="time"] .verdict b { font: 300 19px/1.25 var(--font-d); letter-spacing: .04em; }
+:root[data-theme="time"] .verdict .v-ic { border-radius: 2px; background: none; color: var(--good); box-shadow: inset 0 0 0 1px rgba(127, 203, 178, .4); }
+:root[data-theme="time"] .verdict[data-level="warn"] .v-ic { color: var(--warn); box-shadow: inset 0 0 0 1px rgba(232, 190, 110, .45); }
+:root[data-theme="time"] .verdict[data-level="crit"] .v-ic { color: var(--crit); box-shadow: inset 0 0 0 1px rgba(240, 138, 130, .5); }
+
+/* ------------------------------------------------------------------ no globe
+   The figures under it stay, the servers' list takes the room, and the globe pauses itself while it
+   is not shown. */
+:root[data-theme="time"] .globe-area { flex: none; min-height: 0; counter-increment: none; }
+:root[data-theme="time"] .globe-area > :is(.ph.ghost, .g-stage) { display: none; }
+@media (min-width: 1280px) {
+  :root[data-theme="time"] .col-c .globe-area { flex: none; min-height: 0; }
+  :root[data-theme="time"] .col-c .p-table { flex: 1 1 0; }
+}
+
+/* ------------------------------------------------------------------ panels: hairlines and air */
+:root[data-theme="time"] .panel { border-top: 1px solid var(--line-2); background: none; }
+:root[data-theme="time"] #v-me .panel { padding: 20px 0 8px; border: 0; border-top: 1px solid var(--line-2); border-radius: 0; background: none; box-shadow: none; }
+:root[data-theme="time"] .kpis { gap: 0; border: 0; border-block: 1px solid var(--line); }
+:root[data-theme="time"] .kpi, :root[data-theme="time"] .kpi + .kpi { border: 0; background: none; }
+:root[data-theme="time"] .kpi + .kpi { border-left: 1px solid var(--line); }
+:root[data-theme="time"] .kpi :is(small, .k-l, .k-lab) { font: 500 10px/1.4 var(--font); text-transform: uppercase; letter-spacing: .18em; color: var(--ink-3); }
+:root[data-theme="time"] .strip i { border-radius: 0; }
+:root[data-theme="time"] .strip i.good { background: color-mix(in srgb, var(--tm-steel) 62%, transparent); }
+:root[data-theme="time"] .strip i.warn { background: var(--warn); }
+:root[data-theme="time"] .strip i.crit { background: var(--crit); }
+
+/* ------------------------------------------------------------------ cards, boxes, notes */
+:root[data-theme="time"] :is(.card, .tc-card, .tc-pick, .tc-skel, .tg-code, .sup-note) { border: 1px solid var(--line); border-radius: 2px; background: var(--surface); box-shadow: none; }
+:root[data-theme="time"] .card { transition: border-color .6s, background .6s; }
+:root[data-theme="time"] .card:hover { border-color: var(--line-2); background: var(--raised); }
+:root[data-theme="time"] :is(.c-t b, .tc-t b) { font: 300 16px/1.25 var(--font-d); letter-spacing: .03em; }
+:root[data-theme="time"] .note-box { border: 1px solid var(--line); border-left: 1px solid var(--ink-3); border-radius: 0; background: var(--surface); box-shadow: none; }
+:root[data-theme="time"] .note-box.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+:root[data-theme="time"] .note-box.crit { border-left-color: var(--crit); background: var(--crit-soft); }
+:root[data-theme="time"] .maint-banner { border: 1px solid var(--line-2); border-radius: 0; background: var(--accent-soft); color: var(--ink); }
+
+/* ------------------------------------------------------------------ controls */
+:root[data-theme="time"] :is(.btn, .pill-btn, .more, .bar-key, .ip) { border: 1px solid var(--line-2); border-radius: 2px; background: transparent; color: var(--ink); font-family: var(--font); font-size: 10.5px; text-transform: uppercase; letter-spacing: .14em; transition: border-color .4s, background .4s, color .4s; }
+:root[data-theme="time"] .ip { text-transform: none; letter-spacing: .02em; font-size: 12px; }
+:root[data-theme="time"] :is(.btn, .pill-btn, .more, .bar-key, .ip):hover:not(:disabled) { border-color: var(--ink-3); background: var(--hover); color: var(--ink); }
+:root[data-theme="time"] :is(.btn.primary, .gate-form .btn.primary) { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+:root[data-theme="time"] :is(.btn.primary, .gate-form .btn.primary):hover:not(:disabled) { border-color: var(--accent-ink); background: var(--accent-ink); color: var(--on-accent); }
+:root[data-theme="time"] .btn:disabled { background: var(--hover); border-color: var(--line); color: var(--ink-4); opacity: 1; }
+:root[data-theme="time"] .btn.ghost { border-color: transparent; }
+:root[data-theme="time"] .avatar { border-radius: 2px; background: var(--raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-2); }
+:root[data-theme="time"] .icon-btn { border: 1px solid var(--line); border-radius: 2px; background: transparent; color: var(--ink-2); }
+:root[data-theme="time"] .icon-btn:hover { color: var(--ink); border-color: var(--ink-3); }
+:root[data-theme="time"] .seg { border: 1px solid var(--line-2); border-radius: 2px; background: none; }
+:root[data-theme="time"] .seg button { border-radius: 1px; font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); }
+:root[data-theme="time"] :is(.seg button[aria-pressed="true"], .seg button[aria-selected="true"]) { color: var(--ink); }
+:root[data-theme="time"] .seg .ind { border-radius: 1px; background: var(--hover); box-shadow: inset 0 -1px 0 var(--accent); }
+:root[data-theme="time"] .chip { border-radius: 2px; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink-2); background: transparent; }
+:root[data-theme="time"] .chip.good { color: var(--good); background: var(--good-soft); box-shadow: inset 0 0 0 1px rgba(127, 203, 178, .35); }
+:root[data-theme="time"] .chip.warn { color: var(--warn); background: var(--warn-soft); box-shadow: inset 0 0 0 1px rgba(232, 190, 110, .4); }
+:root[data-theme="time"] .chip.crit { color: var(--crit); background: var(--crit-soft); box-shadow: inset 0 0 0 1px rgba(240, 138, 130, .45); }
+:root[data-theme="time"] .chip.accent { color: var(--accent-ink); background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(224, 164, 88, .4); }
+:root[data-theme="time"] :is(.link-in, .gate-form .field input) { border: 1px solid var(--line-2); border-radius: 2px; background: rgba(0, 0, 0, .35); }
+:root[data-theme="time"] :is(.link-in, .gate-form .field input):focus { border-color: var(--accent); box-shadow: none; }
+:root[data-theme="time"] .pal-pop { border: 1px solid var(--line-2); border-radius: 2px; background: var(--raised); box-shadow: 0 24px 60px -24px #000; }
+:root[data-theme="time"] .pal-pop button:hover { background: var(--hover); }
+:root[data-theme="time"] .tip { border: 1px solid var(--line-2); border-radius: 2px; box-shadow: 0 18px 44px -18px #000; }
+:root[data-theme="time"] .toast { border: 1px solid var(--line-2); border-radius: 2px; background: var(--raised); }
+
+/* ------------------------------------------------------------------ tables, rings */
+:root[data-theme="time"] th { font: 500 10px/1.2 var(--font); text-transform: uppercase; letter-spacing: .18em; color: var(--ink-3); border-bottom: 1px solid var(--line-2); }
+:root[data-theme="time"] td { border-bottom: 1px solid var(--line); }
+:root[data-theme="time"] tbody tr { transition: background .5s; }
+:root[data-theme="time"] tbody tr:hover { background: var(--hover); }
+:root[data-theme="time"] .r-track { stroke: var(--line); }
+
+/* ------------------------------------------------------------------ drawers and windows */
+:root[data-theme="time"] .panel-d { border-left: 1px solid var(--line-2); border-radius: 0; box-shadow: -40px 0 100px -30px #000; }
+@media (max-width: 860px) { :root[data-theme="time"] .panel-d { border-left: 0; border-top: 1px solid var(--line-2); } }
+:root[data-theme="time"] .d-head { border-bottom: 1px solid var(--line); }
+:root[data-theme="time"] .d-head h3 { font: 200 22px/1.3 var(--font-d); text-transform: uppercase; letter-spacing: .16em; color: var(--ink); }
+:root[data-theme="time"] dialog { border: 1px solid var(--line-2); border-radius: 2px; box-shadow: 0 50px 120px -40px #000; }
+
+/* ------------------------------------------------------------------ the sign-in: the opening shot */
+:root[data-theme="time"] .gate { position: relative; z-index: 1; max-width: 370px; margin-top: 15vh; }
+:root[data-theme="time"] .gate::before { content: ""; position: fixed; z-index: -1; left: 0; right: 0; top: 50%; height: 46vh; margin-top: -23vh; color: var(--tm-steel); background: var(--tm-bars); clip-path: var(--tm-crescendo); opacity: .2; pointer-events: none; animation: tm-breathe 16s ease-in-out infinite; }
+:root[data-theme="time"] .gate::after { content: ""; position: fixed; z-index: -1; inset: 0; pointer-events: none; border-block: 8vh solid #000; }
+:root[data-theme="time"] :is(.gate p, .gate-text) { color: var(--ink-3); }
+:root[data-theme="time"] .foot { font-size: 11px; letter-spacing: .08em; color: var(--ink-4); }
+
+/* ------------------------------------------------------------------ a server's network profile */
+:root[data-theme="time"] .ns-num { font: 200 34px/1.1 var(--font-d); }
+:root[data-theme="time"] :is(.ns-bar, .ns-bar i, .net-block) { height: 3px; border-radius: 0; }
+:root[data-theme="time"] .net-block { height: 6px; }
+:root[data-theme="time"] .net-legend i { border-radius: 0; }
+:root[data-theme="time"] .nr-node rect { rx: 1px; fill: var(--surface); stroke: var(--line-2); }
+:root[data-theme="time"] .nr-home rect { stroke: var(--accent); fill: var(--accent-soft); }
+:root[data-theme="time"] .nr-link { stroke: var(--tm-steel); stroke-opacity: .45; }
+
+@media (max-width: 700px) {
+  :root[data-theme="time"] :is(.page-h h1, .gate h1) { font-size: 22px; letter-spacing: .18em; }
+  :root[data-theme="time"] .gate::after { border-block-width: 4vh; }
+  :root[data-theme="time"] .gate { margin-top: 10vh; }
+}
+
+/* the built-in marks drop most of their colour here: the page keeps one warm note */
+:root[data-theme="time"] :is(.gate-mark, .top .brand) svg { filter: saturate(.4); }
+:root[data-theme="time"] .mnav a { border-radius: 0; }

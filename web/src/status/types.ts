@@ -82,7 +82,7 @@ export interface StatusPayload {
   /** The supervisor is signed in (otherwise a visitor of a public status page). */
   supervisor?: boolean
   /** Which parts visitors and users get; the supervisor always gets all of them. */
-  show?: { overview: boolean; events: boolean }
+  show?: { overview: boolean; events: boolean; network?: boolean }
 }
 
 export interface LivePayload {

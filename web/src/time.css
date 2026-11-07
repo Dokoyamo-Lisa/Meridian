@@ -1,0 +1,161 @@
+/* The Time look for the panel (its colour tokens and the light behind the page are in themes.css). A
+   film score in a page: dark and slow, one warm note against the cold. Titles are title cards - thin
+   capitals, widely spaced, closing in as they appear; a crescendo of fine bars runs under them; panels
+   have no boxes, only hairlines and air; figures are thin and large; corners are square; things move
+   slowly. Only classes the other looks share are used, so switching looks never changes what is on
+   the page. */
+
+/* ------------------------------------------------------------------ type */
+:root[data-theme="time"] body { font-size: 13.5px; letter-spacing: .01em; }
+:root[data-theme="time"] :focus-visible { outline: 1px solid var(--accent-ink); outline-offset: 3px; }
+:root[data-theme="time"] .num { font-variant-numeric: lining-nums tabular-nums; }
+:root[data-theme="time"] .page-head { margin: 34px 0 40px; }
+:root[data-theme="time"] .page-head h1 { font: 200 30px/1.25 var(--font-d); text-transform: uppercase; letter-spacing: .24em; color: var(--ink); animation: tm-card 2.4s var(--ease-out) both; }
+/* the crescendo */
+:root[data-theme="time"] .page-head h1::after { content: ""; display: block; width: min(320px, 70%); height: 22px; margin-top: 14px; color: var(--tm-steel); background: var(--tm-bars); clip-path: var(--tm-crescendo); opacity: .75; }
+:root[data-theme="time"] .page-head .sub { margin-top: 12px; font-size: 13px; color: var(--ink-3); }
+:root[data-theme="time"] :is(h2.h, .ph .h) { font: 500 10.5px/1.3 var(--font); text-transform: uppercase; letter-spacing: .22em; color: var(--ink-2); }
+:root[data-theme="time"] .pn { font: 300 11px/1 var(--font); letter-spacing: .1em; color: var(--accent-ink); }
+:root[data-theme="time"] .crumb { font: 500 10px/1 var(--font); text-transform: uppercase; letter-spacing: .2em; color: var(--ink-3); }
+:root[data-theme="time"] .crumb:hover { color: var(--ink); }
+:root[data-theme="time"] :is(.empty b, .modal-head h3, .step b, .setup-step h3, .api-group h3) { font-family: var(--font-d); font-weight: 300; letter-spacing: .04em; }
+:root[data-theme="time"] a.linkish, :root[data-theme="time"] .linkish { color: var(--accent-ink); text-decoration: underline; text-decoration-color: rgba(224, 164, 88, .4); text-underline-offset: 3px; }
+
+/* ------------------------------------------------------------------ the top bar */
+:root[data-theme="time"] .top { background: linear-gradient(var(--page) 76%, transparent); }
+:root[data-theme="time"] .top .brand { font: 300 13px/1 var(--font-d); text-transform: uppercase; letter-spacing: .32em; color: var(--ink); }
+:root[data-theme="time"] .top .brand :is(svg, .logo-img) { color: var(--ink-2); }
+:root[data-theme="time"] .nav a { font: 500 10.5px/1 var(--font); text-transform: uppercase; letter-spacing: .18em; color: var(--ink-3); transition: color .5s; }
+:root[data-theme="time"] .nav a:hover { color: var(--ink); }
+:root[data-theme="time"] .nav a[aria-current="page"] { color: var(--ink); }
+:root[data-theme="time"] .nav a::after { height: 1px; background: var(--accent); box-shadow: 0 0 10px rgba(224, 164, 88, .7); }
+
+/* ------------------------------------------------------------------ panels: hairlines and air */
+:root[data-theme="time"] .panel { margin-bottom: 44px; padding: 0; border: 0; border-top: 1px solid var(--line-2); border-radius: 0; background: none; box-shadow: none; }
+:root[data-theme="time"] .ph { padding: 16px 0 12px; min-height: 0; border: 0; }
+:root[data-theme="time"] .ph .pm { color: var(--ink-3); font-size: 12px; }
+:root[data-theme="time"] :is(.card, .proto, .src-card, .proto-user, .brand-preview, .setup-step, .step, .subsection, .check-panel, .proto-adv, .preset, .app, .pick label) { border: 1px solid var(--line); border-radius: 2px; background: var(--surface); box-shadow: none; }
+:root[data-theme="time"] :is(.proto, .app, .card.click, a.card) { transition: border-color .6s, background .6s; }
+:root[data-theme="time"] :is(.proto, .app, .card.click, a.card):hover { border-color: var(--line-2); background: var(--raised); }
+:root[data-theme="time"] .proto .head b { font: 300 16px/1.25 var(--font-d); letter-spacing: .03em; }
+:root[data-theme="time"] .proto .kv span:nth-child(odd) { color: var(--ink-3); }
+:root[data-theme="time"] .pick label.on { border-color: var(--accent); background: var(--accent-soft); }
+:root[data-theme="time"] .check-panel.good { background: var(--good-soft); border-color: rgba(127, 203, 178, .3); }
+:root[data-theme="time"] .check-panel.bad { background: var(--crit-soft); border-color: rgba(240, 138, 130, .35); }
+
+/* figures: thin and large, a hairline between them */
+:root[data-theme="time"] .kpis { gap: 0; margin-bottom: 44px; border: 0; border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line); }
+:root[data-theme="time"] :is(.kpi, .kpi:first-child) { padding: 22px 22px 20px; border: 0; border-left: 1px solid var(--line); background: none; }
+:root[data-theme="time"] .kpi:first-child { border-left: 0; padding-left: 0; }
+:root[data-theme="time"] .kpi .v { font: 200 42px/1 var(--font-d); letter-spacing: .01em; color: var(--ink); }
+:root[data-theme="time"] .kpi .l { margin-top: 12px; font: 500 10px/1.3 var(--font); text-transform: uppercase; letter-spacing: .2em; color: var(--ink-3); }
+:root[data-theme="time"] .kpi .s { color: var(--ink-3); }
+@media (max-width: 1000px) { :root[data-theme="time"] .kpi:nth-child(n) { border-left: 0; padding-left: 0; } }
+
+/* ------------------------------------------------------------------ controls: square, quiet, one warm note */
+:root[data-theme="time"] .btn { height: 34px; padding: 0 16px; border: 1px solid var(--line-2); border-radius: 2px; background: transparent; color: var(--ink); font: 500 10.5px/1 var(--font); text-transform: uppercase; letter-spacing: .16em; transition: background .4s, border-color .4s, color .4s; }
+:root[data-theme="time"] .btn:is(:enabled, a, label):not([aria-disabled="true"]):hover { border-color: var(--ink-3); background: var(--hover); color: var(--ink); }
+:root[data-theme="time"] .btn.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+:root[data-theme="time"] .btn.primary:is(:enabled, a, label):not([aria-disabled="true"]):hover { border-color: var(--accent-ink); background: var(--accent-ink); color: var(--on-accent); }
+:root[data-theme="time"] :is(.btn, .btn.primary):is(:disabled, [aria-disabled="true"]) { background: var(--hover); border-color: var(--line); color: var(--ink-4); opacity: 1; }
+:root[data-theme="time"] .btn.danger { color: var(--crit); border-color: rgba(240, 138, 130, .45); }
+:root[data-theme="time"] .btn.danger:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: var(--crit-soft); color: var(--crit); border-color: var(--crit); }
+:root[data-theme="time"] .btn.ghost { border-color: transparent; color: var(--ink-2); }
+:root[data-theme="time"] .btn.ghost:is(:enabled, a, label):not([aria-disabled="true"]):hover { border-color: var(--line-2); }
+:root[data-theme="time"] .btn.sm { height: 28px; padding: 0 11px; font-size: 10px; }
+:root[data-theme="time"] .icon-btn { border: 1px solid var(--line); border-radius: 2px; background: transparent; color: var(--ink-2); transition: color .4s, border-color .4s; }
+:root[data-theme="time"] .icon-btn:hover { color: var(--ink); border-color: var(--ink-3); }
+:root[data-theme="time"] .icon-btn.sm { border-color: transparent; }
+
+:root[data-theme="time"] :is(.input, select.input, textarea.input) { height: 38px; border: 1px solid var(--line-2); border-radius: 2px; background: rgba(0, 0, 0, .3); }
+:root[data-theme="time"] textarea.input { height: auto; }
+:root[data-theme="time"] .input:focus { border-color: var(--accent); box-shadow: none; }
+:root[data-theme="time"] .input::placeholder { color: var(--ink-4); }
+:root[data-theme="time"] :is(.field > label, .label) { font: 500 10px/1.4 var(--font); text-transform: uppercase; letter-spacing: .18em; color: var(--ink-3); }
+:root[data-theme="time"] .check input, .pick input { accent-color: var(--accent); }
+:root[data-theme="time"] .toggle { border: 1px solid var(--line-2); background: rgba(0, 0, 0, .35); }
+:root[data-theme="time"] .toggle::after { background: var(--ink-3); }
+:root[data-theme="time"] .toggle[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+:root[data-theme="time"] .toggle[aria-checked="true"]::after { background: var(--on-accent); }
+:root[data-theme="time"] .seg { padding: 2px; border: 1px solid var(--line-2); border-radius: 2px; background: none; }
+:root[data-theme="time"] .seg button { border-radius: 1px; font: 500 10px/1 var(--font); text-transform: uppercase; letter-spacing: .14em; color: var(--ink-3); }
+:root[data-theme="time"] .seg button[aria-pressed="true"] { background: var(--hover); color: var(--ink); box-shadow: inset 0 -1px 0 var(--accent); }
+:root[data-theme="time"] .search .ic { color: var(--ink-3); }
+:root[data-theme="time"] :is(.chip, .chip-pick, .tone-opt, .badge) { border: 1px solid var(--line-2); border-radius: 2px; color: var(--ink-2); background: transparent; }
+:root[data-theme="time"] .badge.good { color: var(--good); border-color: rgba(127, 203, 178, .4); background: var(--good-soft); }
+:root[data-theme="time"] .badge.warn { color: var(--warn); border-color: rgba(232, 190, 110, .4); background: var(--warn-soft); }
+:root[data-theme="time"] .badge.crit { color: var(--crit); border-color: rgba(240, 138, 130, .45); background: var(--crit-soft); }
+:root[data-theme="time"] .badge.accent { color: var(--accent-ink); border-color: rgba(224, 164, 88, .4); background: var(--accent-soft); }
+:root[data-theme="time"] :is(.chip-pick.on, .tone-opt.on) { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
+:root[data-theme="time"] :is(.chip-pick, .tone-opt):hover { color: var(--ink); border-color: var(--ink-3); }
+:root[data-theme="time"] .meter { height: 2px; border-radius: 0; background: var(--line-2); box-shadow: none; }
+:root[data-theme="time"] .meter i { border-radius: 0; background: var(--ink-2); }
+:root[data-theme="time"] .meter.warn i { background: var(--warn); }
+:root[data-theme="time"] .meter.crit i { background: var(--crit); }
+
+/* ------------------------------------------------------------------ tables */
+:root[data-theme="time"] .t th { padding-bottom: 10px; font: 500 10px/1.2 var(--font); text-transform: uppercase; letter-spacing: .18em; color: var(--ink-3); border-bottom: 1px solid var(--line-2); }
+:root[data-theme="time"] .t td { border-bottom: 1px solid var(--line); }
+:root[data-theme="time"] .t tbody tr { transition: background .5s; }
+:root[data-theme="time"] .t tbody tr:hover { background: var(--hover); }
+:root[data-theme="time"] .cell-main { color: var(--ink); }
+:root[data-theme="time"] .li { border-bottom: 1px solid var(--line); }
+:root[data-theme="time"] .li.click:hover { background: var(--hover); }
+:root[data-theme="time"] .tabs { gap: 6px; border-bottom: 1px solid var(--line-2); }
+:root[data-theme="time"] .tabs button { font: 500 10.5px/1.2 var(--font); text-transform: uppercase; letter-spacing: .18em; color: var(--ink-3); }
+:root[data-theme="time"] .tabs button:hover, :root[data-theme="time"] .tabs button[aria-selected="true"] { color: var(--ink); }
+:root[data-theme="time"] .tabs button[aria-selected="true"]::after { height: 1px; background: var(--accent); }
+:root[data-theme="time"] :is(details.adv, .test-results) { border-top: 1px solid var(--line); }
+
+/* ------------------------------------------------------------------ windows, menus, notes */
+:root[data-theme="time"] .scrim { background: var(--scrim); backdrop-filter: blur(4px); }
+:root[data-theme="time"] .modal { border: 1px solid var(--line-2); border-radius: 2px; background: var(--surface); box-shadow: 0 50px 120px -40px #000; }
+:root[data-theme="time"] .modal-head { padding: 18px 22px 14px; border-bottom: 1px solid var(--line); }
+:root[data-theme="time"] .modal-head h3 { font: 300 18px/1.3 var(--font-d); letter-spacing: .06em; color: var(--ink); }
+:root[data-theme="time"] .modal-foot { border-top: 1px solid var(--line); }
+:root[data-theme="time"] .menu { border: 1px solid var(--line-2); border-radius: 2px; background: var(--raised); box-shadow: 0 24px 60px -24px #000; }
+:root[data-theme="time"] :is(.menu button, .menu a):hover { background: var(--hover); color: var(--ink); }
+:root[data-theme="time"] .menu .sep { background: var(--line); }
+:root[data-theme="time"] .callout { border: 1px solid var(--line); border-left: 1px solid var(--ink-3); border-radius: 0; background: var(--surface); }
+:root[data-theme="time"] .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+:root[data-theme="time"] .callout.crit { border-left-color: var(--crit); background: var(--crit-soft); }
+:root[data-theme="time"] .callout.good { border-left-color: var(--good); background: var(--good-soft); }
+:root[data-theme="time"] .toast { border: 1px solid var(--line-2); border-radius: 2px; background: var(--raised); box-shadow: 0 20px 50px -20px #000; }
+:root[data-theme="time"] .code { border: 1px solid var(--line); border-radius: 2px; background: rgba(0, 0, 0, .35); }
+:root[data-theme="time"] .qr { border-radius: 2px; }
+:root[data-theme="time"] .bulkbar { border: 1px solid var(--line-2); border-radius: 2px; background: var(--raised); box-shadow: 0 20px 50px -20px #000; }
+:root[data-theme="time"] .app-foot { font-size: 11px; letter-spacing: .08em; color: var(--ink-4); }
+
+/* ------------------------------------------------------------------ charts */
+:root[data-theme="time"] .chart .grid-l { stroke: var(--line); }
+:root[data-theme="time"] .chart .line { stroke-width: 1.3; }
+:root[data-theme="time"] .chart .area { fill: rgba(224, 164, 88, .1); }
+:root[data-theme="time"] .chart .line2 { stroke: var(--tm-steel); }
+:root[data-theme="time"] .chart .bar { fill: var(--accent); }
+:root[data-theme="time"] .chart .bar2 { fill: var(--tm-steel); }
+
+/* ------------------------------------------------------------------ the sign-in: the opening shot
+   Black bars above and below, the score swelling behind the name. */
+:root[data-theme="time"] .login { position: relative; overflow: hidden; }
+:root[data-theme="time"] .login::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 46vh; margin-top: -23vh; color: var(--tm-steel); background: var(--tm-bars); clip-path: var(--tm-crescendo); opacity: .2; animation: tm-breathe 16s ease-in-out infinite; }
+:root[data-theme="time"] .login::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-block: 8vh solid #000; }
+:root[data-theme="time"] .login-box { position: relative; z-index: 1; width: min(370px, 100%); padding: 34px 32px 28px; background: rgba(7, 9, 12, .78); backdrop-filter: blur(12px); text-align: center; }
+:root[data-theme="time"] .login-box .brand { justify-content: center; font: 200 24px/1.3 var(--font-d); text-transform: uppercase; letter-spacing: .3em; color: var(--ink); animation: tm-card 2.4s var(--ease-out) both; }
+:root[data-theme="time"] .login-box .brand :is(svg, .logo-img) { color: var(--ink-2); }
+:root[data-theme="time"] .login-box .lead { color: var(--ink-3); }
+:root[data-theme="time"] .login-box :is(.field, form) { text-align: left; }
+:root[data-theme="time"] .login-or { font: 500 10px/1 var(--font); text-transform: uppercase; letter-spacing: .2em; color: var(--ink-3); }
+:root[data-theme="time"] .login-box .btn { height: 42px !important; }
+
+/* ------------------------------------------------------------------ a phone (last: it overrides the sizes above) */
+@media (max-width: 700px) {
+  :root[data-theme="time"] .page-head h1 { font-size: 22px; letter-spacing: .18em; }
+  :root[data-theme="time"] :is(.kpi, .kpi:first-child, .kpi:nth-child(n)) { padding: 14px 12px 12px 0; }
+  :root[data-theme="time"] .kpi .v { font-size: 28px; }
+  :root[data-theme="time"] .login::after { border-block-width: 4vh; }
+  :root[data-theme="time"] .login-box { padding: 26px 20px 22px; }
+  :root[data-theme="time"] .login-box .brand { font-size: 19px; letter-spacing: .22em; }
+}
+
+/* the built-in marks drop most of their colour here: the page keeps one warm note */
+:root[data-theme="time"] :is(.login-box .brand, .top .brand) svg { filter: saturate(.4); }

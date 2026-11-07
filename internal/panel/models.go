@@ -39,12 +39,13 @@ type Settings struct {
 	MaintenanceNote string `json:"maintenance_note" doc:"A line added to the maintenance message, e.g. when it ends"`
 	AgentTransport  string `json:"agent_transport" doc:"How agents talk to the panel: ws = each over one lasting WebSocket (the default; an agent makes HTTP requests by itself while its WebSocket cannot be opened, e.g. behind a proxy that does not pass WebSockets) | http = HTTP requests only. Agents follow within a minute; nothing restarts"`
 
-	StatusPage   string          `json:"status_page" doc:"off | home (the site's front page is the status page; the panel stays at /overview) | page (at /status)"`
-	StatusDomain string          `json:"status_domain" doc:"Optional domain that shows only the status page and the users' sign-in, e.g. status.example.com (point it at the panel)"`
-	StatusAbout  string          `json:"status_about" doc:"A line of text on the sign-in page, e.g. who runs the service"`
-	StatusHub    *serverLocation `json:"status_hub" doc:"Where the panel is drawn on the status page's globe, with an arc from each server; null = not drawn"`
-	StatusPublic bool            `json:"status_public" doc:"Visitors see every server on the status page without signing in - where it is, up or down, load, bandwidth, traffic, expiry date - and sign in from its top-right button. Off: visitors see only the sign-in. Prices are never shown"`
-	StatusIPs    bool            `json:"status_ips" doc:"The status page shows each server's public IP addresses - to everyone who opens it, you included (the panel always shows them). Off by default"`
+	StatusPage    string          `json:"status_page" doc:"off | home (the site's front page is the status page; the panel stays at /overview) | page (at /status)"`
+	StatusDomain  string          `json:"status_domain" doc:"Optional domain that shows only the status page and the users' sign-in, e.g. status.example.com (point it at the panel)"`
+	StatusAbout   string          `json:"status_about" doc:"A line of text on the sign-in page, e.g. who runs the service"`
+	StatusHub     *serverLocation `json:"status_hub" doc:"Where the panel is drawn on the status page's globe, with an arc from each server; null = not drawn"`
+	StatusPublic  bool            `json:"status_public" doc:"Visitors see every server on the status page without signing in - where it is, up or down, load, bandwidth, traffic, expiry date - and sign in from its top-right button. Off: visitors see only the sign-in. Prices are never shown"`
+	StatusIPs     bool            `json:"status_ips" doc:"The status page shows each server's public IP addresses - to everyone who opens it, you included (the panel always shows them). Off by default"`
+	StatusNetwork bool            `json:"status_network" doc:"A server's details on the status page show its network profile: routes, network, usage, score and /24, with the address masked. The panel asks RIPEstat about its /24 and PeeringDB about its network, never about the address. Off by default"`
 	// what of the status page visitors and users get, while it shows the servers to everyone (the
 	// supervisor always sees all of it)
 	StatusOverview bool     `json:"status_overview" doc:"Visitors and users get the overview - the globe, the totals, resources, bandwidth, throughput and the latest events. Off: they start at the list of servers. On by default"`
@@ -53,7 +54,7 @@ type Settings struct {
 
 	AgentPort int `json:"agent_port" doc:"Where new agents put their two loopback-only ports: the Xray API on this port, Hysteria's auth hook on the next (1024-65534, default 50000). Agents already installed keep theirs."`
 
-	DefaultTone string `json:"default_tone" doc:"The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, vampire - or auto: Ice, or Paper on a device set to light"`
+	DefaultTone string `json:"default_tone" doc:"The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, time - or auto: Ice, or Paper on a device set to light"`
 
 	LogoMark      string `json:"logo_mark" doc:"The built-in logo, shown while no logo is uploaded: rose (Rosélune's own, the default) | umbrella | confetti"`
 	LogoAnimation string `json:"logo_animation" doc:"How the logo moves while pages load and when someone signs in: assemble (the built-in logo's pieces fly in - the rose's petals, the umbrella's panels; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo"`
@@ -449,6 +450,7 @@ type Node struct {
 	PassExt   int64           `json:"pass_ext" doc:"Proxy pass through an external node (its id); 0 = none. A protocol passes through a protocol (pass_node) or an external node, not both"`
 	PassOnly  bool            `json:"pass_only" doc:"Serves only proxy passes from other servers: users cannot connect to it directly and it is left out of their links"`
 	BindIP    string          `json:"bind_ip" doc:"The server address this protocol has to itself: it listens there, its traffic leaves from there and links use it (a public one). Empty = all of the server's addresses"`
+	Blocked   []string        `json:"blocked_sites" doc:"Sites this protocol does not reach, each with its subdomains (anthropic.com, google.com). Not for Snell and WireGuard, which cannot tell sites apart"`
 	Code      string          `json:"code" doc:"The protocol's own settings, merged on top of what the panel generates: JSON for Xray protocols (inbound fields, outbounds, rules for its traffic), YAML for Hysteria2. Only the syntax is checked"`
 	Sort      int             `json:"sort"`
 	CreatedAt int64           `json:"created_at"`
@@ -456,17 +458,19 @@ type Node struct {
 }
 
 const nodeCols = `id, server_id, kind, name, port, enabled, settings, host, pass_node, pass_only, bind_ip, code, sort,
-created_at, updated_at, pass_ext`
+created_at, updated_at, pass_ext, blocked_sites`
 
 func scanNode(r interface{ Scan(...any) error }) (*Node, error) {
 	n := &Node{}
-	var settings string
+	var settings, blocked string
 	err := r.Scan(&n.ID, &n.ServerID, &n.Kind, &n.Name, &n.Port, &n.Enabled, &settings, &n.Host, &n.PassNode, &n.PassOnly,
-		&n.BindIP, &n.Code, &n.Sort, &n.CreatedAt, &n.UpdatedAt, &n.PassExt)
+		&n.BindIP, &n.Code, &n.Sort, &n.CreatedAt, &n.UpdatedAt, &n.PassExt, &blocked)
 	if err != nil {
 		return nil, err
 	}
 	n.Settings = json.RawMessage(settings)
+	n.Blocked = []string{}
+	_ = json.Unmarshal([]byte(blocked), &n.Blocked)
 	return n, nil
 }
 

@@ -4096,6 +4096,58 @@
         "x-scope": "status"
       }
     },
+    "/api/status/servers/{id}/network": {
+      "get": {
+        "tags": [
+          "Status page"
+        ],
+        "summary": "A server's network profile",
+        "description": "With status_network on, for whoever may see the status page's servers: the routes to it, its network, usage, score and /24. The address is masked for everyone, the supervisor included; state is pending until the first lookup ends.",
+        "operationId": "getStatusServersIdNetwork",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetProfile"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {},
+          {
+            "session": []
+          },
+          {
+            "token": []
+          }
+        ],
+        "x-scope": "status"
+      }
+    },
     "/api/status/servers/{id}/series": {
       "get": {
         "tags": [
@@ -8896,6 +8948,13 @@
             "description": "The server address this protocol has to itself: it listens there, its traffic leaves from there and links use it (a public one). Empty = all of the server's addresses",
             "type": "string"
           },
+          "blocked_sites": {
+            "description": "Sites this protocol does not reach, each with its subdomains (anthropic.com, google.com). Not for Snell and WireGuard, which cannot tell sites apart",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "code": {
             "description": "The protocol's own settings, merged on top of what the panel generates: JSON for Xray protocols (inbound fields, outbounds, rules for its traffic), YAML for Hysteria2. Only the syntax is checked",
             "type": "string"
@@ -9097,6 +9156,9 @@
             "type": "boolean"
           },
           "anytls": {
+            "type": "boolean"
+          },
+          "block_sites": {
             "type": "boolean"
           },
           "restart_all": {
@@ -10216,6 +10278,13 @@
           "pass_only": {
             "description": "Serve only proxy passes from other servers: users cannot connect directly and it is left out of their links (not for WireGuard)",
             "type": "boolean"
+          },
+          "blocked_sites": {
+            "description": "Sites this protocol does not reach, each with its subdomains: anthropic.com, google.com. Xray protocols take it at once, Hysteria2 by restarting once, mieru and AnyTLS at the next Restart now (pending restart). Not for Snell and WireGuard",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "code": {
             "description": "The protocol's own settings, merged on top of what the panel generates. Xray protocols: JSON (comments allowed) - fields merged into the inbound (sniffing, streamSettings.sockopt, fallbacks, ...), outbounds added (own tags), rules for this protocol's traffic only; tag, port and users stay the panel's. Hysteria2: YAML; auth and trafficStats stay the panel's (saving restarts it). Only the syntax is checked; empty removes it",
@@ -12413,6 +12482,10 @@
           "events": {
             "description": "Visitors and users see the outages of the last 30 days",
             "type": "boolean"
+          },
+          "network": {
+            "description": "A server's details show its network profile (/api/status/servers/{id}/network)",
+            "type": "boolean"
           }
         }
       },
@@ -12436,6 +12509,165 @@
             },
             "description": "Per server id: [time, up, down] since the given time",
             "type": "object"
+          }
+        }
+      },
+      "NetProfile": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "description": "ready, or pending while it is first looked up",
+            "type": "string"
+          },
+          "address": {
+            "description": "The address with its last four digits hidden (IPv6: its last four groups)",
+            "type": "string"
+          },
+          "prefix": {
+            "description": "The announced prefix, as masked as the address",
+            "type": "string"
+          },
+          "asn": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "holder": {
+            "description": "Who holds the AS number",
+            "type": "string"
+          },
+          "asn_space": {
+            "description": "IPv4 addresses that network announces",
+            "format": "int64",
+            "type": "integer"
+          },
+          "usage": {
+            "description": "How the address is used, as far as known",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "score": {
+            "description": "0-100, higher is cleaner; none when no list could be read, or for IPv6",
+            "type": "integer"
+          },
+          "notes": {
+            "description": "What took points off the score",
+            "items": {
+              "$ref": "#/components/schemas/NetNote"
+            },
+            "type": "array"
+          },
+          "block": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetBlock"
+              }
+            ],
+            "description": "The /24 around it (IPv4)"
+          },
+          "nodes": {
+            "description": "The networks on the routes to it",
+            "items": {
+              "$ref": "#/components/schemas/NetNode"
+            },
+            "type": "array"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/NetEdge"
+            },
+            "type": "array"
+          },
+          "routes": {
+            "description": "Routes seen by RIPE's collectors",
+            "type": "integer"
+          },
+          "updated": {
+            "format": "int64",
+            "type": "integer"
+          }
+        }
+      },
+      "NetNote": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "points": {
+            "description": "What it takes off the score",
+            "type": "integer"
+          }
+        }
+      },
+      "NetBlock": {
+        "type": "object",
+        "properties": {
+          "range": {
+            "description": "The /24, masked",
+            "type": "string"
+          },
+          "abuse": {
+            "description": "Addresses of the /24 on abuse lists",
+            "type": "integer"
+          },
+          "proxy": {
+            "description": "... on lists of public proxies",
+            "type": "integer"
+          },
+          "vpn": {
+            "description": "... on lists of VPN networks",
+            "type": "integer"
+          },
+          "tor": {
+            "description": "... that are Tor exits",
+            "type": "integer"
+          },
+          "drop": {
+            "description": "... on Spamhaus DROP",
+            "type": "integer"
+          },
+          "clean": {
+            "description": "... on none of these lists",
+            "type": "integer"
+          }
+        }
+      },
+      "NetNode": {
+        "type": "object",
+        "properties": {
+          "asn": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "level": {
+            "description": "0: the server's network; 1: its upstreams; further: theirs",
+            "type": "integer"
+          },
+          "paths": {
+            "description": "Routes seen through it",
+            "type": "integer"
+          }
+        }
+      },
+      "NetEdge": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "description": "The network nearer the server",
+            "format": "int64",
+            "type": "integer"
+          },
+          "to": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "paths": {
+            "type": "integer"
           }
         }
       },
@@ -13796,6 +14028,10 @@
             "description": "The status page shows each server's public IP addresses - to everyone who opens it, you included (the panel always shows them). Off by default",
             "type": "boolean"
           },
+          "status_network": {
+            "description": "A server's details on the status page show its network profile: routes, network, usage, score and /24, with the address masked. The panel asks RIPEstat about its /24 and PeeringDB about its network, never about the address. Off by default",
+            "type": "boolean"
+          },
           "status_overview": {
             "description": "Visitors and users get the overview - the globe, the totals, resources, bandwidth, throughput and the latest events. Off: they start at the list of servers. On by default",
             "type": "boolean"
@@ -13816,7 +14052,7 @@
             "type": "integer"
           },
           "default_tone": {
-            "description": "The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, vampire - or auto: Ice, or Paper on a device set to light",
+            "description": "The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, time - or auto: Ice, or Paper on a device set to light",
             "type": "string"
           },
           "logo_mark": {

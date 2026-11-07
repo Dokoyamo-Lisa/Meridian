@@ -11,7 +11,7 @@ import '../mark.css'
 import './status.css'
 import '../themes.css'
 import './postmodern.css'
-import './vampire.css'
+import './time.css'
 import { LogoInfo, animClass, brand, logoSrc, markPieces, openInto, setBrand, transition } from '../mark'
 import { $, $$, append, clear, h, icon, numUnit, s, safeHref, setText } from './dom'
 import {
@@ -53,6 +53,7 @@ import type { Globe, GlobePlace, LivePayload, LoginResult, PortalMe, PortalServe
 import { pluginCard, pluginData, pluginMe, pluginState, pluginView } from './plugins' // window.MeridianStatus for plugins
 import { Check, startCheck } from '../turnstile'
 import { ServerHistory, serverHistory } from './details'
+import { NetworkSection, networkSection } from './network'
 import { osBadge, virtName } from './os'
 import { TgSession, call as tgCall, telegramPanel, tgLaunch } from './tg'
 import { globeLayoutKey } from './globekeys'
@@ -2059,6 +2060,7 @@ interface Drawer {
   down: HTMLElement
   secs: Record<string, HTMLElement>
   hist: ServerHistory | null // the charts over time (details.ts)
+  net: NetworkSection | null // its network profile (network.ts)
   os: string // the system the header's badge shows
 }
 let D: Drawer | null = null
@@ -2092,6 +2094,7 @@ function closeDrawer(immediate = false) {
   const done = () => {
     old.charts.forEach((c) => c.destroy())
     old.hist?.destroy()
+    old.net?.destroy()
     if (!D) clear($('#dBody'))
   }
   if (immediate || motion.reduced) done()
@@ -2100,7 +2103,7 @@ function closeDrawer(immediate = false) {
 
 function buildDrawer(sv: StatusServer): Drawer {
   const body = clear($('#dBody'))
-  const d: Drawer = { sid: sv.id, charts: [], up: h('span.v'), down: h('span.v'), secs: {}, hist: null, os: '\u0000' }
+  const d: Drawer = { sid: sv.id, charts: [], up: h('span.v'), down: h('span.v'), secs: {}, hist: null, net: null, os: '\u0000' }
   if (show().throughput) {
     const cv = h('canvas', { role: 'img', 'aria-label': `Throughput of ${sv.name}, last 30 minutes` }) as HTMLCanvasElement
     body.append(
@@ -2113,12 +2116,19 @@ function buildDrawer(sv: StatusServer): Drawer {
     )
     d.charts.push(new FlowChart(cv, { data: () => ({ pts: liveOf(sv.id), live: true, span: LIVE_SPAN }), minY: 8 * 1024, pad: [18, 6, 22, 2] }))
   }
-  ;['mine', 'addrs', 'res', 'hist', 'host', 'bw', 'traffic', 'avail', 'events'].forEach((k, i) => {
+  ;['mine', 'addrs', 'res', 'hist', 'host', 'net', 'bw', 'traffic', 'avail', 'events'].forEach((k, i) => {
     if (k === 'hist') {
       // its charts over time: what the viewer may see of them, as they pick (details.ts)
       if (show().resources) {
         d.hist = serverHistory(sv.id, sv.name, i + 1)
         body.append(d.hist.el)
+      }
+      return
+    }
+    if (k === 'net') {
+      if (S.pub?.show?.network) {
+        d.net = networkSection(sv.id, i + 1)
+        body.append(d.net.el)
       }
       return
     }
@@ -2511,7 +2521,7 @@ function toast(msg: string, warn = false) {
   toastTimer = window.setTimeout(() => t.classList.remove('on'), 2600)
 }
 
-const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist', 'postmodern', 'vampire']
+const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist', 'postmodern', 'time']
 function initTones() {
   const root = document.documentElement
   const btn = $('#palBtn')

@@ -74,6 +74,7 @@ type Panel struct {
 	backupMu     sync.Mutex // one backup at a time (backups.go)
 	backupNameMu sync.Mutex // backupName: each name later than the last
 	backupLast   time.Time
+	nets         netStore    // the servers' network profiles (netprofile.go)
 	startedAt    int64       // when this panel started: a server's silence counts from then (markOffline)
 	console      consoleHub  // the supervisor's consoles (console.go)
 	sourceMu     sync.Mutex  // one subscription link refresh at a time (extsources.go)

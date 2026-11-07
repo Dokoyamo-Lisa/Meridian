@@ -150,6 +150,8 @@ export interface NodeView {
   pass_ext: number
   /** Serves only proxy passes: users cannot connect to it directly. */
   pass_only: boolean
+  /** Sites it does not reach, each with its subdomains. */
+  blocked_sites: string[]
   /** The server address this protocol has to itself ('' = all of them). */
   bind_ip: string
   /** Advanced settings: Xray JSON or Hysteria2 YAML, merged on top of the generated configuration and taking precedence. */
@@ -649,6 +651,7 @@ export interface Settings {
   status_public: boolean
   /** Visitors also see the servers' public IP addresses. */
   status_ips: boolean
+  status_network: boolean
   /** Visitors and users get the overview (else they start at the list of servers). */
   status_overview: boolean
   /** Visitors and users see the outages of the last 30 days. */
@@ -658,7 +661,7 @@ export interface Settings {
   /** The built-in logo, shown while none is uploaded: rose (Rosélune's own) or umbrella. */
   logo_mark: string
   logo_animation: string
-  /** The look pages open with for people who have not picked one: romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, vampire - or auto (Ice, or Paper on light devices). */
+  /** The look pages open with for people who have not picked one: romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, time - or auto (Ice, or Paper on light devices). */
   default_tone: string
   agent_port: number
   auto_update: boolean

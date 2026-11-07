@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.4.4 - 2026-11-07
+
+Block sites on one protocol, a network profile on the status page, and a new look. Upgrade the panel
+(**Settings › Updates** - nobody is disconnected). The agents only need upgrading (server page ›
+More actions › Upgrade agent - nobody is disconnected) to block sites on mieru and AnyTLS.
+
+- **Block sites on one protocol.** A protocol's form has a new part, **Blocked sites**: write
+  *anthropic.com, google.com* and that protocol alone no longer reaches them or their subdomains,
+  whatever traffic rules say. VLESS, VMess, Trojan, Shadowsocks, SOCKS5 and HTTP take it at once with
+  nothing restarted, Hysteria2 by restarting once (saving asks first), mieru and AnyTLS at the next
+  **Restart now** (they need agent 1.4.4). Snell and WireGuard cannot tell sites apart, so they
+  refuse a list rather than pretend. It works on the name the app asks for, and on the name in the
+  connection for all but mieru; open connections keep going until they end. Also in the API
+  (`blocked_sites`) and MCP (`add_protocol`, `update_protocol`).
+- **A new look: Time, in place of Vampire Princess.** The slow build of a film score: near-black with
+  a cold steel cast, titles in thin wide capitals that close in as they appear, a crescendo of fine
+  bars under them, one amber note for what matters, hairlines instead of boxes, and a streak of light
+  that swells behind the page. The sign-in opens between black bars. Like Postmodern it has no globe.
+  Vampire Princess is gone: a panel set to it opens with Romance, and anyone who had picked it gets
+  the panel's look, until a new one is chosen.
+- **A server's network profile on the status page** (Settings › Status page › Show each server's
+  network profile, off by default). A server's details gain its network (ASN and holder), what the
+  address is used for, an IP score from 0 to 100 with what took points off, what public lists say
+  about its /24, and a graph of its BGP routes. The address stays hidden: the page gets it with its
+  last four digits masked (the last four groups for IPv6), for the supervisor too, and the panel
+  never sends it anywhere - RIPE is asked about its /24, PeeringDB about its network, and the public
+  lists are downloaded and compared on the panel. The score is Rosélune's own reading of those
+  lists, once a day; IPv6 addresses have no score, because the lists cover IPv4 only.
+
 ## 1.4.3 - 2026-10-30
 
 Live speed per user and per address, a calmer Monitor, a new look, and fixes. Upgrade the panel

@@ -166,3 +166,69 @@ func TestSaveWithoutFolder(t *testing.T) {
 		t.Errorf("the folder was made for nothing: %v", err)
 	}
 }
+
+// TestBlockedSites: mieru and AnyTLS carry the list in their configuration, only when there is one -
+// a configuration without it stays byte for byte what it was, so an upgrade restarts nobody - and a
+// change of the list alone is not a change of the process.
+func TestBlockedSites(t *testing.T) {
+	e := &Engine{ConfDir: "/x"}
+	base := Inst{Kind: "anytls", Node: 1, Sub: 2, Port: 2000, Secret: strings.Repeat("s", 16)}
+	blocked := base
+	blocked.Blocked = "anthropic.com,google.com"
+	_, plain := e.config(base)
+	if strings.Contains(plain, "domain_suffix") || strings.Contains(plain, "sniff") {
+		t.Errorf("no list, but: %s", plain)
+	}
+	_, body := e.config(blocked)
+	var cfg struct {
+		Route struct {
+			Rules []struct {
+				Action string   `json:"action"`
+				Suffix []string `json:"domain_suffix"`
+			} `json:"rules"`
+		} `json:"route"`
+	}
+	if err := json.Unmarshal([]byte(body), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if r := cfg.Route.Rules; len(r) != 2 || r[0].Action != "sniff" || r[1].Action != "reject" || len(r[1].Suffix) != 2 {
+		t.Errorf("anytls: %s", body)
+	}
+
+	m := Inst{Kind: "mieru", Transport: "tcp", Node: 1, Sub: 2, Port: 2000, Name: "u", Secret: strings.Repeat("s", 16)}
+	_, plain = e.config(m)
+	if strings.Contains(plain, "egress") {
+		t.Errorf("no list, but: %s", plain)
+	}
+	m.Blocked = "google.com"
+	_, body = e.config(m)
+	if !strings.Contains(body, `"domainNames":["google.com"]`) || !strings.Contains(body, `"action":"REJECT"`) {
+		t.Errorf("mieru: %s", body)
+	}
+
+	if !onlyBlocked(base, blocked) || onlyBlocked(base, base) {
+		t.Error("onlyBlocked")
+	}
+	other := blocked
+	other.Port = 2001
+	if onlyBlocked(base, other) {
+		t.Error("a new port is more than the list")
+	}
+	waiting := blocked
+	waiting.Waits, waiting.Limited = true, true
+	if !same(waiting, blocked) {
+		t.Error("waiting is no change of the process")
+	}
+
+	for _, bad := range []string{"a b.com", "x\",\"y.com", "nodots", "../etc"} {
+		i := base
+		i.Blocked = bad
+		if clean(i) == nil {
+			t.Errorf("%q passed", bad)
+		}
+	}
+	s := Inst{Kind: "snell", Node: 1, Sub: 2, Port: 2000, Secret: strings.Repeat("s", 16), Blocked: "google.com"}
+	if clean(s) == nil {
+		t.Error("snell took a list")
+	}
+}

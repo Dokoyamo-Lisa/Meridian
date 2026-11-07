@@ -55,6 +55,7 @@ func (p *Panel) jobs(ctx context.Context) {
 			lastHourly = time.Now()
 			p.retention(ctx)
 			p.pruneMirror(ctx)
+			p.netJob(ctx) // the status page's network profiles, daily (netprofile.go)
 		}
 	}
 }

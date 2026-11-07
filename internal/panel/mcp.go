@@ -1391,6 +1391,9 @@ var mcpTools = []mcpTool{
 			if v, ok := a["pass_only"].(bool); ok {
 				b["pass_only"] = v
 			}
+			if v, ok := argStrs(a, "blocked_sites"); ok {
+				b["blocked_sites"] = v
+			}
 			if v, ok := argStr(a, "bind_ip"); ok {
 				b["bind_ip"] = v
 			}
@@ -1398,7 +1401,7 @@ var mcpTools = []mcpTool{
 				b["code"] = v
 			}
 			v, err := c.api("POST", fmt.Sprintf("/api/servers/%d/nodes", id), b)
-			return pick(v, "id", "kind", "label", "net", "port", "public_port", "enabled", "settings", "apps", "notes", "pass_name", "pass_only"), err
+			return pick(v, "id", "kind", "label", "net", "port", "public_port", "enabled", "settings", "apps", "notes", "pass_name", "pass_only", "blocked_sites"), err
 		}},
 	{Name: "scan_server", Title: "Look for existing proxies", Write: true,
 		Description: "Ask a server's agent to look for proxy software already running there (Xray, V2Ray, 3x-ui, x-ui, sing-box, Hysteria2). It only reads. Returns an action id; when action_status says done, call get_scan.",
@@ -1515,7 +1518,7 @@ var mcpTools = []mcpTool{
 				}
 				what = append(what, "This changes how apps connect ("+strings.Join(names, ", ")+"): devices using the protocol stop working until they refresh their subscription.")
 			}
-			if m["restarts"] == true {
+			if m["restarts"] == true || c.hyBlockedChange(id, a) {
 				what = append(what, "This Hysteria2 protocol restarts once to take it: its devices drop and reconnect.")
 			}
 			if po, ok := a["pass_only"].(bool); ok && po {
@@ -1529,7 +1532,7 @@ var mcpTools = []mcpTool{
 				return nil, err
 			}
 			v, err := c.api("PATCH", fmt.Sprintf("/api/nodes/%d", id), protocolChange(a))
-			return pick(v, "id", "kind", "label", "net", "port", "public_port", "enabled", "settings", "apps", "notes", "pass_name", "pass_only", "bind_ip", "host"), err
+			return pick(v, "id", "kind", "label", "net", "port", "public_port", "enabled", "settings", "apps", "notes", "pass_name", "pass_only", "blocked_sites", "bind_ip", "host"), err
 		}},
 	{Name: "remove_protocol", Title: "Remove a protocol", Write: true, Destructive: true,
 		Description: "Remove a protocol from its server: everyone using it is disconnected and it leaves every user's link. Protocols on other servers that pass through it are blocked until they get another exit. Users left with no access at all are named in the timeline.",
@@ -2042,15 +2045,16 @@ var mcpTools = []mcpTool{
 	{Name: "set_status_page", Title: "Set up the status page", Write: true,
 		Description: "Turn the status page on or off. mode home: it is the site's front page (the panel stays at /overview); page: at /status; off: not at the front (users still sign in at /me). With public on, visitors see every server (place, up or down, load, bandwidth, traffic, expiry date) and sign in from the top-right button; users see their own usage; the supervisor sees everything. The servers' IP addresses appear on the page only with show_ips on - then to everyone who opens it, otherwise to nobody (the panel always shows them). Prices are never shown. Only the given fields change.",
 		Props: map[string]any{
-			"mode":       pEnum("Where it is", "off", "home", "page"),
-			"public":     pBool("Visitors see every server without signing in (default true); false: only a sign-in"),
-			"show_ips":   pBool("The page shows the servers' public IP addresses, to everyone who opens it (default false)"),
-			"overview":   pBool("Visitors and users get the overview (globe, totals, resources, throughput); false: they start at the server list (default true)"),
-			"events":     pBool("Visitors and users see the outages of the last 30 days (default true)"),
-			"charts":     pStrs("The charts of a server's details visitors and users get: cpu, memory, disk, diskio, network, load, connections, temperature, ping (the ping monitors marked public); [] = none. Default: all"),
-			"domain":     pStr("Its own domain (shows only the status page and user sign-in), e.g. status.example.com; empty removes it"),
-			"about":      pStr("A line on the sign-in page, e.g. who runs the service"),
-			"panel_city": pStr("Where the panel runs, drawn on the globe with an arc from every server: a city such as 'Hong Kong' or 'Frankfurt am Main, DE'; 'none' removes it"),
+			"mode":         pEnum("Where it is", "off", "home", "page"),
+			"public":       pBool("Visitors see every server without signing in (default true); false: only a sign-in"),
+			"show_ips":     pBool("The page shows the servers' public IP addresses, to everyone who opens it (default false)"),
+			"show_network": pBool("A server's details show its network profile: ASN, usage, IP score, /24 and BGP routes, the address masked (default false). Looks up the /24 and the network at RIPE and PeeringDB"),
+			"overview":     pBool("Visitors and users get the overview (globe, totals, resources, throughput); false: they start at the server list (default true)"),
+			"events":       pBool("Visitors and users see the outages of the last 30 days (default true)"),
+			"charts":       pStrs("The charts of a server's details visitors and users get: cpu, memory, disk, diskio, network, load, connections, temperature, ping (the ping monitors marked public); [] = none. Default: all"),
+			"domain":       pStr("Its own domain (shows only the status page and user sign-in), e.g. status.example.com; empty removes it"),
+			"about":        pStr("A line on the sign-in page, e.g. who runs the service"),
+			"panel_city":   pStr("Where the panel runs, drawn on the globe with an arc from every server: a city such as 'Hong Kong' or 'Frankfurt am Main, DE'; 'none' removes it"),
 		},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
 			v, err := c.api("GET", "/api/settings", nil)
@@ -2063,7 +2067,7 @@ var mcpTools = []mcpTool{
 					s[key] = x
 				}
 			}
-			for arg, key := range map[string]string{"public": "status_public", "show_ips": "status_ips", "overview": "status_overview", "events": "status_events"} {
+			for arg, key := range map[string]string{"public": "status_public", "show_ips": "status_ips", "show_network": "status_network", "overview": "status_overview", "events": "status_events"} {
 				if x, ok := argBool(a, arg); ok {
 					s[key] = x
 				}
@@ -2161,7 +2165,7 @@ var mcpTools = []mcpTool{
 			"name":        pStr("The panel's name, shown on every page and in users' apps (up to 64 characters)"),
 			"mark":        pEnum("The built-in logo, shown while no logo is uploaded: rose (Rosélune's own: five petals, a blush bloom, the moon at its heart) umbrella (eight panels, red and white) or confetti (a cobalt crescent moon cradling a canary sun, with a zigzag, a triangle and a dot - the Postmodern look's colours)", logoMarks...),
 			"animation":   pEnum("How the logo moves while pages load and when someone signs in (assemble flies in the built-in logo's pieces; an uploaded logo rises instead)", logoAnimations...),
-			"look":        pEnum("How the panel, the status page and users' pages look to people who have not picked a look themselves: romance (the default: blush paper, rose ink, a serif voice), umbrella (black, white and signal red, a laboratory's), postmodern (cream paper, black outlines, blocks of bright colour, laid out anew; no globe on the status page), vampire (Vampire Princess: black velvet, blood crimson, antique gold frames, a moon over a starry sky, laid out anew; no globe), the quiet tones ice, celadon, ink, paper, mist - or auto (Ice, Paper on light devices)", append(slices.Clone(siteTones), "auto")...),
+			"look":        pEnum("How the panel, the status page and users' pages look to people who have not picked a look themselves: romance (the default: blush paper, rose ink, a serif voice), umbrella (black, white and signal red, a laboratory's), postmodern (cream paper, black outlines, blocks of bright colour, laid out anew; no globe on the status page), time (a film score's slow build: near-black, thin capitals set wide, one amber note, laid out anew; no globe), the quiet tones ice, celadon, ink, paper, mist - or auto (Ice, Paper on light devices)", append(slices.Clone(siteTones), "auto")...),
 			"logo_svg":    pStr("A new logo as SVG markup"),
 			"logo_base64": pStr("A new logo as a base64 PNG, JPEG or WebP image"),
 			"reset_logo":  pBool("Use the built-in logo again (see mark)"),
@@ -2294,7 +2298,7 @@ var restartAllTool = mcpTool{Name: "restart_all_servers", Title: "Restart everyt
 		return c.api("POST", "/api/servers/restart-all", nil)
 	}}
 
-var statusKeys = []string{"status_page", "status_domain", "status_about", "status_hub", "status_public", "status_ips", "status_overview", "status_events",
+var statusKeys = []string{"status_page", "status_domain", "status_about", "status_hub", "status_public", "status_ips", "status_network", "status_overview", "status_events",
 	"status_charts"}
 
 // findPlace looks up a city of the panel's list: "Osaka" or "Osaka, JP".
@@ -2375,6 +2379,7 @@ func protocolProps(withServer bool) map[string]any {
 		m["pass_only"] = map[string]any{"type": "boolean", "description": "Serve only proxy passes from other servers: users cannot connect to it directly and it is left out of their links. Use it for an exit that people should reach only through a relay"}
 		m["bind_ip"] = pStr("One of the server's addresses (addrs in get_server) for this protocol alone: it listens there, its traffic leaves from there, links use it. Protocols on different addresses may share a port. Omit for all addresses")
 		m["code"] = pStr(protocolCodeHelp)
+		m["blocked_sites"] = map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Sites this protocol does not reach, each with its subdomains, e.g. [\"anthropic.com\", \"google.com\"]; the whole list, [] for none. Xray protocols apply it at once, Hysteria2 by restarting once, mieru and AnyTLS at the next restart of what waits (pending restart). Snell and WireGuard cannot block sites"}
 	}
 	return m
 }
@@ -2424,6 +2429,9 @@ func protocolChange(a map[string]any) map[string]any {
 	}
 	if v, ok := a["pass_only"].(bool); ok {
 		b["pass_only"] = v
+	}
+	if v, ok := argStrs(a, "blocked_sites"); ok {
+		b["blocked_sites"] = v
 	}
 	if v, ok := argStr(a, "bind_ip"); ok {
 		b["bind_ip"] = v

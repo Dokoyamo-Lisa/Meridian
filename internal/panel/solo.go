@@ -200,7 +200,7 @@ func (p *Panel) ensureSoloPorts(ctx context.Context, n *Node, subs []*Sub, allUs
 // The users it has no room for are left out (and told about: soloFull).
 func (p *Panel) soloNode(ctx context.Context, n *Node, all, serving []*Sub) (proto.SoloNode, error) {
 	ss := parseSolo(n.Settings)
-	out := proto.SoloNode{NodeID: n.ID, Kind: n.Kind, Transport: ss.Transport, Bind: n.BindIP, Users: []proto.SoloUser{}}
+	out := proto.SoloNode{NodeID: n.ID, Kind: n.Kind, Transport: ss.Transport, Bind: n.BindIP, Users: []proto.SoloUser{}, Blocked: n.Blocked}
 	// everyone who may use it keeps a port (a paused user, or one out of data, too: back on the same
 	// port); only those it serves now run
 	ports, err := p.ensureSoloPorts(ctx, n, usersOf(all, n), true)

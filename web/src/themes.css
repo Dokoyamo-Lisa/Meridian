@@ -1,8 +1,8 @@
 /* Four looks beyond the quiet tones: Romance - Rosélune's own, the default - Umbrella, Postmodern
-   and Vampire Princess. Each is a tone like the others (the colour tokens the panel and the status page share,
+   and Time. Each is a tone like the others (the colour tokens the panel and the status page share,
    the globe's, the charts') plus a character of its own - type, corners, light, a few details -
-   written against the classes both pages have. Postmodern and Vampire Princess go furthest: they lay
-   the pages out anew (postmodern.css, vampire.css and their status/ twins). No image or font is loaded: everything here is drawn by
+   written against the classes both pages have. Postmodern and Time go furthest: they lay
+   the pages out anew (postmodern.css, time.css and their status/ twins). No image or font is loaded: everything here is drawn by
    CSS from system fonts. */
 
 /* ------------------------------------------------------------------ Umbrella
@@ -233,103 +233,72 @@
     radial-gradient(rgba(23, 21, 26, .15) 1.2px, transparent 1.6px) 0 0 / 22px 22px;
 }
 
-/* ------------------------------------------------------------------ Vampire Princess
-   A princess's gallery at midnight: black velvet with a plum depth, moonlit ivory type in a
-   high-contrast Didone, blood crimson for what matters, antique gold for the frames and rules, a
-   crescent moon and a sky of stars behind it all. Text keeps 4.5:1 on the velvet and on crimson
-   (WCAG AA), the faintest 3:1. The layout itself is in vampire.css (the panel) and
-   status/vampire.css. */
-:root[data-theme="vampire"] {
+/* ------------------------------------------------------------------ Time
+   A film score's slow build, as a page: near-black with a cold steel cast, silver type in thin capitals
+   set wide like a title card, and one warm note - amber - for what matters. A long thin streak of
+   anamorphic light rests behind the page and swells over sixteen seconds, four slow bars. Text keeps
+   4.5:1 on the page, the faintest 3:1. The layout itself is in time.css (the panel) and status/time.css. */
+:root[data-theme="time"] {
   color-scheme: dark;
-  --page: #0d090f;
-  --surface: #150f17;
-  --raised: #1c141f;
-  --hover: rgba(240, 214, 188, .055);
-  --line: rgba(214, 178, 110, .14);
-  --line-2: rgba(214, 178, 110, .3);
-  --ink: #f3e9df;
-  --ink-2: #d2c3b8;
-  --ink-3: #a8979d;
-  --ink-4: #7b6a72;
-  --accent: #b5173f;
-  --accent-ink: #ff6f8f;
-  --accent-soft: rgba(181, 23, 63, .2);
-  --on-accent: #fff6f2;
-  --grid: rgba(243, 233, 223, .06);
-  --baseline: rgba(214, 178, 110, .3);
-  --good: #84d3a2;
-  --warn: #e9bd64;
-  --crit: #ff6f86;
-  --good-soft: rgba(132, 211, 162, .14);
-  --warn-soft: rgba(233, 189, 100, .15);
-  --crit-soft: rgba(255, 111, 134, .15);
-  --scrim: rgba(6, 3, 8, .74);
-  --shadow-pop: 0 34px 90px -30px rgba(0, 0, 0, .95), 0 0 0 1px rgba(214, 178, 110, .32);
-  --pool: rgba(181, 23, 63, .07);
-  --g-day: #b6a29a;
-  --g-night: #3d2f36;
+  --page: #07090c;
+  --surface: #0d1116;
+  --raised: #131920;
+  --hover: rgba(200, 216, 235, .05);
+  --line: rgba(200, 216, 235, .09);
+  --line-2: rgba(200, 216, 235, .18);
+  --ink: #e9edf2;
+  --ink-2: #b6bfca;
+  --ink-3: #8b96a4;
+  --ink-4: #6b7584;
+  --accent: #e0a458;
+  --accent-ink: #f0c088;
+  --accent-soft: rgba(224, 164, 88, .1);
+  --on-accent: #14100a;
+  --grid: rgba(233, 237, 242, .05);
+  --baseline: rgba(200, 216, 235, .2);
+  --good: #7fcbb2;
+  --warn: #e8be6e;
+  --crit: #f08a82;
+  --good-soft: rgba(127, 203, 178, .1);
+  --warn-soft: rgba(232, 190, 110, .11);
+  --crit-soft: rgba(240, 138, 130, .11);
+  --scrim: rgba(3, 4, 6, .78);
+  --shadow-pop: 0 34px 90px -30px #000, 0 0 0 1px rgba(200, 216, 235, .18);
+  --pool: rgba(110, 150, 190, .05);
+  --g-day: #9aa6b4;
+  --g-night: #2a323c;
   --g-night-lum: .5;
-  --g-rim: rgba(214, 178, 110, .16);
-  --g-halo: rgba(181, 23, 63, .07);
-  --g-arc: #d6385f;
-  --g-accent: #ff6f8f;
-  --g-hub: #f3e9df;
-  --g-client: #d6b26e;
+  --g-rim: rgba(200, 216, 235, .14);
+  --g-halo: rgba(110, 150, 190, .06);
+  --g-arc: #e0a458;
+  --g-accent: #f0c088;
+  --g-hub: #e9edf2;
+  --g-client: #7fa6c9;
   --g-back: .03;
-  --font-d: "Bodoni 72", Didot, "Bodoni MT", "Big Caslon", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  --num-weight: 400;
-  --c1: #e4466c; --c2: #d6b26e; --c3: #ad8ff0; --c4: #5fc6aa; --c5: #f39ab7; --c6: #7eaaf0; --c7: #ef8c5e; --c8: #908289;
-  /* the look's own: gold for frames and rules, crimson velvet, the moon */
-  --vp-gold: #d6b26e;
-  --vp-gold-2: #f0d9a2;
-  --vp-gold-line: rgba(214, 178, 110, .42);
-  --vp-velvet: linear-gradient(180deg, #c81f4a, #8f0f30);
-  --vp-velvet-hover: linear-gradient(180deg, #da2856, #a1133a);
-  --vp-moon: #f4e7cf;
-  --vp-frame: 0 0 0 1px var(--vp-gold-line), 0 0 0 5px var(--surface), 0 0 0 6px rgba(214, 178, 110, .16);
-  --vp-glow: 0 18px 50px -24px rgba(181, 23, 63, .55);
-  scrollbar-color: rgba(214, 178, 110, .45) transparent;
-  caret-color: var(--accent-ink);
+  --font-d: "Avenir Next", "Helvetica Neue", "Segoe UI", Roboto, system-ui, sans-serif;
+  --num-weight: 200;
+  --c1: #e0a458; --c2: #7fa6c9; --c3: #b3a4e0; --c4: #7fcbb2; --c5: #e6a6b4; --c6: #a7b6c6; --c7: #e8865a; --c8: #7d8797;
+  /* the look's own: cold steel, and the crescendo - fine bars rising to the right */
+  --tm-steel: #7fa6c9;
+  --tm-bars: repeating-linear-gradient(90deg, currentColor 0 1px, transparent 1px 4px);
+  --tm-crescendo: polygon(0 48%, 18% 46%, 30% 42%, 44% 44%, 55% 34%, 66% 38%, 76% 22%, 84% 28%, 92% 6%, 100% 0, 100% 100%, 92% 94%, 84% 72%, 76% 78%, 66% 62%, 55% 66%, 44% 56%, 30% 58%, 18% 54%, 0 52%);
+  scrollbar-color: rgba(200, 216, 235, .25) transparent;
+  caret-color: var(--accent);
 }
-:root[data-theme="vampire"] ::selection { background: rgba(181, 23, 63, .55); color: #fff6f2; }
+:root[data-theme="time"] ::selection { background: rgba(224, 164, 88, .3); color: #fff; }
 
-/* the night: a crescent moon high on the right with its halo, a scatter of stars, crimson mist rising
-   from the bottom */
-:root[data-theme="vampire"] body::before {
+/* the light: a broad cold wash from above, and the streak across it, swelling in four bars */
+:root[data-theme="time"] body::before {
   background:
-    radial-gradient(circle at calc(100% - 118px) 104px, var(--page) 0 43px, transparent 44px),
-    radial-gradient(circle at calc(100% - 136px) 118px, var(--vp-moon) 0 46px, transparent 47px),
-    radial-gradient(circle at calc(100% - 136px) 118px, rgba(244, 231, 207, .13), transparent 230px),
-    radial-gradient(90vw 34vw at 50% 112%, rgba(181, 23, 63, .2), transparent 70%),
-    radial-gradient(rgba(255, 240, 222, .55) .9px, transparent 1.4px) 23px 41px / 311px 257px,
-    radial-gradient(rgba(255, 240, 222, .32) .7px, transparent 1.2px) 151px 97px / 263px 337px,
-    radial-gradient(rgba(240, 217, 162, .38) 1px, transparent 1.5px) 71px 199px / 397px 283px,
-    radial-gradient(rgba(255, 240, 222, .24) .6px, transparent 1.1px) 233px 17px / 179px 389px,
-    radial-gradient(rgba(255, 240, 222, .38) .8px, transparent 1.3px) 307px 151px / 433px 211px,
-    radial-gradient(rgba(255, 240, 222, .2) .6px, transparent 1.1px) 97px 263px / 223px 167px;
+    radial-gradient(70vw 1.1vw at 50% 16%, rgba(190, 220, 250, .22), transparent 72%),
+    radial-gradient(34vw .3vw at 50% 16%, rgba(255, 226, 190, .4), transparent 75%),
+    radial-gradient(100vw 44vw at 50% -6%, rgba(92, 128, 168, .16), transparent 70%);
+  animation: tm-swell 16s ease-in-out infinite;
 }
-/* a gold filigree thread along the top edge */
-:root[data-theme="vampire"] body::after {
-  content: "";
-  position: fixed;
-  z-index: 60;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 2px;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, var(--vp-gold) 18%, var(--vp-gold-2) 50%, var(--vp-gold) 82%, transparent);
-  opacity: .8;
-}
-@media (max-width: 700px) {
-  /* a phone: a smaller moon, so it never sits behind the figures */
-  :root[data-theme="vampire"] body::before {
-    background:
-      radial-gradient(circle at calc(100% - 40px) 64px, var(--page) 0 20px, transparent 21px),
-      radial-gradient(circle at calc(100% - 48px) 70px, var(--vp-moon) 0 22px, transparent 23px),
-      radial-gradient(80vw 40vw at 50% 110%, rgba(181, 23, 63, .18), transparent 70%),
-      radial-gradient(rgba(255, 240, 222, .45) .9px, transparent 1.4px) 23px 41px / 311px 257px,
-      radial-gradient(rgba(255, 240, 222, .28) .7px, transparent 1.2px) 151px 97px / 263px 337px,
-      radial-gradient(rgba(255, 240, 222, .3) .8px, transparent 1.3px) 307px 151px / 433px 211px;
-  }
+@keyframes tm-swell { 0%, 100% { opacity: .55; } 25% { opacity: .75; } 50% { opacity: .65; } 75% { opacity: 1; } }
+@keyframes tm-breathe { 0%, 100% { transform: scaleY(.72); } 25% { transform: scaleY(.86); } 50% { transform: scaleY(.8); } 75% { transform: scaleY(1); } }
+/* a title card: the capitals close in as they come up */
+@keyframes tm-card { from { opacity: 0; letter-spacing: .42em; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="time"] body::before, :root[data-theme="time"] :is(.login::before, .gate::before, .page-head h1, .page-h h1, .gate h1, .login-box .brand) { animation: none; }
 }

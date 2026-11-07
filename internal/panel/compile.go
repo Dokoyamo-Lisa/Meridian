@@ -432,6 +432,7 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			if _, custom, err := checkHyCode(n.Code); err == nil {
 				hn.Custom = custom
 			}
+			hn.Custom = hyBlocked(hn.Custom, n.Blocked)
 			if id, _ := certName(n.Kind, n.Settings); id > 0 { // a shared certificate: its current version
 				if c := shared[id]; c != nil {
 					hn.CertPEM, hn.KeyPEM = c.CertPEM, c.KeyPEM
@@ -511,6 +512,8 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 	// the more specific first
 	outs := append(append(codeOut, plan.outbounds...), passOut...)
 	rules := append(append(codeRules, plan.rules...), passRules...)
+	// a protocol's blocked sites come before all of those: nothing it carries reaches them
+	rules = append(blockedRules(nodes), rules...)
 	// devices over a user's limit are turned away before anything else (limits.go)
 	rules = append(p.limitsFor(srv, nodes, subs, st), rules...)
 	xr.Base = xrayBase(srv, outs, rules, plan.balancers, plan.observe)

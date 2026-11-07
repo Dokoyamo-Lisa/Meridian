@@ -514,6 +514,12 @@ function General() {
               label="Show IP addresses"
               hint="Each server's public addresses on the status page, for everyone who opens it - you included. Anyone can then find, test - or block - your servers by address. Off, nobody sees them there; the panel always shows them."
             />
+            <Check
+              checked={v.status_network}
+              onChange={(x) => set('status_network', x)}
+              label="Show each server's network profile"
+              hint="In a server's details: its network (ASN), how it is used, an IP score, its /24 and its BGP routes, with the end of the address hidden, for everyone who can open the page. It asks RIPE and PeeringDB about the server's /24 and network - never the address itself - and reads public lists once a day. The network and the first digits of the address become public."
+            />
           </>
         )}
         <Field label="A line on the sign-in page" hint="For example who runs the service, or how to reach support. Visitors see it.">

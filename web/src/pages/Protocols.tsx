@@ -542,6 +542,10 @@ export function ProtocolCard(props: {
         {n.pass_broken ? ' · blocked' : ''}
       </span>,
     ])
+  if (n.blocked_sites?.length) {
+    const sites = n.blocked_sites
+    facts.push(['Blocks', <span class="ellipsis" title={sites.join(', ')}>{sites.length > 2 ? `${sites.slice(0, 2).join(', ')} +${sites.length - 2}` : sites.join(', ')}</span>])
+  }
   if (n.pass_only) facts.push(['Users', <span class="ellipsis">only through proxy passes</span>])
   else if (props.users && props.onAccess) {
     const can = props.users.filter((u) => accessOf(u, n) !== 'none').length
@@ -831,6 +835,11 @@ function draftFrom(kind: string, st: Record<string, any> | undefined): Draft {
 }
 
 // solo says whether a protocol runs one small server per user, each on their own port (mieru, Snell, AnyTLS).
+// canBlock: the protocol can tell sites apart (Snell and WireGuard carry traffic without knowing)
+function canBlock(kind: string) {
+  return !!kind && kind !== 'snell' && kind !== 'wireguard'
+}
+
 function solo(kind: string) {
   return kind === 'mieru' || kind === 'snell' || kind === 'anytls'
 }
@@ -931,6 +940,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
   const [port, setPort] = useState(n ? String(n.port) : '')
   const [host, setHost] = useState(n?.host || '')
   const [bindIP, setBindIP] = useState(n?.bind_ip || '')
+  const [blockedText, setBlockedText] = useState((n?.blocked_sites || []).join('\n'))
   const [code, setCode] = useState(n?.code || '')
   // advanced settings in use: they take precedence, so the form's own settings are locked
   const [adv, setAdv] = useState(!!n?.code?.trim())
@@ -1067,7 +1077,9 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
     // what saving does to the protocol's devices comes with the check (the server compares it with
     // what it runs)
     const changes = (editing && c.refresh) || []
-    const restarts = !!(editing && c.restarts)
+    const blocked = blockedText.split(/[\s,]+/).filter(Boolean)
+    const blockedChanged = blocked.join() !== (n?.blocked_sites || []).join()
+    const restarts = !!(editing && (c.restarts || (blockedChanged && k?.engine === 'hysteria')))
     if (changes.length) {
       const ok = await ask({
         title: 'Devices must refresh',
@@ -1119,6 +1131,7 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
         req.pass_ext = passExt
       }
       if (kind !== 'wireguard') req.pass_only = passOnly
+      if (canBlock(kind)) req.blocked_sites = blocked
       if (kind !== 'wireguard') req.code = adv ? code : ''
       if (editing && n) await patch(`/api/nodes/${n.id}`, req)
       else await post(`/api/servers/${server.id}/nodes`, { ...req, kind })
@@ -1129,6 +1142,8 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
           ? 'Protocol added - the server sets it up in a few seconds'
           : restarts
             ? 'Saved - Hysteria2 restarts once, its devices reconnect by themselves'
+            : blockedChanged && k?.engine === 'solo'
+              ? 'Saved - the blocked sites take effect when you click Restart now on the server'
             : 'Saved - applied without restarting anything',
       )
       props.onSaved()
@@ -1503,6 +1518,30 @@ export function ProtocolEditor(props: { servers: Server[]; server?: Server; node
               <div ref={warning}>
                 <CheckPanel check={check} checking={checking} />
               </div>
+            )}
+
+            {canBlock(kind) ? (
+              <details class="adv" open={!!n?.blocked_sites?.length}>
+                <summary>Blocked sites{blockedText.trim() ? ` (${blockedText.split(/[\s,]+/).filter(Boolean).length})` : ''}</summary>
+                <Field
+                  label="Sites this protocol does not reach"
+                  hint={`One per line or separated by commas, such as anthropic.com - its subdomains are blocked too. This protocol alone: traffic rules cannot get around it. ${
+                    xray ? 'Applied at once, for new connections.' : solo(kind) ? 'Takes effect when you click Restart now on the server: each user reconnects once.' : 'Saving restarts Hysteria2 once.'
+                  } An app that connects by address, without naming the site, is not stopped.`}
+                >
+                  <textarea
+                    class="input mono"
+                    rows={4}
+                    value={blockedText}
+                    placeholder={'anthropic.com\ngoogle.com'}
+                    spellcheck={false}
+                    aria-label="Blocked sites"
+                    onInput={(e) => setBlockedText(e.currentTarget.value)}
+                  />
+                </Field>
+              </details>
+            ) : (
+              kind && <p style="font-size:12px;margin:14px 0 0;color:var(--ink-3)">{k?.label || kind} cannot block single sites: it carries traffic without knowing which site it is for.</p>
             )}
 
             {kind && (xray || (kind !== 'wireguard' && !solo(kind))) && (
