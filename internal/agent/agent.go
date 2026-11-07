@@ -1427,6 +1427,7 @@ func (a *Agent) report(ctx context.Context) {
 	caps.Cut = true        // cuts the open connections of users taken off (xray/cuts.go, hy)
 	caps.Solo = true       // runs mieru and Snell, one process per user (solo/)
 	caps.AnyTLS = true     // and AnyTLS, with sing-box
+	caps.BlockSites = true // keeps them from a protocol's blocked sites (solo/)
 	caps.RestartAll = true // restarts everything on request (restartAll)
 	caps.Protect = true    // offers fixes with findings and does them on request (protect/)
 	caps.Prepare = true    // prepares the server by itself and says how it goes (prepare.go)

@@ -40,6 +40,20 @@ Press **Save changes**.
 > **Careful:** Leave **Show IP addresses** off unless you have a reason: an address on a public page
 > is an address anyone can block.
 
+- **Show each server's network profile** - off by default. On, a server's details on the page gain a
+  **Network** part: the address with its end hidden (`45.196.21*.***`), its network (ASN), what it is
+  used for, an IP score, what public lists say about its /24, and a graph of its BGP routes. Everyone
+  who can open the page sees it, you included.
+
+  The first time someone opens it you should see *Looking this server up…* for a minute or two, then
+  the profile; after that it is refreshed once a day. If it still says *Not looked up yet*, the
+  panel could not reach the services: wait ten minutes and open it again.
+
+  The full address is never in the page or sent anywhere: RIPE is asked about the /24 and PeeringDB
+  about the network. What does become public is the network and the first digits, which narrow a
+  server down to a range - leave this off if that matters to you. The score is Rosélune's reading of
+  public lists, not a verdict from any provider, and IPv6 addresses have none.
+
 ## 3. Each server's place on it
 
 On the server's page, **On the status page** › **Edit**:

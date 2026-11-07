@@ -140,3 +140,13 @@
 @media (max-width: 860px) {
   :root[data-theme="postmodern"] body::before { background: radial-gradient(rgba(23, 21, 26, .15) 1.2px, transparent 1.6px) 0 0 / 22px 22px; }
 }
+
+/* ------------------------------------------------------------------ a server's network profile */
+:root[data-theme="postmodern"] .ns-num { font-weight: 800; letter-spacing: -.03em; }
+:root[data-theme="postmodern"] :is(.ns-bar, .net-block) { height: 12px; border: 2px solid var(--pm-edge); border-radius: 0; }
+:root[data-theme="postmodern"] .ns-bar i { border-radius: 0; }
+:root[data-theme="postmodern"] .net-legend i { border-radius: 0; box-shadow: 0 0 0 1px var(--pm-edge); }
+:root[data-theme="postmodern"] .nr-node rect { rx: 0; stroke: var(--pm-edge); stroke-width: 2; }
+:root[data-theme="postmodern"] .nr-home rect { fill: var(--pm-yellow); }
+:root[data-theme="postmodern"] .nr-home :is(.nr-asn, .nr-name) { fill: var(--pm-edge); }
+:root[data-theme="postmodern"] .nr-link { stroke: var(--pm-edge); }

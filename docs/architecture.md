@@ -262,14 +262,15 @@ this order:
 
 1. the operator's own rules from the server's configuration code;
 2. `no-private`: private addresses are blocked;
-3. each protocol's own rules from its configuration code (limited to its inbound);
-4. `passers-n<id>`: traffic arriving as a pass user - protocols elsewhere passing through, other
+3. `sites-n<id>`: a protocol's blocked sites (see below), after the devices over a limit;
+4. each protocol's own rules from its configuration code (limited to its inbound);
+5. `passers-n<id>`: traffic arriving as a pass user - protocols elsewhere passing through, other
    servers' rules sending traffic here - leaves the way that protocol's traffic always does, so it
    never follows this server's rules;
-5. the traffic rules in their order (`r<rule id>`; a rule that matches both names and addresses
+6. the traffic rules in their order (`r<rule id>`; a rule that matches both names and addresses
    becomes two, `d` and `i`);
-6. each protocol's proxy pass or own address (`pass-n<id>`, `bind-n<id>`): what no rule took;
-7. `ipver`: on a server set to one IP version, the rest leaves through an outbound of that version.
+7. each protocol's proxy pass or own address (`pass-n<id>`, `bind-n<id>`): what no rule took;
+8. `ipver`: on a server set to one IP version, the rest leaves through an outbound of that version.
 
 A rule's exit on another server is an outbound `route-node-<id>` to that protocol, with a credential
 derived from the sending server's pass secret (`routeCredentials`); the exit's protocol gets the user
@@ -281,6 +282,15 @@ outbound) - Xray refuses a fallback without latency checks. What cannot be used 
 `block` with a note (a fastest-first balancer with no usable member there: its fallback): the server
 view's `route_notes`, the routing view's `problems`; a protocol's view lists the rules that send
 traffic through it (`route_uses`).
+
+A protocol's blocked sites (`nodes.blocked_sites`, `blocksites.go`) are its own list of domains, each
+with its subdomains. Xray gets the `sites-n<id>` rule to `block`, live; it comes before `passers`, so
+traffic passing through the protocol is held to it too. Hysteria2 gets `reject(suffix:...)` lines ahead
+of its ACL, through its custom configuration, so any agent since 0.6 does it, and restarts as with its
+own settings. mieru (`egress` rules) and AnyTLS (a `sniff` and a `reject` route rule) get them in
+`SoloNode.Blocked` (`Caps.BlockSites`): a change of the list alone is written and waits for a
+confirmed restart (`Inst.Waits`, reported as pending). Snell and WireGuard refuse a list: nothing in
+them can act on it.
 
 Rules and balancers apply live (`adrules` replaces both together). A fastest-first balancer needs
 Xray's `observatory` (it probes the `lb` outbounds every minute), which Xray reads only when it
@@ -318,6 +328,14 @@ the status page shows the servers to everyone (`status_public`), otherwise only 
 user gets their own page from `/api/portal/me`; the supervisor always gets the dashboard. The
 addresses are left out for everyone, the supervisor included, unless `status_ips` is on. Availability is sampled every minute into
 10-minute buckets per server (`server_uptime`) and reported for 24 hours, 30 days and per day.
+
+A server's network profile (`netprofile.go`, `status_network`, off by default) is served by
+`/api/status/servers/{id}/network` under the same rules as the dashboard. The panel looks up each
+server once a day, keeps the result in memory only and keeps no field for the address: what it holds
+and serves is masked (last four digits, last four IPv6 groups) for everyone. Nothing outside gets the
+address: RIPEstat is asked about the /24 (or /48) and then the announced prefix, PeeringDB about the
+AS number, and the public lists are downloaded and compared locally. No reverse DNS and no whois
+text are used, and names from those services pass `scrubAddrs`.
 
 ## Plugins
 

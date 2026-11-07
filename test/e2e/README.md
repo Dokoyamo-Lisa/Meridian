@@ -51,6 +51,7 @@ limactl start meridian-test
 | `matrix.py LINK` | every proxy in the sing-box, Clash and share-link formats through sing-box, mihomo and Xray: one `204` line per proxy and client (`setup-client.sh` installs the clients) |
 | `country-live.sh CONFIG PORT [SECONDS]` | a client on a Chinese address (101.0.0.2) making a request every 2 s: block CN in Access and watch it stop, add an exception and watch it return |
 | `foreign-xray.sh` | installs an Xray "from another panel" as `xray.service` with users carol and dave, and client configs with the original credentials - for testing import and take-over |
+| `sites-live.sh LINK` | every protocol that can block sites, by name, subdomain and address only, and a site not blocked: with `anthropic.com` blocked `000 000 000 200` (where the host's DNS gives fake addresses, Hysteria2's last column can fail on its private-address rules) |
 | `block-live.sh N` | one open session for protocol N (1-4) making a request every 2 s; block `10.99.0.2` in the panel: requests fail within seconds, and recover after unblocking |
 
 **Proxy passes across servers**: make a second VM the same way (`--name meridian-test2`, and a

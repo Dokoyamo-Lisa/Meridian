@@ -26,15 +26,14 @@ back to a built-in one, press **Use the** *Rose* (or *Umbrella*).
 ## 3. The look
 
 **Look** sets the colours everyone starts with: **Romance** (Rosélune's own, the default),
-**Umbrella**, **Ice**, **Celadon**, **Ink**, **Paper**, **Mist**, **Postmodern**, **Vampire
-Princess** - or **Follow the device** (Ice in the dark, Paper in the light). Click one to try it.
+**Umbrella**, **Ice**, **Celadon**, **Ink**, **Paper**, **Mist**, **Postmodern**, **Time** - or **Follow the device** (Ice in the dark, Paper in the light). Click one to try it.
 Two go further than colours, and show no globe on the status page:
 
 - **Postmodern** - black outlines and blocks of bright colour, the panel's menu down the left side
   on a wide screen.
-- **Vampire Princess** - black velvet, blood crimson and antique gold under a crescent moon: the
-  panel's name centred between gold rules with the menu beneath it, arched boards in a double gold
-  frame, figures in gold corners, crimson velvet buttons.
+- **Time** - the slow build of a film score: near-black with a cold steel cast, titles in thin wide
+  capitals, one amber note for what matters, hairlines instead of boxes, and a streak of light that
+  slowly swells behind the page. The sign-in opens between black bars.
 
 Each person can still pick their own look with the palette button at the top of the page; yours is
 what they see until they do.

@@ -62,6 +62,11 @@ type Inst struct {
 	// Limited: it runs as the account without rights. An agent before 1.3.1 started its processes
 	// as root; they move to the account with a confirmed restart (Pending, RestartPending).
 	Limited bool `json:"limited,omitempty"`
+	// Blocked: the sites it does not reach, comma-separated (mieru, AnyTLS). A change waits (Waits) for
+	// a confirmed restart: it has no way to take a new list while it runs, and nothing else about the
+	// user changed.
+	Blocked string `json:"blocked,omitempty"`
+	Waits   bool   `json:"waits,omitempty"`
 }
 
 // Key is the instance's name within its template.
@@ -76,8 +81,17 @@ func (i Inst) unit() string { return service.InstanceOf(units[i.Kind], i.Key()) 
 
 // same says whether two instances are the same process: how it runs is not part of it.
 func same(a, b Inst) bool {
-	a.Limited, b.Limited = false, false
+	a.Limited, b.Limited, a.Waits, b.Waits = false, false, false, false
 	return a == b
+}
+
+// onlyBlocked says whether all that differs between two instances is the list of blocked sites.
+func onlyBlocked(a, b Inst) bool {
+	if a.Blocked == b.Blocked {
+		return false
+	}
+	a.Blocked = b.Blocked
+	return same(a, b)
 }
 
 type Engine struct {
@@ -95,7 +109,18 @@ type Engine struct {
 	v4only  bool // the kernel has IPv6 turned off: AnyTLS listens on IPv4
 }
 
-var keyRE = regexp.MustCompile(`^[0-9]{1,15}-[0-9]{1,15}$`)
+var (
+	keyRE  = regexp.MustCompile(`^[0-9]{1,15}-[0-9]{1,15}$`)
+	siteRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
+)
+
+// sites is an instance's blocked sites as a list.
+func (i Inst) sites() []string {
+	if i.Blocked == "" {
+		return nil
+	}
+	return strings.Split(i.Blocked, ",")
+}
 
 // clean checks an instance before anything of it reaches a file, a unit name or a command line.
 func clean(i Inst) error {
@@ -119,6 +144,14 @@ func clean(i Inst) error {
 	if i.Bind != "" {
 		if _, err := parseAddr(i.Bind); err != nil {
 			return err
+		}
+	}
+	if i.Kind == "snell" && i.Blocked != "" {
+		return errors.New("snell cannot block sites")
+	}
+	for _, d := range i.sites() {
+		if len(d) > 253 || !siteRE.MatchString(d) {
+			return fmt.Errorf("blocked site %q is not a domain", d)
 		}
 	}
 	return nil
@@ -156,6 +189,10 @@ func (e *Engine) config(i Inst) (path, body string) {
 			"outbounds": []any{map[string]any{"type": "direct", "tag": "direct"}},
 			"route":     map[string]any{"final": "direct", "default_domain_resolver": "local"},
 		}
+		if d := i.sites(); d != nil { // the name in the connection counts too, not only the one asked for
+			cfg["route"].(map[string]any)["rules"] = []any{map[string]any{"action": "sniff"},
+				map[string]any{"domain_suffix": d, "action": "reject"}}
+		}
 		b, _ := json.Marshal(cfg)
 		return filepath.Join(e.ConfDir, i.Key()+".json"), string(b)
 	}
@@ -167,6 +204,10 @@ func (e *Engine) config(i Inst) (path, body string) {
 	}
 	if i.Bind != "" {
 		cfg["listenIPAddress"] = i.Bind
+	}
+	if d := i.sites(); d != nil {
+		cfg["egress"] = map[string]any{"rules": []any{map[string]any{"domainNames": d, "action": "REJECT"},
+			map[string]any{"ipRanges": []string{"*"}, "domainNames": []string{"*"}, "action": "DIRECT"}}}
 	}
 	b, _ := json.Marshal(cfg)
 	return filepath.Join(e.ConfDir, i.Key()+".json"), string(b)
@@ -386,7 +427,8 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.SoloNode, c proto.Core
 			certs[n.NodeID] = n
 		}
 		for _, u := range n.Users {
-			i := Inst{Kind: n.Kind, Transport: n.Transport, Bind: n.Bind, Node: n.NodeID, Sub: u.Sub, Port: u.Port, Name: u.Name, Secret: u.Secret}
+			i := Inst{Kind: n.Kind, Transport: n.Transport, Bind: n.Bind, Node: n.NodeID, Sub: u.Sub, Port: u.Port, Name: u.Name, Secret: u.Secret,
+				Blocked: strings.Join(n.Blocked, ",")}
 			if err := clean(i); err != nil {
 				errs = append(errs, fmt.Sprintf("n%d user %d: %v", n.NodeID, u.Sub, err))
 				continue
@@ -455,10 +497,12 @@ func (e *Engine) Apply(ctx context.Context, nodes []proto.SoloNode, c proto.Core
 		switch {
 		case !ran || !service.IsActive(i.unit()):
 			err = service.EnableNow(i.unit())
+		case onlyBlocked(prev, i):
+			i.Waits, started = true, false // the file is written: the confirmed restart reads it
 		case changed || !same(prev, i):
 			err = service.Restart(i.unit()) // this user's process alone: their new port or key
 		default:
-			started = false
+			i.Waits, started = prev.Waits, false
 		}
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("starting %s for user %d: %v", i.Kind, i.Sub, err))
@@ -523,10 +567,13 @@ func (e *Engine) Pending() []string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.init()
-	count := map[int64]int{}
+	count, sites := map[int64]int{}, map[int64]int{}
 	for _, i := range e.running {
 		if !i.Limited && e.defined[i.Kind] {
 			count[i.Node]++
+		}
+		if i.Waits && e.defined[i.Kind] {
+			sites[i.Node]++
 		}
 	}
 	ids := make([]int64, 0, len(count))
@@ -541,6 +588,14 @@ func (e *Engine) Pending() []string {
 			who = fmt.Sprintf("%d users' servers", count[id])
 		}
 		out[k] = fmt.Sprintf("protocol n%d: %s without root rights, a safer setup from the upgraded agent", id, who)
+	}
+	waiting := make([]int64, 0, len(sites))
+	for id := range sites {
+		waiting = append(waiting, id)
+	}
+	sort.Slice(waiting, func(a, b int) bool { return waiting[a] < waiting[b] })
+	for _, id := range waiting {
+		out = append(out, fmt.Sprintf("protocol n%d: its blocked sites changed (each user's server restarts once)", id))
 	}
 	return out
 }
@@ -586,14 +641,14 @@ func (e *Engine) restart(all bool) (int, error) {
 	var errs []string
 	done := 0
 	for key, i := range e.running {
-		if !e.defined[i.Kind] || (i.Limited && !all) {
+		if !e.defined[i.Kind] || (i.Limited && !i.Waits && !all) {
 			continue // a template this agent has not written yet (with the account) would start it as root
 		}
 		if err := service.Restart(i.unit()); err != nil {
 			errs = append(errs, fmt.Sprintf("%s for user %d: %v", i.Kind, i.Sub, err))
 			continue
 		}
-		i.Limited = true
+		i.Limited, i.Waits = true, false
 		e.running[key] = i
 		done++
 	}

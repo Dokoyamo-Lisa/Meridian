@@ -165,6 +165,7 @@ func (p *Panel) Handler() http.Handler {
 	handle("GET /api/status", p.apiStatus) // the supervisor's, and everyone's while the status page is public
 	handle("GET /api/status/live", p.apiStatusLive)
 	handle("GET /api/status/servers/{id}/series", p.apiStatusSeries)
+	handle("GET /api/status/servers/{id}/network", p.apiStatusNetwork)
 	handle("GET /api/places", p.authed(p.apiPlaces))
 
 	// who may connect, by country

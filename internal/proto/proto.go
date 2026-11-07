@@ -99,6 +99,8 @@ type SoloNode struct {
 	Transport string     `json:"transport,omitempty"` // mieru: tcp | udp
 	Bind      string     `json:"bind,omitempty"`      // the server address it listens on; empty = all
 	Users     []SoloUser `json:"users"`
+	// Blocked are the sites it does not reach, each with its subdomains (mieru, AnyTLS; Caps.BlockSites)
+	Blocked []string `json:"blocked,omitempty"`
 	// AnyTLS's certificate (sing-box): its PEMs - a self-signed, an own or a shared one - or ACME, the
 	// domain of a Let's Encrypt certificate the agent keeps instead (and passes on as PEMs)
 	CertPEM string `json:"cert_pem,omitempty"`
@@ -552,6 +554,9 @@ type Caps struct {
 	Solo bool `json:"solo,omitempty"`
 	// AnyTLS: the agent runs AnyTLS with sing-box (a SoloNode kind; 1.3.1 and later).
 	AnyTLS bool `json:"anytls,omitempty"`
+	// BlockSites: the agent keeps mieru and AnyTLS from a protocol's blocked sites (SoloNode.Blocked;
+	// 1.4.4 and later).
+	BlockSites bool `json:"block_sites,omitempty"`
 	// RestartAll: the agent understands ActionRestartAll (1.3.1 and later).
 	RestartAll bool `json:"restart_all,omitempty"`
 	// Protect: the agent offers fixes with its findings and does them on request (ActionProtect;

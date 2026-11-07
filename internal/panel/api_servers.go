@@ -1147,6 +1147,7 @@ type nodeInput struct {
 	PassNode *int64      `json:"pass_node" doc:"Proxy pass: id of the exit protocol on another server; 0 = leave directly. The exit may pass on once more (a relay): a chain has two passes at most, each to another server"`
 	PassExt  *int64      `json:"pass_ext" doc:"Proxy pass through an external node (its id, see /api/external-nodes); 0 = none. Either pass_node or pass_ext"`
 	PassOnly *bool       `json:"pass_only" doc:"Serve only proxy passes from other servers: users cannot connect directly and it is left out of their links (not for WireGuard)"`
+	Blocked  *[]string   `json:"blocked_sites" doc:"Sites this protocol does not reach, each with its subdomains: anthropic.com, google.com. Xray protocols take it at once, Hysteria2 by restarting once, mieru and AnyTLS at the next Restart now (pending restart). Not for Snell and WireGuard"`
 	Code     *string     `json:"code" doc:"The protocol's own settings, merged on top of what the panel generates. Xray protocols: JSON (comments allowed) - fields merged into the inbound (sniffing, streamSettings.sockopt, fallbacks, ...), outbounds added (own tags), rules for this protocol's traffic only; tag, port and users stay the panel's. Hysteria2: YAML; auth and trafficStats stay the panel's (saving restarts it). Only the syntax is checked; empty removes it"`
 	BindIP   *string     `json:"bind_ip" doc:"One of the server's addresses (see addrs on the server) for this protocol alone: it listens there, its traffic leaves from there, and links use it when it is public. Protocols on different addresses may share a port. Empty = all addresses"`
 	Settings *protoInput `json:"settings" doc:"Transport, security and the protocol's own options; omitted fields keep their value (or the default on create). POST /api/protocols/check shows what a draft becomes"`
@@ -1375,9 +1376,17 @@ func (p *Panel) apiCreateNode(w http.ResponseWriter, r *http.Request, a *Account
 		passExt = *in.PassExt
 	}
 	t := now()
+	var wantBlocked []string
+	if in.Blocked != nil {
+		wantBlocked = *in.Blocked
+	}
+	blocked, err := blockedFor(s, in.Kind, wantBlocked)
+	if err != nil {
+		return err
+	}
 	res, err := p.db.Exec1(`INSERT INTO nodes (id, server_id, kind, name, port, settings, host, pass_node, pass_only, bind_ip,
-		code, sort, created_at, updated_at, pass_ext) VALUES (`+db.NextID("nodes")+`, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, in.Kind, name, port,
-		string(settings), host, passNode, passOnly, bind, code, len(nodes), t, t, passExt)
+		code, sort, created_at, updated_at, pass_ext, blocked_sites) VALUES (`+db.NextID("nodes")+`, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, in.Kind, name, port,
+		string(settings), host, passNode, passOnly, bind, code, len(nodes), t, t, passExt, blockedJSON(blocked))
 	if err != nil {
 		return err
 	}
@@ -1517,6 +1526,11 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 			return needAgent06("Hysteria2's own settings")
 		}
 	}
+	if in.Blocked != nil {
+		if n.Blocked, err = blockedFor(s, n.Kind, *in.Blocked); err != nil {
+			return err
+		}
+	}
 	if in.PassOnly != nil {
 		if *in.PassOnly && !canExit(n.Kind) {
 			return errStatus(http.StatusBadRequest, "WireGuard cannot be a proxy pass exit, so it cannot serve only proxy passes")
@@ -1572,8 +1586,8 @@ func (p *Panel) apiUpdateNode(w http.ResponseWriter, r *http.Request, a *Account
 	}
 	n.UpdatedAt = now()
 	if _, err := p.db.Exec1(`UPDATE nodes SET name = ?, port = ?, enabled = ?, settings = ?, host = ?, pass_node = ?,
-		pass_only = ?, bind_ip = ?, code = ?, sort = ?, updated_at = ?, pass_ext = ? WHERE id = ?`, n.Name, n.Port, n.Enabled,
-		string(n.Settings), n.Host, n.PassNode, n.PassOnly, n.BindIP, n.Code, n.Sort, n.UpdatedAt, n.PassExt, n.ID); err != nil {
+		pass_only = ?, bind_ip = ?, code = ?, sort = ?, updated_at = ?, pass_ext = ?, blocked_sites = ? WHERE id = ?`, n.Name, n.Port, n.Enabled,
+		string(n.Settings), n.Host, n.PassNode, n.PassOnly, n.BindIP, n.Code, n.Sort, n.UpdatedAt, n.PassExt, blockedJSON(n.Blocked), n.ID); err != nil {
 		return err
 	}
 	if in.Settings != nil && isReality(n.Kind, n.Settings) && realityChanged(oldSettings, n.Settings) {

@@ -1,6 +1,20 @@
 # Meridian status
 
-Last updated 2026-10-30 (version 1.4.3).
+Last updated 2026-11-07 (version 1.4.4).
+
+## Tested for 1.4.4 (a local panel, a VM running agent 1.4.4, real clients)
+
+- **Blocked sites**, `test/e2e/sites-live.sh` on VLESS REALITY, Shadowsocks, Hysteria2, AnyTLS and
+  mieru: `anthropic.com` blocked by name, by subdomain and with only the address in the request;
+  other sites reached; everything back after emptying the list, with nothing left in the
+  configurations. Xray's process stayed the same throughout, Hysteria2 restarted once, mieru and
+  AnyTLS only at the confirmed restart. Set and refused in the protocol form in a browser.
+- **Network profile**: real RIPEstat, PeeringDB and list data for a public resolver's address; the
+  page's DOM, API answers, scripts, styles and storage searched for the address: not found.
+- **Time**: the panel, the status page, the users' pages and the sign-ins, at desktop and phone
+  width.
+- **Not run**: the PostgreSQL suite; VMess, Trojan, SOCKS5 and HTTP with a blocked site (the same
+  rule as VLESS and Shadowsocks); an upgrade from 1.4.3 on a real panel.
 
 ## Tested for 1.4.3 (a local panel, two VMs running agents 1.4.3, real clients)
 

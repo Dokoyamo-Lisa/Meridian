@@ -226,6 +226,7 @@ type statusPayload struct {
 type statusShow struct {
 	Overview bool `json:"overview" doc:"Visitors and users get the overview (else they start at the list of servers)"`
 	Events   bool `json:"events" doc:"Visitors and users see the outages of the last 30 days"`
+	Network  bool `json:"network" doc:"A server's details show its network profile (/api/status/servers/{id}/network)"`
 }
 
 type statusHub struct {
@@ -502,7 +503,7 @@ func (p *Panel) apiStatus(w http.ResponseWriter, r *http.Request) {
 	out.Supervisor = sup
 	out.Maintenance = p.maintenanceText() // guard.go
 	set := p.settings()
-	out.Show = statusShow{Overview: set.StatusOverview, Events: set.StatusEvents}
+	out.Show = statusShow{Overview: set.StatusOverview, Events: set.StatusEvents, Network: set.StatusNetwork}
 	if !sup { // what the supervisor keeps to themselves is not sent at all
 		if !set.StatusEvents {
 			out.Events = nil

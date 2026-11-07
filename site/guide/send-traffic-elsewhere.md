@@ -52,6 +52,39 @@ rule takes leaves as before.
 > too (for example *cn* under **Sites**). A box **What does not work as written** above the list
 > says when a rule cannot do what it says, and why.
 
+## Block sites on one protocol
+
+To keep a single protocol away from some sites - and leave your other protocols as they are - you do
+not need a rule.
+
+1. **Protocols** › the protocol's **Edit**.
+2. Near the bottom, open **Blocked sites**.
+3. Write the sites, one per line or separated by commas: *anthropic.com, google.com*. Each covers its
+   subdomains (*www.anthropic.com*, *api.anthropic.com*). Pasting a whole address works too.
+4. **Save**.
+
+**You should see** **Blocks** with the sites on the protocol's card. On a device using it, the site
+stops loading; through your other protocols it still works. What happens next depends on the
+protocol:
+
+| Protocol | When it takes effect |
+|---|---|
+| VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP | At once, for new connections. Nobody is disconnected. |
+| Hysteria2 | Saving asks first, then restarts it once: its devices reconnect by themselves. |
+| mieru, AnyTLS | When you click **Restart now** on the server page: each user reconnects once. Needs agent 1.4.4 or later. |
+| Snell, WireGuard | They cannot block sites: the form says so. Use another protocol, or block the addresses with a traffic rule. |
+
+> **Good to know:** Traffic rules cannot get around this list, and protocols that pass through this
+> one are held to it too. A page already open may keep working until its connection ends: close and
+> reopen the app to test. *google.com* does not cover Google's other domains, such as
+> *youtube.com* or *googleapis.com*: add those too, or use a **Traffic rule** with the *google* site
+> list under **Sites**.
+
+> **If it still loads:** check that the device really uses this protocol (a device on **Auto** may
+> pick another), give it a few seconds, and look for **Restart now** on the server page for mieru
+> and AnyTLS. An app that connects to a bare address without naming the site is not
+> stopped: block that address with a traffic rule.
+
 ## Load balancers
 
 1. **Routing** › **Add load balancer**.

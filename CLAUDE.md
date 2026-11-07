@@ -36,7 +36,8 @@ step-by-step procedures.
   (`ownServer`/`ownSub`/`ownNode`); user sessions reach only `/api/portal/*`; the dashboard data
   (`/api/status`) is public only while the status page shows the servers to everyone, has IP
   addresses only while the page shows those (off by default; then for nobody, the supervisor
-  included) and never contains users, ports, protocols, keys or prices; no
+  included) and never contains users, ports, protocols, keys or prices; a server's network profile
+  (`netprofile.go`) holds and serves only the masked address and never sends the address out; no
   subscription format ever turns certificate checks off; keep `make check` clean.
 - **Only working protocol combinations**: `xraySettings.check` refuses anything that would not work
   on the server or in the listed apps, and app support is computed by the subscription renderers.

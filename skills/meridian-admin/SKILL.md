@@ -393,7 +393,7 @@ turned on; never prices, users, protocols or ports) - and sign in from the top-r
 then see their own page, the supervisor everything else. `get_status_page` shows how it is set up
 (`status_public`: visitors see the servers; `status_ips`: the page shows their IP addresses, to
 everyone who opens it, the supervisor included). `set_status_page {mode: "home" | "page" | "off",
-public?, show_ips?, domain?, about?, panel_city?}` changes it: `show_ips: true` publishes every
+public?, show_ips?, show_network?, domain?, about?, panel_city?}` changes it: `show_ips: true` publishes every
 server's addresses - only when the operator asks for exactly that, after saying anyone can then find
 and block the servers; `public: false` leaves visitors only the sign-in. Answer with what visitors
 will now see, from the reply's `status_public` and `status_ips`;
