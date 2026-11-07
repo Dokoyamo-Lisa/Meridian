@@ -147,6 +147,74 @@ func TestBlockedSites(t *testing.T) {
 	}
 }
 
+// TestMCPCatchesUp: what the panel's pages can do, an assistant can too.
+func TestMCPCatchesUp(t *testing.T) {
+	h := newHarness(t)
+	b := h.browser()
+	b.login("owner", "owner-password-1")
+	full := b.must("POST", "/api/tokens", map[string]any{"name": "rw", "scope": "full"}, 201)["token"].(string)
+	read := b.must("POST", "/api/tokens", map[string]any{"name": "ro", "scope": "read"}, 201)["token"].(string)
+	sid := id(b.must("POST", "/api/servers", map[string]any{"name": "Tokyo", "address": "203.0.113.9"}, 201)["server"].(map[string]any)["id"])
+	vless := id(b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", sid), map[string]any{"kind": "vless"}, 201)["id"])
+	code, _, raw := b.do("POST", "/api/users", map[string]any{"name": "Alice"})
+	var list []struct {
+		ID int64 `json:"id"`
+	}
+	if code != 201 || json.Unmarshal(raw, &list) != nil {
+		t.Fatalf("%d %s", code, raw)
+	}
+	alice := list[0].ID
+
+	if out, isErr := callTool(t, h, full, "update_user", map[string]any{"user_id": alice, "blocked_sites": []string{"anthropic.com"}, "blocked_on": []int64{vless}}); isErr {
+		t.Fatalf("a block: %s", out)
+	}
+	// one half alone keeps the other
+	if out, isErr := callTool(t, h, full, "update_user", map[string]any{"user_id": alice, "blocked_sites": []string{"google.com"}}); isErr {
+		t.Fatalf("new sites: %s", out)
+	}
+	out, isErr := callTool(t, h, read, "get_user", map[string]any{"user_id": alice})
+	if isErr || !strings.Contains(out, "google.com") || strings.Contains(out, "anthropic.com") || !strings.Contains(out, fmt.Sprint(vless)) {
+		t.Errorf("get_user: %s", out)
+	}
+	if out, isErr := callTool(t, h, full, "update_user", map[string]any{"user_id": alice, "blocked_sites": []string{}}); isErr {
+		t.Fatalf("emptied: %s", out)
+	}
+	if s, _ := h.p.subByID(t.Context(), alice); len(s.SiteBlock.Sites) != 0 {
+		t.Errorf("still blocked: %+v", s.SiteBlock)
+	}
+
+	if out, isErr := callTool(t, h, read, "speed_now", nil); isErr || !strings.Contains(out, "unmeasured") {
+		t.Errorf("speed_now: %s", out)
+	}
+
+	if out, isErr := callTool(t, h, read, "set_agent_upgrades", map[string]any{"automatic": false}); !isErr {
+		t.Errorf("a read token changed a setting: %s", out)
+	}
+	if out, isErr := callTool(t, h, full, "set_agent_upgrades", map[string]any{"automatic": false}); isErr || h.p.settings().AgentAutoUpgrade {
+		t.Errorf("off: %s", out)
+	}
+	if out, isErr := callTool(t, h, full, "set_agent_upgrades", map[string]any{"automatic": true}); isErr || !h.p.settings().AgentAutoUpgrade {
+		t.Errorf("on: %s", out)
+	}
+
+	// the profile follows the page's own rules
+	if _, isErr := callTool(t, h, read, "server_network", map[string]any{"server_id": sid}); !isErr {
+		t.Error("a profile with the setting off")
+	}
+	if _, err := h.p.db.Exec1(`UPDATE servers SET first_seen_at = ?, ipv4 = '45.196.216.188' WHERE id = ?`, now(), sid); err != nil {
+		t.Fatal(err)
+	}
+	set := b.must("GET", "/api/settings", nil, 200)
+	set["status_page"], set["status_network"] = "page", true
+	b.must("PUT", "/api/settings", set, 200)
+	h.p.nets.mu.Lock()
+	h.p.nets.running = true // no lookups from a test
+	h.p.nets.mu.Unlock()
+	if out, isErr := callTool(t, h, read, "server_network", map[string]any{"server_id": sid}); isErr || !strings.Contains(out, "pending") || strings.Contains(out, "216.188") {
+		t.Errorf("server_network: %s", out)
+	}
+}
+
 func TestHyBlockedKeepsItsOwnACL(t *testing.T) {
 	got := hyBlocked(json.RawMessage(`{"acl":{"inline":["reject(geoip:cn)","direct(all)"]},"speedTest":true}`), []string{"google.com"})
 	var c struct {

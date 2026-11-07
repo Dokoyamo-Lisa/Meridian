@@ -98,6 +98,19 @@ connections per destination; WireGuard reports exact bytes (names need "log the 
 up" on the WireGuard protocol). Summarise by site or category, largest first. If you are asked to
 judge whether use is acceptable, state facts and let the user decide.
 
+## Who is using the bandwidth? Blocking a site
+
+1. `speed_now` lists each user's download and upload right now, fastest first, then per protocol and
+   per address. Values are bytes per second: multiply by 8 for bits. A user listed nowhere is idle.
+   `unmeasured` names servers whose agent does not measure speed yet.
+2. To keep **one protocol** from a site, for everyone on it: `update_protocol {protocol_id,
+   blocked_sites: ["example.com"]}`. On Hysteria2 that restarts it once: the tool asks for `confirm`.
+3. To keep **one user** from a site: `update_user {user_id, blocked_sites: ["example.com"],
+   blocked_on: [protocol ids]}`. `get_user` shows it as `site_block`. Hysteria2 cannot do this for one
+   user, and Snell and WireGuard cannot block sites: the tool says so. Use `blocked_sites: []` to lift it.
+4. On mieru and AnyTLS a new list waits for `server_action {action: "restart_pending"}`, which needs
+   confirmation: each user reconnects once. Tell the user before you do it. `get_server` shows what waits.
+
 ## Abuse from an IP or a country
 
 1. Confirm with `online_now` / `ip_history {query: "<ip prefix>"}` what the IP did.
@@ -196,6 +209,9 @@ and a generated password (shown once) - pass them on with the sign-in address fr
 `get_status_page` (`user_sign_in`). Forgotten password: `new_user_password {user_id}`.
 
 ## New servers and protocols
+
+Agents follow the panel by themselves (`set_agent_upgrades {automatic}`, on by default): do not offer
+`upgrade_all_agents` unless `check_updates` still lists old agents after a few minutes.
 
 - **Servers**: `add_server {name, address?, protocols?}` returns the install command; tell the user
   to run it on the server as root, and that it contains the server's secret. Default protocols:
@@ -406,6 +422,11 @@ users see: the panel's name, its logo - the built-in rose (Rosélune's own, the 
 confetti (`mark`), or an uploaded one - how the logo moves (assemble, rise, pulse, spin, none), and the look
 pages open with (`look`: romance, the default; umbrella; a quiet tone; auto). A logo with scripts,
 links or outside resources is refused - tell the user what the answer says to remove.
+
+A server's network: `server_network {server_id}` gives its ASN, usage, IP score and BGP routes while
+`show_network` is on. `state: "pending"` means the first lookup is running: ask again in two minutes.
+A 404 means `show_network` is off or the server is not on the status page. The address stays masked:
+do not look for the full one here.
 
 ## Plugins
 

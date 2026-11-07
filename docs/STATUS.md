@@ -1,6 +1,13 @@
 # Meridian status
 
-Last updated 2026-11-07 (version 1.4.5).
+Last updated 2026-11-07 (version 1.4.6).
+
+## Tested for 1.4.6
+
+- **The MCP tools** (`speed_now`, `server_network`, `update_user`'s blocked sites, `set_agent_upgrades`)
+  by tests through the MCP endpoint and the real API paths: read and full tokens, the setting off,
+  the address masked.
+- **Not run**: with a real AI client; the PostgreSQL suite; an upgrade on a real panel.
 
 ## Tested for 1.4.5 (a local panel, a VM running the agent, real clients)
 
