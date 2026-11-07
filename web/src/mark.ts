@@ -3,6 +3,8 @@
 //   - the umbrella: a canopy seen from above, eight panels alternating red and white
 //   - confetti, in the Postmodernism look's colours: a canary sun with a black rim, a cobalt crescent
 //     moon cradling it, a mint zigzag, a pink triangle and a cobalt dot
+//   - the pixel rose: the rose on a grid of 16 by 16, in square pixels; the Minecraft look shows it in
+//     place of the rose
 // dx/dy point away from the centre - where a piece comes from; i orders them (the animation delay).
 // internal/panel/brandmarks.go draws the same pieces for the loading screens and subscription pages.
 
@@ -15,11 +17,12 @@ export interface Wedge {
   i: number
 }
 
-export type BuiltinMark = 'rose' | 'umbrella' | 'confetti'
+export type BuiltinMark = 'rose' | 'umbrella' | 'confetti' | 'pixel'
 
 const ROSE = '#c13a66'
 const BLUSH = '#fbe1e9'
 const HEART = '#9e2a50'
+const PXLIGHT = '#e76a93'
 export const RED = '#d8232a'
 export const WHITE = '#f5f3ef'
 const D = 0.7071
@@ -61,15 +64,35 @@ export const MARKS: Record<BuiltinMark, Wedge[]> = {
     { d: 'M7.01 6.87A7.9 7.9 0 1 0 16.82 17.12A7.1 7.1 0 0 1 7.01 6.87Z', fill: COBALT, white: false, dx: -1, dy: 0, i: 3 },
     { d: 'M9.05 2.1A1.25 1.25 0 1 1 11.55 2.1A1.25 1.25 0 1 1 9.05 2.1Z', fill: COBALT, white: false, dx: 0, dy: -1, i: 3.8 },
   ],
+  pixel: [
+    { d: 'M9 0h6v1.5h-6zM3 1.5h6v1.5h-6zM15 1.5h6v1.5h-6z', fill: HEART, white: false, dx: 0, dy: -1, i: 0 },
+    { d: 'M9 1.5h6v1.5h-6zM3 3h7.5v1.5h-7.5zM13.5 3h7.5v1.5h-7.5zM6 4.5h12v1.5h-12zM6 6h3v1.5h-3zM15 6h3v1.5h-3z', fill: ROSE, white: false, dx: 0, dy: -1, i: 0 },
+    { d: 'M10.5 3h3v1.5h-3zM4.5 4.5h1.5v1.5h-1.5zM18 4.5h1.5v1.5h-1.5z', fill: PXLIGHT, white: false, dx: 0, dy: -1, i: 0 },
+    { d: 'M21 3h1.5v1.5h-1.5zM21 4.5h1.5v1.5h-1.5zM21 6h1.5v1.5h-1.5zM19.5 7.5h1.5v1.5h-1.5zM21 9h1.5v1.5h-1.5zM22.5 10.5h1.5v1.5h-1.5zM22.5 12h1.5v1.5h-1.5zM21 13.5h1.5v1.5h-1.5zM19.5 15h1.5v1.5h-1.5zM21 16.5h1.5v1.5h-1.5zM21 18h1.5v1.5h-1.5zM21 19.5h1.5v1.5h-1.5z', fill: HEART, white: false, dx: 1, dy: 0, i: 1 },
+    { d: 'M19.5 4.5h1.5v1.5h-1.5zM18 6h3v1.5h-3zM16.5 7.5h3v1.5h-3zM18 9h3v1.5h-3zM18 10.5h4.5v1.5h-4.5zM18 12h1.5v1.5h-1.5zM21 12h1.5v1.5h-1.5zM18 13.5h3v1.5h-3zM16.5 15h3v1.5h-3zM18 16.5h3v1.5h-3zM19.5 18h1.5v1.5h-1.5z', fill: ROSE, white: false, dx: 1, dy: 0, i: 1 },
+    { d: 'M19.5 12h1.5v1.5h-1.5z', fill: PXLIGHT, white: false, dx: 1, dy: 0, i: 1 },
+    { d: 'M6 16.5h3v1.5h-3zM15 16.5h3v1.5h-3zM6 18h12v1.5h-12zM3 19.5h6v1.5h-6zM10.5 19.5h3v1.5h-3zM15 19.5h6v1.5h-6zM9 21h1.5v1.5h-1.5zM13.5 21h1.5v1.5h-1.5z', fill: ROSE, white: false, dx: 0, dy: 1, i: 2 },
+    { d: 'M4.5 18h1.5v1.5h-1.5zM18 18h1.5v1.5h-1.5zM10.5 21h3v1.5h-3z', fill: PXLIGHT, white: false, dx: 0, dy: 1, i: 2 },
+    { d: 'M9 19.5h1.5v1.5h-1.5zM13.5 19.5h1.5v1.5h-1.5zM3 21h6v1.5h-6zM15 21h6v1.5h-6zM9 22.5h6v1.5h-6z', fill: HEART, white: false, dx: 0, dy: 1, i: 2 },
+    { d: 'M1.5 3h1.5v1.5h-1.5zM1.5 4.5h1.5v1.5h-1.5zM1.5 6h1.5v1.5h-1.5zM3 7.5h1.5v1.5h-1.5zM1.5 9h1.5v1.5h-1.5zM0 10.5h1.5v1.5h-1.5zM0 12h1.5v1.5h-1.5zM1.5 13.5h1.5v1.5h-1.5zM3 15h1.5v1.5h-1.5zM1.5 16.5h1.5v1.5h-1.5zM1.5 18h1.5v1.5h-1.5zM1.5 19.5h1.5v1.5h-1.5z', fill: HEART, white: false, dx: -1, dy: 0, i: 3 },
+    { d: 'M3 4.5h1.5v1.5h-1.5zM3 6h3v1.5h-3zM4.5 7.5h3v1.5h-3zM3 9h3v1.5h-3zM1.5 10.5h4.5v1.5h-4.5zM1.5 12h1.5v1.5h-1.5zM4.5 12h1.5v1.5h-1.5zM3 13.5h3v1.5h-3zM4.5 15h3v1.5h-3zM3 16.5h3v1.5h-3zM3 18h1.5v1.5h-1.5z', fill: ROSE, white: false, dx: -1, dy: 0, i: 3 },
+    { d: 'M3 12h1.5v1.5h-1.5z', fill: PXLIGHT, white: false, dx: -1, dy: 0, i: 3 },
+    { d: 'M9 6h6v1.5h-6zM7.5 7.5h3v1.5h-3zM13.5 7.5h3v1.5h-3zM6 9h3v1.5h-3zM12 9h6v1.5h-6zM6 10.5h3v1.5h-3zM12 10.5h6v1.5h-6zM6 12h3v1.5h-3zM12 12h6v1.5h-6zM6 13.5h4.5v1.5h-4.5zM13.5 13.5h4.5v1.5h-4.5zM7.5 15h4.5v1.5h-4.5zM15 15h1.5v1.5h-1.5zM9 16.5h6v1.5h-6z', fill: BLUSH, white: true, dx: 0, dy: 0, i: 5 },
+    { d: 'M10.5 7.5h3v1.5h-3zM9 9h3v1.5h-3zM9 10.5h3v1.5h-3zM9 12h3v1.5h-3zM10.5 13.5h3v1.5h-3zM12 15h3v1.5h-3z', fill: HEART, white: false, dx: 0, dy: 0, i: 6 },
+  ],
 }
 
 // markPieces are the pieces of a built-in mark: the chosen one, or another for a preview.
-export const builtinMark = (m?: string | null): BuiltinMark => (m === 'umbrella' || m === 'confetti' ? m : 'rose')
-export const markPieces = (mark?: string): Wedge[] => MARKS[builtinMark(mark || brand.mark)]
+export const builtinMark = (m?: string | null): BuiltinMark => (m === 'umbrella' || m === 'confetti' || m === 'pixel' ? m : 'rose')
+export const markPieces = (mark?: string): Wedge[] => {
+  const m = builtinMark(mark || brand.mark)
+  // the look of blocks has no curves: its rose is the pixel one
+  return MARKS[m === 'rose' && document.documentElement.dataset.theme === 'minecraft' ? 'pixel' : m]
+}
 
 export type MarkMode = 'still' | 'once' | 'loop'
 
-// The logo the operator chose (Settings › Panel › Logo): a built-in mark (the rose, the umbrella or confetti) or
+// The logo the operator chose (Settings › Panel › Logo): a built-in mark (the rose, the umbrella, confetti or the pixel rose) or
 // an uploaded image, and how it moves. Both pages set it from /api/meta.
 export interface LogoInfo {
   custom: boolean

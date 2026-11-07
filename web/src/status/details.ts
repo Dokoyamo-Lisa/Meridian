@@ -7,7 +7,7 @@
 // all of them. What a viewer picks is kept in this browser only.
 
 import { append, clear, h, icon } from './dom'
-import { C, TipRow, hideTip, monoPath, rgba, segment, showTip, tangents, tokenSource } from './chart'
+import { C, TipRow, blocky, hideTip, monoPath, pixelColumns, rgba, segment, showTip, tangents, tokenSource } from './chart'
 import { bparts, clamp, hm, md, now } from './fmt'
 import { pingLegend } from './pingsum'
 import { historyNote } from './histstate'
@@ -541,10 +541,14 @@ class TimeChart {
             continue
           }
           const line = new Path2D()
-          if (this.smooth && xs.length > 2) monoPath(line, xs, yy, tangents(xs, yy))
+          if ((this.smooth || blocky()) && xs.length > 2) monoPath(line, xs, yy, tangents(xs, yy))
           else {
             line.moveTo(xs[0], yy[0])
             for (let i = 1; i < xs.length; i++) line.lineTo(xs[i], yy[i])
+          }
+          if (blocky() && on.length === 1 && this.tpl !== 'bars') {
+            pixelColumns(ctx, xs, yy, y1, tr.color)
+            continue
           }
           if (this.tpl === 'area') {
             const area = new Path2D(line)
@@ -558,9 +562,9 @@ class TimeChart {
             ctx.fill(area)
           }
           ctx.strokeStyle = tr.color
-          ctx.lineWidth = 1.5
-          ctx.lineJoin = 'round'
-          ctx.lineCap = 'round'
+          ctx.lineWidth = blocky() ? 2 : 1.5
+          ctx.lineJoin = blocky() ? 'miter' : 'round'
+          ctx.lineCap = blocky() ? 'butt' : 'round'
           ctx.stroke(line)
         }
       })
@@ -589,10 +593,10 @@ class TimeChart {
       const v = lo + (top - lo) * f
       const y = Math.round(Y(v)) + 0.5
       const txt = axisVal(v, this.unit)
-      ctx.lineWidth = 4
-      ctx.strokeStyle = C.surface || C.page
+      ctx.lineWidth = blocky() ? 3 : 4
+      ctx.strokeStyle = blocky() ? '#000' : C.surface || C.page
       ctx.strokeText(txt, x0 + 3, y - 3)
-      ctx.fillStyle = C.ink3
+      ctx.fillStyle = blocky() ? '#fff' : C.ink3
       ctx.fillText(txt, x0 + 3, y - 3)
     }
 

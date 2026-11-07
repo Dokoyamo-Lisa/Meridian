@@ -105,3 +105,14 @@ test('an idle globe (reduced motion) places a label again when its line changes'
   assert.equal(placed, 1, 'the label was not placed again')
   assert.equal(frames.length, 0, 'an idle globe kept drawing')
 })
+
+test('a direction lands on the face of its largest component', () => {
+  const vm2 = { window: {} as Record<string, any>, document: {}, matchMedia: () => ({ matches: false }), performance }
+  vm.runInNewContext(readFileSync(new URL('../public/status/globe.js', import.meta.url), 'utf8'), vm2)
+  const G = vm2.window.LSGlobe
+  const p = G.cubePoint([0.6, 0.8, 0])
+  assert.equal(Array.from(G.cubeFace([0.6, 0.8, 0])).join(), '0,1,0')
+  assert.ok(Math.abs(p[1] - 0.62) < 1e-9, 'not on the top face')
+  assert.ok(Math.abs(p[0] / p[1] - 0.75) < 1e-9, 'the direction changed')
+  assert.equal(Array.from(G.cubeFace([0, 0, -1])).join(), '0,0,-1')
+})

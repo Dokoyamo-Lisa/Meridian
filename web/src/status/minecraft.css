@@ -2,21 +2,395 @@
    hotbar are in ../themes.css). The pages' menu is the hotbar at the bottom of the screen, at every
    width; the header keeps the clock and the tools; the overview's panels are game windows, a little
    tighter so the one-screen dashboard still fits above the hotbar. */
-:root[data-theme="minecraft"] .top { background: linear-gradient(#1d1610 78%, rgba(29, 22, 16, 0)); padding-top: 6px; }
+:root[data-theme="minecraft"] .top { padding-top: 6px; }
 :root[data-theme="minecraft"] .top-l .nav { display: flex; }
 :root[data-theme="minecraft"] .c-time { font-family: var(--font-d); font-weight: 700; text-shadow: var(--mc-shadow); }
 :root[data-theme="minecraft"] .c-meta { font-family: var(--font-d); }
 :root[data-theme="minecraft"] main { padding-bottom: 84px; }
-:root[data-theme="minecraft"] .dash { height: calc(100vh - var(--top) - 84px); gap: 16px; }
-:root[data-theme="minecraft"] .dash .panel { padding: 10px 12px 12px; }
+:root[data-theme="minecraft"] .dash .panel { padding: 4px 6px 6px; }
 :root[data-theme="minecraft"] .dash .ph { margin-bottom: 8px; }
+:root[data-theme="minecraft"] .dash { letter-spacing: -.3px; }   /* the type is wide; the narrow columns need the room */
+:root[data-theme="minecraft"] .lsg-labels { font-size: 11px; }
+:root[data-theme="minecraft"] .avail { gap: 14px; }
+:root[data-theme="minecraft"] .a-lab { font-size: 10px; white-space: nowrap; }
 :root[data-theme="minecraft"] :is(.page-h, .gate) { text-align: center; }
 :root[data-theme="minecraft"] :is(.page-h h1, .gate h1) { font-size: 34px; text-shadow: 3px 3px 0 rgba(0, 0, 0, .8); }
 :root[data-theme="minecraft"] .page-h p { font-family: var(--font-d); text-shadow: var(--mc-shadow); }
-:root[data-theme="minecraft"] .toast { bottom: 84px; border-radius: 0; }
+:root[data-theme="minecraft"] .toast { top: 58px; right: 12px; bottom: auto; left: auto; transform: none; border-radius: 0; }
 :root[data-theme="minecraft"] .foot { padding-bottom: 84px; color: var(--ink-3); }
 :root[data-theme="minecraft"] .pn { font-family: var(--font-d); color: #555; }
+:root[data-theme="minecraft"] .ph.ghost .pn { color: var(--ink-2); text-shadow: var(--mc-shadow); }   /* on the earth, not in a window */
 :root[data-theme="minecraft"] .page-h { display: flex; flex-direction: column; align-items: center; }
 :root[data-theme="minecraft"] .apps { gap: 6px 12px; }
 :root[data-theme="minecraft"] .app { padding: 8px 10px; border-bottom: 0; }
 :root[data-theme="minecraft"] .panel-d { border-left: 0; }
+
+/* the globe at full screen stands in the world: no sheet of colour over it, only the pages put aside */
+:root[data-theme="minecraft"] .globe-area.expanded { background: none; }
+:root[data-theme="minecraft"]:has(.globe-area.expanded) :is(.top, .nav, .panel, .kpis, .foot) { visibility: hidden; }
+
+/* The overview is a game's screen: over the world stand the things a player sees. The verdict is a boss bar
+   over the block of the Earth, resources the debug text down the left, events the chat at the bottom left,
+   and on the right the servers, listed as the game lists multiplayer servers, over the throughput. */
+:root[data-theme="minecraft"] .dash #pTable { display: none; }
+:root[data-theme="minecraft"] .dash :is(#pStatus, #pRes, #pEvents, #pMc, #pFlow) {
+  --ink: #ffffff;
+  --ink-2: #ececec;
+  --ink-3: #d0d0d0;
+  --ink-4: #b0b0b0;
+  --page: #0b0d12;
+  --line: rgba(255, 255, 255, .14);
+  --line-2: rgba(255, 255, 255, .26);
+  --hover: rgba(255, 255, 255, .1);
+  --good: #7dff6a;
+  --warn: #ffd23f;
+  --crit: #ff6b5e;
+  --accent: #80ff20;
+  --accent-ink: #7fe08a;
+  --grid: rgba(255, 255, 255, .12);
+  --baseline: rgba(255, 255, 255, .3);
+  border: 0;
+  border-image: none;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  color: #fff;
+  text-shadow: 1.5px 1.5px 0 #2c2c2c;
+}
+:root[data-theme="minecraft"] .dash .pn { display: none; }
+:root[data-theme="minecraft"] .dash :is(#pRes, #pEvents, #pFlow) .ph h2 { width: fit-content; padding: 1px 6px; font-size: 13px; color: #fff; background: rgba(0, 0, 0, .5); text-shadow: 1.5px 1.5px 0 #2c2c2c; }
+:root[data-theme="minecraft"] .dash :is(#pRes, #pEvents, #pFlow) .ph .pm { padding: 1px 6px; color: #e0e0e0; background: rgba(0, 0, 0, .62); }
+
+/* the debug text, each server's load a row of five blocks */
+:root[data-theme="minecraft"] #pRes .ph { margin-bottom: 2px; }
+:root[data-theme="minecraft"] #pRes .res { column-gap: 8px; padding: 4px 6px; background: rgba(0, 0, 0, .62); }
+:root[data-theme="minecraft"] #pRes .res-h { color: #ffff55; }
+:root[data-theme="minecraft"] #pRes :is(.mtr, .res-n) { border-top: 0; padding: 4px 0 3px; }
+:root[data-theme="minecraft"] #pRes .mtr { gap: 2px; }
+:root[data-theme="minecraft"] #pRes .m-v { color: #80ff20; font-weight: 700; text-shadow: -1px 0 0 #000, 1px 0 0 #000, 0 -1px 0 #000, 0 1px 0 #000; }
+:root[data-theme="minecraft"] #pRes .m-v :is(small, .unit) { color: inherit; }
+:root[data-theme="minecraft"] #pRes .mtr.warn .m-v { color: #ffd23f; }
+:root[data-theme="minecraft"] #pRes .mtr.crit .m-v { color: #ff5555; }
+:root[data-theme="minecraft"] :is(#pRes, #v-servers) .m-bar { container-type: inline-size; width: 55px; height: auto; aspect-ratio: 5; background: var(--mc-b-none) 0 0 / 20% 100%; image-rendering: pixelated; overflow: hidden; }
+:root[data-theme="minecraft"] :is(#pRes, #v-servers) .m-bar i { min-width: 20cqw; background: var(--mc-m, var(--mc-m-cpu)) 0 0 / 20cqw 100%; transition: width .3s steps(6); }
+:root[data-theme="minecraft"] :is(#res > .mtr:nth-child(4n + 2), .c-res > .mtr:nth-child(1)) { --mc-m: var(--mc-m-cpu); }
+:root[data-theme="minecraft"] :is(#res > .mtr:nth-child(4n + 3), .c-res > .mtr:nth-child(2)) { --mc-m: var(--mc-m-mem); }
+:root[data-theme="minecraft"] :is(#res > .mtr:nth-child(4n), .c-res > .mtr:nth-child(3)) { --mc-m: var(--mc-m-disk); }
+:root[data-theme="minecraft"] :is(#pRes, #v-servers) .mtr.warn .m-bar i { background-image: var(--mc-b-warn); }
+:root[data-theme="minecraft"] :is(#pRes, #v-servers) .mtr.crit .m-bar i { background-image: var(--mc-b-crit); }
+
+/* the chat: [time] <server> what happened */
+:root[data-theme="minecraft"] #pEvents .ph h2 { display: none; }
+:root[data-theme="minecraft"] #pEvents .ph { justify-content: flex-end; margin-bottom: 0; }
+:root[data-theme="minecraft"] #pEvents .ev-row { display: flex; justify-content: flex-start; gap: 6px; padding: 2px 6px; border: 0; background: rgba(0, 0, 0, .5); font-size: 12px; }
+:root[data-theme="minecraft"] #pEvents .ev-row:hover { background: rgba(0, 0, 0, .7); }
+:root[data-theme="minecraft"] #pEvents .e-dot, :root[data-theme="minecraft"] #pEvents time small { display: none; }
+:root[data-theme="minecraft"] #pEvents time { flex: none; color: #b8b8b8; }
+:root[data-theme="minecraft"] #pEvents time::before { content: "["; }
+:root[data-theme="minecraft"] #pEvents time::after { content: "]"; }
+:root[data-theme="minecraft"] #pEvents .e-srv { order: 1; flex: none; font-size: 12px; color: #fff; }
+:root[data-theme="minecraft"] #pEvents .e-srv::before { content: "<"; }
+:root[data-theme="minecraft"] #pEvents .e-srv::after { content: ">"; }
+:root[data-theme="minecraft"] #pEvents .e-what { order: 2; }
+
+/* the boss bar: the verdict, and the 30 days as blocks */
+:root[data-theme="minecraft"] #pStatus .ph, :root[data-theme="minecraft"] #pStatus .v-ic, :root[data-theme="minecraft"] #pStatus .strip-foot { display: none; }
+:root[data-theme="minecraft"] #pStatus .pb { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+:root[data-theme="minecraft"] #pStatus .verdict { margin: 0; }
+:root[data-theme="minecraft"] #pStatus .verdict b { font-size: 17px; }
+:root[data-theme="minecraft"] #pStatus .about { margin: 0; text-align: center; font-size: 12px; }
+:root[data-theme="minecraft"] #pStatus .strip { width: 100%; margin: 0; }
+:root[data-theme="minecraft"] #pStatus .avail { order: 3; display: flex; gap: 20px; margin: 0; }
+:root[data-theme="minecraft"] #pStatus .a-fig { display: flex; align-items: baseline; gap: 6px; }
+:root[data-theme="minecraft"] #pStatus .a-num { font-size: 12px; }
+:root[data-theme="minecraft"] #pStatus .a-lab { margin: 0; }
+
+/* the list: dark, each entry a block, its lines, and its bars */
+:root[data-theme="minecraft"] .mc-panel { display: block; min-height: 0; }
+:root[data-theme="minecraft"] .mc-list { display: flex; flex-direction: column; gap: 2px; height: 100%; padding: 4px; overflow-y: auto; background: rgba(0, 0, 0, .66); box-shadow: 0 -2px 0 rgba(255, 255, 255, .22), 0 2px 0 rgba(255, 255, 255, .22); scrollbar-color: #8a8a8a #000; }
+:root[data-theme="minecraft"] .mc-row { display: flex; flex: none; align-items: center; gap: 10px; padding: 5px 8px 5px 5px; color: #fff; box-shadow: inset 0 0 0 2px transparent; animation: mc-drop .22s steps(4) backwards; animation-delay: calc(var(--i, 0) * 34ms); }
+:root[data-theme="minecraft"] .mc-row:is(:hover, :focus-visible) { background: rgba(0, 0, 0, .66); box-shadow: inset 0 0 0 2px #fff; }
+/* each server has its own material; trouble shows in gold, an outage as a zombie */
+:root[data-theme="minecraft"] :is(.mc-row, .card)[data-block="0"] { --mc-own: var(--mc-i0); }
+:root[data-theme="minecraft"] :is(.mc-row, .card)[data-block="1"] { --mc-own: var(--mc-i1); }
+:root[data-theme="minecraft"] :is(.mc-row, .card)[data-block="2"] { --mc-own: var(--mc-i2); }
+:root[data-theme="minecraft"] :is(.mc-row, .card)[data-block="3"] { --mc-own: var(--mc-i3); }
+:root[data-theme="minecraft"] :is(.mc-row, .card)[data-block="4"] { --mc-own: var(--mc-i4); }
+:root[data-theme="minecraft"] :is(.mc-row, .card)[data-block="5"] { --mc-own: var(--mc-i5); }
+:root[data-theme="minecraft"] :is(.mc-row, .card)[data-block="6"] { --mc-own: var(--mc-i6); }
+:root[data-theme="minecraft"] :is(.mc-row, .card)[data-block="7"] { --mc-own: var(--mc-i7); }
+:root[data-theme="minecraft"] .mc-icon { flex: none; width: 44px; height: 44px; background: var(--mc-own, var(--mc-i2)) 0 0 / 100% 100%; image-rendering: pixelated; }
+:root[data-theme="minecraft"] .mc-row[data-level="warn"] .mc-icon { background-image: var(--mc-b-warn); }
+:root[data-theme="minecraft"] .mc-row[data-level="crit"] .mc-icon { background-image: var(--mc-b-crit); }
+:root[data-theme="minecraft"] .mc-body { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+:root[data-theme="minecraft"] .mc-l1 { display: flex; align-items: center; gap: 12px; min-width: 0; }
+:root[data-theme="minecraft"] .mc-name { flex: 1; min-width: 0; overflow: hidden; font-size: 14px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+:root[data-theme="minecraft"] .mc-rate { flex: none; color: #a8a8a8; font-size: 11.5px; white-space: pre; }
+:root[data-theme="minecraft"] .mc-place, :root[data-theme="minecraft"] .mc-sys { overflow: hidden; color: #9c9c9c; font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+:root[data-theme="minecraft"] .mc-sys b { font-weight: 400; margin-right: 8px; }
+:root[data-theme="minecraft"] .mc-sys b.good { color: #55ff55; }
+:root[data-theme="minecraft"] .mc-sys b.warn { color: #ffff55; }
+:root[data-theme="minecraft"] .mc-sys b.crit { color: #ff5555; }
+:root[data-theme="minecraft"] .mc-bars { display: flex; flex: none; align-items: flex-end; gap: 1px; height: 14px; }
+:root[data-theme="minecraft"] .mc-bars i { width: 3px; background: #3a3a3a; box-shadow: 1px 1px 0 #000; }
+:root[data-theme="minecraft"] .mc-bars i:nth-child(1) { height: 3px; }
+:root[data-theme="minecraft"] .mc-bars i:nth-child(2) { height: 6px; }
+:root[data-theme="minecraft"] .mc-bars i:nth-child(3) { height: 8px; }
+:root[data-theme="minecraft"] .mc-bars i:nth-child(4) { height: 11px; }
+:root[data-theme="minecraft"] .mc-bars i:nth-child(5) { height: 14px; }
+:root[data-theme="minecraft"] .mc-bars i.on { background: #55ff55; }
+:root[data-theme="minecraft"] .mc-bars[data-n="1"] i.on, :root[data-theme="minecraft"] .mc-bars[data-n="2"] i.on { background: #ff5555; }
+:root[data-theme="minecraft"] .mc-bars[data-n="3"] i.on { background: #ffff55; }
+
+/* the figures under the world */
+:root[data-theme="minecraft"] .dash .kpis { margin-top: 8px; background: rgba(0, 0, 0, .66); }
+:root[data-theme="minecraft"] .dash .kpi .k-val { font-size: 18px; }
+
+/* the throughput: columns of ground */
+:root[data-theme="minecraft"] #pFlow { display: flex; flex-direction: column; }
+:root[data-theme="minecraft"] #pFlow .ph { margin-bottom: 2px; }
+:root[data-theme="minecraft"] #pFlow .ph h2 { color: #fff; font-size: 13px; }
+:root[data-theme="minecraft"] #pFlow .pb { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: 6px 8px; background: rgba(0, 0, 0, .66); }
+:root[data-theme="minecraft"] #pFlow .flow-chart { flex: 1 1 0; height: auto; min-height: 96px; margin-top: 6px; }
+:root[data-theme="minecraft"] #pFlow .seg { background: rgba(0, 0, 0, .62); }
+:root[data-theme="minecraft"] #pFlow .seg button { color: #e0e0e0; text-shadow: 1.5px 1.5px 0 #2c2c2c; }
+
+/* a day's traffic is a column of ground: grass on top, earth, then stone; today's is capped with gold */
+:root[data-theme="minecraft"] .mcb { shape-rendering: crispEdges; animation: mc-drop .2s steps(3) backwards; animation-delay: var(--d, 0ms); }
+:root[data-theme="minecraft"] .mcb.grass { fill: #6fbf45; }
+:root[data-theme="minecraft"] .mcb.gold { fill: #f7cf3d; }
+:root[data-theme="minecraft"] .mcb.dirt { fill: #8a5f3c; }
+:root[data-theme="minecraft"] .mcb.stone { fill: #8a8a8e; }
+:root[data-theme="minecraft"] .mcb.edge { fill: rgba(0, 0, 0, .3); }
+:root[data-theme="minecraft"] .col:is(.hl, :hover) .mcb:not(.edge) { filter: brightness(1.25); }
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="minecraft"] :is(.mcb, .mc-row) { animation: none; }
+}
+@media (min-width: 1280px) {
+  :root[data-theme="minecraft"] .dash {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(460px, 1.75fr) minmax(340px, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) 248px;
+    grid-template-areas: none;
+    gap: 0 18px;
+    height: calc(100vh - var(--top) - 84px);
+    min-height: 0;
+  }
+  :root[data-theme="minecraft"] .dash .col { display: contents; }
+  :root[data-theme="minecraft"] #pStatus { grid-column: 2; grid-row: 1; margin-bottom: 8px; }
+  :root[data-theme="minecraft"] #pGlobe { grid-column: 2; grid-row: 2 / 5; min-height: 0; }
+  :root[data-theme="minecraft"] #pRes { grid-column: 1; grid-row: 1 / 4; margin: 18px 0 12px; }
+  :root[data-theme="minecraft"] #pEvents { grid-column: 1; grid-row: 4; min-height: 0; overflow: hidden; }
+  :root[data-theme="minecraft"] #pMine { grid-column: 3; grid-row: 1; margin-bottom: 12px; }
+  :root[data-theme="minecraft"] #pQuota { grid-column: 3; grid-row: 2; margin-bottom: 12px; }
+  :root[data-theme="minecraft"] #pMc { grid-column: 3; grid-row: 1 / 4; min-height: 0; margin: 18px 0 12px; }   /* level with the resources, clear of the top bar */
+  :root[data-theme="minecraft"] .dash:has(#pMine:not(.hidden), #pQuota:not(.hidden)) #pMc { grid-row: 3; }
+  :root[data-theme="minecraft"] #pFlow { grid-column: 3; grid-row: 4; min-height: 0; }
+}
+@media (max-width: 1279px) {
+  :root[data-theme="minecraft"] .dash { display: flex; flex-direction: column; gap: 12px; }
+  :root[data-theme="minecraft"] .dash .col { display: contents; }
+  :root[data-theme="minecraft"] #pStatus { order: 1; }
+  :root[data-theme="minecraft"] #pGlobe { order: 2; }
+  :root[data-theme="minecraft"] #pMc { order: 3; }
+  :root[data-theme="minecraft"] .mc-list { height: auto; overflow: visible; }
+  :root[data-theme="minecraft"] #pFlow { order: 4; }
+  :root[data-theme="minecraft"] #pRes { order: 5; }
+  :root[data-theme="minecraft"] #pEvents { order: 6; }
+  :root[data-theme="minecraft"] .mc-rate { display: none; }
+}
+
+/* The Servers page speaks as the overview does: white type on dark glass over the world. Each server has its
+   material in a slot, what goes in and out stand either side of the furnace's arrow, its load in three
+   slots of blocks, and its days along the bottom. */
+:root[data-theme="minecraft"] #v-servers .cards { grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 14px; }
+:root[data-theme="minecraft"] #v-servers .card {
+  --ink: #ffffff;
+  --ink-2: #ececec;
+  --ink-3: #d0d0d0;
+  --ink-4: #b0b0b0;
+  --page: #0b0d12;
+  --line: rgba(255, 255, 255, .14);
+  --line-2: rgba(255, 255, 255, .26);
+  --good: #7dff6a;
+  --warn: #ffd23f;
+  --crit: #ff6b5e;
+  --accent: #80ff20;
+  gap: 8px;
+  padding: 10px;
+  border: 0;
+  border-image: none;
+  background: rgba(0, 0, 0, .66);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, .6);
+  color: #fff;
+  text-shadow: 1.5px 1.5px 0 #2c2c2c;
+  animation: mc-drop .4s steps(16) backwards;
+}
+/* the Servers page opens smoothly: forty frames a second, over the look's whole steps */
+:root[data-theme="minecraft"] #v-servers .card { animation-timing-function: steps(16) !important; }
+:root[data-theme="minecraft"] #v-servers .card * { animation-timing-function: steps(16) !important; transition-timing-function: steps(12) !important; }
+:root[data-theme="minecraft"] #v-servers .card:is(:hover, :focus-visible) { background: rgba(0, 0, 0, .68); box-shadow: 0 0 0 2px #fff; outline: 0; transform: none; }
+:root[data-theme="minecraft"] #v-servers .card .c-head { gap: 10px; }
+:root[data-theme="minecraft"] #v-servers .card .dot { flex: none; width: 44px; height: 44px; border: 0; background: var(--mc-own, var(--mc-i2)) 0 0 / 100% 100% no-repeat; box-shadow: none; image-rendering: pixelated; animation: none; }
+:root[data-theme="minecraft"] #v-servers .card .dot::after, :root[data-theme="minecraft"] #v-servers .card .dot::before { display: none; }
+:root[data-theme="minecraft"] #v-servers .card[data-level="warn"] .dot { background-image: var(--mc-b-warn); }
+:root[data-theme="minecraft"] #v-servers .card[data-level="crit"] .dot { background-image: var(--mc-b-crit); }
+:root[data-theme="minecraft"] #v-servers .c-t b { color: #fff; font-size: 15px; font-weight: 400; }
+:root[data-theme="minecraft"] #v-servers .c-t small { color: #a8a8a8; }
+:root[data-theme="minecraft"] #v-servers .card .chip { background: none; box-shadow: none; color: #55ff55; }
+:root[data-theme="minecraft"] #v-servers .card .chip.warn { color: #ffff55; }
+:root[data-theme="minecraft"] #v-servers .card .chip.crit { color: #ff5555; }
+:root[data-theme="minecraft"] #v-servers .c-host { overflow: hidden; color: #9c9c9c; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+:root[data-theme="minecraft"] #v-servers .c-host .os-slot { display: none; }
+:root[data-theme="minecraft"] #v-servers .c-live { display: block; }
+:root[data-theme="minecraft"] #v-servers .c-rates { display: grid; grid-template-columns: 1fr 40px 1fr; align-items: center; }
+:root[data-theme="minecraft"] #v-servers .c-rates span { justify-content: center; gap: 6px; height: 32px; color: #fff; font-size: 12px; }
+:root[data-theme="minecraft"] #v-servers .c-rates span:last-child { grid-column: 3; }
+:root[data-theme="minecraft"] #v-servers .c-rates b { color: #fff; }
+:root[data-theme="minecraft"] #v-servers .c-rates::after { content: ""; grid-column: 2; grid-row: 1; justify-self: center; width: 22px; height: 16px; background: var(--mc-arrow) 0 0 / 100% 100%; image-rendering: pixelated; filter: invert(1) brightness(1.4); }
+:root[data-theme="minecraft"] #v-servers .c-spark { display: none; }
+:root[data-theme="minecraft"] #v-servers .c-res { gap: 6px; }
+:root[data-theme="minecraft"] #v-servers .c-res .mtr { gap: 3px; padding: 2px 0; }
+:root[data-theme="minecraft"] #v-servers .c-res .m-l { color: #d0d0d0; }
+:root[data-theme="minecraft"] #v-servers .c-res .m-v { color: #80ff20; font-size: 15px; font-weight: 700; text-shadow: -1px 0 0 #000, 1px 0 0 #000, 0 -1px 0 #000, 0 1px 0 #000; }
+:root[data-theme="minecraft"] #v-servers .c-res .m-v small { color: inherit; }
+:root[data-theme="minecraft"] #v-servers .c-res .mtr.warn .m-v { color: #ffd23f; }
+:root[data-theme="minecraft"] #v-servers .c-res .mtr.crit .m-v { color: #ff5555; }
+:root[data-theme="minecraft"] #v-servers .c-res .m-d, :root[data-theme="minecraft"] #v-servers .c-facts, :root[data-theme="minecraft"] #v-servers .c-qsub { display: none; }
+:root[data-theme="minecraft"] #v-servers .c-quota { font-size: 12px; }
+:root[data-theme="minecraft"] #v-servers .card small { color: #a8a8a8; }
+:root[data-theme="minecraft"] #v-servers .strip.sm { height: auto; }
+/* The Events page: the same dark glass, each event a line of the chat with its block */
+:root[data-theme="minecraft"] #v-events .panel {
+  --ink: #ffffff;
+  --ink-2: #ececec;
+  --ink-3: #d0d0d0;
+  --ink-4: #b0b0b0;
+  --line: rgba(255, 255, 255, .14);
+  --good: #7dff6a;
+  --warn: #ffd23f;
+  --crit: #ff6b5e;
+  padding: 10px;
+  border: 0;
+  border-image: none;
+  background: rgba(0, 0, 0, .66);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, .6);
+  color: #fff;
+  text-shadow: 1.5px 1.5px 0 #2c2c2c;
+}
+:root[data-theme="minecraft"] #v-events .ph h2 { color: #fff; font-size: 14px; text-shadow: 1.5px 1.5px 0 #2c2c2c; }
+:root[data-theme="minecraft"] #v-events .ph .pm { color: #d0d0d0; }
+:root[data-theme="minecraft"] #v-events .day-h { color: #ffff55; letter-spacing: 0; padding: 12px 0 4px; }
+:root[data-theme="minecraft"] #v-events .ev { grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px; padding: 4px 6px; border: 0; color: #fff; }
+:root[data-theme="minecraft"] #v-events a.ev:hover { background: rgba(255, 255, 255, .1); box-shadow: inset 0 0 0 2px #fff; }
+:root[data-theme="minecraft"] #v-events .e-ic { display: block; width: 22px; height: 22px; padding: 0; border: 0; background: var(--mc-i2) 0 0 / 100% 100%; box-shadow: none; image-rendering: pixelated; }
+:root[data-theme="minecraft"] #v-events .e-ic svg { display: none; }
+:root[data-theme="minecraft"] #v-events .ev.good .e-ic { background-image: var(--mc-b-good); }
+:root[data-theme="minecraft"] #v-events .ev.warn .e-ic { background-image: var(--mc-b-warn); }
+:root[data-theme="minecraft"] #v-events .ev.crit .e-ic { background-image: var(--mc-b-crit); }
+:root[data-theme="minecraft"] #v-events .ev.info .e-ic { background-image: var(--mc-i0); }
+:root[data-theme="minecraft"] #v-events .e-t small { color: #a8a8a8; }
+:root[data-theme="minecraft"] #v-events .ev time { color: #b8b8b8; }
+:root[data-theme="minecraft"] #v-events .more { color: #fff; }
+
+:root[data-theme="minecraft"] .live i::after { display: none; }
+:root[data-theme="minecraft"] .live i { animation: mc-live 1.2s steps(2) infinite; }
+@keyframes mc-live { 50% { transform: scale(1.8); } }
+@media (prefers-reduced-motion: reduce) { :root[data-theme="minecraft"] .live i { animation: none; } }
+
+/* type that stands straight on the sky gets a strip of shade, as the game's chat does */
+:root[data-theme="minecraft"] #pStatus :is(.verdict b, .a-fig), :root[data-theme="minecraft"] .ph.ghost h2, :root[data-theme="minecraft"] :is(.g-legend, .g-note) > span, :root[data-theme="minecraft"] .page-h p { width: fit-content; padding: 1px 6px; background: rgba(0, 0, 0, .62); }
+:root[data-theme="minecraft"] .page-h p { margin-inline: auto; }
+
+/* A server's details: one compact dark window in the middle, in three tabs, as the game's own menus */
+:root[data-theme="minecraft"] .drawer .scrim { background: rgba(0, 0, 0, .3); }
+:root[data-theme="minecraft"] .drawer .panel-d {
+  --ink: #ffffff;
+  --ink-2: #ececec;
+  --ink-3: #d0d0d0;
+  --ink-4: #b0b0b0;
+  --page: #0b0d12;
+  --surface: rgba(0, 0, 0, 0);
+  --raised: rgba(0, 0, 0, 0);
+  --hover: rgba(255, 255, 255, .1);
+  --line: rgba(255, 255, 255, .14);
+  --line-2: rgba(255, 255, 255, .26);
+  --good: #7dff6a;
+  --warn: #ffd23f;
+  --crit: #ff6b5e;
+  --accent: #80ff20;
+  --accent-ink: #7fe08a;
+  --grid: rgba(255, 255, 255, .12);
+  --baseline: rgba(255, 255, 255, .3);
+  --c1: #80ff20; --c2: #5decf5; --c3: #ffb347; --c4: #e08cff; --c5: #7a96f0; --c6: #ff6b5e; --c7: #ffe14d; --c8: #d0d0d0;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  width: min(720px, 94vw);
+  height: min(640px, 88vh);
+  border: 0;
+  border-image: none;
+  background: rgba(8, 10, 14, .9);
+  box-shadow: 0 0 0 2px #000, 0 0 0 4px rgba(255, 255, 255, .28);
+  color: #fff;
+  filter: none;
+  text-shadow: 1.5px 1.5px 0 #2c2c2c;
+  opacity: 0;
+  transform: translate(-50%, -46%);
+  transition: opacity .1s steps(2), transform .16s steps(6);
+}
+:root[data-theme="minecraft"] .drawer.open .panel-d { opacity: 1; transform: translate(-50%, -50%); }
+:root[data-theme="minecraft"] .d-head { gap: 10px; padding: 10px 12px; border-bottom: 0; }
+:root[data-theme="minecraft"] .d-head h3 { color: #fff; font-size: 17px; }
+:root[data-theme="minecraft"] .d-head p { color: #a8a8a8; font-size: 11.5px; }
+:root[data-theme="minecraft"] .d-head .flag { border: 0; background: none; color: #ffff55; }
+:root[data-theme="minecraft"] .mc-dtabs { display: flex; gap: 4px; padding: 0 12px; }
+:root[data-theme="minecraft"] .mc-dtabs button { flex: 1; height: 32px; border: 0; color: #d0d0d0; font: 700 12.5px var(--font-d); background: rgba(0, 0, 0, .68); box-shadow: inset 0 0 0 2px #5a5a5a; text-shadow: 1.5px 1.5px 0 #2c2c2c; cursor: pointer; }
+:root[data-theme="minecraft"] .mc-dtabs button:hover { color: #fff; box-shadow: inset 0 0 0 2px #fff; }
+:root[data-theme="minecraft"] .mc-dtabs button[aria-selected="true"] { color: #fff; background: #000; box-shadow: inset 0 2px 0 #c8c8c8, inset 2px 0 0 #c8c8c8, inset -2px 0 0 #c8c8c8; text-decoration: underline; text-underline-offset: 4px; }
+:root[data-theme="minecraft"] .d-body { padding: 4px 12px 12px; }
+:root[data-theme="minecraft"] .d-sec { padding: 10px 0; border-bottom: 0; animation: none; }
+:root[data-theme="minecraft"] .panel-d[data-tab="now"] .d-sec:not([data-tab="now"]), :root[data-theme="minecraft"] .panel-d[data-tab="history"] .d-sec:not([data-tab="history"]), :root[data-theme="minecraft"] .panel-d[data-tab="info"] .d-sec:not([data-tab="info"]) { display: none; }
+:root[data-theme="minecraft"] .d-sec h4 { margin-bottom: 6px; color: #ffff55; font-size: 12px; letter-spacing: 0; text-transform: none; }
+:root[data-theme="minecraft"] .d-sec h4 .aside { color: #a8a8a8; }
+:root[data-theme="minecraft"] .dirs { gap: 20px; margin-bottom: 4px; }
+:root[data-theme="minecraft"] .dir .v { font-size: 17px; color: #fff; text-shadow: 1.5px 1.5px 0 #2c2c2c; }
+:root[data-theme="minecraft"] .d-chart { height: 130px; }
+:root[data-theme="minecraft"] .gauges { gap: 8px; }
+:root[data-theme="minecraft"] .gauge .meter { container-type: inline-size; width: 55px; height: auto; aspect-ratio: 5; margin-top: 3px; background: var(--mc-b-none) 0 0 / 20% 100%; box-shadow: none; image-rendering: pixelated; overflow: hidden; }
+:root[data-theme="minecraft"] .gauge .meter i { display: block; height: 11px; min-width: 20cqw; background: var(--mc-m, var(--mc-m-cpu)) 0 0 / 20cqw 100%; box-shadow: none; animation: none; }
+:root[data-theme="minecraft"] .gauge .meter i::after { display: none; }
+:root[data-theme="minecraft"] .gauge:nth-child(1) { --mc-m: var(--mc-m-cpu); }
+:root[data-theme="minecraft"] .gauge:nth-child(2) { --mc-m: var(--mc-m-mem); }
+:root[data-theme="minecraft"] .gauge:nth-child(3) { --mc-m: var(--mc-m-disk); }
+:root[data-theme="minecraft"] .gauge .meter.warn i { background-image: var(--mc-b-warn); }
+:root[data-theme="minecraft"] .gauge .meter.crit i { background-image: var(--mc-b-crit); }
+:root[data-theme="minecraft"] .gauge .g-top b { color: #80ff20; }
+:root[data-theme="minecraft"] .drawer .panel-d .seg { background: rgba(0, 0, 0, .55); box-shadow: 0 0 0 2px #000; }
+:root[data-theme="minecraft"] .panel-d .seg button:not([aria-pressed="true"]) { color: #e0e0e0; text-shadow: 1.5px 1.5px 0 #2c2c2c; }
+:root[data-theme="minecraft"] .panel-d .tc-card :is(b, .num, strong) { color: #fff; text-shadow: 1.5px 1.5px 0 #2c2c2c; }
+:root[data-theme="minecraft"] .panel-d .tc-card small { color: #a8a8a8; }
+:root[data-theme="minecraft"] .kv-grid { row-gap: 6px; margin-top: 8px; }
+:root[data-theme="minecraft"] .panel-d .kv { font-size: 12px; }
+:root[data-theme="minecraft"] .panel-d .tc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+:root[data-theme="minecraft"] .panel-d :is(.tc-card, .subsection, .card) { padding: 6px 4px; border: 0; background: none; box-shadow: none; }
+@media (max-width: 640px) {
+  :root[data-theme="minecraft"] .drawer .panel-d { width: 100vw; height: 100dvh; }
+  :root[data-theme="minecraft"] .panel-d .tc-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 480px) { :root[data-theme="minecraft"] #v-servers .cards { grid-template-columns: minmax(0, 1fr); } }
+
+/* a wide window has room at the top: the menu stands there, beside the tools, and the bottom is freed; an
+   upright one keeps it along the bottom */
+@media (orientation: landscape) and (min-width: 900px) {
+  :root[data-theme="minecraft"] .top-l { display: flex; flex: 1; align-items: center; justify-content: space-between; min-width: 0; }
+  :root[data-theme="minecraft"] .top-l .nav { position: static; left: auto; bottom: auto; flex: none; margin-left: auto; padding: 0; background: none; box-shadow: none; transform: none; animation: none; }
+  :root[data-theme="minecraft"] .top-l .nav a { min-width: 0; height: 34px; padding: 0 14px; font-size: 12px; }
+  :root[data-theme="minecraft"] main, :root[data-theme="minecraft"] .foot { padding-bottom: 16px; }
+}
+@media (orientation: landscape) and (min-width: 1280px) {
+  :root[data-theme="minecraft"] .dash { height: calc(100vh - var(--top) - 22px); }
+}

@@ -10,8 +10,8 @@ people's apps. Press **Save changes** at the bottom.
 
 ## 2. Logo
 
-Under **Logo**, choose a built-in one - **Rose** (Rosélune's own), **Umbrella** or **Confetti** (a
-cobalt crescent moon cradling a canary sun, in the Postmodernism look's colours) - or **Upload your
+Under **Logo**, choose a built-in one - **Rose** (Rosélune's own), **Umbrella**, **Confetti** (a
+cobalt crescent moon cradling a canary sun, in the Postmodernism look's colours) or **Pixel rose** (the rose in square pixels) - or **Upload your
 logo**: SVG, PNG, JPEG or WebP, up to 128 KB. It shows in the top bar, on sign-in and loading screens,
 on the status page, on subscription pages and in the browser tab.
 

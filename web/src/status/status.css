@@ -388,6 +388,7 @@ main { position: relative; padding: 0 var(--pad) 22px; }
 
 /* panel: an open region under a hairline, numbered in reading order */
 .panel { position: relative; min-height: 0; min-width: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); padding-top: 14px; }
+.mc-panel, .mc-dtabs { display: none; }   /* the Minecraft look's list of servers (minecraft.css) */
 .dash .panel, .dash .globe-area { counter-increment: pn; }
 .ph { display: flex; align-items: center; gap: 10px; min-height: 26px; margin-bottom: 14px; }
 .ph h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .08em; color: var(--ink); white-space: nowrap; }

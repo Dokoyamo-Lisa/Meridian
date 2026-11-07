@@ -1,6 +1,16 @@
 # Meridian status
 
-Last updated 2026-11-07 (version 1.4.7).
+Last updated 2026-11-07 (version 1.4.8).
+
+## Tested for 1.4.8
+
+- **The Minecraft look** in headless Chrome on a local panel with the demo fleet: the status page's
+  overview, Servers, Events, a server's details and its three tabs, the full-screen globe, the panel's
+  overview and sign-in page, mostly at 1440 px, some at 1366, 768 and 390 px; the menu's place in wide and
+  upright windows. Outage days and overloaded servers were set by hand in the page to see their blocks.
+- **Not run**: every width after the last changes; the users' subscription page in this look, which
+  falls back to a system font; the panel's other pages one by one; Safari and Firefox; the PostgreSQL
+  suite; an upgrade on a real panel.
 
 ## Tested for 1.4.7
 

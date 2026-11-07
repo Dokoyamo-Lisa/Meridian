@@ -57,7 +57,7 @@ type Settings struct {
 
 	DefaultTone string `json:"default_tone" doc:"The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, time, minecraft - or auto: Ice, or Paper on a device set to light"`
 
-	LogoMark      string `json:"logo_mark" doc:"The built-in logo, shown while no logo is uploaded: rose (Rosélune's own, the default) | umbrella | confetti"`
+	LogoMark      string `json:"logo_mark" doc:"The built-in logo, shown while no logo is uploaded: rose (Rosélune's own, the default) | umbrella | confetti | pixel"`
 	LogoAnimation string `json:"logo_animation" doc:"How the logo moves while pages load and when someone signs in: assemble (the built-in logo's pieces fly in - the rose's petals, the umbrella's panels; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo"`
 
 	// when a user's data runs out (outofdata.go)

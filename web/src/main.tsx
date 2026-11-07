@@ -7,6 +7,7 @@ import './time.css'
 import './minecraft.css'
 import './mark.css'
 import { setUnauthorizedHandler } from './api'
+import { startMcWorld } from './mcworld'
 import { startTimeDial } from './timedial'
 import { Icon, Logo } from './icons'
 import { PluginEvents, PluginMenuItems, PluginPage, isPluginPath, loadPluginScripts, usePluginNav } from './plugins'
@@ -29,6 +30,7 @@ import { Users } from './pages/Users'
 
 setUnauthorizedHandler(() => signedOut())
 startTimeDial()
+startMcWorld()
 
 const nav: { href: string; label: string }[] = [
   { href: '/overview', label: 'Overview' },

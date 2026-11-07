@@ -1,19 +1,35 @@
 # Changelog
 
-## Unreleased
+## 1.4.8 - 2026-11-07
+
+A new look, Minecraft, and a logo for it. Upgrade the panel (**Settings › Updates** - nobody is
+disconnected); the agents follow by themselves.
 
 - **A new look: Minecraft,** laid out anew. The pages' menu leaves the top and becomes a hotbar of
   slots along the bottom of the screen, the page you are on in the white frame. Every section and
   dialog is a game window - light grey with a white and a dark bevel and a black outline, dark type
   on it - and what sits in it (cards, switches, figures) is a sunken slot. Titles stand centred in
   block type with a hard shadow beside a small grass block, the page's buttons under them; tabs are
-  an inventory's tabs; tables on the page stand in a dark well. Around it all, dark earth with a row
-  of grass along the top. Buttons are stone (emerald for the main one) and turn blue with yellow type
-  under the pointer, fields are black wells, bars fill like the experience bar. In the palette
+  an inventory's tabs; tables on the page stand in a dark well. The status page's overview is a
+  game's screen: a bar over the Earth, a block in the middle; resources as debug text; events as chat; and
+  servers listed as the game lists multiplayer servers, each with a block for its state, its load and
+  bars of signal. Each server has a material of its own; its Servers and Events pages keep that dark glass, with traffic and load in slots and each event a line with its block, and a server's details open as a small dark window in three tabs. In a wide window the menu moves to the top right. Nothing is a progress bar there: a day is a block - grass, gold, or a zombie
+  for an outage - and a day's traffic, or the last half hour's, a column of ground. Every movement is in whole steps, screens
+  change at once, and notices slide in at the top right. Behind it all, a world of blocks drawn in the
+  browser - hills, trees, sea and clouds that pan slowly, a sky, sun and moon that follow the browser's
+  clock - with the sign-in page a title screen on it. Buttons are stone (emerald for the main one) with a white frame under the
+  pointer, fields are black wells, bars fill like the experience bar. In the palette
   button, in **Settings › Panel › Look**, on users' pages and subscription pages; `default_tone` and
-  the MCP tool accept `minecraft`. No image or font is downloaded: the textures are tiny pixel
-  drawings inside the stylesheet. The status page's charts now take their colours from the panel
-  they are drawn in.
+  the MCP tool accept `minecraft`. Nothing is fetched from other sites: the textures are tiny pixel
+  drawings inside the stylesheet. It moves in small jumps, as a game of blocks does: the block beside a title floats, windows and the
+  hotbar arrive, bars fill a segment at a time and what you press gives way - and all of it stands
+  still for anyone who asked their device for less motion. All type, figures included, is Monocraft
+  (open licence, served by the panel itself), and on the status page the Earth is a block: the same
+  places on the six faces of a cube of water, land and ice, its lines streams of square particles. The status page's charts now take their
+  colours from the panel they are drawn in.
+- **A new logo: the Pixel rose,** the rose in square pixels with the crescent moon at its heart, in
+  **Settings › Panel › Logo** and in `logo_mark` as `pixel`. The Minecraft look shows it in place of the
+  rose.
 
 ## 1.4.7 - 2026-11-07
 

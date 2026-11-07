@@ -315,9 +315,13 @@
    one, a black outline, square corners, block type with a hard drop shadow, and text that turns
    yellow under the pointer. Emerald is the accent. Text keeps 4.5:1 on the stone, the faintest 3:1.
    The textures are tiny pixel drawings inlined here, scaled up without smoothing; no font is loaded. */
+/* Monocraft (SIL Open Font License 1.1, public/licenses/Monocraft-OFL.txt), cut down to the Latin letters
+   and signs the pages use; only fetched in this look */
+@font-face { font-family: "Monocraft"; font-weight: 400; font-display: swap; src: url("./fonts/monocraft.woff2") format("woff2"); }
+@font-face { font-family: "Monocraft"; font-weight: 700; font-display: swap; src: url("./fonts/monocraft-bold.woff2") format("woff2"); }
 :root[data-theme="minecraft"] {
   color-scheme: dark;
-  --page: #1d1610;
+  --page: #10131a;
   --surface: #2c2c2c;
   --raised: #363636;
   --hover: rgba(255, 255, 255, .07);
@@ -347,20 +351,42 @@
   --g-night-lum: .5;
   --g-rim: rgba(255, 255, 255, .12);
   --g-halo: rgba(111, 220, 106, .06);
-  --g-arc: #4fd36b;
+  --g-arc: #e6ff6a;
   --g-accent: #ffff55;
   --g-hub: #ffffff;
   --g-client: #ffaa00;
   --g-back: .03;
-  --font-d: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Courier New", monospace;
+  --font: "Monocraft", ui-monospace, Menlo, Consolas, monospace;
+  --font-d: "Monocraft", ui-monospace, Menlo, Consolas, monospace;
+  --mono: "Monocraft", ui-monospace, Menlo, Consolas, monospace;
+  --g-shape: cube;
+  --g-water: #3a64c8;
+  --g-ice: #e8f0fb;
   --num-weight: 700;
   --mc-yellow: #ffff55;
-  --mc-shadow: 2px 2px 0 rgba(0, 0, 0, .75);
+  --mc-i0: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23c9fbff' d='M0 0h7v1h-7z'/%3E%3Cpath fill='%231f9fb0' d='M7 0h1v1h-1z'/%3E%3Cpath fill='%23c9fbff' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%235decf5' d='M1 1h6v1h-6z'/%3E%3Cpath fill='%231f9fb0' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%23c9fbff' d='M0 2h1v1h-1z'/%3E%3Cpath fill='%235decf5' d='M1 2h1v1h-1z'/%3E%3Cpath fill='%23a8f6fb' d='M2 2h2v1h-2z'/%3E%3Cpath fill='%235decf5' d='M4 2h3v1h-3z'/%3E%3Cpath fill='%231f9fb0' d='M7 2h1v1h-1z'/%3E%3Cpath fill='%23c9fbff' d='M0 3h1v1h-1z'/%3E%3Cpath fill='%235decf5' d='M1 3h1v1h-1z'/%3E%3Cpath fill='%23a8f6fb' d='M2 3h1v1h-1z'/%3E%3Cpath fill='%235decf5' d='M3 3h4v1h-4z'/%3E%3Cpath fill='%231f9fb0' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%23c9fbff' d='M0 4h1v1h-1z'/%3E%3Cpath fill='%235decf5' d='M1 4h6v1h-6z'/%3E%3Cpath fill='%231f9fb0' d='M7 4h1v1h-1z'/%3E%3Cpath fill='%23c9fbff' d='M0 5h1v1h-1z'/%3E%3Cpath fill='%235decf5' d='M1 5h4v1h-4z'/%3E%3Cpath fill='%23a8f6fb' d='M5 5h1v1h-1z'/%3E%3Cpath fill='%235decf5' d='M6 5h1v1h-1z'/%3E%3Cpath fill='%231f9fb0' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%23c9fbff' d='M0 6h1v1h-1z'/%3E%3Cpath fill='%235decf5' d='M1 6h6v1h-6z'/%3E%3Cpath fill='%231f9fb0' d='M7 6h1v1h-1z'/%3E%3Cpath fill='%231f9fb0' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-i1: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23b08a52' d='M0 0h8v1h-8z'/%3E%3Cpath fill='%239a7743' d='M0 1h5v1h-5z'/%3E%3Cpath fill='%23b08a52' d='M5 1h1v1h-1z'/%3E%3Cpath fill='%239a7743' d='M6 1h2v1h-2z'/%3E%3Cpath fill='%23b08a52' d='M0 2h8v1h-8z'/%3E%3Cpath fill='%236d5230' d='M0 3h8v1h-8z'/%3E%3Cpath fill='%23b08a52' d='M0 4h3v1h-3z'/%3E%3Cpath fill='%239a7743' d='M3 4h1v1h-1z'/%3E%3Cpath fill='%23b08a52' d='M4 4h4v1h-4z'/%3E%3Cpath fill='%239a7743' d='M0 5h2v1h-2z'/%3E%3Cpath fill='%23b08a52' d='M2 5h1v1h-1z'/%3E%3Cpath fill='%239a7743' d='M3 5h5v1h-5z'/%3E%3Cpath fill='%23b08a52' d='M0 6h8v1h-8z'/%3E%3Cpath fill='%236d5230' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-i2: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%238c8c90' d='M0 0h3v1h-3z'/%3E%3Cpath fill='%235c5c60' d='M3 0h1v1h-1z'/%3E%3Cpath fill='%238c8c90' d='M4 0h4v1h-4z'/%3E%3Cpath fill='%238c8c90' d='M0 1h3v1h-3z'/%3E%3Cpath fill='%235c5c60' d='M3 1h1v1h-1z'/%3E%3Cpath fill='%238c8c90' d='M4 1h4v1h-4z'/%3E%3Cpath fill='%238c8c90' d='M0 2h3v1h-3z'/%3E%3Cpath fill='%235c5c60' d='M3 2h1v1h-1z'/%3E%3Cpath fill='%238c8c90' d='M4 2h4v1h-4z'/%3E%3Cpath fill='%235c5c60' d='M0 3h8v1h-8z'/%3E%3Cpath fill='%235c5c60' d='M0 4h1v1h-1z'/%3E%3Cpath fill='%238c8c90' d='M1 4h7v1h-7z'/%3E%3Cpath fill='%235c5c60' d='M0 5h1v1h-1z'/%3E%3Cpath fill='%238c8c90' d='M1 5h7v1h-7z'/%3E%3Cpath fill='%235c5c60' d='M0 6h1v1h-1z'/%3E%3Cpath fill='%238c8c90' d='M1 6h7v1h-7z'/%3E%3Cpath fill='%235c5c60' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-i3: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23b8c8ff' d='M0 0h7v1h-7z'/%3E%3Cpath fill='%231f3a9c' d='M7 0h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 1h6v1h-6z'/%3E%3Cpath fill='%231f3a9c' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 2h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 2h1v1h-1z'/%3E%3Cpath fill='%237a96f0' d='M2 2h2v1h-2z'/%3E%3Cpath fill='%233f66d8' d='M4 2h3v1h-3z'/%3E%3Cpath fill='%231f3a9c' d='M7 2h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 3h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 3h1v1h-1z'/%3E%3Cpath fill='%237a96f0' d='M2 3h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M3 3h4v1h-4z'/%3E%3Cpath fill='%231f3a9c' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 4h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 4h6v1h-6z'/%3E%3Cpath fill='%231f3a9c' d='M7 4h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 5h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 5h4v1h-4z'/%3E%3Cpath fill='%237a96f0' d='M5 5h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M6 5h1v1h-1z'/%3E%3Cpath fill='%231f3a9c' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 6h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 6h6v1h-6z'/%3E%3Cpath fill='%231f3a9c' d='M7 6h1v1h-1z'/%3E%3Cpath fill='%231f3a9c' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-i4: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23e8c8ff' d='M0 0h7v1h-7z'/%3E%3Cpath fill='%235a2d99' d='M7 0h1v1h-1z'/%3E%3Cpath fill='%23e8c8ff' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%239b5de5' d='M1 1h6v1h-6z'/%3E%3Cpath fill='%235a2d99' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%23e8c8ff' d='M0 2h1v1h-1z'/%3E%3Cpath fill='%239b5de5' d='M1 2h1v1h-1z'/%3E%3Cpath fill='%23c79df5' d='M2 2h2v1h-2z'/%3E%3Cpath fill='%239b5de5' d='M4 2h3v1h-3z'/%3E%3Cpath fill='%235a2d99' d='M7 2h1v1h-1z'/%3E%3Cpath fill='%23e8c8ff' d='M0 3h1v1h-1z'/%3E%3Cpath fill='%239b5de5' d='M1 3h1v1h-1z'/%3E%3Cpath fill='%23c79df5' d='M2 3h1v1h-1z'/%3E%3Cpath fill='%239b5de5' d='M3 3h4v1h-4z'/%3E%3Cpath fill='%235a2d99' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%23e8c8ff' d='M0 4h1v1h-1z'/%3E%3Cpath fill='%239b5de5' d='M1 4h6v1h-6z'/%3E%3Cpath fill='%235a2d99' d='M7 4h1v1h-1z'/%3E%3Cpath fill='%23e8c8ff' d='M0 5h1v1h-1z'/%3E%3Cpath fill='%239b5de5' d='M1 5h4v1h-4z'/%3E%3Cpath fill='%23c79df5' d='M5 5h1v1h-1z'/%3E%3Cpath fill='%239b5de5' d='M6 5h1v1h-1z'/%3E%3Cpath fill='%235a2d99' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%23e8c8ff' d='M0 6h1v1h-1z'/%3E%3Cpath fill='%239b5de5' d='M1 6h6v1h-6z'/%3E%3Cpath fill='%235a2d99' d='M7 6h1v1h-1z'/%3E%3Cpath fill='%235a2d99' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-i5: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23e2d3a0' d='M0 0h8v1h-8z'/%3E%3Cpath fill='%23cfbc85' d='M0 1h8v1h-8z'/%3E%3Cpath fill='%23e2d3a0' d='M0 2h8v1h-8z'/%3E%3Cpath fill='%23e2d3a0' d='M0 3h2v1h-2z'/%3E%3Cpath fill='%23cfbc85' d='M2 3h1v1h-1z'/%3E%3Cpath fill='%23e2d3a0' d='M3 3h2v1h-2z'/%3E%3Cpath fill='%23cfbc85' d='M5 3h1v1h-1z'/%3E%3Cpath fill='%23e2d3a0' d='M6 3h2v1h-2z'/%3E%3Cpath fill='%23e2d3a0' d='M0 4h8v1h-8z'/%3E%3Cpath fill='%23cfbc85' d='M0 5h8v1h-8z'/%3E%3Cpath fill='%23e2d3a0' d='M0 6h8v1h-8z'/%3E%3Cpath fill='%23b09c68' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-i6: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23ece6dc' d='M0 0h7v1h-7z'/%3E%3Cpath fill='%23c8c0b4' d='M7 0h1v1h-1z'/%3E%3Cpath fill='%23ece6dc' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%23ffffff' d='M1 1h2v1h-2z'/%3E%3Cpath fill='%23ece6dc' d='M3 1h4v1h-4z'/%3E%3Cpath fill='%23c8c0b4' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%23ece6dc' d='M0 2h1v1h-1z'/%3E%3Cpath fill='%23ffffff' d='M1 2h1v1h-1z'/%3E%3Cpath fill='%23ece6dc' d='M2 2h5v1h-5z'/%3E%3Cpath fill='%23c8c0b4' d='M7 2h1v1h-1z'/%3E%3Cpath fill='%23ece6dc' d='M0 3h7v1h-7z'/%3E%3Cpath fill='%23c8c0b4' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%23ece6dc' d='M0 4h7v1h-7z'/%3E%3Cpath fill='%23c8c0b4' d='M7 4h1v1h-1z'/%3E%3Cpath fill='%23ece6dc' d='M0 5h5v1h-5z'/%3E%3Cpath fill='%23ffffff' d='M5 5h1v1h-1z'/%3E%3Cpath fill='%23ece6dc' d='M6 5h1v1h-1z'/%3E%3Cpath fill='%23c8c0b4' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%23ece6dc' d='M0 6h7v1h-7z'/%3E%3Cpath fill='%23c8c0b4' d='M7 6h1v1h-1z'/%3E%3Cpath fill='%23c8c0b4' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-i7: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%238a4a3a' d='M0 0h8v1h-8z'/%3E%3Cpath fill='%23a8604c' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%238a4a3a' d='M1 1h2v1h-2z'/%3E%3Cpath fill='%23a8604c' d='M3 1h2v1h-2z'/%3E%3Cpath fill='%238a4a3a' d='M5 1h2v1h-2z'/%3E%3Cpath fill='%23a8604c' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%238a4a3a' d='M0 2h8v1h-8z'/%3E%3Cpath fill='%23a8604c' d='M0 3h2v1h-2z'/%3E%3Cpath fill='%238a4a3a' d='M2 3h3v1h-3z'/%3E%3Cpath fill='%23a8604c' d='M5 3h2v1h-2z'/%3E%3Cpath fill='%238a4a3a' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%238a4a3a' d='M0 4h8v1h-8z'/%3E%3Cpath fill='%238a4a3a' d='M0 5h1v1h-1z'/%3E%3Cpath fill='%23a8604c' d='M1 5h3v1h-3z'/%3E%3Cpath fill='%238a4a3a' d='M4 5h3v1h-3z'/%3E%3Cpath fill='%23a8604c' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%238a4a3a' d='M0 6h8v1h-8z'/%3E%3Cpath fill='%235a2c20' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-m-cpu: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23ffd9b0' d='M0 0h7v1h-7z'/%3E%3Cpath fill='%238a4a18' d='M7 0h1v1h-1z'/%3E%3Cpath fill='%23ffd9b0' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%23d9833a' d='M1 1h6v1h-6z'/%3E%3Cpath fill='%238a4a18' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%23ffd9b0' d='M0 2h1v1h-1z'/%3E%3Cpath fill='%23d9833a' d='M1 2h1v1h-1z'/%3E%3Cpath fill='%23f0a860' d='M2 2h2v1h-2z'/%3E%3Cpath fill='%23d9833a' d='M4 2h3v1h-3z'/%3E%3Cpath fill='%238a4a18' d='M7 2h1v1h-1z'/%3E%3Cpath fill='%23ffd9b0' d='M0 3h1v1h-1z'/%3E%3Cpath fill='%23d9833a' d='M1 3h1v1h-1z'/%3E%3Cpath fill='%23f0a860' d='M2 3h1v1h-1z'/%3E%3Cpath fill='%23d9833a' d='M3 3h4v1h-4z'/%3E%3Cpath fill='%238a4a18' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%23ffd9b0' d='M0 4h1v1h-1z'/%3E%3Cpath fill='%23d9833a' d='M1 4h6v1h-6z'/%3E%3Cpath fill='%238a4a18' d='M7 4h1v1h-1z'/%3E%3Cpath fill='%23ffd9b0' d='M0 5h1v1h-1z'/%3E%3Cpath fill='%23d9833a' d='M1 5h4v1h-4z'/%3E%3Cpath fill='%23f0a860' d='M5 5h1v1h-1z'/%3E%3Cpath fill='%23d9833a' d='M6 5h1v1h-1z'/%3E%3Cpath fill='%238a4a18' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%23ffd9b0' d='M0 6h1v1h-1z'/%3E%3Cpath fill='%23d9833a' d='M1 6h6v1h-6z'/%3E%3Cpath fill='%238a4a18' d='M7 6h1v1h-1z'/%3E%3Cpath fill='%238a4a18' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-m-mem: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23b8c8ff' d='M0 0h7v1h-7z'/%3E%3Cpath fill='%231f3a9c' d='M7 0h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 1h6v1h-6z'/%3E%3Cpath fill='%231f3a9c' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 2h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 2h1v1h-1z'/%3E%3Cpath fill='%237a96f0' d='M2 2h2v1h-2z'/%3E%3Cpath fill='%233f66d8' d='M4 2h3v1h-3z'/%3E%3Cpath fill='%231f3a9c' d='M7 2h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 3h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 3h1v1h-1z'/%3E%3Cpath fill='%237a96f0' d='M2 3h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M3 3h4v1h-4z'/%3E%3Cpath fill='%231f3a9c' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 4h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 4h6v1h-6z'/%3E%3Cpath fill='%231f3a9c' d='M7 4h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 5h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 5h4v1h-4z'/%3E%3Cpath fill='%237a96f0' d='M5 5h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M6 5h1v1h-1z'/%3E%3Cpath fill='%231f3a9c' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%23b8c8ff' d='M0 6h1v1h-1z'/%3E%3Cpath fill='%233f66d8' d='M1 6h6v1h-6z'/%3E%3Cpath fill='%231f3a9c' d='M7 6h1v1h-1z'/%3E%3Cpath fill='%231f3a9c' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-m-disk: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23ffffff' d='M0 0h7v1h-7z'/%3E%3Cpath fill='%238a8a92' d='M7 0h1v1h-1z'/%3E%3Cpath fill='%23ffffff' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%23d0d0d6' d='M1 1h6v1h-6z'/%3E%3Cpath fill='%238a8a92' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%23ffffff' d='M0 2h1v1h-1z'/%3E%3Cpath fill='%23d0d0d6' d='M1 2h1v1h-1z'/%3E%3Cpath fill='%23e8e8ee' d='M2 2h2v1h-2z'/%3E%3Cpath fill='%23d0d0d6' d='M4 2h3v1h-3z'/%3E%3Cpath fill='%238a8a92' d='M7 2h1v1h-1z'/%3E%3Cpath fill='%23ffffff' d='M0 3h1v1h-1z'/%3E%3Cpath fill='%23d0d0d6' d='M1 3h1v1h-1z'/%3E%3Cpath fill='%23e8e8ee' d='M2 3h1v1h-1z'/%3E%3Cpath fill='%23d0d0d6' d='M3 3h4v1h-4z'/%3E%3Cpath fill='%238a8a92' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%23ffffff' d='M0 4h1v1h-1z'/%3E%3Cpath fill='%23d0d0d6' d='M1 4h6v1h-6z'/%3E%3Cpath fill='%238a8a92' d='M7 4h1v1h-1z'/%3E%3Cpath fill='%23ffffff' d='M0 5h1v1h-1z'/%3E%3Cpath fill='%23d0d0d6' d='M1 5h4v1h-4z'/%3E%3Cpath fill='%23e8e8ee' d='M5 5h1v1h-1z'/%3E%3Cpath fill='%23d0d0d6' d='M6 5h1v1h-1z'/%3E%3Cpath fill='%238a8a92' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%23ffffff' d='M0 6h1v1h-1z'/%3E%3Cpath fill='%23d0d0d6' d='M1 6h6v1h-6z'/%3E%3Cpath fill='%238a8a92' d='M7 6h1v1h-1z'/%3E%3Cpath fill='%238a8a92' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-window: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' shape-rendering='crispEdges'%3E%3Crect x='2' y='0' width='1' height='1' fill='%23000000'/%3E%3Crect x='3' y='0' width='1' height='1' fill='%23000000'/%3E%3Crect x='4' y='0' width='1' height='1' fill='%23000000'/%3E%3Crect x='5' y='0' width='1' height='1' fill='%23000000'/%3E%3Crect x='6' y='0' width='1' height='1' fill='%23000000'/%3E%3Crect x='7' y='0' width='1' height='1' fill='%23000000'/%3E%3Crect x='8' y='0' width='1' height='1' fill='%23000000'/%3E%3Crect x='9' y='0' width='1' height='1' fill='%23000000'/%3E%3Crect x='1' y='1' width='1' height='1' fill='%23000000'/%3E%3Crect x='2' y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='5' y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='6' y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='7' y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='8' y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='9' y='1' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='10' y='1' width='1' height='1' fill='%23000000'/%3E%3Crect x='0' y='2' width='1' height='1' fill='%23000000'/%3E%3Crect x='1' y='2' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='2' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='2' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='5' y='2' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='6' y='2' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='7' y='2' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='8' y='2' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='9' y='2' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='10' y='2' width='1' height='1' fill='%23555555'/%3E%3Crect x='11' y='2' width='1' height='1' fill='%23000000'/%3E%3Crect x='0' y='3' width='1' height='1' fill='%23000000'/%3E%3Crect x='1' y='3' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='3' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='4' y='3' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='5' y='3' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='6' y='3' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='7' y='3' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='8' y='3' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='9' y='3' width='1' height='1' fill='%23555555'/%3E%3Crect x='10' y='3' width='1' height='1' fill='%23555555'/%3E%3Crect x='11' y='3' width='1' height='1' fill='%23000000'/%3E%3Crect x='0' y='4' width='1' height='1' fill='%23000000'/%3E%3Crect x='1' y='4' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='4' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='4' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='5' y='4' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='6' y='4' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='7' y='4' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='8' y='4' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='9' y='4' width='1' height='1' fill='%23555555'/%3E%3Crect x='10' y='4' width='1' height='1' fill='%23555555'/%3E%3Crect x='11' y='4' width='1' height='1' fill='%23000000'/%3E%3Crect x='0' y='5' width='1' height='1' fill='%23000000'/%3E%3Crect x='1' y='5' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='5' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='5' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='4' y='5' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='6' y='5' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='7' y='5' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='8' y='5' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='9' y='5' width='1' height='1' fill='%23555555'/%3E%3Crect x='10' y='5' width='1' height='1' fill='%23555555'/%3E%3Crect x='11' y='5' width='1' height='1' fill='%23000000'/%3E%3Crect x='0' y='6' width='1' height='1' fill='%23000000'/%3E%3Crect x='1' y='6' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='6' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='6' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='4' y='6' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='5' y='6' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='6' y='6' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='7' y='6' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='8' y='6' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='9' y='6' width='1' height='1' fill='%23555555'/%3E%3Crect x='10' y='6' width='1' height='1' fill='%23555555'/%3E%3Crect x='11' y='6' width='1' height='1' fill='%23000000'/%3E%3Crect x='0' y='7' width='1' height='1' fill='%23000000'/%3E%3Crect x='1' y='7' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='7' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='7' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='4' y='7' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='5' y='7' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='6' y='7' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='7' y='7' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='8' y='7' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='9' y='7' width='1' height='1' fill='%23555555'/%3E%3Crect x='10' y='7' width='1' height='1' fill='%23555555'/%3E%3Crect x='11' y='7' width='1' height='1' fill='%23000000'/%3E%3Crect x='0' y='8' width='1' height='1' fill='%23000000'/%3E%3Crect x='1' y='8' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='8' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='8' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='4' y='8' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='5' y='8' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='6' y='8' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='7' y='8' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='8' y='8' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='9' y='8' width='1' height='1' fill='%23555555'/%3E%3Crect x='10' y='8' width='1' height='1' fill='%23555555'/%3E%3Crect x='11' y='8' width='1' height='1' fill='%23000000'/%3E%3Crect x='0' y='9' width='1' height='1' fill='%23000000'/%3E%3Crect x='1' y='9' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='9' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='3' y='9' width='1' height='1' fill='%23555555'/%3E%3Crect x='4' y='9' width='1' height='1' fill='%23555555'/%3E%3Crect x='5' y='9' width='1' height='1' fill='%23555555'/%3E%3Crect x='6' y='9' width='1' height='1' fill='%23555555'/%3E%3Crect x='7' y='9' width='1' height='1' fill='%23555555'/%3E%3Crect x='8' y='9' width='1' height='1' fill='%23555555'/%3E%3Crect x='9' y='9' width='1' height='1' fill='%23555555'/%3E%3Crect x='10' y='9' width='1' height='1' fill='%23555555'/%3E%3Crect x='11' y='9' width='1' height='1' fill='%23000000'/%3E%3Crect x='1' y='10' width='1' height='1' fill='%23000000'/%3E%3Crect x='2' y='10' width='1' height='1' fill='%23c6c6c6'/%3E%3Crect x='3' y='10' width='1' height='1' fill='%23555555'/%3E%3Crect x='4' y='10' width='1' height='1' fill='%23555555'/%3E%3Crect x='5' y='10' width='1' height='1' fill='%23555555'/%3E%3Crect x='6' y='10' width='1' height='1' fill='%23555555'/%3E%3Crect x='7' y='10' width='1' height='1' fill='%23555555'/%3E%3Crect x='8' y='10' width='1' height='1' fill='%23555555'/%3E%3Crect x='9' y='10' width='1' height='1' fill='%23555555'/%3E%3Crect x='10' y='10' width='1' height='1' fill='%23000000'/%3E%3Crect x='2' y='11' width='1' height='1' fill='%23000000'/%3E%3Crect x='3' y='11' width='1' height='1' fill='%23000000'/%3E%3Crect x='4' y='11' width='1' height='1' fill='%23000000'/%3E%3Crect x='5' y='11' width='1' height='1' fill='%23000000'/%3E%3Crect x='6' y='11' width='1' height='1' fill='%23000000'/%3E%3Crect x='7' y='11' width='1' height='1' fill='%23000000'/%3E%3Crect x='8' y='11' width='1' height='1' fill='%23000000'/%3E%3Crect x='9' y='11' width='1' height='1' fill='%23000000'/%3E%3C/svg%3E");
+  --mc-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='16' viewBox='0 0 11 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23525252' d='M0 3h7V0h1v1h1v1h1v1h1v2h-1v1h-1v1h-1v1h-1V5H0z'/%3E%3C/svg%3E");
+  --mc-slot-light: inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff;
+  --mc-b-good: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23c6ffd6' d='M0 0h7v1h-7z'/%3E%3Cpath fill='%230e7a35' d='M7 0h1v1h-1z'/%3E%3Cpath fill='%23c6ffd6' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%2327c45a' d='M1 1h6v1h-6z'/%3E%3Cpath fill='%230e7a35' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%23c6ffd6' d='M0 2h1v1h-1z'/%3E%3Cpath fill='%2327c45a' d='M1 2h1v1h-1z'/%3E%3Cpath fill='%2386f0a4' d='M2 2h2v1h-2z'/%3E%3Cpath fill='%2327c45a' d='M4 2h3v1h-3z'/%3E%3Cpath fill='%230e7a35' d='M7 2h1v1h-1z'/%3E%3Cpath fill='%23c6ffd6' d='M0 3h1v1h-1z'/%3E%3Cpath fill='%2327c45a' d='M1 3h1v1h-1z'/%3E%3Cpath fill='%2386f0a4' d='M2 3h1v1h-1z'/%3E%3Cpath fill='%2327c45a' d='M3 3h4v1h-4z'/%3E%3Cpath fill='%230e7a35' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%23c6ffd6' d='M0 4h1v1h-1z'/%3E%3Cpath fill='%2327c45a' d='M1 4h6v1h-6z'/%3E%3Cpath fill='%230e7a35' d='M7 4h1v1h-1z'/%3E%3Cpath fill='%23c6ffd6' d='M0 5h1v1h-1z'/%3E%3Cpath fill='%2327c45a' d='M1 5h4v1h-4z'/%3E%3Cpath fill='%2386f0a4' d='M5 5h1v1h-1z'/%3E%3Cpath fill='%2327c45a' d='M6 5h1v1h-1z'/%3E%3Cpath fill='%230e7a35' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%23c6ffd6' d='M0 6h1v1h-1z'/%3E%3Cpath fill='%2327c45a' d='M1 6h6v1h-6z'/%3E%3Cpath fill='%230e7a35' d='M7 6h1v1h-1z'/%3E%3Cpath fill='%230e7a35' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-b-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23f7cf3d' d='M0 0h7v1h-7z'/%3E%3Cpath fill='%23b8860b' d='M7 0h1v1h-1z'/%3E%3Cpath fill='%23f7cf3d' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%23fff2a8' d='M1 1h2v1h-2z'/%3E%3Cpath fill='%23f7cf3d' d='M3 1h4v1h-4z'/%3E%3Cpath fill='%23b8860b' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%23f7cf3d' d='M0 2h1v1h-1z'/%3E%3Cpath fill='%23fff2a8' d='M1 2h1v1h-1z'/%3E%3Cpath fill='%23f7cf3d' d='M2 2h5v1h-5z'/%3E%3Cpath fill='%23b8860b' d='M7 2h1v1h-1z'/%3E%3Cpath fill='%23f7cf3d' d='M0 3h5v1h-5z'/%3E%3Cpath fill='%23b8860b' d='M5 3h1v1h-1z'/%3E%3Cpath fill='%23f7cf3d' d='M6 3h1v1h-1z'/%3E%3Cpath fill='%23b8860b' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%23f7cf3d' d='M0 4h4v1h-4z'/%3E%3Cpath fill='%23b8860b' d='M4 4h1v1h-1z'/%3E%3Cpath fill='%23f7cf3d' d='M5 4h2v1h-2z'/%3E%3Cpath fill='%23b8860b' d='M7 4h1v1h-1z'/%3E%3Cpath fill='%23f7cf3d' d='M0 5h3v1h-3z'/%3E%3Cpath fill='%23b8860b' d='M3 5h1v1h-1z'/%3E%3Cpath fill='%23f7cf3d' d='M4 5h3v1h-3z'/%3E%3Cpath fill='%23b8860b' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%23f7cf3d' d='M0 6h7v1h-7z'/%3E%3Cpath fill='%23b8860b' d='M7 6h1v1h-1z'/%3E%3Cpath fill='%23b8860b' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-b-crit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%234f9a3f' d='M0 0h1v1h-1z'/%3E%3Cpath fill='%233f7f33' d='M1 0h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M2 0h3v1h-3z'/%3E%3Cpath fill='%233f7f33' d='M5 0h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M6 0h2v1h-2z'/%3E%3Cpath fill='%233f7f33' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M1 1h2v1h-2z'/%3E%3Cpath fill='%233f7f33' d='M3 1h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M4 1h3v1h-3z'/%3E%3Cpath fill='%233f7f33' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M0 2h1v1h-1z'/%3E%3Cpath fill='%23101410' d='M1 2h2v1h-2z'/%3E%3Cpath fill='%234f9a3f' d='M3 2h2v1h-2z'/%3E%3Cpath fill='%23101410' d='M5 2h2v1h-2z'/%3E%3Cpath fill='%234f9a3f' d='M7 2h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M0 3h1v1h-1z'/%3E%3Cpath fill='%23101410' d='M1 3h1v1h-1z'/%3E%3Cpath fill='%23c23030' d='M2 3h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M3 3h2v1h-2z'/%3E%3Cpath fill='%23101410' d='M5 3h1v1h-1z'/%3E%3Cpath fill='%23c23030' d='M6 3h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M0 4h3v1h-3z'/%3E%3Cpath fill='%2324401f' d='M3 4h2v1h-2z'/%3E%3Cpath fill='%234f9a3f' d='M5 4h3v1h-3z'/%3E%3Cpath fill='%234f9a3f' d='M0 5h1v1h-1z'/%3E%3Cpath fill='%233f7f33' d='M1 5h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M2 5h4v1h-4z'/%3E%3Cpath fill='%233f7f33' d='M6 5h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M0 6h1v1h-1z'/%3E%3Cpath fill='%2324401f' d='M1 6h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M2 6h1v1h-1z'/%3E%3Cpath fill='%2324401f' d='M3 6h2v1h-2z'/%3E%3Cpath fill='%234f9a3f' d='M5 6h1v1h-1z'/%3E%3Cpath fill='%2324401f' d='M6 6h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M7 6h1v1h-1z'/%3E%3Cpath fill='%233f7f33' d='M0 7h1v1h-1z'/%3E%3Cpath fill='%234f9a3f' d='M1 7h6v1h-6z'/%3E%3Cpath fill='%233f7f33' d='M7 7h1v1h-1z'/%3E%3C/svg%3E");
+  --mc-b-none: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%230c0c0c' d='M0 0h8v1h-8z'/%3E%3Cpath fill='%230c0c0c' d='M0 1h1v1h-1z'/%3E%3Cpath fill='%232a2a2e' d='M1 1h6v1h-6z'/%3E%3Cpath fill='%230c0c0c' d='M7 1h1v1h-1z'/%3E%3Cpath fill='%230c0c0c' d='M0 2h1v1h-1z'/%3E%3Cpath fill='%232a2a2e' d='M1 2h6v1h-6z'/%3E%3Cpath fill='%230c0c0c' d='M7 2h1v1h-1z'/%3E%3Cpath fill='%230c0c0c' d='M0 3h1v1h-1z'/%3E%3Cpath fill='%232a2a2e' d='M1 3h6v1h-6z'/%3E%3Cpath fill='%230c0c0c' d='M7 3h1v1h-1z'/%3E%3Cpath fill='%230c0c0c' d='M0 4h1v1h-1z'/%3E%3Cpath fill='%232a2a2e' d='M1 4h6v1h-6z'/%3E%3Cpath fill='%230c0c0c' d='M7 4h1v1h-1z'/%3E%3Cpath fill='%230c0c0c' d='M0 5h1v1h-1z'/%3E%3Cpath fill='%232a2a2e' d='M1 5h6v1h-6z'/%3E%3Cpath fill='%230c0c0c' d='M7 5h1v1h-1z'/%3E%3Cpath fill='%230c0c0c' d='M0 6h1v1h-1z'/%3E%3Cpath fill='%232a2a2e' d='M1 6h6v1h-6z'/%3E%3Cpath fill='%230c0c0c' d='M7 6h1v1h-1z'/%3E%3Cpath fill='%230c0c0c' d='M0 7h8v1h-8z'/%3E%3C/svg%3E");
+  --mc-shadow: 2px 2px 0 #2c2c2c;
   /* a stone slab: light from the top left, a black outline round it */
   --mc-slab: 0 0 0 2px #000, inset 2px 2px 0 #474747, inset -2px -2px 0 #1a1a1a;
   --mc-btn: 0 0 0 2px #000, inset 2px 2px 0 #9a9a9a, inset -2px -3px 0 #3c3c3c;
   --mc-btn-green: 0 0 0 2px #000, inset 2px 2px 0 #6cc25a, inset -2px -3px 0 #22561b;
-  --mc-dirt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%23241a12'/%3E%3Cpath fill='%2333261b' d='M1 0h1v1h-1zM3 0h1v1h-1zM6 0h1v1h-1zM8 0h1v1h-1zM10 0h1v1h-1zM11 0h1v1h-1zM14 0h1v1h-1zM5 1h1v1h-1zM8 1h1v1h-1zM9 1h1v1h-1zM1 2h1v1h-1zM2 2h1v1h-1zM3 3h1v1h-1zM6 3h1v1h-1zM8 3h1v1h-1zM6 4h1v1h-1zM14 4h1v1h-1zM1 5h1v1h-1zM2 5h1v1h-1zM4 5h1v1h-1zM8 5h1v1h-1zM3 6h1v1h-1zM10 6h1v1h-1zM3 7h1v1h-1zM10 7h1v1h-1zM12 7h1v1h-1zM13 7h1v1h-1zM1 8h1v1h-1zM2 8h1v1h-1zM3 8h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM9 8h1v1h-1zM13 8h1v1h-1zM2 9h1v1h-1zM3 9h1v1h-1zM8 9h1v1h-1zM11 9h1v1h-1zM13 9h1v1h-1zM3 11h1v1h-1zM4 11h1v1h-1zM8 12h1v1h-1zM8 13h1v1h-1zM9 13h1v1h-1zM12 13h1v1h-1zM2 14h1v1h-1zM3 14h1v1h-1zM2 15h1v1h-1zM13 15h1v1h-1z'/%3E%3Cpath fill='%2318110b' d='M15 0h1v1h-1zM12 1h1v1h-1zM3 2h1v1h-1zM12 2h1v1h-1zM0 5h1v1h-1zM5 5h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM14 7h1v1h-1zM15 7h1v1h-1zM10 8h1v1h-1zM7 9h1v1h-1zM4 10h1v1h-1zM9 10h1v1h-1zM0 11h1v1h-1zM6 11h1v1h-1zM14 11h1v1h-1zM15 11h1v1h-1zM0 12h1v1h-1zM1 12h1v1h-1zM14 12h1v1h-1zM7 13h1v1h-1zM11 14h1v1h-1zM12 14h1v1h-1zM14 14h1v1h-1zM0 15h1v1h-1zM15 15h1v1h-1z'/%3E%3Cpath fill='%233d2e21' d='M7 1h1v1h-1zM9 2h1v1h-1zM1 3h1v1h-1zM11 4h1v1h-1zM14 5h1v1h-1zM9 6h1v1h-1zM5 9h1v1h-1zM2 10h1v1h-1zM5 11h1v1h-1zM13 14h1v1h-1z'/%3E%3C/svg%3E");
   --c1: #55dd55; --c2: #55dddd; --c3: #ffaa00; --c4: #ff77ff; --c5: #8c8cff; --c6: #ff6b5e; --c7: #ffff55; --c8: #a8a8a8;
   scrollbar-color: #6f6f6f #1d1610;
   caret-color: var(--mc-yellow);
@@ -368,23 +394,26 @@
 :root[data-theme="minecraft"] ::selection { background: #3a5fcd; color: #fff; }
 :root[data-theme="minecraft"] :focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 0; }
 
-/* the earth under everything, and grass along the top edge */
-:root[data-theme="minecraft"] body::before {
-  background: linear-gradient(rgba(0, 0, 0, .1), rgba(0, 0, 0, .45)), var(--mc-dirt) 0 0 / 64px 64px;
-  image-rendering: pixelated;
-}
-:root[data-theme="minecraft"] body::after {
-  content: "";
-  position: fixed;
-  z-index: 60;
+/* behind everything, a world of blocks (mcworld.ts): its sky, sun and moon follow the browser's clock and
+   its land and clouds pan slowly, at two speeds. It stays sharp: what is read stands on dark glass. */
+:root[data-theme="minecraft"] body::before { background: none; }
+.mc-world { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; background: var(--mc-sky, #5a8fd8); }
+.mc-land, .mc-clouds {
+  position: absolute;
   left: 0;
-  right: 0;
-  top: 0;
-  height: 16px;
-  pointer-events: none;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='16' viewBox='0 0 16 4' shape-rendering='crispEdges'%3E%3Crect x='0' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='1' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='2' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='3' y='0' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='4' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='4' y='1' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='5' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='5' y='1' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='5' y='2' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='6' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='7' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='7' y='1' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='7' y='2' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='8' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='9' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='9' y='1' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='10' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='10' y='1' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='10' y='2' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='11' y='0' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='11' y='1' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='11' y='2' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='12' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='12' y='1' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='12' y='2' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='13' y='0' width='1' height='1' fill='%235d9e34'/%3E%3Crect x='13' y='1' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='14' y='0' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='15' y='0' width='1' height='1' fill='%234f8a2b'/%3E%3Crect x='15' y='1' width='1' height='1' fill='%236cb33d'/%3E%3Crect x='15' y='2' width='1' height='1' fill='%235d9e34'/%3E%3C/svg%3E") 0 4px / 64px 16px repeat-x, linear-gradient(#6cb33d 0 4px, transparent 4px);
+  right: -2560px;
+  bottom: 0;
+  height: 1152px;
+  background: var(--world) 0 100% / 2560px 1152px repeat-x;
   image-rendering: pixelated;
+  will-change: transform;
+  animation: mc-pan 100s steps(2560) infinite;
 }
+.mc-land { bottom: calc(-190px - 6vh); }     /* the land's lower part, solid rock, stays under the screen */
+.mc-clouds { top: 0; bottom: auto; background-position: 0 0; animation-duration: 55s; }
+.mc-stars { position: absolute; inset: 0 0 30%; background-size: 1280px 720px; image-rendering: pixelated; }
+.mc-sky-body { position: absolute; width: 88px; height: 88px; margin-left: -44px; background: #fff3a0; box-shadow: inset 0 0 0 12px #ffe45c, 0 0 140px 70px rgba(255, 236, 170, .38); }
+.mc-sky-body[data-body="moon"] { width: 64px; height: 64px; background: #dfe6f2; box-shadow: inset -14px 0 0 #b9c3d6, inset 0 -14px 0 #c8d1e0, 0 0 90px 30px rgba(190, 210, 255, .18); }
 
 /* block type: square, a hard shadow under it, yellow under the pointer */
 :root[data-theme="minecraft"] :is(h1, h2, h3, .brand, .kpi .v, .num, .nav a, .btn, .pill-btn, .badge, .chip, .seg button) { text-shadow: var(--mc-shadow); }
@@ -400,7 +429,7 @@
   box-shadow: 0 0 0 2px #000, 3px 3px 0 2px rgba(0, 0, 0, .5);
 }
 :root[data-theme="minecraft"] :is(.ph .h, .ph h2, h2.h) { font-family: var(--font-d); font-weight: 700; letter-spacing: .02em; }
-:root[data-theme="minecraft"] .top { background: linear-gradient(#1d1610 78%, rgba(29, 22, 16, 0)); padding-top: 6px; }
+:root[data-theme="minecraft"] .top { background: rgba(0, 0, 0, .62); border-bottom: 2px solid rgba(255, 255, 255, .28); box-shadow: 0 2px 0 rgba(0, 0, 0, .55); }
 :root[data-theme="minecraft"] .top .brand { font-family: var(--font-d); font-weight: 700; letter-spacing: .12em; color: var(--ink); }
 :root[data-theme="minecraft"] .nav a { font-family: var(--font-d); color: var(--ink-2); }
 :root[data-theme="minecraft"] .nav a:hover, :root[data-theme="minecraft"] .nav a[aria-current="page"] { color: var(--mc-yellow); }
@@ -415,9 +444,9 @@
 }
 :root[data-theme="minecraft"] .card:hover { background: var(--raised); }
 :root[data-theme="minecraft"] :is(.modal, .menu, .pal-pop, .toast, .dlg) { border: 0; border-radius: 0; background: var(--surface); box-shadow: var(--shadow-pop); }
-:root[data-theme="minecraft"] .kpis { border: 0; background: rgba(0, 0, 0, .35); box-shadow: 0 0 0 2px #000, inset 2px 2px 0 rgba(0, 0, 0, .4), inset -2px -2px 0 rgba(255, 255, 255, .08); }
+:root[data-theme="minecraft"] .kpis { border: 0; background: rgba(0, 0, 0, .66); box-shadow: 0 0 0 2px #000, inset 2px 2px 0 rgba(0, 0, 0, .4), inset -2px -2px 0 rgba(255, 255, 255, .08); }
 :root[data-theme="minecraft"] .kpi { border-left-color: rgba(255, 255, 255, .08); }
-:root[data-theme="minecraft"] .kpi:first-child { padding-left: 18px; }
+:root[data-theme="minecraft"] :is(.kpi:first-child, .kpi:nth-child(3)) { padding-left: 18px; }   /* on a phone the third starts a row */
 :root[data-theme="minecraft"] .kpi .v { font-family: var(--font-d); }
 :root[data-theme="minecraft"] .kpi .l { font-family: var(--font-d); text-transform: uppercase; letter-spacing: .06em; font-size: 10.5px; }
 
@@ -430,10 +459,8 @@
   font-family: var(--font-d);
   box-shadow: var(--mc-btn);
 }
-:root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn):is(:hover, :focus-visible):not(:disabled) { background: #3f4f9a; color: var(--mc-yellow); box-shadow: 0 0 0 2px #fff, inset 2px 2px 0 #6b7bc8, inset -2px -3px 0 #26306b; }
+:root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn):is(:hover, :focus-visible):not(:disabled) { color: #fff; box-shadow: 0 0 0 2px #000, 0 0 0 4px #fff; }
 :root[data-theme="minecraft"] :is(.btn.primary, .gate-form .btn.primary) { background: #3c8a2e; box-shadow: var(--mc-btn-green); color: #fff; }
-:root[data-theme="minecraft"] .btn.primary:is(:enabled, a, label):not([aria-disabled="true"]):hover { background: #347a28; border-color: transparent; }
-:root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn):active:not(:disabled) { transform: translateY(1px); }
 :root[data-theme="minecraft"] .btn:disabled, :root[data-theme="minecraft"] .btn[aria-disabled="true"] { background: #3a3a3a; color: #8a8a8a; box-shadow: 0 0 0 2px #000; text-shadow: none; }
 :root[data-theme="minecraft"] .icon-btn { color: #fff; }
 
@@ -453,7 +480,6 @@
 :root[data-theme="minecraft"] .meter i { border-radius: 0; background: repeating-linear-gradient(90deg, #80ff20 0 9px, #3d8a10 9px 10px); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .3); }
 :root[data-theme="minecraft"] .meter.warn i { background: repeating-linear-gradient(90deg, #ffd23f 0 9px, #8a6a10 9px 10px); }
 :root[data-theme="minecraft"] .meter.crit i { background: repeating-linear-gradient(90deg, #ff5555 0 9px, #8a1f1f 9px 10px); }
-@media (prefers-reduced-motion: reduce) { :root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn):active { transform: none; } }
 
 /* Inventory windows: every section and dialog is a game window - light grey, a white bevel at the
    top left, a dark one at the bottom right, a black outline - with dark type on it, as in a chest or
@@ -501,7 +527,6 @@
 :root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) .tone-opt:not(.on):hover { color: #000; background: #c0c0c0; }
 :root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) .meter { background: #555; }
 :root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) :is(.btn, .pill-btn, .icon-btn, .tone-opt.on, .seg button[aria-pressed="true"]) { color: #fff; }
-:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) :is(.btn, .pill-btn, .icon-btn):is(:hover, :focus-visible):not(:disabled) { color: var(--mc-yellow); }
 :root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) .btn:disabled { background: #9a9a9a; color: #3a3a3a; }
 :root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) :focus-visible { outline-color: #000; }
 :root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) ::selection { background: #3a5fcd; color: #fff; }
@@ -554,12 +579,117 @@
 
 /* tabs are the tabs of a creative inventory: stone, the open one the window's grey, sitting on a
    grey rail; a table on the earth stands in a dark well */
-:root[data-theme="minecraft"] .tabs { gap: 3px; border-bottom: 4px solid #c6c6c6; box-shadow: 0 2px 0 #000; }
-:root[data-theme="minecraft"] .tabs button { background: #555; color: #f0f0f0; font-family: var(--font-d); font-weight: 700; text-shadow: var(--mc-shadow); box-shadow: inset 2px 2px 0 #7a7a7a, inset -2px 0 0 #2e2e2e, 0 0 0 2px #000; margin-top: 2px; }
-:root[data-theme="minecraft"] .tabs button:hover { color: var(--mc-yellow); }
-:root[data-theme="minecraft"] .tabs button[aria-selected="true"] { background: #c6c6c6; color: #262626; text-shadow: none; box-shadow: inset 3px 3px 0 #fff, 0 0 0 2px #000; }
-:root[data-theme="minecraft"] .tabs button[aria-selected="true"]::after { left: 0; right: 0; bottom: -4px; height: 4px; background: #c6c6c6; }
+:root[data-theme="minecraft"] .tabs { gap: 4px; border-bottom: 0; box-shadow: none; }
+:root[data-theme="minecraft"] .tabs button { background: rgba(0, 0, 0, .68); color: #e0e0e0; font-family: var(--font-d); font-weight: 700; text-shadow: var(--mc-shadow); box-shadow: inset 0 0 0 2px #7a7a7a; }
+:root[data-theme="minecraft"] .tabs button:hover { color: #fff; box-shadow: inset 0 0 0 2px #fff; }
+:root[data-theme="minecraft"] .tabs button[aria-selected="true"] { background: rgba(0, 0, 0, .86); color: #fff; text-shadow: var(--mc-shadow); box-shadow: inset 0 2px 0 #c8c8c8, inset 2px 0 0 #c8c8c8, inset -2px 0 0 #c8c8c8; }
+:root[data-theme="minecraft"] .tabs button[aria-selected="true"]::after { left: 22%; right: 22%; bottom: 5px; height: 2px; background: #fff; }
 :root[data-theme="minecraft"] .tabs .count { color: inherit; opacity: .75; }
-:root[data-theme="minecraft"] .table-wrap { margin: 0; padding: 4px 14px; background: rgba(0, 0, 0, .5); box-shadow: 0 0 0 2px #000; }
+:root[data-theme="minecraft"] .table-wrap { margin: 0; padding: 4px 14px; background: rgba(0, 0, 0, .72); box-shadow: 0 0 0 2px #000; }
 :root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) .table-wrap { padding: 0; background: none; box-shadow: none; }
 :root[data-theme="minecraft"] table.t th { font-family: var(--font-d); }
+
+/* one type for everything, figures included, drawn on the pixel grid; nothing has a round corner */
+:root[data-theme="minecraft"] body { font-family: var(--font); -webkit-font-smoothing: none; font-smooth: never; font-variant-numeric: normal; }
+:root[data-theme="minecraft"] :is(input, select, textarea, button, table, th, td, code, .mono, .num, .kpi .v, .kpi .l, .kpi .s, .chip, .badge) { font-family: var(--font); }
+:root[data-theme="minecraft"] :where(*, *::before, *::after) { border-radius: 0 !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+:root[data-theme="minecraft"] .umb-mark { shape-rendering: crispEdges; }
+:root[data-theme="minecraft"] .lsg-label, :root[data-theme="minecraft"] .lsg-labels * { font-family: var(--font); }
+
+/* a window: the game's frame, cut square at the corners, as a nine-slice */
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) {
+  border: 8px solid transparent;
+  border-image: var(--mc-window) 4 / 8px stretch;
+  background: #c6c6c6 padding-box;
+  box-shadow: none;
+}
+:root[data-theme="minecraft"] .panel { padding: 6px 10px 10px; }
+:root[data-theme="minecraft"] .login-box { width: min(420px, 100%); }
+:root[data-theme="minecraft"] .login-box .brand { gap: 12px; margin-bottom: 34px; font: 700 46px/1 var(--font-d); letter-spacing: 0; color: #ececec; text-shadow: 0 3px 0 #9a9a9a, 0 6px 0 #5c5c5c, 0 9px 0 #2e2e2e, 4px 12px 0 rgba(0, 0, 0, .55); }
+:root[data-theme="minecraft"] .login-box .lead, :root[data-theme="minecraft"] .login-box label { color: #fff; text-shadow: var(--mc-shadow); }
+:root[data-theme="minecraft"] .login-box :is(.input, .btn) { height: 44px !important; }
+:root[data-theme="minecraft"] :is(.modal, .panel-d) { filter: drop-shadow(8px 8px 0 rgba(0, 0, 0, .5)); }
+
+/* buttons are cut from stone; a notification is a dark slip with a yellow line */
+:root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn):not(.primary, :disabled, [aria-disabled="true"]):not(:hover, :focus-visible) { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Crect width='8' height='8' fill='%237d7d7d'/%3E%3Crect x='0' y='0' width='1' height='1' fill='%237a7a7a'/%3E%3Crect x='1' y='0' width='1' height='1' fill='%23828282'/%3E%3Crect x='2' y='0' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='3' y='0' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='4' y='0' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='5' y='0' width='1' height='1' fill='%23828282'/%3E%3Crect x='6' y='0' width='1' height='1' fill='%23828282'/%3E%3Crect x='7' y='0' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='0' y='1' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='1' y='1' width='1' height='1' fill='%237a7a7a'/%3E%3Crect x='4' y='1' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='5' y='1' width='1' height='1' fill='%237a7a7a'/%3E%3Crect x='6' y='1' width='1' height='1' fill='%237a7a7a'/%3E%3Crect x='7' y='1' width='1' height='1' fill='%237a7a7a'/%3E%3Crect x='0' y='2' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='1' y='2' width='1' height='1' fill='%237a7a7a'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='4' y='2' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='0' y='3' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='1' y='3' width='1' height='1' fill='%23747474'/%3E%3Crect x='2' y='3' width='1' height='1' fill='%238a8a8a'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%237a7a7a'/%3E%3Crect x='6' y='3' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='7' y='3' width='1' height='1' fill='%238a8a8a'/%3E%3Crect x='2' y='4' width='1' height='1' fill='%23828282'/%3E%3Crect x='3' y='4' width='1' height='1' fill='%238a8a8a'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%23747474'/%3E%3Crect x='5' y='4' width='1' height='1' fill='%238a8a8a'/%3E%3Crect x='6' y='4' width='1' height='1' fill='%23828282'/%3E%3Crect x='2' y='5' width='1' height='1' fill='%23747474'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23828282'/%3E%3Crect x='7' y='5' width='1' height='1' fill='%23828282'/%3E%3Crect x='0' y='6' width='1' height='1' fill='%23747474'/%3E%3Crect x='4' y='6' width='1' height='1' fill='%238a8a8a'/%3E%3Crect x='6' y='6' width='1' height='1' fill='%238a8a8a'/%3E%3Crect x='7' y='6' width='1' height='1' fill='%236e6e6e'/%3E%3Crect x='0' y='7' width='1' height='1' fill='%23828282'/%3E%3Crect x='1' y='7' width='1' height='1' fill='%23747474'/%3E%3Crect x='2' y='7' width='1' height='1' fill='%237a7a7a'/%3E%3Crect x='3' y='7' width='1' height='1' fill='%238a8a8a'/%3E%3Crect x='4' y='7' width='1' height='1' fill='%238a8a8a'/%3E%3Crect x='5' y='7' width='1' height='1' fill='%23747474'/%3E%3C/svg%3E") 0 0 / 32px 32px; image-rendering: pixelated; }
+:root[data-theme="minecraft"] .toast { color: var(--mc-yellow); background: #1e1a2b; box-shadow: 0 0 0 2px #000, inset 0 0 0 2px #2d0a6a; text-shadow: var(--mc-shadow); }
+
+/* the yellow line that leans out from the title and pulses */
+:root[data-theme="minecraft"] :is(.page-head h1, .login-box .brand) { position: relative; width: fit-content; margin-inline: auto; }
+:root[data-theme="minecraft"] :is(.page-head h1, .login-box .brand)::after {
+  content: "Now in blocks!";
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 8px;
+  font: 700 13px/1 var(--font);
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--mc-yellow);
+  text-shadow: 2px 2px 0 #3f3f00;
+  transform: rotate(-16deg);
+  transform-origin: 0 50%;
+  animation: mc-splash .5s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+:root[data-theme="minecraft"] .login-box .brand::after { left: calc(100% - 52px); top: 62px; }
+@media (max-width: 700px) { :root[data-theme="minecraft"] :is(.page-head h1, .login-box .brand)::after { display: none; } }
+@keyframes mc-splash { to { transform: rotate(-16deg) scale(1.1); } }
+
+/* every movement in this look is a game's: whole steps, no easing. Screens change at once, as the game's
+   do; what appears is set down like a block; a notice slides in at the top right, as an advancement does */
+:root[data-theme="minecraft"] :where(:not(.mc-land, .mc-clouds)), :root[data-theme="minecraft"] :where(*)::before, :root[data-theme="minecraft"] :where(*)::after {
+  animation-timing-function: steps(5) !important;
+  transition-timing-function: steps(3) !important;
+}
+:root[data-theme="minecraft"]::view-transition-old(root), :root[data-theme="minecraft"]::view-transition-new(root) { animation: none !important; }
+:root[data-theme="minecraft"]::view-transition-group(globe-area) { animation-duration: .24s; animation-timing-function: steps(6); }
+:root[data-theme="minecraft"] :is(.rv, .stagger > *, table.stagger > tbody > tr, .fade-in) { animation-name: mc-drop !important; animation-duration: .24s !important; }
+:root[data-theme="minecraft"] .toast { animation: mc-toast .3s steps(6) backwards !important; }
+@keyframes mc-toast { from { translate: 110% 0; } }
+
+/* a day's availability is a block: emerald for a good day, gold for a troubled one, a zombie for an outage */
+:root[data-theme="minecraft"] .strip { height: auto; gap: 1px; background: none; box-shadow: none; padding: 0; }
+:root[data-theme="minecraft"] .strip i { aspect-ratio: 1; background: var(--mc-b-none) 0 0 / 100% 100%; image-rendering: pixelated; animation-name: mc-drop; animation-duration: .24s; animation-timing-function: steps(4); }
+:root[data-theme="minecraft"] .strip i.good { background-image: var(--mc-b-good); }
+:root[data-theme="minecraft"] .strip i.warn { background-image: var(--mc-b-warn); }
+:root[data-theme="minecraft"] .strip i.crit { background-image: var(--mc-b-crit); }
+@keyframes mc-drop { from { opacity: 0; translate: 0 -10px; } }
+
+/* the look moves the way a game of blocks does: in small jumps, never gliding. The world pans behind it
+   all, the block beside a title floats, windows and the hotbar arrive, bars fill a segment at a time, the
+   yellow line pulses and what you press gives way. Nothing here changes a layout, and none of it plays
+   for someone who asked for less motion. */
+:root[data-theme="minecraft"] :is(.page-head h1, .page-h h1)::before { animation: mc-float 2.8s steps(7) infinite alternate; }
+:root[data-theme="minecraft"] :is(.panel, .kpis, .table-wrap, .login-box) { animation: mc-arrive .32s steps(5) backwards; }
+:root[data-theme="minecraft"] :is(.panel, .kpis, .table-wrap):nth-child(2) { animation-delay: .05s; }
+:root[data-theme="minecraft"] :is(.panel, .kpis, .table-wrap):nth-child(3) { animation-delay: .1s; }
+:root[data-theme="minecraft"] :is(.panel, .kpis, .table-wrap):nth-child(4) { animation-delay: .15s; }
+:root[data-theme="minecraft"] :is(.panel, .kpis, .table-wrap):nth-child(n+5) { animation-delay: .2s; }
+:root[data-theme="minecraft"] .modal { animation: mc-arrive .2s steps(4) backwards; }
+:root[data-theme="minecraft"] .nav { animation: mc-hotbar .36s steps(6) backwards; }
+:root[data-theme="minecraft"] .nav a { transition: padding-bottom 80ms steps(2); }
+:root[data-theme="minecraft"] .nav a:hover { padding-bottom: 6px; }
+:root[data-theme="minecraft"] .nav a[aria-current="page"] { animation: mc-slot 2.4s steps(2) infinite alternate; }
+:root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn) { transition: transform 60ms steps(2); }
+:root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn):hover:not(:disabled) { transform: translateY(-2px); }
+:root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn):active:not(:disabled) { transform: translateY(2px); }
+:root[data-theme="minecraft"] .card { transition: transform 80ms steps(2); }
+:root[data-theme="minecraft"] .card:hover { transform: translateY(-2px); }
+:root[data-theme="minecraft"] .meter i { position: relative; overflow: hidden; animation: mc-fill .6s steps(10) backwards; }
+:root[data-theme="minecraft"] .meter i::after { content: ""; position: absolute; inset: 0; width: 24px; background: rgba(255, 255, 255, .55); animation: mc-shine 3.6s steps(24) infinite; }
+@keyframes mc-pan { to { transform: translateX(-2560px); } }
+@keyframes mc-float { from { translate: 0 2px; } to { translate: 0 -5px; } }
+@keyframes mc-arrive { from { opacity: 0; translate: 0 14px; } 70% { opacity: 1; translate: 0 -3px; } }
+@keyframes mc-hotbar { from { translate: 0 90px; } 75% { translate: 0 -4px; } }
+@keyframes mc-slot { to { box-shadow: inset 0 0 0 3px var(--mc-yellow), inset 0 0 0 5px #000; } }
+@keyframes mc-fill { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
+@keyframes mc-shine { from { left: -30px; } 40%, to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="minecraft"] :is(.mc-land, .mc-clouds) { animation: none; }
+  :root[data-theme="minecraft"] :is(.page-head h1, .page-h h1)::before, :root[data-theme="minecraft"] :is(.page-head h1, .login-box .brand)::after { animation: none; }
+  :root[data-theme="minecraft"] :is(.panel, .kpis, .table-wrap, .login-box, .modal, .nav, .nav a[aria-current="page"], .meter i) { animation: none; }
+  :root[data-theme="minecraft"] .meter i::after { display: none; }
+  :root[data-theme="minecraft"] :is(.nav a, .btn, .pill-btn, .icon-btn, .card) { transition: none; }
+  :root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn, .card):is(:hover, :active) { transform: none; }
+  :root[data-theme="minecraft"] .nav a:hover { padding-bottom: 0; }
+}
