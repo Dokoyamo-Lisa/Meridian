@@ -406,10 +406,7 @@
 :root[data-theme="minecraft"] .nav a:hover, :root[data-theme="minecraft"] .nav a[aria-current="page"] { color: var(--mc-yellow); }
 :root[data-theme="minecraft"] .nav a::after { height: 3px; bottom: -2px; background: var(--mc-yellow); box-shadow: 2px 2px 0 rgba(0, 0, 0, .7); }
 
-/* sections stand on a stone ledge; cards and dialogs are stone slabs */
-:root[data-theme="minecraft"] .panel { border-top: 0; }
-:root[data-theme="minecraft"] .panel::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: #555; box-shadow: 0 -2px 0 #7a7a7a, 0 2px 0 #000; }
-:root[data-theme="minecraft"] .panel { padding-top: 18px; }
+/* cards and drawers on the earth are stone slabs */
 :root[data-theme="minecraft"] :is(.card, .proto, .src-card, .proto-user, .subsection, .setup-step, .step, .check-panel, .tc-card, .tc-pick, .brand-preview, .preset, .app) {
   border: 0;
   border-radius: 0;
@@ -417,7 +414,7 @@
   box-shadow: var(--mc-slab);
 }
 :root[data-theme="minecraft"] .card:hover { background: var(--raised); }
-:root[data-theme="minecraft"] :is(.modal, .menu, .pal-pop, .toast, .panel-d, .dlg) { border: 0; border-radius: 0; background: var(--surface); box-shadow: var(--shadow-pop); }
+:root[data-theme="minecraft"] :is(.modal, .menu, .pal-pop, .toast, .dlg) { border: 0; border-radius: 0; background: var(--surface); box-shadow: var(--shadow-pop); }
 :root[data-theme="minecraft"] .kpis { border: 0; background: rgba(0, 0, 0, .35); box-shadow: 0 0 0 2px #000, inset 2px 2px 0 rgba(0, 0, 0, .4), inset -2px -2px 0 rgba(255, 255, 255, .08); }
 :root[data-theme="minecraft"] .kpi { border-left-color: rgba(255, 255, 255, .08); }
 :root[data-theme="minecraft"] .kpi:first-child { padding-left: 18px; }
@@ -457,3 +454,112 @@
 :root[data-theme="minecraft"] .meter.warn i { background: repeating-linear-gradient(90deg, #ffd23f 0 9px, #8a6a10 9px 10px); }
 :root[data-theme="minecraft"] .meter.crit i { background: repeating-linear-gradient(90deg, #ff5555 0 9px, #8a1f1f 9px 10px); }
 @media (prefers-reduced-motion: reduce) { :root[data-theme="minecraft"] :is(.btn, .pill-btn, .icon-btn):active { transform: none; } }
+
+/* Inventory windows: every section and dialog is a game window - light grey, a white bevel at the
+   top left, a dark one at the bottom right, a black outline - with dark type on it, as in a chest or
+   a crafting table. The colour tokens turn dark-on-light inside; what sits in a window (cards,
+   switches, figures) is a sunken slot. Text keeps 4.5:1 on the window and on the slots. */
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) {
+  --page: #c6c6c6; /* what sits on the window - halos, cut-outs - is cut from its grey */
+  --ink: #262626;
+  --ink-2: #333333;
+  --ink-3: #404040;
+  --ink-4: #5c5c5c;
+  --surface: #b8b8b8;
+  --raised: #c0c0c0;
+  --hover: rgba(0, 0, 0, .07);
+  --line: rgba(0, 0, 0, .16);
+  --line-2: rgba(0, 0, 0, .32);
+  --accent-ink: #1d6a24;
+  --accent-soft: rgba(40, 120, 40, .16);
+  --good: #1d6f25;
+  --warn: #7a5200;
+  --crit: #a3231b;
+  --good-soft: rgba(29, 111, 37, .14);
+  --warn-soft: rgba(122, 82, 0, .13);
+  --crit-soft: rgba(163, 35, 27, .12);
+  --grid: rgba(0, 0, 0, .09);
+  --baseline: rgba(0, 0, 0, .3);
+  --c1: #2d8a35; --c2: #1d7f86; --c3: #b05f00; --c4: #a33ca3; --c5: #3f4fc8; --c6: #c0392b; --c7: #7d6f00; --c8: #555555;
+  --mc-slot: inset 2px 2px 0 #373737, inset -2px -2px 0 #ffffff;
+  color: var(--ink);
+  scrollbar-color: #6f6f6f #b8b8b8;
+}
+:root[data-theme="minecraft"] .panel {
+  border: 0;
+  padding: 12px 16px 16px;
+  background: #c6c6c6;
+  box-shadow: 0 0 0 2px #000, inset 3px 3px 0 #ffffff, inset -3px -3px 0 #555555;
+}
+:root[data-theme="minecraft"] :is(.modal, .panel-d) { background: #c6c6c6; box-shadow: 0 0 0 2px #000, inset 3px 3px 0 #ffffff, inset -3px -3px 0 #555555, 10px 10px 0 rgba(0, 0, 0, .5); }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) :is(h1, h2, h3, .num, .kpi .v, .badge, .chip, .seg button:not([aria-pressed="true"]), .tone-opt:not(.on)) { text-shadow: none; }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) :is(.ph .h, .ph h2, h2.h, .modal-head h3) { color: #3f3f3f; font-family: var(--font-d); font-weight: 700; letter-spacing: 0; text-transform: none; }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) :is(.card, .proto, .src-card, .proto-user, .subsection, .setup-step, .step, .check-panel, .tc-card, .tc-pick, .brand-preview, .preset, .app) { background: var(--surface); box-shadow: var(--mc-slot); }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) .card:hover { background: var(--raised); }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) :is(.seg, .tone-opt:not(.on), .kpis) { background: #adadad; box-shadow: var(--mc-slot); }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) .kpi { border-left-color: rgba(0, 0, 0, .14); }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) .tone-opt:not(.on):hover { color: #000; background: #c0c0c0; }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) .meter { background: #555; }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) :is(.btn, .pill-btn, .icon-btn, .tone-opt.on, .seg button[aria-pressed="true"]) { color: #fff; }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) :is(.btn, .pill-btn, .icon-btn):is(:hover, :focus-visible):not(:disabled) { color: var(--mc-yellow); }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) .btn:disabled { background: #9a9a9a; color: #3a3a3a; }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) :focus-visible { outline-color: #000; }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) ::selection { background: #3a5fcd; color: #fff; }
+
+/* The hotbar: the pages' menu leaves the top and becomes the row of slots along the bottom of the
+   screen; the page you are on is the slot in the white frame. Both pages, every width. */
+:root[data-theme="minecraft"] .nav {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  flex: none;
+  gap: 2px;
+  width: max-content;
+  max-width: calc(100vw - 20px);
+  padding: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: #161616;
+  box-shadow: 0 0 0 2px #000, 0 0 0 4px #555, 0 0 0 6px #000, 0 8px 0 4px rgba(0, 0, 0, .35);
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+:root[data-theme="minecraft"] .nav a {
+  display: grid;
+  place-items: center;
+  flex: none;
+  min-width: 82px;
+  height: 46px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: #3b3b3b;
+  box-shadow: inset 2px 2px 0 #1e1e1e, inset -2px -2px 0 #5a5a5a;
+  color: #e6e6e6;
+  font: 700 12.5px/1 var(--font-d);
+  letter-spacing: 0;
+  text-transform: none;
+  transform: none;
+}
+:root[data-theme="minecraft"] .nav:not(:has(a:not(.hidden))) { display: none; }
+:root[data-theme="minecraft"] .nav a.hidden { display: none; }
+:root[data-theme="minecraft"] .nav a:hover { background: #4a4a4a; color: var(--mc-yellow); }
+:root[data-theme="minecraft"] .nav a[aria-current="page"] { background: #4f4f4f; color: var(--mc-yellow); box-shadow: inset 0 0 0 3px #fff, inset 0 0 0 5px #000; }
+:root[data-theme="minecraft"] .nav a::after { display: none; }
+:root[data-theme="minecraft"] .mnav { display: none; }
+@media (max-width: 560px) { :root[data-theme="minecraft"] .nav a { min-width: 0; padding: 0 10px; font-size: 11.5px; height: 42px; } }
+
+/* tabs are the tabs of a creative inventory: stone, the open one the window's grey, sitting on a
+   grey rail; a table on the earth stands in a dark well */
+:root[data-theme="minecraft"] .tabs { gap: 3px; border-bottom: 4px solid #c6c6c6; box-shadow: 0 2px 0 #000; }
+:root[data-theme="minecraft"] .tabs button { background: #555; color: #f0f0f0; font-family: var(--font-d); font-weight: 700; text-shadow: var(--mc-shadow); box-shadow: inset 2px 2px 0 #7a7a7a, inset -2px 0 0 #2e2e2e, 0 0 0 2px #000; margin-top: 2px; }
+:root[data-theme="minecraft"] .tabs button:hover { color: var(--mc-yellow); }
+:root[data-theme="minecraft"] .tabs button[aria-selected="true"] { background: #c6c6c6; color: #262626; text-shadow: none; box-shadow: inset 3px 3px 0 #fff, 0 0 0 2px #000; }
+:root[data-theme="minecraft"] .tabs button[aria-selected="true"]::after { left: 0; right: 0; bottom: -4px; height: 4px; background: #c6c6c6; }
+:root[data-theme="minecraft"] .tabs .count { color: inherit; opacity: .75; }
+:root[data-theme="minecraft"] .table-wrap { margin: 0; padding: 4px 14px; background: rgba(0, 0, 0, .5); box-shadow: 0 0 0 2px #000; }
+:root[data-theme="minecraft"] :is(.panel, .modal, .panel-d) .table-wrap { padding: 0; background: none; box-shadow: none; }
+:root[data-theme="minecraft"] table.t th { font-family: var(--font-d); }

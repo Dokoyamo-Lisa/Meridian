@@ -7,7 +7,7 @@
 // all of them. What a viewer picks is kept in this browser only.
 
 import { append, clear, h, icon } from './dom'
-import { C, TipRow, hideTip, monoPath, rgba, segment, showTip, tangents } from './chart'
+import { C, TipRow, hideTip, monoPath, rgba, segment, showTip, tangents, tokenSource } from './chart'
 import { bparts, clamp, hm, md, now } from './fmt'
 import { pingLegend } from './pingsum'
 import { historyNote } from './histstate'
@@ -225,14 +225,14 @@ function when(t: number, span: number) {
 // ---------------------------------------------------------------- colours
 
 function palette(): string[] {
-  const cs = getComputedStyle(document.documentElement)
+  const cs = getComputedStyle(tokenSource())
   const out: string[] = []
   for (let i = 1; i <= 8; i++) out.push(cs.getPropertyValue('--c' + i).trim() || C.accent || '#8cc0ff')
   return out
 }
 
 function stateColors() {
-  const cs = getComputedStyle(document.documentElement)
+  const cs = getComputedStyle(tokenSource())
   return { warn: cs.getPropertyValue('--warn').trim() || '#e3b341', crit: cs.getPropertyValue('--crit').trim() || '#f0616d' }
 }
 

@@ -2,13 +2,18 @@
 
 ## Unreleased
 
-- **A new look: Minecraft.** A world of blocks: the pages are dug out of dark earth with a row of
-  grass along the top, cards and dialogs are stone slabs with a black outline and a bevel, buttons
-  are stone (emerald for the main one) and turn blue with yellow type under the pointer, fields are
-  black wells, titles stand in block type with a hard shadow beside a small grass block, and bars
-  fill like an experience bar. In the palette button, in **Settings › Panel › Look**, on users' pages
-  and subscription pages; `default_tone` and the MCP tool accept `minecraft`. No image or font is
-  downloaded: the textures are tiny pixel drawings inside the stylesheet.
+- **A new look: Minecraft,** laid out anew. The pages' menu leaves the top and becomes a hotbar of
+  slots along the bottom of the screen, the page you are on in the white frame. Every section and
+  dialog is a game window - light grey with a white and a dark bevel and a black outline, dark type
+  on it - and what sits in it (cards, switches, figures) is a sunken slot. Titles stand centred in
+  block type with a hard shadow beside a small grass block, the page's buttons under them; tabs are
+  an inventory's tabs; tables on the page stand in a dark well. Around it all, dark earth with a row
+  of grass along the top. Buttons are stone (emerald for the main one) and turn blue with yellow type
+  under the pointer, fields are black wells, bars fill like the experience bar. In the palette
+  button, in **Settings › Panel › Look**, on users' pages and subscription pages; `default_tone` and
+  the MCP tool accept `minecraft`. No image or font is downloaded: the textures are tiny pixel
+  drawings inside the stylesheet. The status page's charts now take their colours from the panel
+  they are drawn in.
 
 ## 1.4.7 - 2026-11-07
 

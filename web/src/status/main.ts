@@ -12,6 +12,7 @@ import './status.css'
 import '../themes.css'
 import './postmodern.css'
 import './time.css'
+import './minecraft.css'
 import { LogoInfo, animClass, brand, logoSrc, markPieces, openInto, setBrand, transition } from '../mark'
 import { $, $$, append, clear, h, icon, numUnit, s, safeHref, setText } from './dom'
 import {

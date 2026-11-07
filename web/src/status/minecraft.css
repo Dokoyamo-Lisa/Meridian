@@ -1,0 +1,22 @@
+/* The Minecraft look's layout for the status page and the users' page (its colour tokens, windows and
+   hotbar are in ../themes.css). The pages' menu is the hotbar at the bottom of the screen, at every
+   width; the header keeps the clock and the tools; the overview's panels are game windows, a little
+   tighter so the one-screen dashboard still fits above the hotbar. */
+:root[data-theme="minecraft"] .top { background: linear-gradient(#1d1610 78%, rgba(29, 22, 16, 0)); padding-top: 6px; }
+:root[data-theme="minecraft"] .top-l .nav { display: flex; }
+:root[data-theme="minecraft"] .c-time { font-family: var(--font-d); font-weight: 700; text-shadow: var(--mc-shadow); }
+:root[data-theme="minecraft"] .c-meta { font-family: var(--font-d); }
+:root[data-theme="minecraft"] main { padding-bottom: 84px; }
+:root[data-theme="minecraft"] .dash { height: calc(100vh - var(--top) - 84px); gap: 16px; }
+:root[data-theme="minecraft"] .dash .panel { padding: 10px 12px 12px; }
+:root[data-theme="minecraft"] .dash .ph { margin-bottom: 8px; }
+:root[data-theme="minecraft"] :is(.page-h, .gate) { text-align: center; }
+:root[data-theme="minecraft"] :is(.page-h h1, .gate h1) { font-size: 34px; text-shadow: 3px 3px 0 rgba(0, 0, 0, .8); }
+:root[data-theme="minecraft"] .page-h p { font-family: var(--font-d); text-shadow: var(--mc-shadow); }
+:root[data-theme="minecraft"] .toast { bottom: 84px; border-radius: 0; }
+:root[data-theme="minecraft"] .foot { padding-bottom: 84px; color: var(--ink-3); }
+:root[data-theme="minecraft"] .pn { font-family: var(--font-d); color: #555; }
+:root[data-theme="minecraft"] .page-h { display: flex; flex-direction: column; align-items: center; }
+:root[data-theme="minecraft"] .apps { gap: 6px 12px; }
+:root[data-theme="minecraft"] .app { padding: 8px 10px; border-bottom: 0; }
+:root[data-theme="minecraft"] .panel-d { border-left: 0; }

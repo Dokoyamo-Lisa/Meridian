@@ -89,8 +89,14 @@ export const rsplit = (x: number): [string, string] => {
 export let C: Record<string, string> = {}
 let FONT = '11px system-ui, -apple-system, sans-serif'
 
+// Charts are drawn inside the panels, so their colours are the panels' (the same as the page's in
+// every look but Minecraft, whose panels are light windows on a dark page).
+export function tokenSource(): Element {
+  return document.querySelector('main .panel') || document.documentElement
+}
+
 export function readColors() {
-  const cs = getComputedStyle(document.documentElement)
+  const cs = getComputedStyle(tokenSource())
   const g = (n: string) => cs.getPropertyValue(n).trim()
   C = { accent: g('--accent'), grid: g('--grid'), baseline: g('--baseline'), ink2: g('--ink-2'), ink3: g('--ink-3'), surface: g('--surface') || g('--page'), page: g('--page') }
   FONT = `11px ${getComputedStyle(document.body).fontFamily}`
