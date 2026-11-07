@@ -289,3 +289,27 @@ func userBlockedRules(nodes []*Node, subs []*Sub) []map[string]any {
 	}
 	return out
 }
+
+// siteBlockArgs puts update_user's blocked_sites and blocked_on into the request, keeping the half
+// that was not given.
+func (c *mcpCall) siteBlockArgs(id int64, a, body map[string]any) error {
+	sites, hasSites := argStrs(a, "blocked_sites")
+	nodes, hasNodes := argInts(a, "blocked_on")
+	if !hasSites && !hasNodes {
+		return nil
+	}
+	if !hasSites || !hasNodes {
+		s, err := c.p.subByID(c.r.Context(), id)
+		if err != nil {
+			return err
+		}
+		if !hasSites {
+			sites = s.SiteBlock.Sites
+		}
+		if !hasNodes {
+			nodes = s.SiteBlock.Protocols
+		}
+	}
+	body["site_block"] = SiteBlock{Sites: sites, Protocols: nodes}
+	return nil
+}

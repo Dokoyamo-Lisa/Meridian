@@ -770,7 +770,7 @@ var mcpTools = []mcpTool{
 			m, _ := v.(map[string]any)
 			sub, _ := m["user"].(map[string]any)
 			out := pick(sub, append(subSummaryKeys, "link", "online", "scope", "total_up", "total_down",
-				"last_fetch_ip", "last_fetch_ua", "created_at")...).(map[string]any)
+				"last_fetch_ip", "last_fetch_ua", "created_at", "site_block")...).(map[string]any)
 			out["protocols"] = pick(m["endpoints"], "name", "kind", "server", "host", "port")
 			out["usage_by_protocol"] = m["usage"]
 			return out, nil
@@ -779,6 +779,21 @@ var mcpTools = []mcpTool{
 		Description: "Every connection open right now: user, client IP, place, network (ASN/organisation), server and protocol, and whether the user is over their IP limit.",
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
 			return c.api("GET", "/api/live", nil)
+		}},
+	{Name: "speed_now", Title: "Speed now",
+		Description: "Each user's download and upload right now, in bytes per second, fastest first: over all their servers and protocols, each user counted once (a proxy pass does not count twice), then per protocol and per address they connect from. Also the total, and the servers whose agent does not measure speed yet.",
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			return c.api("GET", "/api/live/speed", nil)
+		}},
+	{Name: "server_network", Title: "A server's network profile",
+		Description: "What the status page shows about a server's network: its ASN and holder, how the address is used, an IP score from 0 to 100 with what took points off, what public lists say about its /24, and its BGP routes. The address comes masked here too. Works while set_status_page has show_network on and the server is on the status page; state pending means the first lookup is still running: ask again in a minute or two.",
+		Props:       map[string]any{"server_id": pInt("Server id")}, Required: []string{"server_id"},
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			id, err := needInt(a, "server_id")
+			if err != nil {
+				return nil, err
+			}
+			return c.api("GET", fmt.Sprintf("/api/status/servers/%d/network", id), nil)
 		}},
 	{Name: "ip_history", Title: "IP history",
 		Description: "Which client IPs connected, when, how often, from where and through which users. Filter by user or server, or search an IP prefix, network name, city or country code.",
@@ -952,18 +967,20 @@ var mcpTools = []mcpTool{
 	{Name: "update_user", Title: "Change user", Write: true,
 		Description: "Change a user's name, sign-in, limits, counting, period, servers or note. Only the given fields change; a new reset schedule keeps the usage counted so far. To start a new period on a plan use apply_plan. A new username or password signs the user out of their page; an empty username removes the sign-in. Changing servers takes effect within seconds; devices pick up new servers when they refresh. A quota at or below what they used this cycle suspends them until their data starts over; a higher one lets a suspended user back in at once.",
 		Props: withProps(map[string]any{
-			"user_id":      pInt("User id"),
-			"name":         pStr("New name"),
-			"username":     pStr("New sign-in name; empty = no sign-in"),
-			"password":     pStr("New sign-in password (10-72 characters)"),
-			"quota_gb":     pNum("Monthly quota in GB; 0 = unlimited"),
-			"reset_day":    pInt("Day of the month usage resets (1-31); 0 = never"),
-			"expires_on":   pStr("Last valid day, YYYY-MM-DD, or 'never'"),
-			"ip_limit":     pInt("IP limit; 0 = none"),
-			"server_ids":   pInts("Whole servers the user can use (with protocols added to them later); [] for none. Omit to keep the current ones"),
-			"protocol_ids": pInts("Single protocols the user can use, besides whole servers; [] for none. Omit to keep the current ones"),
-			"everything":   pBool("true: every server, including ones added later (server_ids and protocol_ids are then ignored)"),
-			"note":         pStr("Private note"),
+			"user_id":       pInt("User id"),
+			"name":          pStr("New name"),
+			"username":      pStr("New sign-in name; empty = no sign-in"),
+			"password":      pStr("New sign-in password (10-72 characters)"),
+			"quota_gb":      pNum("Monthly quota in GB; 0 = unlimited"),
+			"reset_day":     pInt("Day of the month usage resets (1-31); 0 = never"),
+			"expires_on":    pStr("Last valid day, YYYY-MM-DD, or 'never'"),
+			"ip_limit":      pInt("IP limit; 0 = none"),
+			"server_ids":    pInts("Whole servers the user can use (with protocols added to them later); [] for none. Omit to keep the current ones"),
+			"protocol_ids":  pInts("Single protocols the user can use, besides whole servers; [] for none. Omit to keep the current ones"),
+			"everything":    pBool("true: every server, including ones added later (server_ids and protocol_ids are then ignored)"),
+			"note":          pStr("Private note"),
+			"blocked_sites": pStrs("Sites this user alone does not reach, each with its subdomains, e.g. [\"anthropic.com\"]: the whole list, [] for none. Needs blocked_on, or keeps the protocols they have"),
+			"blocked_on":    pInts("The protocols (ids) blocked_sites holds on: Xray protocols at once, mieru and AnyTLS at the next restart of what waits. Hysteria2 cannot do it for one user: use update_protocol's blocked_sites. Snell and WireGuard cannot block sites"),
 		}, userLimitProps),
 		Required: []string{"user_id"},
 		Run: func(c *mcpCall, a map[string]any) (any, error) {
@@ -973,6 +990,9 @@ var mcpTools = []mcpTool{
 			}
 			b, err := c.subBody(a)
 			if err != nil {
+				return nil, err
+			}
+			if err := c.siteBlockArgs(id, a, b); err != nil {
 				return nil, err
 			}
 			v, err := c.api("PATCH", fmt.Sprintf("/api/users/%d", id), b)
@@ -1945,6 +1965,23 @@ var mcpTools = []mcpTool{
 				body["agents"] = v
 			}
 			return c.api("POST", "/api/update/install", body)
+		}},
+	{Name: "set_agent_upgrades", Title: "Agents upgrade by themselves", Write: true,
+		Description: "Whether agents older than the panel upgrade by themselves, within minutes and at any hour (on by default). Nobody is disconnected either way: the proxies keep running. Off, only upgrade_all_agents or a server's upgrade_agent action upgrades them. check_updates shows it as agent_auto_upgrade.",
+		Props:       map[string]any{"automatic": pBool("true: agents follow the panel by themselves; false: they wait for you")}, Required: []string{"automatic"},
+		Run: func(c *mcpCall, a map[string]any) (any, error) {
+			on, ok := argBool(a, "automatic")
+			if !ok {
+				return nil, errors.New("automatic is required: true or false")
+			}
+			v, err := c.api("GET", "/api/settings", nil)
+			if err != nil {
+				return nil, err
+			}
+			s, _ := v.(map[string]any)
+			s["agent_auto_upgrade"] = on
+			v, err = c.api("PUT", "/api/settings", s)
+			return pick(v, "agent_auto_upgrade"), err
 		}},
 	{Name: "upgrade_all_agents", Title: "Upgrade every agent", Write: true, Destructive: true,
 		Description: "Upgrade the agent on every server whose agent is not the panel's version (offline ones when they connect). Agents restart themselves; proxies keep running and nobody is disconnected. Ask the user first.",

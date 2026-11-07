@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.6 - 2026-11-07
+
+An assistant can now do what 1.4.4 and 1.4.5 added to the pages. Upgrade the panel (**Settings ›
+Updates** - nobody is disconnected); the agents follow by themselves.
+
+- **The MCP server catches up.** `speed_now` gives each user's speed in total, per protocol and per
+  address; `server_network` a server's network profile, the address masked; `update_user` takes
+  `blocked_sites` and `blocked_on` for one user's blocked sites, and `get_user` shows them;
+  `set_agent_upgrades` turns automatic agent upgrades on or off.
+
 ## 1.4.5 - 2026-11-07
 
 Agents that keep up by themselves, blocked sites for one user, each user's speed in the list of users,

@@ -65,6 +65,8 @@ Read (any token):
 | `list_servers`, `get_server` | servers with protocols, forwards, load, bandwidth, and how each reaches the panel: `panel_trouble` (why it keeps losing the panel), `panel_relay` / `relay_name` (the server it goes through), `panel_path` and `relay_error` (the way it uses now) |
 | `list_users`, `get_user` | limits, usage, flags, sign-in, who is connected now, the link |
 | `online_now` | every open connection with IP, place, network, server, protocol |
+| `speed_now` | each user's speed now, in total, per protocol and per address, fastest first |
+| `server_network` | a server's ASN, usage, IP score, /24 and BGP routes, the address masked (while the status page shows them: `show_network`) |
 | `ip_history` | IPs per user or server over a period, with places and networks |
 | `destinations` | where traffic went (domains/IPs, connections, bytes) |
 | `user_traffic` | daily traffic and per-protocol totals |
@@ -87,6 +89,7 @@ Change (full-access token):
 
 | Tool | Notes |
 | --- | --- |
+| `set_agent_upgrades` | whether agents follow the panel by themselves (on by default); nobody is disconnected either way |
 | `create_user`, `update_user`, `new_user_password`, `resume_user`, `reset_user_usage`, `sign_out_user` | generated passwords come back once; access by whole servers (`server_ids`) and single protocols (`protocol_ids`) |
 | `pause_user`, `rotate_user_link`, `reset_user_credentials`, `delete_user` | disconnect people - need `confirm=true` |
 | `add_server`, `get_install_command` | return the install command (it contains the server's secret) |
@@ -145,6 +148,9 @@ and destructive ones `confirm=true`. They are as trustworthy as the plugin that 
 - "Put the status page on the front page and show the panel in Hong Kong." →
   `set_status_page {mode: "home", panel_city: "Hong Kong"}`.
 - "Don't show our server addresses on the status page." → `set_status_page {show_ips: false}`.
+- "Who is using the most bandwidth right now?" → `speed_now`.
+- "Block anthropic.com for Alice on the Tokyo VLESS." → `update_user {user_id: 7, blocked_sites: ["anthropic.com"], blocked_on: [12]}`.
+- "What does the Tokyo server's IP look like?" → `server_network {server_id: 3}`.
 - "The globe shows Seattle-1 in Kansas." → `set_server_on_status_page {server_id: 4, city: "Seattle"}`.
 - "Block 203.0.113.7 for a day, it's scanning us." → the assistant asks you to confirm, then
   `block_ip {ip: "203.0.113.7", hours: 24, confirm: true}`.
