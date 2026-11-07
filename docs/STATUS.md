@@ -1,6 +1,16 @@
 # Meridian status
 
-Last updated 2026-11-07 (version 1.4.6).
+Last updated 2026-11-07 (version 1.4.7).
+
+## Tested for 1.4.7
+
+- **The Time look** in headless Chrome on a local panel with the demo fleet: the status page at 1440,
+  768 and 390 px, the panel's overview at 1440 and 390 px, the sign-in page at 1440 px. The dial on
+  the left at each width, its hands matching the browser's time, mounted on entering Time and removed
+  on leaving it. The hands' angles by `web/test/timedial.test.ts`.
+- **Not run**: the panel's other pages in Time at each width, checked one by one; the users'
+  subscription page's Time rules in a browser since the last changes; the PostgreSQL suite; an upgrade
+  on a real panel.
 
 ## Tested for 1.4.6
 

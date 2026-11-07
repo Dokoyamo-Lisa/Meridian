@@ -39,13 +39,14 @@ var pageTones = map[string]pageTone{
 		sansDisplay, "normal", "300", "none"},
 	"mist": {"light", "#eef2f1", "#fafcfb", "rgba(24,32,30,.09)", "rgba(24,32,30,.17)", "#18201e", "#43504c", "#74807c", "#487d73", "#448247", "#a8762c",
 		sansDisplay, "normal", "300", "none"},
-	// Postmodern's dot grid and outlines come from the page's .look-postmodern rules (subserve.go)
+	// Postmodernism's dot grid and outlines come from the page's .look-postmodern rules (subserve.go)
 	"postmodern": {"light", "#f4eee2", "#fffbf2", "rgba(23,21,26,.16)", "rgba(23,21,26,.36)", "#17151a", "#3b3640", "#5c5562", "#2346d8", "#17744a", "#8a5200",
 		`Futura,"Futura PT","Avenir Next","Century Gothic","Trebuchet MS",sans-serif`, "normal", "800", "none"},
-	// Time: the capitals and hairlines come from the page's .look-time rules (subserve.go)
-	"time": {"dark", "#07090c", "#0d1116", "rgba(200,216,235,.09)", "rgba(200,216,235,.18)", "#e9edf2", "#b6bfca", "#8b96a4", "#e0a458", "#7fcbb2", "#e8be6e",
-		`"Avenir Next","Helvetica Neue","Segoe UI",Roboto,system-ui,sans-serif`, "normal", "200",
-		"radial-gradient(100vw 44vw at 50% -6%,rgba(92,128,168,.16),transparent 70%)"},
+	// Time: the rules and double rules come from the page's .look-time rules (subserve.go); the dial needs
+	// the pages' script, which this page does not have
+	"time": {"dark", "#020305", "#090b10", "rgba(242,244,248,.14)", "rgba(242,244,248,.34)", "#f2f4f8", "#dfe3ea", "#c0c6d0", "#c8a96e", "#a9d6a3", "#e6c074",
+		`Didot,"Bodoni 72","Bodoni MT","Playfair Display","Big Caslon","Palatino Linotype",Georgia,serif`, "normal", "700",
+		"none"},
 }
 
 func (t pageTone) vars() string {

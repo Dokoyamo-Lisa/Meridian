@@ -107,18 +107,18 @@ You mark each finding as yours or seen, here or on every server. Where the serve
 
 ## Looks
 
-Nine looks, for you and for each visitor to choose: Romance, Umbrella, Postmodern and Time, and the quiet tones Ice, Celadon, Ink, Paper and Mist. Nothing to install.
+Nine looks, for you and for each visitor to choose: Romance, Umbrella, Postmodernism and Time, and the quiet tones Ice, Celadon, Ink, Paper and Mist. Nothing to install.
 
 <table>
   <tr>
     <td width="33%"><img src="docs/img/status-umbrella.webp" alt="The Umbrella look: black glass, white type and one signal red"></td>
-    <td width="33%"><img src="docs/img/status-postmodern.webp" alt="The Postmodern look: cream paper, black outlines and blocks of colour"></td>
-    <td width="33%"><img src="docs/img/status-dark.webp" alt="The Time look: near-black, thin wide capitals and one amber note"></td>
+    <td width="33%"><img src="docs/img/status-postmodern.webp" alt="The Postmodernism look: cream paper, black outlines and blocks of colour"></td>
+    <td width="33%"><img src="docs/img/status-dark.webp" alt="The Time look: a very large minimal clock face, running live behind a journal-like page"></td>
   </tr>
   <tr>
     <td align="center"><b>Umbrella</b><br><sub>A laboratory after hours</sub></td>
-    <td align="center"><b>Postmodern</b><br><sub>Paper, outlines, blocks of colour</sub></td>
-    <td align="center"><b>Time</b><br><sub>A film score's slow build</sub></td>
+    <td align="center"><b>Postmodernism</b><br><sub>Paper, outlines, blocks of colour</sub></td>
+    <td align="center"><b>Time</b><br><sub>A great clock, running live behind the page</sub></td>
   </tr>
 </table>
 

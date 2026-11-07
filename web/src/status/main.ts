@@ -52,6 +52,7 @@ import { C, FlowChart, Pt, Segment, TipRow, bsplit, dailyBars, dirtyAll, figure,
 import type { Globe, GlobePlace, LivePayload, LoginResult, PortalMe, PortalServer, StatusPayload, StatusServer } from './types'
 import { pluginCard, pluginData, pluginMe, pluginState, pluginView } from './plugins' // window.MeridianStatus for plugins
 import { Check, startCheck } from '../turnstile'
+import { startTimeDial } from '../timedial'
 import { ServerHistory, serverHistory } from './details'
 import { NetworkSection, networkSection } from './network'
 import { osBadge, virtName } from './os'
@@ -290,7 +291,7 @@ function upcoming(): Upcoming[] {
 
 function initClock() {
   const tick = () => {
-    const d = nowDate()
+    const d = new Date() // the browser's own time, as the viewer's other clocks show it
     setText($('#clock'), `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`)
     setText($('#cDate'), `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${WEEK[d.getDay()]}`)
     setText($('#cZone'), tzLabel())
@@ -2520,6 +2521,8 @@ function toast(msg: string, warn = false) {
   clearTimeout(toastTimer)
   toastTimer = window.setTimeout(() => t.classList.remove('on'), 2600)
 }
+
+startTimeDial()
 
 const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist', 'postmodern', 'time']
 function initTones() {

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.7 - 2026-11-07
+
+Time is drawn again, and Postmodernism has its right name. Upgrade the panel (**Settings ›
+Updates** - nobody is disconnected); the agents follow by themselves.
+
+- **Time, drawn again.** Three quarters of a very large, plain watch dial now stand, slightly
+  tilted, at the left edge of every page, on near black: a double ring, a minute track, applied
+  batons and faceted leaf hands, telling the browser's time. The status page's clock shows the
+  browser's time too, in every look; in Time the dial takes its place and the masthead keeps only
+  the date. Over it the pages are laid out anew, like a fine journal: a masthead with the menu
+  beneath it, great titles and figures in a bold high-contrast serif, fine rules and double rules,
+  on thin black sheets over the dial.
+- **The look's name is Postmodernism** everywhere people read it (`postmodern` stays the value in
+  settings and the API, so nothing needs changing).
+
 ## 1.4.6 - 2026-11-07
 
 An assistant can now do what 1.4.4 and 1.4.5 added to the pages. Upgrade the panel (**Settings ›

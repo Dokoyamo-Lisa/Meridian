@@ -6,6 +6,7 @@ import './postmodern.css'
 import './time.css'
 import './mark.css'
 import { setUnauthorizedHandler } from './api'
+import { startTimeDial } from './timedial'
 import { Icon, Logo } from './icons'
 import { PluginEvents, PluginMenuItems, PluginPage, isPluginPath, loadPluginScripts, usePluginNav } from './plugins'
 import { match, navigate, onLinkClick, useLocation } from './router'
@@ -26,6 +27,7 @@ import { UserPage } from './pages/User'
 import { Users } from './pages/Users'
 
 setUnauthorizedHandler(() => signedOut())
+startTimeDial()
 
 const nav: { href: string; label: string }[] = [
   { href: '/overview', label: 'Overview' },

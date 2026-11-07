@@ -1,7 +1,7 @@
 // The built-in marks, drawn as pieces that fly in from outside and settle into place (mark.css):
 //   - the rose, Rosélune's own: five rose petals, a blush bloom inside them, the moon at its heart
 //   - the umbrella: a canopy seen from above, eight panels alternating red and white
-//   - confetti, in the Postmodern look's colours: a canary sun with a black rim, a cobalt crescent
+//   - confetti, in the Postmodernism look's colours: a canary sun with a black rim, a cobalt crescent
 //     moon cradling it, a mint zigzag, a pink triangle and a cobalt dot
 // dx/dy point away from the centre - where a piece comes from; i orders them (the animation delay).
 // internal/panel/brandmarks.go draws the same pieces for the loading screens and subscription pages.

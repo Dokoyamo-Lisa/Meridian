@@ -89,7 +89,7 @@ function zones(): string[] {
 const marks: { id: string; name: string; hint: string }[] = [
   { id: 'rose', name: 'Rose', hint: 'Rosélune’s own: five petals, a blush bloom, the moon at its heart' },
   { id: 'umbrella', name: 'Umbrella', hint: 'Eight panels, red and white' },
-  { id: 'confetti', name: 'Confetti', hint: 'A cobalt crescent moon cradling a canary sun, in the Postmodern colours' },
+  { id: 'confetti', name: 'Confetti', hint: 'A cobalt crescent moon cradling a canary sun, in the colours of the Postmodernism look' },
 ]
 
 function Brand(props: {
