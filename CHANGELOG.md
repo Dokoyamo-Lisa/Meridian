@@ -12,6 +12,11 @@ AnyTLS takes the restart the page asks for.
   It works on VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP (at once) and mieru and AnyTLS (at the
   next **Restart now**). Hysteria2's rules are the same for everyone, so it can only block for the
   whole protocol; Snell and WireGuard cannot block sites.
+- **A README worth reading,** with pictures of the panel from the demo fleet. The demo agents report
+  speed now as real ones do.
+- **Monitor › Live takes less room.** An address connected through several protocols is one line now,
+  with each protocol and its own speed beside it (from agents 1.4.5) and the address's speed at the
+  end. Each user's total stands out on their own band, in larger figures.
 - **Agents upgrade by themselves.** An agent older than the panel is now upgraded without asking,
   within minutes and at any hour - a server that was offline when it comes back. Upgrading an agent
   never touches traffic, so nobody is disconnected; it is only noted in the timeline. On by default;

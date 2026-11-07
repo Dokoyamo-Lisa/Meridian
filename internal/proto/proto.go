@@ -683,11 +683,21 @@ type Live struct {
 	// addresses users are online from here only (1.4.3 and later).
 	Rates   []UserRate `json:"rates,omitempty"`
 	IPRates []IPRate   `json:"ip_rates,omitempty"`
+	// NodeRates: Rates again, protocol by protocol (agents 1.4.5 and later)
+	NodeRates []NodeRate `json:"node_rates,omitempty"`
 }
 
 // UserRate is a user's speed now on one server, in bytes per second.
 type UserRate struct {
 	Sub  int64 `json:"s"`
+	Up   int64 `json:"u"`
+	Down int64 `json:"d"`
+}
+
+// NodeRate is a user's speed now on one protocol, in bytes per second.
+type NodeRate struct {
+	Sub  int64 `json:"s"`
+	Node int64 `json:"n"`
 	Up   int64 `json:"u"`
 	Down int64 `json:"d"`
 }

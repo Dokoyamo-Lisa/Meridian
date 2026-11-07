@@ -61,7 +61,7 @@ func (g *demoAgent) hello() *proto.Hello {
 		IPv4: m.IPv4, IPv6: m.IPv6, IPv6Gone: m.IPv6 == "", BootTime: g.boot, StartedAt: g.started, Addrs: addrs, Virt: m.Virt,
 		Caps: proto.Caps{Systemd: systemd, WireGuard: true, Conntrack: true, Nftables: true, Iptables: true, Certs: true,
 			APIPort: g.apiPort, RestartPending: true, Relay: true, PortHop: true, Limits: true, NoIPv6: false, WG6: m.IPv6 != "",
-			Cut: true, Solo: true, AnyTLS: true, RestartAll: true, Protect: true},
+			Cut: true, Solo: true, AnyTLS: true, RestartAll: true, Protect: true, Rates: true, BlockSites: true},
 	}
 }
 
@@ -106,6 +106,9 @@ func (g *demoAgent) sync(ctx context.Context) error {
 // live is what the agent reports every few seconds: the host's numbers and who is online.
 func (g *demoAgent) live(t int64) *proto.Live {
 	var online []proto.OnlineUser
+	var rates []proto.UserRate
+	var nodeRates []proto.NodeRate
+	var ipRates []proto.IPRate
 	through, devices := 0.0, 0
 	seen := map[string]bool{}
 	for _, u := range g.s.people {
@@ -113,8 +116,13 @@ func (g *demoAgent) live(t int64) *proto.Live {
 		if !ok {
 			continue
 		}
-		through += g.w.rate(u, g.s, t) / g.w.presence(u, g.s, t)
+		rate := g.w.rate(u, g.s, t) / g.w.presence(u, g.s, t)
+		through += rate
 		devices += n
+		// what they move now, mostly down, spread over their devices
+		up, down := int64(rate*.12), int64(rate*.88)
+		rates = append(rates, proto.UserRate{Sub: u.id, Up: up, Down: down})
+		nodeRates = append(nodeRates, proto.NodeRate{Sub: u.id, Node: u.nodes[g.s.id][0], Up: up, Down: down})
 		ips := make([]proto.OnlineIP, 0, n)
 		for d := 0; d < n; d++ {
 			ip := u.devices[d]
@@ -123,6 +131,7 @@ func (g *demoAgent) live(t int64) *proto.Live {
 				g.since[ip] = t - int64(hash01(50, int64(u.idx), int64(d), t/1200)*1100)
 			}
 			ips = append(ips, proto.OnlineIP{IP: ip, Since: g.since[ip], Last: t})
+			ipRates = append(ipRates, proto.IPRate{IP: ip, Up: up / int64(n), Down: down / int64(n)})
 		}
 		online = append(online, proto.OnlineUser{Sub: u.id, Node: u.nodes[g.s.id][0], IPs: ips})
 	}
@@ -139,7 +148,8 @@ func (g *demoAgent) live(t int64) *proto.Live {
 	if m.temp > 0 {
 		sys.Temps = map[string]float64{"k10temp Tctl": round(m.temp, 1), "nvme Composite": round(m.temp-9, 1)}
 	}
-	return &proto.Live{TS: t, Sys: sys, Online: online, Cores: g.cores, Ports: g.ports, PanelPath: "direct"}
+	return &proto.Live{TS: t, Sys: sys, Online: online, Cores: g.cores, Ports: g.ports, PanelPath: "direct",
+		Rates: rates, NodeRates: nodeRates, IPRates: ipRates}
 }
 
 // batch is what accumulated from a to b: traffic per person and protocol, devices, destinations,

@@ -270,7 +270,12 @@ table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
 .t .num { font-family: var(--font); font-weight: 400; }
 .t td.right, .t th.right { text-align: right; padding-right: 16px; }
 /* Monitor › Live: a user's row, then their connections - lighter, closer together */
-.live-t tr.group td { padding-top: 14px; padding-bottom: 8px; border-bottom-color: transparent; }
+.live-t tr.group td { padding-top: 11px; padding-bottom: 11px; border-bottom-color: transparent; background: var(--hover); }
+.live-total { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.live-total .lt-up { margin-left: 12px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.live-conns { display: flex; flex-wrap: wrap; gap: 3px 16px; }
+.live-conn { white-space: nowrap; }
+.lc-speed { margin-left: 6px; font-size: 11.5px; color: var(--ink-3); }
 .live-t tr:not(.group) td { padding-top: 6px; padding-bottom: 6px; font-size: 13px; }
 .live-t tr:not(.group) + tr.group td { border-top: 1px solid var(--line); }
 .live-t tr:not(.group) td { border-bottom-color: transparent; }

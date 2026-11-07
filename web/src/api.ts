@@ -934,7 +934,7 @@ export interface SpeedIP {
 export interface SpeedView {
   up: number
   down: number
-  users: { user_id: number; up: number; down: number; ips: SpeedIP[] }[]
+  users: { user_id: number; up: number; down: number; ips: SpeedIP[]; protocols: { server_id: number; node_id: number; up: number; down: number }[] }[]
   unmeasured: string[]
   interval: number
 }
