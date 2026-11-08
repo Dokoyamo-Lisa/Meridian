@@ -35,6 +35,19 @@ export function session(): Session {
   return state
 }
 
+// livePace is how often a page showing live data refreshes: as often as the agents report, when they
+// report faster than the page's own pace (the panel's live view, Settings › Panel), never under half a
+// second.
+export function livePace(meta: Meta | null, ms: number): number {
+  const r = meta?.report_interval
+  return r && r > 0 ? Math.max(500, Math.min(ms, Math.round(r * 1000))) : ms
+}
+
+// useLivePace is livePace for a page, following the setting when it changes.
+export function useLivePace(ms: number): number {
+  return livePace(useSession().meta, ms)
+}
+
 // load resolves the current session; a 401 leaves account null (the login page shows).
 // fetchSession reads who is signed in without showing it yet (see applySession).
 export async function fetchSession(): Promise<{ account: Account; meta: Meta }> {

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rosélune API",
-    "version": "1.4.8",
+    "version": "1.4.9",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -7610,6 +7610,10 @@
             "description": "The line the status page shows under its title",
             "type": "string"
           },
+          "report_interval": {
+            "description": "Seconds between agent reports: pages showing live data refresh at this pace. Signed-in callers only",
+            "type": "number"
+          },
           "version": {
             "description": "Signed-in callers only",
             "type": "string"
@@ -8161,7 +8165,7 @@
           },
           "interval": {
             "description": "Seconds each measurement covers (the agents' report interval)",
-            "type": "integer"
+            "type": "number"
           }
         }
       },
@@ -14009,8 +14013,8 @@
             "type": "integer"
           },
           "report_interval": {
-            "description": "Seconds between agent reports (5-120)",
-            "type": "integer"
+            "description": "Seconds between agent reports: 0.5, 1, 2 or 3 for a live view (more work for servers and the panel), or 5-120",
+            "type": "number"
           },
           "xray_version": {
             "description": "Xray version new servers install, e.g. 26.3.27",

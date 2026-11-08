@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import { Plan, Server, SpeedView, User, bits, bytes, size, date, get, patch, pct, post } from '../api'
 import { Icon } from '../icons'
-import { userURL } from '../session'
+import { useLivePace, userURL } from '../session'
 import { navigate, setQuery, useLocation } from '../router'
 import { Ago, Code, CopyButton, Empty, ErrorBox, Field, Loading, Meter, Modal, PageHead, Search, Seg, Tabs, Toggle, errText, toast, useAsync, usePoll } from '../ui'
 import { Limits, LimitFields, Plans, limitsBody, limitsOf, limitsSummary } from './Plans'
@@ -90,7 +90,7 @@ function UserList() {
   const [newUsers, setNewUsers] = useState<User[] | null>(null)
   const speed = useAsync(() => get<SpeedView>('/api/live/speed'))
   usePoll(() => void list.reload(), 10000)
-  usePoll(() => void speed.reload(), 5000)
+  usePoll(() => void speed.reload(), useLivePace(5000))
   const speedOf = new Map((speed.data?.users || []).map((u) => [u.user_id, u]))
   const all = list.data || []
   const rows = all.filter((s) => {

@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks'
 import { AgentsUpgraded, Server, bits, bytes, size, flag, get, pct, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
-import { useSession } from '../session'
+import { useLivePace, useSession } from '../session'
 import { Check, Empty, ErrorBox, Field, Loading, Meter, Modal, PageHead, Search, Seg, ask, errText, toast, toastError, useAsync, usePoll } from '../ui'
 import { upgradedText } from './agentUpgrades'
 import { DynamicDNSFields, PanelIPv6Note, confirmCloudflare } from './DynamicDNS'
@@ -28,7 +28,7 @@ export function Servers() {
   const list = useAsync(() => get<Server[]>('/api/servers'))
   const [q, setQ] = useState('')
   const [sel, setSel] = useState<Set<number>>(new Set())
-  usePoll(() => void list.reload(), 10000)
+  usePoll(() => void list.reload(), useLivePace(10000))
   const adding = loc.query.get('add') === '1'
 
   const rows = (list.data || []).filter((s) => {

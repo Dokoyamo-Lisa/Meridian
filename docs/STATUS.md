@@ -1,6 +1,20 @@
 # Meridian status
 
-Last updated 2026-11-07 (version 1.4.8).
+Last updated 2026-11-08 (version 1.4.9).
+
+## Tested for 1.4.9 (agents reporting up to twice a second)
+
+- **A local panel and the VM's agent built from this branch**, the interval switched in the panel's
+  settings: in 30 seconds the agent sent 6 reports at 10 s, 58 at 0.5 s, 31 at 1 s and 14 at 3 s
+  (packets to the panel, counted in the VM). Its CPU: about 1 % at 10 s and 1.4 % at 0.5 s (2 cores);
+  Xray 0.1 % at most. At 0.5 s the panel applied 6 batches and wrote the server's last-seen time 16
+  times in 30 seconds. A 5 MB download through VLESS REALITY at 0.5 s counted 5,036,093 bytes for the
+  user - the download and three requests, once. Settings shows the choices; Monitor said "Updates every
+  0.5 s". By tests: the interval's values, what agents get, the agent's reading of it, the batch in
+  flight, one rate point a second.
+- **Not run**: an agent from 1.4.8 against this panel at 0.5 s (it reads only whole seconds from 5, so
+  it keeps 10 s); many servers at once; the status page and the Overview checked by eye at 0.5 s; the
+  PostgreSQL suite.
 
 ## Tested for 1.4.8
 

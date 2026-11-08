@@ -665,11 +665,8 @@ func (a *Agent) guestReportLoop(ctx context.Context, g *guest) {
 		case <-g.kick:
 		}
 		a.guestReport(ctx, g)
-		every := 10 * time.Second
 		g.mu.Lock()
-		if g.state != nil && g.state.Agent.ReportInterval >= 5 {
-			every = time.Duration(g.state.Agent.ReportInterval) * time.Second
-		}
+		every := reportEvery(g.state) // what that panel asks for
 		g.mu.Unlock()
 		timer.Reset(every)
 	}

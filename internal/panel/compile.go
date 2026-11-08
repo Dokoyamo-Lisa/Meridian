@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"slices"
 	"sort"
 	"strconv"
@@ -264,8 +265,8 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 	}
 	set := p.settings()
 	st := &proto.State{Contract: proto.Version, ServerID: id,
-		Agent: proto.AgentSettings{ReportInterval: set.ReportInterval, ConnLog: set.ConnLog, DestLog: set.DestLog,
-			LatestVersion: Version, ACMEPort: srv.ports.acmePort()},
+		Agent: agentReports(set.ReportInterval, proto.AgentSettings{ConnLog: set.ConnLog, DestLog: set.DestLog,
+			LatestVersion: Version, ACMEPort: srv.ports.acmePort()}),
 		Cores: proto.Cores{Xray: set.XrayVersion, Hysteria: set.HysteriaVersion, Realm: set.RealmVersion,
 			Digests: p.digests.forVersions(map[string]string{"xray": set.XrayVersion, "hysteria": set.HysteriaVersion,
 				"realm": set.RealmVersion})}}
@@ -805,4 +806,15 @@ func flagEmoji(cc string) string {
 		r = append(r, 0x1F1E6+c-'A')
 	}
 	return string(r)
+}
+
+// agentReports sets how often an agent reports: whole seconds, which every agent reads (from 5), and
+// milliseconds only for the live view under 5 seconds, which agents 1.4.9 and later follow (older ones
+// keep 10 seconds). At 5 seconds and slower the state is what it was before the live view existed.
+func agentReports(secs float64, a proto.AgentSettings) proto.AgentSettings {
+	a.ReportInterval = int(math.Ceil(secs))
+	if secs < 5 {
+		a.ReportMS = int(math.Round(secs * 1000))
+	}
+	return a
 }

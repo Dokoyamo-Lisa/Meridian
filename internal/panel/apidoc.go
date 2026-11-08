@@ -31,6 +31,7 @@ type meResult struct {
 type metaResult struct {
 	SiteTitle      string     `json:"site_title"`
 	About          string     `json:"about" doc:"The line the status page shows under its title"`
+	ReportInterval float64    `json:"report_interval,omitempty" doc:"Seconds between agent reports: pages showing live data refresh at this pace. Signed-in callers only"`
 	Version        string     `json:"version,omitempty" doc:"Signed-in callers only"`
 	PublicURL      string     `json:"public_url,omitempty" doc:"Signed-in callers only"`
 	UserURL        string     `json:"user_url,omitempty" doc:"Where users sign in to their own page. Signed-in callers only"`

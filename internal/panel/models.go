@@ -3,6 +3,7 @@ package panel
 import (
 	"database/sql"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -17,28 +18,28 @@ import (
 // Settings are panel-wide. They are always written out in full, so what the UI shows is what is
 // stored - no field silently falls back to a frontend default.
 type Settings struct {
-	SiteTitle        string `json:"site_title" doc:"Panel name shown on pages and in apps"`
-	PublicURL        string `json:"public_url" doc:"How agents and browsers reach the panel, e.g. https://panel.example.com"`
-	SubURL           string `json:"sub_url" doc:"Optional separate base URL for subscription links"`
-	Timezone         string `json:"timezone" doc:"IANA timezone for day boundaries, e.g. Asia/Shanghai"`
-	ConnLog          bool   `json:"conn_log" doc:"Record connecting IPs"`
-	DestLog          bool   `json:"dest_log" doc:"Record destinations"`
-	LogRetention     int    `json:"log_retention" doc:"Days to keep IP and destination history (1-400)"`
-	ReportInterval   int    `json:"report_interval" doc:"Seconds between agent reports (5-120)"`
-	XrayVersion      string `json:"xray_version" doc:"Xray version new servers install, e.g. 26.3.27"`
-	HysteriaVersion  string `json:"hysteria_version" doc:"Hysteria version new servers install"`
-	RealmVersion     string `json:"realm_version" doc:"realm version new servers install"`
-	MitaVersion      string `json:"mita_version" doc:"mieru server (mita) version servers install for mieru"`
-	SnellVersion     string `json:"snell_version" doc:"snell-server version servers install for Snell - one Rosélune can verify (5.0.1)"`
-	SingBoxVersion   string `json:"singbox_version" doc:"sing-box version servers install for AnyTLS"`
-	Mirror           bool   `json:"mirror" doc:"Agents may download cores through the panel, when their official release does not answer"`
-	CoreAutoUpgrade  bool   `json:"core_auto_upgrade" doc:"Servers' Xray and Hysteria upgrade themselves to the versions here, at night (03:00 to 05:00 panel time), one server at a time - each restarts once and its users reconnect by themselves. Off: only a person upgrades them"`
-	AgentAutoUpgrade bool   `json:"agent_auto_upgrade" doc:"Servers' agents follow the panel by themselves, within minutes of it changing version, with nobody asked and nobody disconnected: the proxies keep running. On by default"`
-	AutoUpdate       bool   `json:"auto_update" doc:"Install new Rosélune releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts"`
-	AutoRelay        int64  `json:"auto_relay" doc:"A server that keeps losing the panel (see panel_trouble on servers) is switched to reach it through this server, once - by itself, with an event; switch it back on its page at any time. 0 = off: the panel only tells"`
-	Maintenance      bool   `json:"maintenance" doc:"Maintenance mode: only the supervisor can sign in; everyone else - users on their own pages, other accounts - sees \"Maintenance in progress\" and is signed out. Servers, protocols and subscriptions keep working"`
-	MaintenanceNote  string `json:"maintenance_note" doc:"A line added to the maintenance message, e.g. when it ends"`
-	AgentTransport   string `json:"agent_transport" doc:"How agents talk to the panel: ws = each over one lasting WebSocket (the default; an agent makes HTTP requests by itself while its WebSocket cannot be opened, e.g. behind a proxy that does not pass WebSockets) | http = HTTP requests only. Agents follow within a minute; nothing restarts"`
+	SiteTitle        string  `json:"site_title" doc:"Panel name shown on pages and in apps"`
+	PublicURL        string  `json:"public_url" doc:"How agents and browsers reach the panel, e.g. https://panel.example.com"`
+	SubURL           string  `json:"sub_url" doc:"Optional separate base URL for subscription links"`
+	Timezone         string  `json:"timezone" doc:"IANA timezone for day boundaries, e.g. Asia/Shanghai"`
+	ConnLog          bool    `json:"conn_log" doc:"Record connecting IPs"`
+	DestLog          bool    `json:"dest_log" doc:"Record destinations"`
+	LogRetention     int     `json:"log_retention" doc:"Days to keep IP and destination history (1-400)"`
+	ReportInterval   float64 `json:"report_interval" doc:"Seconds between agent reports: 0.5, 1, 2 or 3 for a live view (more work for servers and the panel), or 5-120"`
+	XrayVersion      string  `json:"xray_version" doc:"Xray version new servers install, e.g. 26.3.27"`
+	HysteriaVersion  string  `json:"hysteria_version" doc:"Hysteria version new servers install"`
+	RealmVersion     string  `json:"realm_version" doc:"realm version new servers install"`
+	MitaVersion      string  `json:"mita_version" doc:"mieru server (mita) version servers install for mieru"`
+	SnellVersion     string  `json:"snell_version" doc:"snell-server version servers install for Snell - one Rosélune can verify (5.0.1)"`
+	SingBoxVersion   string  `json:"singbox_version" doc:"sing-box version servers install for AnyTLS"`
+	Mirror           bool    `json:"mirror" doc:"Agents may download cores through the panel, when their official release does not answer"`
+	CoreAutoUpgrade  bool    `json:"core_auto_upgrade" doc:"Servers' Xray and Hysteria upgrade themselves to the versions here, at night (03:00 to 05:00 panel time), one server at a time - each restarts once and its users reconnect by themselves. Off: only a person upgrades them"`
+	AgentAutoUpgrade bool    `json:"agent_auto_upgrade" doc:"Servers' agents follow the panel by themselves, within minutes of it changing version, with nobody asked and nobody disconnected: the proxies keep running. On by default"`
+	AutoUpdate       bool    `json:"auto_update" doc:"Install new Rosélune releases by themselves: checked every few hours, installed between 03:00 and 05:00 panel time, then every server's agent follows. Proxies keep running; only the panel restarts"`
+	AutoRelay        int64   `json:"auto_relay" doc:"A server that keeps losing the panel (see panel_trouble on servers) is switched to reach it through this server, once - by itself, with an event; switch it back on its page at any time. 0 = off: the panel only tells"`
+	Maintenance      bool    `json:"maintenance" doc:"Maintenance mode: only the supervisor can sign in; everyone else - users on their own pages, other accounts - sees \"Maintenance in progress\" and is signed out. Servers, protocols and subscriptions keep working"`
+	MaintenanceNote  string  `json:"maintenance_note" doc:"A line added to the maintenance message, e.g. when it ends"`
+	AgentTransport   string  `json:"agent_transport" doc:"How agents talk to the panel: ws = each over one lasting WebSocket (the default; an agent makes HTTP requests by itself while its WebSocket cannot be opened, e.g. behind a proxy that does not pass WebSockets) | http = HTTP requests only. Agents follow within a minute; nothing restarts"`
 
 	StatusPage    string          `json:"status_page" doc:"off | home (the site's front page is the status page; the panel stays at /overview) | page (at /status)"`
 	StatusDomain  string          `json:"status_domain" doc:"Optional domain that shows only the status page and the users' sign-in, e.g. status.example.com (point it at the panel)"`
@@ -142,12 +143,7 @@ func (s *Settings) normalize() {
 	if s.LogRetention > 400 {
 		s.LogRetention = 400
 	}
-	if s.ReportInterval < 5 {
-		s.ReportInterval = 5
-	}
-	if s.ReportInterval > 120 {
-		s.ReportInterval = 120
-	}
+	s.ReportInterval = reportInterval(s.ReportInterval)
 	if s.XrayVersion == "" {
 		s.XrayVersion = d.XrayVersion
 	}
@@ -655,4 +651,28 @@ func countedUsage(mode string, up, down int64) int64 {
 		return max(up, down)
 	}
 	return up + down
+}
+
+// fastReports are the report intervals under 5 seconds the panel offers: a view that keeps up with
+// the servers, paid for with more work on them and here.
+var fastReports = []float64{0.5, 1, 2, 3}
+
+// reportInterval keeps a report interval to what agents can do: one of fastReports, or whole seconds
+// from 5 to 120. Anything else goes to the nearest of those.
+func reportInterval(v float64) float64 {
+	switch {
+	case math.IsNaN(v) || v <= 0:
+		return 10
+	case v >= 5:
+		return min(math.Round(v), 120)
+	case v > 4:
+		return 5
+	}
+	best := fastReports[0]
+	for _, f := range fastReports {
+		if math.Abs(f-v) < math.Abs(best-v) {
+			best = f
+		}
+	}
+	return best
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.9 - 2026-11-08
+
+A live view: agents can report up to twice a second. Upgrade the panel (**Settings › Updates** -
+nobody is disconnected); the agents follow by themselves.
+
+- **A live view: agents can report up to twice a second.** **Settings › Panel › Agent reports** offers
+  0.5, 1, 2 and 3 seconds besides 5 seconds to 2 minutes (10 seconds stays the default). The Overview,
+  Servers, a server's page, Users' speed and Monitor then refresh just as often, and the status page, for the
+  supervisor, as often down to once a second. Servers do more work and so does the panel, so it is meant for while you
+  watch; traffic is still recorded every few seconds and exactly as before. Agents need 1.4.9 for it
+  (they upgrade by themselves); older ones keep reporting every 10 seconds.
+
 ## 1.4.8 - 2026-11-07
 
 A new look, Minecraft, and a logo for it. Upgrade the panel (**Settings › Updates** - nobody is

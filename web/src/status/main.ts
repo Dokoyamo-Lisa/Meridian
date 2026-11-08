@@ -3,7 +3,8 @@
 // server. The supervisor sees every server: a one-screen dashboard around a live globe, pages for
 // servers and events.
 //
-// Data: /api/status (30 s) and /api/status/live (5 s) for the supervisor, /api/portal/me (15 s) for a
+// Data: /api/status (30 s) and /api/status/live (5 s, or as often as agents report when they report
+// faster - never under a second on this public page) for the supervisor, /api/portal/me (15 s) for a
 // user. Everything is read-only except signing in and out and changing the password.
 
 import qrcode from 'qrcode-generator'
@@ -2942,9 +2943,13 @@ function renderGate(focus = true) {
   if (focus && matchMedia('(pointer: fine)').matches) focusLogin()
 }
 
+// livePace is how often the live data is fetched (loadMeta sets it from the agents' report interval)
+let livePace = 5000
+
 async function loadMeta() {
   try {
-    const m = await api<{ site_title: string; about?: string; logo?: LogoInfo; turnstile?: string; maintenance?: string }>('/api/meta')
+    const m = await api<{ site_title: string; about?: string; logo?: LogoInfo; turnstile?: string; maintenance?: string; report_interval?: number }>('/api/meta')
+    if (m.report_interval && m.report_interval > 0) livePace = Math.max(1000, Math.min(5000, Math.round(m.report_interval * 1000)))
     site.title = m.site_title || ''
     site.about = m.about || ''
     site.turnstile = m.turnstile || ''
@@ -3015,7 +3020,11 @@ async function init() {
   if (unreachable()) retryLater()
   await loadLive(true)
   ready()
-  setInterval(() => void loadLive(false), 5000)
+  const liveTick = () => {
+    void loadLive(false)
+    window.setTimeout(liveTick, livePace)
+  }
+  window.setTimeout(liveTick, livePace)
   setInterval(() => {
     if (S.pub && !document.hidden) void loadStatus()
   }, 30000)
