@@ -625,6 +625,25 @@ export interface SeriesPoint {
 }
 
 // AreaChart plots one filled series (a) and an optional dashed series (b) over time.
+const blocky = () => document.documentElement.dataset.theme === 'minecraft'
+
+const GROUND: Record<string, string> = { grass: '#6fbf45', gold: '#f7cf3d', dirt: '#8a5f3c', stone: '#8a8a8e' }
+
+// BlockColumn is a day's bar in the Minecraft look: blocks stacked as the ground is, grass (gold for today)
+// over three of earth, then stone
+function BlockColumn(props: { x: number; size: number; base: number; height: number; today: boolean; dim: boolean }) {
+  const step = 8 // layers of the same height whatever the column's width
+  const n = props.height > 0 ? Math.max(1, Math.round(props.height / step)) : 0
+  return (
+    <g opacity={props.dim ? 0.5 : 1} shape-rendering="crispEdges">
+      {Array.from({ length: n }, (_, k) => {
+        const depth = n - 1 - k
+        return <rect x={props.x} y={props.base - (k + 1) * step + 1} width={props.size} height={step - 1} fill={GROUND[depth === 0 ? (props.today ? 'gold' : 'grass') : depth < 4 ? 'dirt' : 'stone']} />
+      })}
+    </g>
+  )
+}
+
 export function AreaChart(props: {
   points: SeriesPoint[]
   fmt: (v: number) => string
@@ -642,7 +661,9 @@ export function AreaChart(props: {
   const t1 = pts.length ? pts[pts.length - 1].t : 1
   const x = (t: number) => pad.l + ((t - t0) / Math.max(1, t1 - t0)) * (w - pad.l - pad.r)
   const y = (v: number) => pad.t + (1 - v / max) * (h - pad.t - pad.b)
-  const line = (k: 'a' | 'b') => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)} ${y(p[k] || 0).toFixed(1)}`).join('')
+  // the Minecraft look has no slopes: its lines climb in steps
+  const stepped = blocky()
+  const line = (k: 'a' | 'b') => pts.map((p, i) => `${i ? (stepped ? `H${x(p.t).toFixed(1)}V` : 'L' + x(p.t).toFixed(1) + ' ') : 'M' + x(p.t).toFixed(1) + ' '}${y(p[k] || 0).toFixed(1)}`).join('')
   const area = pts.length ? line('a') + `L${x(t1).toFixed(1)} ${y(0)}L${x(t0).toFixed(1)} ${y(0)}Z` : ''
   const hp = hover !== null ? pts[hover] : null
   const tf = props.tfmt || ((t: number) => new Date(t * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))
@@ -742,8 +763,14 @@ export function BarChart(props: { days: { day: string; a: number; b: number }[];
           return (
             <g key={d.day} onMouseEnter={() => setHover(i)}>
               <rect x={i * bw} y={0} width={bw} height={h} fill="transparent" />
-              <rect class="bar" x={x0} y={base - ha} width={ww} height={ha} opacity={hover === null || hover === i ? 1 : 0.5} />
-              <rect class="bar2" x={x0} y={base - ha - hb} width={ww} height={hb} opacity={hover === null || hover === i ? 1 : 0.5} />
+              {blocky() ? (
+                <BlockColumn x={x0} size={ww} base={base} height={ha + hb} today={i === props.days.length - 1} dim={hover !== null && hover !== i} />
+              ) : (
+                <>
+                  <rect class="bar" x={x0} y={base - ha} width={ww} height={ha} opacity={hover === null || hover === i ? 1 : 0.5} />
+                  <rect class="bar2" x={x0} y={base - ha - hb} width={ww} height={hb} opacity={hover === null || hover === i ? 1 : 0.5} />
+                </>
+              )}
             </g>
           )
         })}

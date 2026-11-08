@@ -26,3 +26,9 @@
   :root[data-theme="minecraft"] .top .tools { margin-left: 12px; }
   :root[data-theme="minecraft"] .savebar { bottom: 12px; }
 }
+
+/* the charts: squares, and the type on dark glass */
+:root[data-theme="minecraft"] .chart .line { stroke-width: 2; }
+:root[data-theme="minecraft"] .chart .line2 { stroke-width: 2; stroke-dasharray: none; }
+:root[data-theme="minecraft"] .chart { shape-rendering: crispEdges; }
+:root[data-theme="minecraft"] .chart text { fill: var(--ink-3); }

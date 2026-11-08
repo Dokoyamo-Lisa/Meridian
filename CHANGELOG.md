@@ -7,8 +7,8 @@ disconnected); the agents follow by themselves.
 
 - **A new look: Minecraft,** laid out anew. The pages' menu leaves the top and becomes a hotbar of
   slots along the bottom of the screen, the page you are on in the white frame. Every section and
-  dialog is a game window - light grey with a white and a dark bevel and a black outline, dark type
-  on it - and what sits in it (cards, switches, figures) is a sunken slot. Titles stand centred in
+  dialog is dark glass over the world, white type with a hard shadow on it, and what sits in it (cards,
+  switches, figures) a darker well. Titles stand centred in
   block type with a hard shadow beside a small grass block, the page's buttons under them; tabs are
   an inventory's tabs; tables on the page stand in a dark well. The status page's overview is a
   game's screen: a bar over the Earth, a block in the middle; resources as debug text; events as chat; and
