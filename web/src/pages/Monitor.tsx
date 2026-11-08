@@ -4,6 +4,7 @@ import { DestRow, PanelEvent, IPRow, OnlineIP, Server, SpeedView, User, bits, da
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import { Ago, Empty, ErrorBox, Field, Loading, Modal, PageHead, Search, Seg, Tabs, ask, errText, run, toast, useAsync, usePoll } from '../ui'
+import { useLivePace } from '../session'
 import { HealthTab } from './Health'
 import { PingTab } from './Ping'
 
@@ -204,11 +205,12 @@ function LiveTab() {
   const now = useAsync(() => get<LiveNow>('/api/overview'))
   const [q, setQ] = useState('')
   const [block, setBlock] = useState<LiveRow | null>(null)
+  const pace = useLivePace(5000)
   usePoll(() => {
     void live.reload()
     void speed.reload()
     void now.reload()
-  }, 5000)
+  }, pace)
   if (!live.data) return live.error ? <ErrorBox error={live.error} retry={live.reload} /> : <Loading />
   const sp = speed.data
   const userSpeed = new Map((sp?.users || []).map((u) => [u.user_id, u]))
@@ -254,7 +256,7 @@ function LiveTab() {
       )}
       <div class="row wrap" style="margin-bottom:12px">
         <span class="muted grow" style="font-size:12.5px">
-          Updates every 5 s{sp ? ` · speed over each server's last ${sp.interval} s` : ''}
+          Updates every {pace / 1000} s{sp ? ` · speed over each server's last ${sp.interval} s` : ''}
           {now.data && (
             <span title="What every server's network carries now. A proxy pass counts on both its servers - the users' speed above counts each user once.">
               {' '}

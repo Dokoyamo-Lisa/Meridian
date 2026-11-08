@@ -17,7 +17,7 @@ type speedView struct {
 	Down       int64       `json:"down" doc:"All users' download now, bytes per second"`
 	Users      []userSpeed `json:"users" doc:"Users with any speed now, fastest first"`
 	Unmeasured []string    `json:"unmeasured" doc:"Online servers whose agent does not measure speed yet (upgrade it)"`
-	Interval   int         `json:"interval" doc:"Seconds each measurement covers (the agents' report interval)"`
+	Interval   float64     `json:"interval" doc:"Seconds each measurement covers (the agents' report interval)"`
 }
 
 type userSpeed struct {
@@ -70,7 +70,7 @@ func (p *Panel) apiLiveSpeed(w http.ResponseWriter, r *http.Request, a *Account)
 		names[s.ID] = s.Name
 	}
 	every := p.settings().ReportInterval
-	fresh := now() - int64(3*every) - 5 // a server that missed two reports has no speed now
+	fresh := now() - int64(3*every) - 5 // a server that missed two reports has no speed now (and slack for fast reports)
 	out := speedView{Users: []userSpeed{}, Unmeasured: []string{}, Interval: every}
 	userRate := map[int64][2]int64{}
 	ipRate := map[ipKey][2]int64{}

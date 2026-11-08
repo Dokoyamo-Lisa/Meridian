@@ -447,6 +447,7 @@ func (p *Panel) apiMeta(w http.ResponseWriter, r *http.Request) {
 		out["reality_targets"] = RealityTargets
 		out["public_url"] = p.baseURL(r)
 		out["user_url"] = p.userURL(r)
+		out["report_interval"] = p.settings().ReportInterval // pages showing live data refresh at this pace
 	}
 	writeJSON(w, http.StatusOK, out)
 }

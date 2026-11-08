@@ -25,6 +25,7 @@ import {
   useAsync,
   usePoll,
 } from '../ui'
+import { useLivePace } from '../session'
 import { EventList } from './Monitor'
 import { HealthCard } from './Health'
 import { ProtocolCard, waitAction } from './Protocols'
@@ -74,7 +75,7 @@ export function ServerPage(props: { id: number }) {
   usePoll(() => {
     void res.reload()
     void events.reload()
-  }, 10000, [props.id])
+  }, useLivePace(10000), [props.id])
   usePoll(() => void metrics.reload(), 60000, [props.id])
 
   if (!res.data) return res.error ? <><Crumb href="/servers" label="Servers" /><ErrorBox error={res.error} retry={res.reload} /></> : <Loading />

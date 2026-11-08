@@ -124,6 +124,7 @@ type Agent struct {
 	events      []proto.AgentEvent
 	lastHello   time.Time
 	rateAt      time.Time            // the last report's speeds were measured up to then (rates.go)
+	batchAt     time.Time            // when the last batch of counts went
 	limitWarned time.Time            // when a speed limit failure was last logged (limits.go)
 	sharedTold  map[string]time.Time // speed limits left off an address another user shares, when last told (limits.go)
 	cons        consoles             // the supervisor's consoles open now (console.go)
@@ -1241,14 +1242,27 @@ func ownPath(p string) bool {
 
 // ---------------------------------------------------------------- reports
 
+// reportEvery is how often the panel wants reports: its milliseconds when it sends them (down to half
+// a second), else its seconds (from 5), else 10 seconds.
+func reportEvery(st *proto.State) time.Duration {
+	switch {
+	case st == nil:
+	case st.Agent.ReportMS >= 500:
+		return time.Duration(min(st.Agent.ReportMS, 120000)) * time.Millisecond
+	case st.Agent.ReportInterval >= 5:
+		return time.Duration(st.Agent.ReportInterval) * time.Second
+	}
+	return 10 * time.Second
+}
+
+// batchEvery is the longest the accumulated counts wait before they go with a report: with reports
+// faster than this, the counts go with every report that is due one, so the panel records traffic a few
+// times a minute however fast the live view is.
+const batchEvery = 5 * time.Second
+
 func (a *Agent) reportLoop(ctx context.Context) {
 	a.sampler.Sample()
-	interval := func() time.Duration {
-		if st := a.current(); st != nil && st.Agent.ReportInterval >= 5 {
-			return time.Duration(st.Agent.ReportInterval) * time.Second
-		}
-		return 10 * time.Second
-	}
+	interval := func() time.Duration { return reportEvery(a.current()) }
 	timer := time.NewTimer(2 * time.Second)
 	for {
 		select {
@@ -1455,7 +1469,12 @@ func (a *Agent) report(ctx context.Context) {
 	live.Guard = a.guard.status()          // the security mode (guard.go)
 	live.Setup = a.setup.status()          // the supervisor's setup script (setup.go)
 	live.Taken = a.takenFor(0)
-	rep := &proto.Report{Instance: a.out.Instance, Batch: a.out.next(), Live: live, Applied: applied,
+	// the counts: in flight until the panel has them; new ones at most every batchEvery
+	batch := a.out.pending()
+	if batch == nil && (reportEvery(st) >= batchEvery || time.Since(a.batchAt) >= batchEvery || len(events) > 0) {
+		batch = a.out.next()
+	}
+	rep := &proto.Report{Instance: a.out.Instance, Batch: batch, Live: live, Applied: applied,
 		ActionResults: results, Health: a.health.Report()}
 	// on disk before it leaves: the batch in flight and the counters it came from go together, so a
 	// stop during the send neither repeats nor loses anything
@@ -1474,6 +1493,9 @@ func (a *Agent) report(ctx context.Context) {
 		return
 	}
 	a.out.ack(ack)
+	if batch != nil {
+		a.batchAt = time.Now()
+	}
 	a.out.save()
 	a.health.Delivered(rep.Health)
 	a.mu.Lock()

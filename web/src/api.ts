@@ -95,6 +95,8 @@ export interface Meta {
   turnstile?: string
   /** The maintenance notice while the panel is in maintenance mode. */
   maintenance?: string
+  /** Seconds between agent reports: pages showing live data refresh at this pace. */
+  report_interval?: number
 }
 
 export interface TurnstileView {

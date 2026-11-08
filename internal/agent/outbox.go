@@ -194,6 +194,13 @@ func (o *outbox) next() *proto.Batch {
 	return o.Pending
 }
 
+// pending is the batch in flight, if one is: it goes again with every report until the panel has it.
+func (o *outbox) pending() *proto.Batch {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.Pending
+}
+
 // ack drops the in-flight batch once the panel has it.
 func (o *outbox) ack(seq int64) {
 	o.mu.Lock()

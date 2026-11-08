@@ -238,7 +238,12 @@ func (l *liveStore) put(id int64, lv proto.Live) {
 	}
 	ls.At = time.Now().Unix()
 	ls.Live = lv
-	ls.Rates = append(ls.Rates, ratePoint{T: ls.At, RX: lv.Sys.RXRate, TX: lv.Sys.TXRate})
+	// one point a second: reports faster than that update the second's point
+	if n := len(ls.Rates); n > 0 && ls.Rates[n-1].T == ls.At {
+		ls.Rates[n-1] = ratePoint{T: ls.At, RX: lv.Sys.RXRate, TX: lv.Sys.TXRate}
+	} else {
+		ls.Rates = append(ls.Rates, ratePoint{T: ls.At, RX: lv.Sys.RXRate, TX: lv.Sys.TXRate})
+	}
 	cut := ls.At - 1800
 	i := 0
 	for i < len(ls.Rates) && ls.Rates[i].T < cut {

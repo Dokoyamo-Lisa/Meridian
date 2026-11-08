@@ -141,8 +141,12 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 				return err
 			}
 		}
-		if _, err := tx.Exec(`UPDATE servers SET last_seen_at = ? WHERE id = ?`, t, srv.ID); err != nil {
-			return err
+		// seen: at most every two seconds, so fast reports do not write the database each time (the
+		// offline check allows three report intervals and 20 seconds)
+		if !srv.Online || t-srv.LastSeenAt >= 2 {
+			if _, err := tx.Exec(`UPDATE servers SET last_seen_at = ? WHERE id = ?`, t, srv.ID); err != nil {
+				return err
+			}
 		}
 
 		if b := rep.Batch; b != nil {
@@ -166,9 +170,11 @@ func (p *Panel) ingest(ctx context.Context, srv *Server, rep *proto.Report) (int
 					eventTx(tx, srv.AccountID, "warn", "apply_failed", srv.ID, 0, fmt.Sprintf("%s: %s", srv.Name, firstLine(errs)))
 				})
 			}
-			if _, err := tx.Exec(`UPDATE servers SET applied_rev = ?, apply_errors = ?, pending_restart = ? WHERE id = ?`,
-				a.Rev, errs, pending, srv.ID); err != nil {
-				return err
+			if a.Rev != srv.AppliedRev || errs != srv.ApplyErrors || pending != srv.PendingRestart {
+				if _, err := tx.Exec(`UPDATE servers SET applied_rev = ?, apply_errors = ?, pending_restart = ? WHERE id = ?`,
+					a.Rev, errs, pending, srv.ID); err != nil {
+					return err
+				}
 			}
 		}
 

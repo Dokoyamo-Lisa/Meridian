@@ -2,6 +2,7 @@ import { Alert, DayTraffic, PanelEvent, bits, bytes, get } from '../api'
 import { Icon } from '../icons'
 import { navigate } from '../router'
 import { AreaChart, BarChart, Empty, ErrorBox, Loading, PageHead, useAsync, usePoll } from '../ui'
+import { useLivePace } from '../session'
 import { EventList } from './Monitor'
 import { topServers } from '../topservers'
 
@@ -54,7 +55,7 @@ export function Overview() {
   usePoll(() => {
     void o.reload()
     void ev.reload()
-  }, 10000)
+  }, useLivePace(10000))
 
   if (!o.data) return o.error ? <ErrorBox error={o.error} retry={o.reload} /> : <Loading />
   const d = o.data

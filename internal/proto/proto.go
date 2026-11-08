@@ -192,10 +192,13 @@ type GeoList struct {
 }
 
 type AgentSettings struct {
-	ReportInterval int    `json:"report_interval"` // seconds
-	ConnLog        bool   `json:"conn_log"`        // record which IPs connected (Xray access log)
-	DestLog        bool   `json:"dest_log"`        // record where traffic went
-	LatestVersion  string `json:"latest_version,omitempty"`
+	ReportInterval int `json:"report_interval"` // seconds; agents before 1.4.9 read only this, and only from 5 up
+	// ReportMS is the same interval in milliseconds, which may be under 5 seconds (down to 500 ms): a
+	// live view for the price of more work on the server and the panel. 0 = ReportInterval decides.
+	ReportMS      int    `json:"report_ms,omitempty"`
+	ConnLog       bool   `json:"conn_log"` // record which IPs connected (Xray access log)
+	DestLog       bool   `json:"dest_log"` // record where traffic went
+	LatestVersion string `json:"latest_version,omitempty"`
 	// ACMEPort is where Let's Encrypt's check arrives on a server whose provider forwards TCP port 80
 	// to another port (NAT servers, containers); 0 = port 80 itself.
 	ACMEPort int `json:"acme_port,omitempty"`

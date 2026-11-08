@@ -83,6 +83,12 @@ function zones(): string[] {
   }
 }
 
+// How often agents report (Settings › Panel). Under 5 seconds is the live view: agents 1.4.9 and later
+// only; older ones keep 10 seconds until they upgrade.
+const REPORT_CHOICES = [0.5, 1, 2, 3, 5, 10, 30, 60, 120]
+const reportLabel = (s: number) =>
+  s < 5 ? `Every ${s} s - live view` : s === 10 ? 'Every 10 s (default)' : s >= 60 ? `Every ${s / 60} min` : `Every ${s} s`
+
 // Brand is what users see of the panel: its name, its logo (a built-in one - the rose, the umbrella, confetti
 // - or an upload), how the logo moves and the look pages open with. The logo is stored as soon as it
 // is uploaded; the rest is saved with the form. The preview plays the animation as it will look.
@@ -359,8 +365,19 @@ function General() {
           <Field label="Keep logs for (days)" hint="IP and destination history older than this is deleted.">
             <input class="input" inputMode="numeric" value={String(v.log_retention)} onInput={(e) => set('log_retention', Number(e.currentTarget.value.replace(/[^0-9]/g, '')) || 0)} />
           </Field>
-          <Field label="Agent report interval (seconds)" hint="5-120. Lower is more live, higher is lighter.">
-            <input class="input" inputMode="numeric" value={String(v.report_interval)} onInput={(e) => set('report_interval', Number(e.currentTarget.value.replace(/[^0-9]/g, '')) || 0)} />
+          <Field
+            label="Agent reports"
+            hint={
+              v.report_interval < 5
+                ? 'A live view: the panel follows every server second by second. Servers report several times a second and the panel works harder - for while you watch, not for always. Traffic is still recorded every few seconds.'
+                : 'How often each server reports. Pages showing live data refresh as often. Lower is more live, higher is lighter.'
+            }
+          >
+            <select class="input" value={String(v.report_interval)} onChange={(e) => set('report_interval', Number(e.currentTarget.value))}>
+              {(REPORT_CHOICES.includes(v.report_interval) ? REPORT_CHOICES : [...REPORT_CHOICES, v.report_interval].sort((a, b) => a - b)).map((s) => (
+                <option value={String(s)}>{reportLabel(s)}</option>
+              ))}
+            </select>
           </Field>
         </div>
         <PanelLinkSettings v={v} set={set} />
