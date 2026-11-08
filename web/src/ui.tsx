@@ -21,25 +21,45 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[] = []): Async<T
   const [data, setData] = useState<T | undefined>(undefined)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const seq = useRef(0)
+  const gen = useRef(0) // what deps the data is for: a result for older deps is dropped
   const fnRef = useRef(fn)
   fnRef.current = fn
-  const reload = useCallback(async () => {
-    const my = ++seq.current
-    setLoading(true)
-    try {
-      const v = await fnRef.current()
-      if (my === seq.current) {
-        setData(v)
-        setError('')
-      }
-    } catch (e) {
-      if (my === seq.current) setError(errText(e))
-    } finally {
-      if (my === seq.current) setLoading(false)
+  const inflight = useRef<Promise<void> | null>(null)
+  const again = useRef(false)
+  // One request at a time: a reload while one is under way asks for one more after it, and every answer
+  // that arrives is shown. (Answering only the newest request, as before, showed nothing at all when
+  // polls came faster than answers - the live view with a distant panel.)
+  const reload = useCallback((): Promise<void> => {
+    if (inflight.current) {
+      again.current = true
+      return inflight.current
     }
+    const p = (async () => {
+      try {
+        do {
+          again.current = false
+          const my = gen.current
+          setLoading(true)
+          try {
+            const v = await fnRef.current()
+            if (my === gen.current) {
+              setData(v)
+              setError('')
+            }
+          } catch (e) {
+            if (my === gen.current) setError(errText(e))
+          }
+        } while (again.current)
+      } finally {
+        inflight.current = null
+        setLoading(false)
+      }
+    })()
+    inflight.current = p
+    return p
   }, [])
   useEffect(() => {
+    gen.current++
     void reload()
   }, deps)
   return { data, error, loading, reload, set: setData }

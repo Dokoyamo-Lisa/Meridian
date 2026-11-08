@@ -100,3 +100,53 @@ func ipRates(bytes map[string][2]int64, online []proto.OnlineUser, secs float64)
 	sort.Slice(out, func(i, j int) bool { return out[i].IP < out[j].IP })
 	return out
 }
+
+// minRateSpan is the shortest time a speed is measured over. Reports faster than that (the panel's live
+// view) are taken together - the last ones covering at least this long - so the speed still changes
+// with every report but never reads a pause as "idle": traffic comes in bursts (a download, a video
+// fetching its next pieces), with pauses of a second or two even at a steady few hundred KB/s - measured
+// in the kernel's own counts as much as in Xray's. Only a user quiet for this long reads as idle.
+const minRateSpan = 5.0
+
+// rateWindow holds the last reports' counts for one panel's speeds (rates.go): as many as cover
+// minRateSpan, and no more. At reports of 5 seconds or longer it holds only the last one.
+type rateWindow struct {
+	parts []ratePart
+}
+
+type ratePart struct {
+	secs    float64
+	traffic []proto.UserTraffic
+	ips     map[string][2]int64
+}
+
+// add puts in what a report counted over secs and gives back what the window holds: the traffic and
+// client addresses' bytes of its reports, and the time they cover.
+func (w *rateWindow) add(secs float64, traffic []proto.UserTraffic, ips map[string][2]int64) ([]proto.UserTraffic, map[string][2]int64, float64) {
+	if secs <= 0 { // the first report: nothing to measure over yet
+		w.parts = nil
+		return nil, nil, 0
+	}
+	w.parts = append(w.parts, ratePart{secs: secs, traffic: traffic, ips: ips})
+	total := 0.0
+	for _, p := range w.parts {
+		total += p.secs
+	}
+	for len(w.parts) > 1 && total-w.parts[0].secs >= minRateSpan {
+		total -= w.parts[0].secs
+		w.parts = w.parts[1:]
+	}
+	var all []proto.UserTraffic
+	var sum map[string][2]int64
+	for _, p := range w.parts {
+		all = append(all, p.traffic...)
+		for ip, b := range p.ips {
+			if sum == nil {
+				sum = map[string][2]int64{}
+			}
+			c := sum[ip]
+			sum[ip] = [2]int64{c[0] + b[0], c[1] + b[1]}
+		}
+	}
+	return all, sum, total
+}

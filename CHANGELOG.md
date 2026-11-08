@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.5.0 - 2026-11-08
+
+The live view, fixed. Upgrade the panel (**Settings › Updates** - nobody is disconnected); the agents
+follow by themselves.
+
+- **Monitor, Servers and the other live pages work at any report interval.** When pages asked faster
+  than the panel answered (the live view, over a distant connection), they kept only the newest
+  request's answer - which never came in time - and showed nothing or stopped updating. A page now asks
+  again only once its last answer is in, and shows every answer that arrives. The status page waits for
+  each answer too.
+- **Users no longer read as idle in the live view.** A speed was measured over one report: at half a
+  second that was too short to count at all, and at a second or two a pause in a download read as
+  idle. Speeds are now measured over the last 5 seconds at least, and still change with every report.
+  At 5 seconds and slower nothing changes.
+
 ## 1.4.9 - 2026-11-08
 
 A live view: agents can report up to twice a second. Upgrade the panel (**Settings › Updates** -
