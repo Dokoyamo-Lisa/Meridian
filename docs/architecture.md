@@ -152,10 +152,12 @@ plus a **batch** of accumulated counters - traffic per user, server and protocol
 destinations, forward bytes, refused packets. With the live view the batch goes at most every 5
 seconds (sooner with an event), so the panel's database is written a few times a minute however fast
 the live data is; the panel also writes a server's last-seen time at most every 2 seconds and its
-applied state only when it changed. Pages showing live data refresh at the report interval (the status
-page no faster than once a second; the interval is in `/api/meta` for signed-in callers only). Agents get
+applied state only when it changed. Pages showing live data refresh at the report interval, asking again only once the last answer is
+in (the status page no faster than once a second; the interval is in `/api/meta` for signed-in callers only). Agents get
 the whole seconds as before, and for the live view also `report_ms` (agents 1.4.9 and later follow it;
-older ones keep 10 s for anything under 5); at 5 s and slower an agent's state is exactly what it was.
+older ones keep 10 s for anything under 5); at 5 s and slower an agent's state is exactly what it was. Speeds ("speed now", per user, protocol and
+address) are measured over the last reports covering at least 5 seconds, so they change with every
+report but a pause of a second or two in a download does not read as idle.
 
 Batches carry the agent's instance id and a sequence number. The panel applies a batch only if its
 sequence is newer than the last one it applied for that server, and acknowledges it; the agent keeps

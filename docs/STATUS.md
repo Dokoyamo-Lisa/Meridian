@@ -1,6 +1,23 @@
 # Meridian status
 
-Last updated 2026-11-08 (version 1.4.9).
+Last updated 2026-11-08 (version 1.5.0).
+
+## Tested for 1.5.0 (the live view, fixed)
+
+- **Every page with 700 ms of network latency at 0.5 s reports** (Chrome's network emulation, a local
+  panel with the demo fleet): before the fix Monitor showed nothing in 16 seconds; after it, 18 pages and
+  tabs (Overview, Servers, a server, Protocols, Routing, Users, a user, Monitor's five tabs, Access,
+  Settings, the status page's overview, servers, events and a server) show their content, the live ones
+  keep refreshing (Monitor: 21 answers in 5 seconds), no script errors. The only error answers were
+  401s that are expected (/api/me before signing in, /api/portal/me for the supervisor).
+- **Speed with a real agent in the VM**, a steady 300 KB/s download through VLESS REALITY (Vision): with
+  speeds over one report, at 0.5 s the user read as idle in 24 of 50 samples and at 1 s in 22 - the
+  kernel's per-address counts showed the same pauses, so the download itself comes in bursts. Over 5
+  seconds at least: 0 of 50 idle at 0.5, 1, 2, 3 and 10 s in two runs (one earlier run had 4 idle
+  samples at 0.5 and 1 s that did not come back), averages 309-362 KB/s. A 5 MB download at 0.5 s
+  counted 5,036,238 bytes.
+- **Not run**: many servers at once; agents of 1.4.9 against this panel (their speeds keep the old
+  one-report measure until they upgrade); the PostgreSQL suite; an upgrade on a real panel.
 
 ## Tested for 1.4.9 (agents reporting up to twice a second)
 

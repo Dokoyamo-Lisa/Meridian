@@ -3020,11 +3020,11 @@ async function init() {
   if (unreachable()) retryLater()
   await loadLive(true)
   ready()
-  const liveTick = () => {
-    void loadLive(false)
-    window.setTimeout(liveTick, livePace)
+  const liveTick = async () => {
+    await loadLive(false) // the next only once this one is answered: fast reports never pile requests up
+    window.setTimeout(() => void liveTick(), livePace)
   }
-  window.setTimeout(liveTick, livePace)
+  window.setTimeout(() => void liveTick(), livePace)
   setInterval(() => {
     if (S.pub && !document.hidden) void loadStatus()
   }, 30000)

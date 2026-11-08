@@ -125,6 +125,7 @@ type Agent struct {
 	lastHello   time.Time
 	rateAt      time.Time            // the last report's speeds were measured up to then (rates.go)
 	batchAt     time.Time            // when the last batch of counts went
+	rateWins    map[int]*rateWindow  // the last reports' counts behind the speeds, per panel (0: the home panel)
 	limitWarned time.Time            // when a speed limit failure was last logged (limits.go)
 	sharedTold  map[string]time.Time // speed limits left off an address another user shares, when last told (limits.go)
 	cons        consoles             // the supervisor's consoles open now (console.go)
@@ -1255,6 +1256,19 @@ func reportEvery(st *proto.State) time.Duration {
 	return 10 * time.Second
 }
 
+// rateWin is the window of counts behind one panel's speeds (slot 0: the home panel).
+func (a *Agent) rateWin(slot int) *rateWindow {
+	if a.rateWins == nil {
+		a.rateWins = map[int]*rateWindow{}
+	}
+	w := a.rateWins[slot]
+	if w == nil {
+		w = &rateWindow{}
+		a.rateWins[slot] = w
+	}
+	return w
+}
+
 // batchEvery is the longest the accumulated counts wait before they go with a report: with reports
 // faster than this, the counts go with every report that is due one, so the panel records traffic a few
 // times a minute however fast the live view is.
@@ -1371,7 +1385,8 @@ func (a *Agent) report(ctx context.Context) {
 		secs = time.Since(a.rateAt).Seconds()
 	}
 	a.rateAt = time.Now()
-	live.Rates, live.IPRates, live.NodeRates = userRates(traffic, secs), ipRates(ipBytes, live.Online, secs), nodeRates(traffic, secs)
+	rt, rip, rsecs := a.rateWin(0).add(secs, traffic, ipBytes) // over 5 seconds at least (rates.go)
+	live.Rates, live.IPRates, live.NodeRates = userRates(rt, rsecs), ipRates(rip, live.Online, rsecs), nodeRates(rt, rsecs)
 	pings := a.ping.Take()
 	var homePings []proto.PingResult
 	guestPings := map[int][]proto.PingResult{}
@@ -1399,7 +1414,8 @@ func (a *Agent) report(ctx context.Context) {
 		gConn, gDest := g.state != nil && g.state.Agent.ConnLog, g.state != nil && g.state.Agent.DestLog
 		gl := host
 		gl.Online, gl.Certs = p.online, p.certs
-		gl.Rates, gl.IPRates, gl.NodeRates = userRates(p.traffic, secs), ipRates(ipBytes, p.online, secs), nodeRates(p.traffic, secs)
+		gt, gip, gsecs := a.rateWin(g.slot).add(secs, p.traffic, ipBytes)
+		gl.Rates, gl.IPRates, gl.NodeRates = userRates(gt, gsecs), ipRates(gip, p.online, gsecs), nodeRates(gt, gsecs)
 		gl.Cores = map[string]proto.CoreStatus{}
 		for k, v := range host.Cores {
 			gl.Cores[k] = v
