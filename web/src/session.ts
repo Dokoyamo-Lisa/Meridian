@@ -98,6 +98,7 @@ export const tones: { id: string; name: string; a: string; b: string }[] = [
   { id: 'mist', name: 'Mist', a: '#487d73', b: '#eef2f1' },
   { id: 'postmodern', name: 'Postmodernism', a: '#2346d8', b: '#ffd23f' },
   { id: 'time', name: 'Time', a: '#f2f4f8', b: '#020305' },
+  { id: 'minecraft', name: 'Minecraft', a: '#5d9e34', b: '#6f4a2d' },
 ]
 
 export function currentTone(): string {

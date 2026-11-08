@@ -74,6 +74,7 @@
           <button type="button" role="menuitemradio" data-tone="mist"><i class="sw"></i><span>Mist</span></button>
           <button type="button" role="menuitemradio" data-tone="postmodern"><i class="sw"></i><span>Postmodernism</span></button>
           <button type="button" role="menuitemradio" data-tone="time"><i class="sw"></i><span>Time</span></button>
+          <button type="button" role="menuitemradio" data-tone="minecraft"><i class="sw"></i><span>Minecraft</span></button>
         </div>
       </div>
       <a class="pill-btn signin-btn hidden" id="signInBtn" href="#/signin"><svg class="ic sm"><use href="#i-lock"/></svg><span>Sign in</span></a>
@@ -119,6 +120,7 @@
   <section class="view" id="v-overview" data-view="overview" aria-label="Overview" hidden>
     <p class="sup-note hidden" id="ovPrivate" role="note"></p>
     <div class="dash">
+      <section class="panel mc-panel" id="pMc" aria-label="Servers"><div class="mc-list" id="mcList" role="list"></div></section>
       <div class="col col-l">
         <section class="panel p-status rv" id="pStatus" aria-labelledby="hStatus">
           <header class="ph"><span class="pn" aria-hidden="true"></span><h2 id="hStatus">Status</h2></header>
@@ -294,6 +296,7 @@
       <div class="t"><h3 id="dTitle"></h3><p id="dSub"></p></div>
       <button class="icon-btn" type="button" data-close aria-label="Close"><svg class="ic"><use href="#i-close"/></svg></button>
     </div>
+    <div class="mc-dtabs" id="dTabs" role="tablist" aria-label="Details"><button type="button" role="tab" data-t="now" aria-selected="true">Now</button><button type="button" role="tab" data-t="history" aria-selected="false">History</button><button type="button" role="tab" data-t="info" aria-selected="false">Info</button></div>
     <div class="d-body" id="dBody"></div>
   </div>
 </div>

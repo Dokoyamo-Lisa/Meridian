@@ -12,6 +12,7 @@ import './status.css'
 import '../themes.css'
 import './postmodern.css'
 import './time.css'
+import './minecraft.css'
 import { LogoInfo, animClass, brand, logoSrc, markPieces, openInto, setBrand, transition } from '../mark'
 import { $, $$, append, clear, h, icon, numUnit, s, safeHref, setText } from './dom'
 import {
@@ -52,6 +53,8 @@ import { C, FlowChart, Pt, Segment, TipRow, bsplit, dailyBars, dirtyAll, figure,
 import type { Globe, GlobePlace, LivePayload, LoginResult, PortalMe, PortalServer, StatusPayload, StatusServer } from './types'
 import { pluginCard, pluginData, pluginMe, pluginState, pluginView } from './plugins' // window.MeridianStatus for plugins
 import { Check, startCheck } from '../turnstile'
+import { startMcWorld } from '../mcworld'
+import { renderMcList } from './mclist'
 import { startTimeDial } from '../timedial'
 import { ServerHistory, serverHistory } from './details'
 import { NetworkSection, networkSection } from './network'
@@ -712,6 +715,16 @@ function updateTable() {
     }
   }
   if (p.servers.length) body.querySelector('.empty-row')?.parentElement?.remove()
+  if (document.documentElement.dataset.theme === 'minecraft') {
+    const level = (sv: StatusServer) => (!sv.online ? 'crit' : serverIssues(sv).length ? 'warn' : 'good')
+    renderMcList($('#mcList'), p.servers, level, (sv) => {
+      const pl = sv && S.places.find((x) => x.ids.includes(sv.id))
+      if (!globe) return
+      globe.hoverKey = pl ? pl.key : null
+      globe.focus(pl ? pl.key : null)
+      globe.kick(true)
+    })
+  }
   scheduleFold()
 }
 
@@ -1099,6 +1112,9 @@ function globeColors() {
     warn: g('--warn'),
     client: g('--g-client'),
     sphere: g('--g-sphere') || null,
+    shape: g('--g-shape'),
+    water: g('--g-water'),
+    ice: g('--g-ice'),
     back: num('--g-back', 0.03),
     page: g('--page'),
     coast: g('--g-coast') || g('--g-day'),
@@ -1508,6 +1524,7 @@ function makeCard(sv: StatusServer): Card {
     const issues = serverIssues(v)
     const level = !v.online ? 'crit' : issues.length ? 'warn' : 'good'
     el.dataset.level = level
+    el.dataset.block = String(v.id % 8) // the Minecraft look's material for it
     setText(name, v.name)
     setText(sub, placeOf(v.city, v.cc) || '—')
     setText(state, v.online ? (issues.length ? 'Check' : 'Online') : 'Offline')
@@ -2102,6 +2119,15 @@ function closeDrawer(immediate = false) {
   else setTimeout(done, 460)
 }
 
+// The Minecraft look shows a server's details a tab at a time; every other look shows them all
+const DETAIL_TAB: Record<string, string> = { mine: 'now', res: 'now', avail: 'now', traffic: 'history', events: 'history' }
+
+function showDetailTab(t: string) {
+  ;($('.panel-d') as HTMLElement).dataset.tab = t
+  $$('#dTabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.t === t)))
+  window.dispatchEvent(new Event('resize')) // a chart that was hidden measures itself again
+}
+
 function buildDrawer(sv: StatusServer): Drawer {
   const body = clear($('#dBody'))
   const d: Drawer = { sid: sv.id, charts: [], up: h('span.v'), down: h('span.v'), secs: {}, hist: null, net: null, os: '\u0000' }
@@ -2110,6 +2136,7 @@ function buildDrawer(sv: StatusServer): Drawer {
     body.append(
       h(
         'section.d-sec',
+        { 'data-tab': 'now' },
         h('h4', 'Throughput now', h('span.aside', 'last 30 minutes')),
         h('div.dirs', h('div.dir', h('span.k', icon('up', 'sm'), 'Up'), d.up), h('div.dir', h('span.k', icon('down', 'sm'), 'Down'), d.down)),
         h('div.d-chart', cv),
@@ -2122,6 +2149,7 @@ function buildDrawer(sv: StatusServer): Drawer {
       // its charts over time: what the viewer may see of them, as they pick (details.ts)
       if (show().resources) {
         d.hist = serverHistory(sv.id, sv.name, i + 1)
+        d.hist.el.dataset.tab = 'history'
         body.append(d.hist.el)
       }
       return
@@ -2129,14 +2157,16 @@ function buildDrawer(sv: StatusServer): Drawer {
     if (k === 'net') {
       if (S.pub?.show?.network) {
         d.net = networkSection(sv.id, i + 1)
+        d.net.el.dataset.tab = 'info'
         body.append(d.net.el)
       }
       return
     }
-    d.secs[k] = h('section.d-sec', { style: { '--i': String(i + 1) } })
+    d.secs[k] = h('section.d-sec', { style: { '--i': String(i + 1) }, 'data-tab': DETAIL_TAB[k] || 'info' })
     body.append(d.secs[k])
   })
   setText($('#dFlag'), String(sv.cc || '').toUpperCase() || '—')
+  showDetailTab('now')
   return d
 }
 
@@ -2287,6 +2317,10 @@ function unitB(v: number) {
 
 function initDrawer() {
   const dr = $('#drawer')
+  $('#dTabs').addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLElement>('button[data-t]')
+    if (b) showDetailTab(b.dataset.t!)
+  })
   dr.addEventListener('click', (e) => {
     if ((e.target as Element).closest('[data-close]')) {
       e.preventDefault()
@@ -2523,8 +2557,9 @@ function toast(msg: string, warn = false) {
 }
 
 startTimeDial()
+startMcWorld()
 
-const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist', 'postmodern', 'time']
+const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist', 'postmodern', 'time', 'minecraft']
 function initTones() {
   const root = document.documentElement
   const btn = $('#palBtn')

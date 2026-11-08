@@ -1,0 +1,34 @@
+/* The Minecraft look's layout for the panel (its colour tokens, windows and hotbar are in themes.css).
+   The top bar keeps only the name and the tools; the pages' menu is the hotbar at the bottom; titles
+   stand centred over the content like a game menu's, with the page's buttons under them. */
+:root[data-theme="minecraft"] body { padding-bottom: 84px; }
+:root[data-theme="minecraft"] .top { justify-content: space-between; }
+:root[data-theme="minecraft"] .top .brand { font-size: 15px; letter-spacing: .08em; }
+:root[data-theme="minecraft"] .top .tools { margin-left: auto; }
+:root[data-theme="minecraft"] .page-head { flex-direction: column; align-items: center; text-align: center; gap: 12px; margin: 26px 0 30px; }
+:root[data-theme="minecraft"] .page-head h1 { font-size: 34px; line-height: 1.1; text-shadow: 3px 3px 0 rgba(0, 0, 0, .8); }
+:root[data-theme="minecraft"] .page-head .sub { width: fit-content; padding: 1px 6px; color: #ececec; font-family: var(--font-d); font-size: 12.5px; background: rgba(0, 0, 0, .62); text-shadow: var(--mc-shadow); }
+:root[data-theme="minecraft"] .page-head .actions { margin-left: 0; justify-content: center; }
+:root[data-theme="minecraft"] .page-head .crumb { margin-top: 0; }
+:root[data-theme="minecraft"] .panel { margin-bottom: 26px; }
+:root[data-theme="minecraft"] .panel .ph { margin-bottom: 12px; }
+:root[data-theme="minecraft"] .grid { gap: 22px; }
+:root[data-theme="minecraft"] .toasts { top: 58px; right: 12px; bottom: auto; left: auto; }
+:root[data-theme="minecraft"] .app-foot { margin-top: 0; color: var(--ink-3); }
+:root[data-theme="minecraft"] .savebar { bottom: 78px; z-index: 35; background: none; padding: 10px 0 4px; }
+
+/* a wide window has room at the top: the menu stands there, beside the tools, and the bottom is freed; an
+   upright one keeps it along the bottom */
+@media (orientation: landscape) and (min-width: 1100px) {
+  :root[data-theme="minecraft"] body { padding-bottom: 16px; }
+  :root[data-theme="minecraft"] .nav { position: static; left: auto; bottom: auto; flex: none; margin-left: auto; padding: 0; background: none; box-shadow: none; transform: none; animation: none; }
+  :root[data-theme="minecraft"] .nav a { min-width: 0; height: 34px; padding: 0 12px; font-size: 12px; }
+  :root[data-theme="minecraft"] .top .tools { margin-left: 12px; }
+  :root[data-theme="minecraft"] .savebar { bottom: 12px; }
+}
+
+/* the charts: squares, and the type on dark glass */
+:root[data-theme="minecraft"] .chart .line { stroke-width: 2; }
+:root[data-theme="minecraft"] .chart .line2 { stroke-width: 2; stroke-dasharray: none; }
+:root[data-theme="minecraft"] .chart { shape-rendering: crispEdges; }
+:root[data-theme="minecraft"] .chart text { fill: var(--ink-3); }

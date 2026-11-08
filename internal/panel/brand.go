@@ -81,7 +81,7 @@ func (p *Panel) loadBrand() error {
 type logoInfo struct {
 	Custom    bool   `json:"custom" doc:"An uploaded logo replaces the built-in one"`
 	V         string `json:"v,omitempty" doc:"Changes whenever the logo does: add it to /brand/logo?v= so browsers fetch the new one"`
-	Mark      string `json:"mark" doc:"The built-in logo, shown while none is uploaded: rose | umbrella | confetti"`
+	Mark      string `json:"mark" doc:"The built-in logo, shown while none is uploaded: rose | umbrella | confetti | pixel"`
 	Animation string `json:"animation" doc:"assemble | rise | pulse | spin | none"`
 }
 
@@ -115,7 +115,7 @@ func (p *Panel) serveIcon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := "favicon.svg" // the rose
-	if m := p.settings().LogoMark; m == "umbrella" || m == "confetti" {
+	if m := p.settings().LogoMark; m == "umbrella" || m == "confetti" || m == "pixel" {
 		name = "favicon-" + m + ".svg"
 	}
 	var body []byte

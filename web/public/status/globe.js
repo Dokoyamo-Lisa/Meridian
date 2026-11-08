@@ -17,7 +17,10 @@
    g.setClients([{key?, lat, lon, n, to}]);  g.pulse([key, ...]);  g.focus(key | null);  g.setColors();
    The wheel zooms whenever the pointer is over the globe (zooming out at full size passes the wheel on to the
    page); g.setZoomable(true) adds pinch zoom (full screen); g.zoomBy(f) / g.setZoom(z) step it;
-   onEmptyClick() fires for a click on the globe that hits no marker.  */
+   onEmptyClick() fires for a click on the globe that hits no marker.
+   A look whose colours say shape: "cube" gets a world of blocks instead: the same places on the six faces of
+   a cube, each face a grid of square cells - water, land or ice - lit per face and by the real sun. Directions
+   are simply pushed out from the sphere onto the cube, so pins, arcs, dragging and zoom work unchanged.  */
 (() => {
   const RAD = Math.PI / 180, TAU = Math.PI * 2;
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -71,6 +74,76 @@
   }
   const apply = (m, v) => [m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
     m[6] * v[0] + m[7] * v[1] + m[8] * v[2]];
+
+  /* The block world. A direction lands on the cube by dividing by its largest component; the face is that
+     component's axis. CUBE_S keeps the corners inside the space the round globe has. */
+  const CUBE_S = 0.62, CUBE_N = 44;
+  function cubeFace(v) {
+    const a = Math.abs(v[0]), b = Math.abs(v[1]), c = Math.abs(v[2]);
+    if (a >= b && a >= c) return [Math.sign(v[0]) || 1, 0, 0];
+    return b >= c ? [0, Math.sign(v[1]) || 1, 0] : [0, 0, Math.sign(v[2]) || 1];
+  }
+  function cubePoint(v) {
+    const k = CUBE_S * Math.hypot(v[0], v[1], v[2]) / (Math.max(Math.abs(v[0]), Math.abs(v[1]), Math.abs(v[2])) || 1);
+    return [v[0] * k, v[1] * k, v[2] * k];
+  }
+  const CUBE_VS = `
+attribute vec4 aPos;
+uniform mat3 uRot;
+uniform vec2 uScale;
+uniform vec2 uCenter;
+uniform float uCell;
+uniform float uCubeS;
+uniform float uIntro;
+uniform float uNightLum;
+uniform vec3 uSun;
+uniform vec3 uWater;
+uniform vec3 uLand;
+uniform vec3 uIce;
+varying vec3 vCol;
+varying float vA;
+varying float vSprite;
+varying vec4 vInv;
+float noise(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+void main() {
+  vec3 a = aPos.xyz;
+  vec3 b = abs(a);
+  float mx = max(b.x, max(b.y, b.z));
+  vec3 n = b.x >= mx ? vec3(sign(a.x), 0.0, 0.0) : (b.y >= mx ? vec3(0.0, sign(a.y), 0.0) : vec3(0.0, 0.0, sign(a.z)));
+  vec3 t1 = abs(n.y) > 0.5 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+  vec3 t2 = cross(n, t1);
+  float facing = (uRot * n).z;
+  vec3 p = uRot * (a / mx * uCubeS);
+  float hh = 0.5 * uCell + 1.5;                   // a little over a cell, so no seam shows between them
+  vec2 cE = (uRot * t1).xy * hh;
+  vec2 cN = (uRot * t2).xy * hh;
+  float det = cE.x * cN.y - cE.y * cN.x;
+  vA = facing > 0.01 && abs(det) > 0.02 ? 1.0 : 0.0;
+  if (vA < 0.5) det = 1.0;
+  vInv = vec4(cN.y, -cN.x, -cE.y, cE.x) / det;
+  vSprite = 2.0 * max(abs(cE.x) + abs(cN.x), abs(cE.y) + abs(cN.y)) + 2.0;
+  float rev = step(1.0 - uIntro, noise(a * 3.1));   // the cells come in one by one
+  vA *= rev;
+  vec3 base = aPos.w > 1.5 ? uIce : (aPos.w > 0.5 ? uLand : uWater);
+  float light = abs(n.y) > 0.5 ? 1.0 : (abs(n.x) > 0.5 ? 0.8 : 0.64);
+  float day = smoothstep(-0.09, 0.09, dot(normalize(a), uSun));
+  vCol = base * light * (0.88 + 0.24 * noise(a)) * mix(uNightLum, 1.0, day);
+  gl_PointSize = vSprite;
+  gl_Position = vA < 0.5 ? vec4(2.0, 2.0, 2.0, 1.0) : vec4(uCenter + p.xy * uScale, 0.0, 1.0);
+}`;
+  const CUBE_FS = `
+precision mediump float;
+varying vec3 vCol;
+varying float vA;
+varying float vSprite;
+varying vec4 vInv;
+void main() {
+  vec2 d = (gl_PointCoord - 0.5) * vSprite;
+  d.y = -d.y;
+  vec2 uv = abs(vec2(dot(vInv.xy, d), dot(vInv.zw, d)));
+  if (max(uv.x, uv.y) > 1.0 || vA < 0.5) discard;
+  gl_FragColor = vec4(vCol, 1.0);
+}`;
 
   // Each dot is painted on the sphere - round by default, or a rounded rectangle whose long side follows
   // the parallel - and foreshortened like the surface itself, so dots near the rim turn into slivers.
@@ -253,6 +326,7 @@ void main() {
     // "rows" lays them along parallels (a dot matrix)
     buildDots(s) {
       if (!this.mask) return;
+      if (this.C.cube) return this.buildCube();
       const out = [];
       if (this.o.layout === "rows") {
         const nRows = Math.round(180 / s);
@@ -276,6 +350,29 @@ void main() {
       this.pos = new Float32Array(out);
       this.count = out.length / 3;
       this.level = s;
+      this.builtAt = performance.now();
+      this.uploadDots();
+    }
+    // buildCube lays a grid of cells on each face of the cube, each with what lies under it: x, y, z, kind
+    buildCube() {
+      const N = CUBE_N, P = new Float32Array(6 * N * N * 4), axes = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+      let k = 0;
+      for (const n of axes) {
+        const t1 = n[1] ? [1, 0, 0] : [0, 1, 0], t2 = [n[1] * t1[2] - n[2] * t1[1], n[2] * t1[0] - n[0] * t1[2], n[0] * t1[1] - n[1] * t1[0]];
+        for (let i = 0; i < N; i++) {
+          for (let j = 0; j < N; j++) {
+            const u = ((i + 0.5) / N) * 2 - 1, w = ((j + 0.5) / N) * 2 - 1;
+            const x = n[0] + t1[0] * u + t2[0] * w, y = n[1] + t1[1] * u + t2[1] * w, z = n[2] + t1[2] * u + t2[2] * w;
+            const l = Math.hypot(x, y, z), lat = Math.asin(y / l) / RAD, lon = Math.atan2(x, z) / RAD;
+            const land = this.isLand(lat, lon);
+            P[k++] = x / l; P[k++] = y / l; P[k++] = z / l;
+            P[k++] = land ? (Math.abs(lat) > 68 ? 2 : 1) : (Math.abs(lat) > 80 ? 2 : 0);
+          }
+        }
+      }
+      this.pos = P;
+      this.count = 6 * N * N;
+      this.level = null;
       this.builtAt = performance.now();
       this.uploadDots();
     }
@@ -417,15 +514,17 @@ void main() {
       this.dirty = true;
     }
     setColors() {
-      const c = this.o.colors() || {};
+      const c = this.o.colors() || {}, was = this.C && this.C.cube;
       this.C = {
         day: hexRGB(c.day, [0.86, 0.9, 0.95]), night: hexRGB(c.night, [0.42, 0.5, 0.6]), nightLum: c.nightLum ?? 0.42,
         rim: c.rim || "rgba(255,255,255,.12)", halo: c.halo || null, arc: hexRGB(c.arc, [0.55, 0.72, 0.95]),
         accent: hexRGB(c.accent, [0.55, 0.75, 1]), hub: c.hub || "#e8edf3", crit: hexRGB(c.crit, [0.9, 0.35, 0.33]),
         warn: hexRGB(c.warn, [0.95, 0.7, 0.2]), client: hexRGB(c.client, [0.95, 0.83, 0.62]), sphere: c.sphere || null,
         back: c.back ?? this.o.back, page: c.page || "#07090d", coast: hexRGB(c.coast || c.day, [0.86, 0.9, 0.95]),
-        coastA: c.coastA ?? 0.5, ink: c.ink || "#e6ebf1",
+        coastA: c.coastA ?? 0.5, ink: c.ink || "#e6ebf1", cube: c.shape === "cube",
+        water: hexRGB(c.water, [0.2, 0.36, 0.7]), ice: hexRGB(c.ice, [0.92, 0.95, 1]),
       };
+      if (was !== undefined && was !== this.C.cube && this.mask) this.buildDots(this.levelFor());
       this.kick(true);
     }
 
@@ -522,6 +621,17 @@ void main() {
           this.u[n] = gl.getUniformLocation(pr, n);
         }
         this.aPos = gl.getAttribLocation(pr, "aPos");
+        const cube = gl.createProgram();
+        gl.attachShader(cube, sh(gl.VERTEX_SHADER, CUBE_VS));
+        gl.attachShader(cube, sh(gl.FRAGMENT_SHADER, CUBE_FS));
+        gl.linkProgram(cube);
+        if (!gl.getProgramParameter(cube, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(cube));
+        this.prCube = cube;
+        this.uc = {};
+        for (const n of ["uRot", "uScale", "uCenter", "uCell", "uCubeS", "uIntro", "uNightLum", "uSun", "uWater", "uLand", "uIce"]) {
+          this.uc[n] = gl.getUniformLocation(cube, n);
+        }
+        this.aCube = gl.getAttribLocation(cube, "aPos");
         this.buf = gl.createBuffer();
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -543,7 +653,45 @@ void main() {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
       gl.bufferData(gl.ARRAY_BUFFER, this.pos, gl.STATIC_DRAW);
     }
+    drawCube(m) {
+      const gl = this.gl, C = this.C, cell = (2 * CUBE_S * this.R) / CUBE_N;
+      if (!gl) return this.drawCube2D(m, cell);
+      gl.viewport(0, 0, this.cv.width, this.cv.height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      if (!this.pos) return;
+      const u = this.uc;
+      gl.useProgram(this.prCube);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+      gl.enableVertexAttribArray(this.aCube);
+      gl.vertexAttribPointer(this.aCube, 4, gl.FLOAT, false, 0, 0);
+      gl.uniformMatrix3fv(u.uRot, false, [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]]);
+      gl.uniform2f(u.uScale, (2 * this.R) / this.W, (2 * this.R) / this.H);
+      gl.uniform2f(u.uCenter, (2 * this.cx) / this.W - 1, 1 - (2 * this.cy) / this.H);
+      gl.uniform1f(u.uCell, cell * this.glScale);
+      gl.uniform1f(u.uCubeS, CUBE_S);
+      gl.uniform1f(u.uIntro, this.introAt(performance.now()));
+      gl.uniform1f(u.uNightLum, C.nightLum);
+      gl.uniform3fv(u.uSun, this.sun);
+      gl.uniform3fv(u.uWater, C.water);
+      gl.uniform3fv(u.uLand, C.day);
+      gl.uniform3fv(u.uIce, C.ice);
+      gl.drawArrays(gl.POINTS, 0, this.count);
+    }
+    drawCube2D(m, cell) {
+      // no WebGL: a square for each cell on a face that shows
+      if (!this.pos) return;
+      const ctx = this.ctx, P = this.pos, C = this.C, R = this.R, s = cell + 1;
+      for (let i = 0; i < P.length; i += 4) {
+        const v = [P[i], P[i + 1], P[i + 2]], n = cubeFace(v);
+        if (m[6] * n[0] + m[7] * n[1] + m[8] * n[2] <= 0.01) continue;
+        const p = apply(m, cubePoint(v)), day = dot3(v, this.sun) > 0 ? 1 : C.nightLum;
+        ctx.fillStyle = rgba((P[i + 3] > 1.5 ? C.ice : P[i + 3] > 0.5 ? C.day : C.water).map((c) => c * day * (n[1] ? 1 : n[0] ? 0.8 : 0.64)), 1);
+        ctx.fillRect(this.cx + p[0] * R - s / 2, this.cy - p[1] * R - s / 2, s, s);
+      }
+    }
     drawDots(m) {
+      if (this.C.cube) return this.drawCube(m);
       const gl = this.gl, C = this.C;
       // a new spacing once the globe has settled at a new size (not on every frame of a zoom)
       if (this.mask && this.zoom === this.zoomTo && performance.now() - this.builtAt > 240) {
@@ -642,6 +790,10 @@ void main() {
       if (animating) this.raf = requestAnimationFrame(this.frame);
     }
     project(m, v) {
+      if (this.C.cube) {                                      // z: how far the point's face turns to the viewer
+        const p = apply(m, cubePoint(v)), n = cubeFace(v), z = m[6] * n[0] + m[7] * n[1] + m[8] * n[2];
+        return { x: this.cx + p[0] * this.R, y: this.cy - p[1] * this.R, z, r2: p[0] * p[0] + p[1] * p[1] };
+      }
       const p = apply(m, v);
       return { x: this.cx + p[0] * this.R, y: this.cy - p[1] * this.R, z: p[2], r2: p[0] * p[0] + p[1] * p[1] };
     }
@@ -650,8 +802,15 @@ void main() {
       const m = rotation(this.view.lat, this.view.lon);
       this.m = m;
       const ctx = this.ctx, C = this.C, R = this.R, cx = this.cx, cy = this.cy;
+      const mark = (x, y, r) => {                             // a pin's disc, square on a cube
+        ctx.beginPath();
+        if (C.cube) ctx.rect(x - r, y - r, 2 * r, 2 * r); else ctx.arc(x, y, r, 0, TAU);
+      };
       ctx.clearRect(0, 0, this.W, this.H);
       // sphere: optional faint fill, a hairline rim and a thin halo just outside it
+      if (C.cube) {
+        this.drawDots(m);
+      } else {
       if (C.sphere) { ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fillStyle = C.sphere; ctx.fill(); }
       if (C.halo) {
         const g = ctx.createRadialGradient(cx, cy, R * 0.985, cx, cy, R * 1.08);
@@ -662,6 +821,7 @@ void main() {
       this.drawDots(m);
       this.drawCoast(m, ts);
       ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.strokeStyle = C.rim; ctx.lineWidth = 1; ctx.stroke();
+      }
 
       const now = ts;
       const arcsIn = (i) => this.phase(ts, 650 + i * 170, 1000);
@@ -688,7 +848,7 @@ void main() {
           const t = ((now / 2800) + seed + k / n) % 1;
           this.strokeArc(m, c.arc, Math.max(0, t - 0.08), t, (vis) => rgba(C.client, 0.75 * vis), 1.6);
           const hp = this.arcPoint(m, c.arc, t);
-          if (hp.vis > 0) { ctx.beginPath(); ctx.arc(hp.x, hp.y, 1.8, 0, TAU); ctx.fillStyle = rgba(C.client, hp.vis); ctx.fill(); }
+          if (hp.vis > 0) { mark(hp.x, hp.y, 1.8); ctx.fillStyle = rgba(C.client, hp.vis); ctx.fill(); }
         }
       }
 
@@ -704,7 +864,7 @@ void main() {
           this.strokeArc(m, c.p.arc, s0, s1, (vis) => rgba(C.accent, 0.95 * fade * vis * ((k + 1) / 6)), 1.7);
         }
         const hp = this.arcPoint(m, c.p.arc, e);
-        if (hp.vis > 0) { ctx.beginPath(); ctx.arc(hp.x, hp.y, 2.3, 0, TAU); ctx.fillStyle = rgba(C.accent, fade * hp.vis); ctx.fill(); }
+        if (hp.vis > 0) { mark(hp.x, hp.y, 2.3); ctx.fillStyle = rgba(C.accent, fade * hp.vis); ctx.fill(); }
       }
 
       // pings
@@ -713,7 +873,7 @@ void main() {
         const q = this.project(m, g.p.v);
         if (q.z <= 0.02) continue;
         const t = (now - g.t0) / g.dur, r = 6 + g.amp * (1 - Math.pow(1 - t, 3));
-        ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, TAU);
+        mark(q.x, q.y, r);
         ctx.strokeStyle = rgba(C.accent, 0.6 * (1 - t) * smooth(0.02, 0.2, q.z)); ctx.lineWidth = 1.3; ctx.stroke();
       }
 
@@ -725,11 +885,11 @@ void main() {
         if (q.z > 0 && mk > 0) {
           const a = smooth(0, 0.2, q.z) * mk, s = 6 * (0.6 + 0.4 * mk);
           ctx.globalAlpha = a;
-          ctx.beginPath(); ctx.arc(q.x, q.y, 6, 0, TAU); ctx.fillStyle = C.page; ctx.fill();
+          mark(q.x, q.y, 6); ctx.fillStyle = C.page; ctx.fill();
           ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(Math.PI / 4);
           ctx.fillStyle = C.hub; ctx.fillRect(-s / 2, -s / 2, s, s);
           ctx.restore();
-          ctx.beginPath(); ctx.arc(q.x, q.y, 9.5, 0, TAU); ctx.strokeStyle = C.hub; ctx.globalAlpha = 0.4 * a; ctx.lineWidth = 1; ctx.stroke();
+          mark(q.x, q.y, 9.5); ctx.strokeStyle = C.hub; ctx.globalAlpha = 0.4 * a; ctx.lineWidth = 1; ctx.stroke();
           ctx.globalAlpha = 1;
         }
       }
@@ -750,16 +910,16 @@ void main() {
           const rg = (12 + 16 * k + (hot ? 6 : 0)) * pop;
           const gl = ctx.createRadialGradient(q.x, q.y, 0, q.x, q.y, rg);
           gl.addColorStop(0, rgba(col, (0.12 + 0.26 * k) * a)); gl.addColorStop(1, rgba(col, 0));
-          ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(q.x, q.y, rg, 0, TAU); ctx.fill();
+          ctx.fillStyle = gl; mark(q.x, q.y, rg); ctx.fill();
         }
         ctx.globalAlpha = a;
-        ctx.beginPath(); ctx.arc(q.x, q.y, 4.8 * pop, 0, TAU); ctx.fillStyle = C.page; ctx.fill();
+        mark(q.x, q.y, 4.8 * pop); ctx.fillStyle = C.page; ctx.fill();
         ctx.globalAlpha = 1;
-        ctx.beginPath(); ctx.arc(q.x, q.y, 2.7 * pop, 0, TAU);
+        mark(q.x, q.y, 2.7 * pop);
         if (p.state === "crit") { ctx.strokeStyle = rgba(col, a); ctx.lineWidth = 1.4; ctx.stroke(); }
         else { ctx.fillStyle = rgba(col, a); ctx.fill(); }
         ctx.setLineDash(p.approx ? [2.2, 2.2] : []);
-        ctx.beginPath(); ctx.arc(q.x, q.y, (hot ? 9 : 7.2) * pop, 0, TAU);
+        mark(q.x, q.y, (hot ? 9 : 7.2) * pop);
         ctx.strokeStyle = rgba(col, (hot ? 0.95 : 0.62) * a); ctx.lineWidth = 1.15; ctx.stroke();
         ctx.setLineDash([]);
         if (hot) {                                             // a fine cross marks the exact point
@@ -780,11 +940,11 @@ void main() {
         const r = 2.4 + Math.min(3.2, Math.sqrt(c.n || 1)) + (hot ? 1 : 0);
         const gl = ctx.createRadialGradient(q.x, q.y, 0, q.x, q.y, r * 4);
         gl.addColorStop(0, rgba(C.client, 0.24 * a)); gl.addColorStop(1, rgba(C.client, 0));
-        ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(q.x, q.y, r * 4, 0, TAU); ctx.fill();
+        ctx.fillStyle = gl; mark(q.x, q.y, r * 4); ctx.fill();
         ctx.globalAlpha = 0.85 * a;
-        ctx.beginPath(); ctx.arc(q.x, q.y, r + 1.6, 0, TAU); ctx.fillStyle = C.page; ctx.fill();
+        mark(q.x, q.y, r + 1.6); ctx.fillStyle = C.page; ctx.fill();
         ctx.globalAlpha = 1;
-        ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, TAU); ctx.fillStyle = rgba(C.client, a); ctx.fill();
+        mark(q.x, q.y, r); ctx.fillStyle = rgba(C.client, a); ctx.fill();
       }
       const leaders = this.placeLabels();
       ctx.lineWidth = 1;
@@ -829,7 +989,25 @@ void main() {
       // than running on past the rim into empty space
       return smooth(-0.02, 0.2, q.z / Math.max(1e-6, Math.hypot(v[0], v[1], v[2])));
     }
+    // on a cube a line is a stream of square particles that lift off it, drift along and shrink away
+    particles(m, arc, t0, t1, colorFor, width) {
+      const ctx = this.ctx, span = t1 - t0, count = Math.max(4, Math.round(span * 64));
+      const now = performance.now() / 1000;
+      for (let i = 0; i < count; i++) {
+        const seed = hash(i * 2654435 + arc.length);
+        const life = this.o.reduced ? seed : (now * (0.24 + 0.16 * seed) + seed * 7) % 1;
+        const p = this.arcPoint(m, arc, t0 + span * ((i + life) / count));
+        if (p.vis <= 0.02) continue;
+        const size = Math.max(2, Math.round((2 + 2.6 * seed) * (width / 1.25) * Math.sin(Math.PI * life)));
+        const x = Math.round(p.x + (hash(i + 9) - 0.5) * 6 - size / 2), y = Math.round(p.y - life * 8 - size / 2);
+        ctx.fillStyle = `rgba(0,0,0,${(0.5 * p.vis).toFixed(2)})`;
+        ctx.fillRect(x + 1, y + 1, size, size);
+        ctx.fillStyle = colorFor(p.vis * 2.6);
+        ctx.fillRect(x, y, size, size);
+      }
+    }
     strokeArc(m, arc, t0, t1, colorFor, width) {
+      if (this.C.cube) return this.particles(m, arc, t0, t1, colorFor, width);
       const ctx = this.ctx, n = arc.length - 1;
       const i0 = Math.floor(t0 * n), i1 = Math.ceil(t1 * n);
       let open = false, lastVis = -1;
@@ -922,7 +1100,10 @@ void main() {
           pick = { key: side + ":" + gap, x, y, box };
           break;
         }
-        if (!pick) { const [x, y] = at(pref[0], 13); pick = { key: pref[0] + ":13", x, y, box: null }; }
+        if (!pick) {                                       // nowhere free: at least stay on the stage
+          const [x, y] = at(pref[0], 13);
+          pick = { key: pref[0] + ":13", x: clamp(x, 3, Math.max(3, this.W - w - 3)), y: clamp(y, 2, Math.max(2, this.H - h - 2)), box: null };
+        }
         if (pick.box) placed.push(pick.box);
         it.side = pick.key;
         el.style.opacity = a.toFixed(2);
@@ -1077,5 +1258,7 @@ void main() {
     }
   }
   LSGlobe.sunVector = sunVector;
+  LSGlobe.cubePoint = cubePoint;
+  LSGlobe.cubeFace = cubeFace;
   window.LSGlobe = LSGlobe;
 })();

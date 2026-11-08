@@ -89,8 +89,72 @@ export const rsplit = (x: number): [string, string] => {
 export let C: Record<string, string> = {}
 let FONT = '11px system-ui, -apple-system, sans-serif'
 
+// Charts are drawn inside the panels, so their colours are the panels' (the same as the page's in
+// every look but Minecraft, whose panels are light windows on a dark page).
+export const blocky = () => typeof document !== 'undefined' && document.documentElement.dataset.theme === 'minecraft'
+
+const GROUND: Record<string, string> = { grass: '#6fbf45', gold: '#f7cf3d', dirt: '#8a5f3c', stone: '#8a8a8e' }
+
+// groundLine draws the live line in the Minecraft look: columns of blocks, as the days' bars are, from
+// the newest at the right edge; what is newest is capped with gold
+function groundLine(ctx: CanvasRenderingContext2D, xs: number[], ys: number[], right: number, base: number) {
+  const size = 7
+  const step = size + 1
+  let at = xs.length - 1
+  for (let x = right - size, first = true; x + size >= xs[0]; x -= step, first = false) {
+    const mid = x + size / 2
+    while (at > 0 && xs[at] > mid) at--
+    const n = Math.max(1, Math.round((base - ys[Math.min(ys.length - 1, at + (first ? 1 : 0))]) / step))
+    for (let k = 0; k < n; k++) {
+      const depth = n - 1 - k
+      const y = Math.round(base - (k + 1) * step + 1)
+      ctx.fillStyle = GROUND[depth === 0 ? (first ? 'gold' : 'grass') : depth < 4 ? 'dirt' : 'stone']
+      ctx.fillRect(Math.round(x), y, size, size)
+      ctx.fillStyle = 'rgba(0, 0, 0, .3)'
+      ctx.fillRect(Math.round(x), y + 5, size, 2)
+    }
+  }
+}
+
+// pixelColumns fills under a line in the Minecraft look: columns of small squares in the line's colour, the
+// top one solid and those beneath it fading, so a chart reads as stacked blocks
+export function pixelColumns(ctx: CanvasRenderingContext2D, xs: number[], ys: number[], base: number, color: string) {
+  const size = 5
+  const step = size + 1
+  let at = 0
+  for (let x = Math.ceil(xs[0]); x + size <= xs[xs.length - 1] + size; x += step) {
+    const mid = x + size / 2
+    while (at < xs.length - 2 && xs[at + 1] < mid) at++
+    const n = Math.max(1, Math.round((base - ys[at]) / step))
+    for (let k = 0; k < n; k++) {
+      ctx.fillStyle = rgba(color, k === n - 1 ? 1 : 0.2 + (0.42 * k) / n)
+      ctx.fillRect(x, Math.round(base - (k + 1) * step + 1), size, size)
+    }
+  }
+}
+
+// blockColumn draws a day's bar in the Minecraft look: square blocks stacked to its height, like the
+// ground in section - grass (gold for today), three of earth, then stone. Each block's lower edge is
+// shaded, and they land one after the other from the bottom when delay is not negative.
+function blockColumn(g: Element, x: number, size: number, base: number, height: number, today: boolean, delay: number) {
+  const step = size + 1
+  const n = Math.max(1, Math.round(height / step))
+  for (let k = 0; k < n; k++) {
+    const depth = n - 1 - k
+    const kind = depth === 0 ? (today ? 'gold' : 'grass') : depth < 4 ? 'dirt' : 'stone'
+    const y = base - (k + 1) * step + 1
+    const style = delay >= 0 ? `--d:${delay + k * 22}ms` : null
+    g.append(s('rect', { class: `mcb ${kind}`, x, y, width: size, height: size, style }))
+    g.append(s('rect', { class: 'mcb edge', x, y: y + size * 0.72, width: size, height: size * 0.28, style }))
+  }
+}
+
+export function tokenSource(): Element {
+  return document.querySelector('.panel-d') || document.documentElement
+}
+
 export function readColors() {
-  const cs = getComputedStyle(document.documentElement)
+  const cs = getComputedStyle(document.querySelector('#pFlow') || tokenSource())
   const g = (n: string) => cs.getPropertyValue(n).trim()
   C = { accent: g('--accent'), grid: g('--grid'), baseline: g('--baseline'), ink2: g('--ink-2'), ink3: g('--ink-3'), surface: g('--surface') || g('--page'), page: g('--page') }
   FONT = `11px ${getComputedStyle(document.body).fontFamily}`
@@ -196,6 +260,14 @@ export function tangents(xs: number[], ys: number[]) {
 
 export function monoPath(path: Path2D, xs: number[], ys: number[], t: number[]) {
   path.moveTo(xs[0], ys[0])
+  if (blocky()) {
+    // the look of blocks has no curves: the line climbs in steps
+    for (let i = 0; i < xs.length - 1; i++) {
+      path.lineTo(xs[i + 1], ys[i])
+      path.lineTo(xs[i + 1], ys[i + 1])
+    }
+    return
+  }
   for (let i = 0; i < xs.length - 1; i++) {
     const d = (xs[i + 1] - xs[i]) / 3
     path.bezierCurveTo(xs[i] + d, ys[i] + t[i] * d, xs[i + 1] - d, ys[i + 1] - t[i + 1] * d, xs[i + 1], ys[i + 1])
@@ -415,25 +487,29 @@ export class FlowChart implements Drawable {
       ctx.beginPath()
       ctx.rect(x0, 0, x1 - x0 + 1, H)
       ctx.clip()
-      const area = new Path2D(line)
-      area.lineTo(xs[xs.length - 1], y1)
-      area.lineTo(xs[0], y1)
-      area.closePath()
-      const g = ctx.createLinearGradient(0, y0, 0, y1)
-      g.addColorStop(0, rgba(C.accent, this.o.fill))
-      g.addColorStop(1, rgba(C.accent, 0))
-      ctx.fillStyle = g
-      ctx.fill(area)
-      ctx.strokeStyle = C.accent
-      ctx.lineWidth = this.o.line
-      ctx.lineJoin = 'round'
-      ctx.lineCap = 'round'
-      ctx.stroke(line)
+      if (blocky()) {
+        groundLine(ctx, xs, ys, Math.min(x1, xs[xs.length - 1]), y1)
+      } else {
+        const area = new Path2D(line)
+        area.lineTo(xs[xs.length - 1], y1)
+        area.lineTo(xs[0], y1)
+        area.closePath()
+        const g = ctx.createLinearGradient(0, y0, 0, y1)
+        g.addColorStop(0, rgba(C.accent, this.o.fill))
+        g.addColorStop(1, rgba(C.accent, 0))
+        ctx.fillStyle = g
+        ctx.fill(area)
+        ctx.strokeStyle = C.accent
+        ctx.lineWidth = this.o.line
+        ctx.lineJoin = 'round'
+        ctx.lineCap = 'round'
+        ctx.stroke(line)
+      }
       ctx.restore()
 
       const hx = Math.min(x1, xs[xs.length - 1])
       const hy = monoAt(xs, ys, t, hx)
-      if (this.o.headR) this.dot(hx, hy, this.o.headR)
+      if (this.o.headR && !blocky()) this.dot(hx, hy, this.o.headR)
 
       if (this.px != null && this.px >= x0 && this.px <= x1) {
         let best = -1
@@ -570,6 +646,8 @@ export function dailyBars(host: HTMLElement, o: BarOpts) {
           }),
         )
       })
+    } else if (hgt && blocky()) {
+      blockColumn(g, x, bw, Y(0), hgt, i === vals.length - 1, anim ? i * 16 : -1)
     } else if (hgt) {
       g.append(
         s('path', {

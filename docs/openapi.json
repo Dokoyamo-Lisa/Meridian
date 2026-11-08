@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Rosélune API",
-    "version": "1.4.7",
+    "version": "1.4.8",
     "description": "Everything the web panel does, as JSON over HTTP. Authenticate with an API token (Authorization: Bearer mrd_...) or the supervisor's browser session. Users who sign in to their own page reach only the User page operations. Errors are {\"error\": \"...\"} with a 4xx/5xx status."
   },
   "tags": [
@@ -14121,11 +14121,11 @@
             "type": "integer"
           },
           "default_tone": {
-            "description": "The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, time - or auto: Ice, or Paper on a device set to light",
+            "description": "The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, time, minecraft - or auto: Ice, or Paper on a device set to light",
             "type": "string"
           },
           "logo_mark": {
-            "description": "The built-in logo, shown while no logo is uploaded: rose (Rosélune's own, the default) | umbrella | confetti",
+            "description": "The built-in logo, shown while no logo is uploaded: rose (Rosélune's own, the default) | umbrella | confetti | pixel",
             "type": "string"
           },
           "logo_animation": {
@@ -14158,7 +14158,7 @@
             "type": "string"
           },
           "mark": {
-            "description": "The built-in logo, shown while none is uploaded: rose | umbrella | confetti",
+            "description": "The built-in logo, shown while none is uploaded: rose | umbrella | confetti | pixel",
             "type": "string"
           },
           "animation": {
