@@ -57,24 +57,9 @@ func (c *nonceCache) add(server int64, nonce string, ts int64) bool {
 
 // agentAuth verifies a signed agent request and returns the server and its keys.
 func (p *Panel) agentAuth(r *http.Request, body []byte) (*Server, *seal.Keys, error) {
-	id, err := strconv.ParseInt(r.Header.Get(seal.HeaderServer), 10, 64)
+	srv, id, ts, nonce, err := p.agentHead(r)
 	if err != nil {
-		return nil, nil, errors.New("missing server id")
-	}
-	ts, err := strconv.ParseInt(r.Header.Get(seal.HeaderTime), 10, 64)
-	if err != nil {
-		return nil, nil, errors.New("missing time")
-	}
-	if d := now() - ts; d > seal.MaxSkew || d < -seal.MaxSkew {
-		return nil, nil, fmt.Errorf("clock skew of %ds - fix the server's time (NTP)", d)
-	}
-	nonce := r.Header.Get(seal.HeaderNonce)
-	if len(nonce) < 8 {
-		return nil, nil, errors.New("missing nonce")
-	}
-	srv, err := p.serverByID(r.Context(), id)
-	if err != nil {
-		return nil, nil, errors.New("unknown server")
+		return nil, nil, err
 	}
 	keys, err := seal.Derive(srv.Secret)
 	if err != nil {
@@ -90,6 +75,31 @@ func (p *Panel) agentAuth(r *http.Request, body []byte) (*Server, *seal.Keys, er
 		p.adoptPassSecret(r.Context(), srv)
 	}
 	return srv, keys, nil
+}
+
+// agentHead checks what an agent's request says before its body is read: the server it names exists,
+// its clock is close and it brings a nonce. The signature (over the body too) is agentAuth's.
+func (p *Panel) agentHead(r *http.Request) (srv *Server, id, ts int64, nonce string, err error) {
+	id, err = strconv.ParseInt(r.Header.Get(seal.HeaderServer), 10, 64)
+	if err != nil {
+		return nil, 0, 0, "", errors.New("missing server id")
+	}
+	ts, err = strconv.ParseInt(r.Header.Get(seal.HeaderTime), 10, 64)
+	if err != nil {
+		return nil, 0, 0, "", errors.New("missing time")
+	}
+	if d := now() - ts; d > seal.MaxSkew || d < -seal.MaxSkew {
+		return nil, 0, 0, "", fmt.Errorf("clock skew of %ds - fix the server's time (NTP)", d)
+	}
+	nonce = r.Header.Get(seal.HeaderNonce)
+	if len(nonce) < 8 {
+		return nil, 0, 0, "", errors.New("missing nonce")
+	}
+	srv, err = p.serverByID(r.Context(), id)
+	if err != nil {
+		return nil, 0, 0, "", errors.New("unknown server")
+	}
+	return srv, id, ts, nonce, nil
 }
 
 // adoptPassSecret: the agent of a server whose token was rotated is back with the new one, so its
@@ -163,9 +173,15 @@ func (p *Panel) handleAgentState(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------- report
 
 func (p *Panel) handleAgentReport(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<20))
+	// the body is signed, so who sent it is known only once it is read: before that, the request must
+	// name a server, with a close clock, and its body must fit what may be read at once (reportgate.go)
+	if _, _, _, _, err := p.agentHead(r); err != nil {
+		agentDeny(w, err)
+		return
+	}
+	body, err := p.reports.read(w, r, p.clientIP(r))
 	if err != nil {
-		http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
+		writeErr(w, err)
 		return
 	}
 	srv, keys, err := p.agentAuth(r, body)

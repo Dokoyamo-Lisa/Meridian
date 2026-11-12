@@ -1,6 +1,23 @@
 # Meridian status
 
-Last updated 2026-11-08 (version 1.5.0).
+Last updated 2026-11-12 (version 1.5.1).
+
+## Tested for 1.5.1 (the console, and reports read before their signature)
+
+- **The console with a real agent** (a local panel, agent 1.5.0 in a Lima VM): before the fix every
+  console closed 8-10 seconds after it opened (the timeline showed "closed the console after 10s");
+  after it, a console stayed open over 90 seconds with idle stretches, ran commands, took Ctrl-C (a key
+  event with its key code), ran top full screen and followed the window to full screen. A test checks
+  that a lifted idle limit no longer ends a WebSocket read (it fails on the old code).
+- **Fake reports against a local panel**: before the fix 8 unauthenticated 32 MB reports raised its
+  memory from 38 to 297 MB, growing with each one. After it, reports without valid headers are refused
+  unread (memory flat at 40 MB), and 40 with a real server's id and a fresh time left it around 250 MB,
+  no longer growing with their number. Tests check that a report from nobody known is not read and that
+  the gate's limits hold.
+- **A look for other holes** (anonymous calls to every route, read-only tokens on every GET, path
+  traversal on the file routes, SQL built from strings, HTML from data in the UI, the logo's SVG, the
+  Telegram sign-in, plugins' API calls, agents' action results): nothing else found.
+- **Not run**: the PostgreSQL suite; an upgrade on a real panel.
 
 ## Tested for 1.5.0 (the live view, fixed)
 
