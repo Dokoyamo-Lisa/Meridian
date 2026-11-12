@@ -187,6 +187,9 @@ without the supervisor's informed yes, and that a plugin cannot stall the panel 
 - Each server has its own 256-bit secret. Signing and encryption keys are derived from it with HKDF.
 - Every agent request is signed with HMAC-SHA256 over method, path, time, a random nonce and the body
   hash; the panel refuses requests older than five minutes and any nonce it has seen.
+- A report sent over HTTP is read only after its headers name a known server with a close clock, and
+  report bodies being read before their signature is checked are bounded: 128 MB at once in all, two
+  at a time from one address. Reports over the agent's WebSocket are checked before anything is read.
 - Every reply is encrypted with AES-256-GCM and bound to the path and the request's nonce, so a
   recorded reply cannot be replayed to a later request. This holds over plain HTTP.
 - Agents verify what they run:

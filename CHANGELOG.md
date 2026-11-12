@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.5.1 - 2026-11-12
+
+Two fixes, one of them for security. Upgrade the panel (**Settings › Updates** - nobody is
+disconnected); the agents need nothing.
+
+- **The console works again.** It closed about ten seconds after it opened, whatever was typed: the
+  time limit for the browser's first message stayed on the connection after it was meant to be lifted.
+  Consoles now stay open until the shell ends, the window is closed or nothing is typed for 30 minutes.
+- **Security: fake agent reports can no longer fill the panel's memory.** A report sent over HTTP was
+  read whole (up to 32 MB) before its signature was checked, so anyone could send many at once and
+  make the panel run out of memory. A report is now read only once its headers name a known server
+  with a close clock, and all report bodies read before their signature is checked take at most
+  128 MB, two at a time from one address. Agents report over their WebSocket in any case, which is
+  checked before anything is read.
+- **Security: built with Go 1.27.4,** which fixes an HTTP/1 server crash in the standard library
+  (GO-2026-6859).
+
 ## 1.5.0 - 2026-11-08
 
 The live view, fixed. Upgrade the panel (**Settings › Updates** - nobody is disconnected); the agents

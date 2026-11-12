@@ -271,3 +271,33 @@ func TestCloseAndIdle(t *testing.T) {
 		t.Errorf("a quiet connection: %v after %v", err, time.Since(start))
 	}
 }
+
+// An idle limit that is lifted (SetIdle(0)) no longer ends the connection: the console reads its
+// ticket under a limit, then waits for keys for as long as it takes.
+func TestIdleLifted(t *testing.T) {
+	got := make(chan error, 1)
+	s := server(t, 1<<10, func(c *Conn) {
+		c.SetIdle(150 * time.Millisecond)
+		if _, err := c.Read(); err != nil { // the first message, under the limit
+			got <- err
+			return
+		}
+		c.SetIdle(0)
+		_, err := c.Read() // the next one comes long after the old limit
+		got <- err
+	})
+	c, _, err := dial(t, s, "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Write([]byte("ticket")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(500 * time.Millisecond)
+	if err := c.Write([]byte("a key")); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-got; err != nil {
+		t.Fatalf("the lifted limit still ended the read: %v", err)
+	}
+}

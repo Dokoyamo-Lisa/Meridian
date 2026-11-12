@@ -140,8 +140,14 @@ func Client(nc net.Conn, req *http.Request, max int64) (*Conn, *http.Response, e
 }
 
 // SetIdle has Read end with a timeout when nothing at all - not even a ping or a pong - arrives for
-// d (0: wait for ever).
-func (c *Conn) SetIdle(d time.Duration) { c.idle = d }
+// d (0: wait for ever). Going to 0 also lifts the limit the last read set, which would otherwise still
+// end the connection (it cut every console off ten seconds after it opened).
+func (c *Conn) SetIdle(d time.Duration) {
+	c.idle = d
+	if d <= 0 {
+		_ = c.nc.SetReadDeadline(time.Time{})
+	}
+}
 
 // RemoteAddr is the other end of the connection.
 func (c *Conn) RemoteAddr() net.Addr { return c.nc.RemoteAddr() }

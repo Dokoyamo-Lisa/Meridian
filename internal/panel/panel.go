@@ -50,6 +50,7 @@ type Panel struct {
 	upd      *updater   // installing a new release
 	geoMu    sync.Mutex // the country rules last sent (rememberGeo)
 	nonces   *nonceCache
+	reports  reportGate // how much report body is read at once, before its sender is known (reportgate.go)
 	mirrorMu sync.Mutex
 	mux      *http.ServeMux // the routes, for MCP tools that call the API in-process
 	routes   []string       // registered patterns (tests check them against the API docs)
