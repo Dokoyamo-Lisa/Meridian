@@ -105,10 +105,12 @@ as it restarted) is settled as soon as the agent says it runs the new version; *
 agents** replaces an upgrade that still waits with binaries the panel no longer has, and says which
 servers it left out and why (an upgrade already under way, or waiting for an offline server).
 
-**Cores (Xray, Hysteria, realm)** - set the versions in **Settings › Cores**. Running servers keep
-their version until you choose **More actions › Upgrade Xray**, **Upgrade Hysteria** or **Upgrade
-realm** on a server (that core restarts once; Xray's configuration is tested with the new version
-first, and Xray is rolled back if it does not stay up). New servers install the configured versions.
+**Cores (Xray, Hysteria, realm, mieru, Snell, AnyTLS)** - set the versions in **Settings › Cores**.
+Running servers keep their version until you choose **More actions › Upgrade Xray**, **Upgrade
+Hysteria**, **Upgrade realm** or **Upgrade mieru, Snell, AnyTLS** on a server (that core restarts once;
+Xray's configuration is tested with the new version first, and Xray is rolled back if it does not stay
+up; of the users' own servers only the programs whose version changes restart, each user's process once
+- agent 1.5.3 and later). New servers install the configured versions.
 A core whose download fails holds back only its own changes; everything else still applies.
 
 ## Notifications

@@ -245,11 +245,44 @@ A protocol on an entry server can send its traffic out through a protocol on ano
 exit). The panel gives the entry server an extra Xray outbound to the exit - authenticated with a
 service credential derived from the entry server's secret - and a routing rule that sends the entry
 protocol's traffic to it; the exit server simply gets one more user. Both are applied live. The exit
-may itself pass on once more (a relay): the relay's server routes everything arriving on that
+may itself pass on (a relay), and so on: the relay's server routes everything arriving on that
 protocol - its entries' pass users included - to its own exit, where it arrives as the relay's pass
-user, so each server only knows its neighbours. A chain has two passes at most, every hop goes to
-another server and none comes back to a server it passed (`checkPass` refuses it; `passExit` blocks a
-chain stored otherwise, and the relay then drops the entry's pass user).
+user, so each server only knows its neighbours. A chain may be as long as there are servers: every hop goes to another server and none comes back
+to a server it passed (`checkPass` refuses it, counting what passes in - by main lines and backups -
+as well as out; `passExit` walks the whole chain - `walkPasses` - and blocks one stored otherwise, and
+the relay then drops the entry's pass user).
+
+### DrawBridge
+
+The Protocols page draws the passes as a route graph and edits them (`web/src/pages/DrawBridge.tsx`):
+servers are columns of a map from where users connect to where traffic leaves, each pass an arrow,
+each backup a dashed one with its rank; nodes can be dragged on the picture (kept in the browser), and
+a right click on a node, a strand or a line of the Lines list (which shows each line's backups under
+it) opens what can be done there. Lines and backup routes are drawn and changed in one route editor
+(`web/src/pages/BridgeEditor.tsx`): a strip of hops that can be dragged into another order, taken off
+or given another protocol, and a peering chart of every server - a hub per country, servers on buses,
+each opening its protocols (free ones, ones in other lines the route's last server may follow, or a
+new one from a preset or a template) - for the next hop. Applying sets the passes from the far end
+back through the protocols' own API, so each step leaves working passes, then removes what nothing
+uses any more: protocols that serve only passes, with no pass, backup, traffic rule or load balancer
+pointing at them. Taking a hop out joins what passed to it to what it passed to; its own users, if
+any, keep their way. A protocol's settings (`drawbridge.go`):
+
+- `pass_ip`: the IP version its pass reaches the next server with - the next server's address of
+  that version, and the outbound's `sockopt.domainStrategy` for a name;
+- `out_ip`, `out_addr`: the IP version and the address (one of the server's `addrs`) its traffic
+  reaches sites with, which chains ending there follow too (the `bind-n<id>` outbound);
+- `pass_backups`: backup exits in their order, -1 last to leave directly from the entry's server.
+  While two or more lines can be used, each is an outbound `lbp<id>.<k>` Xray's checks cover
+  (`observatory`, as for load balancers - one restart the first time, shown as pending), and stage
+  `fb-n<id>-<k>` is a fastest-first balancer over line k alone whose fallback is the last line or a
+  `loopback` outbound into `fbin-n<id>-<k+1>`, whose rule (first of all) sends it to the next stage.
+  So the first line that answers carries the traffic, and it goes back as soon as an earlier one
+  answers again. Every exit a protocol can reach - main or backup - takes its pass user.
+
+Choices are preferred (`UseIPv4v6`, `UseIPv6v4`) or the only one (`ForceIPv4`, `ForceIPv6`); what
+cannot work - a version a server lacks, an address it does not have, `out_ip` on a protocol that is
+not Xray's - is refused.
 
 ## External nodes and traffic rules
 

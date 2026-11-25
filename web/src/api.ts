@@ -139,6 +139,8 @@ export interface AppSupport {
   why?: string
 }
 
+export type IPChoice = '' | 'prefer-v4' | 'prefer-v6' | 'v4' | 'v6'
+
 export interface NodeView {
   id: number
   server_id: number
@@ -156,6 +158,14 @@ export interface NodeView {
   blocked_sites: string[]
   /** The server address this protocol has to itself ('' = all of them). */
   bind_ip: string
+  /** DrawBridge: the IP version its proxy pass reaches the next server with ('' = as the servers allow). */
+  pass_ip: IPChoice
+  /** DrawBridge: the IP version its traffic reaches sites with ('' = as the server does). Xray protocols only. */
+  out_ip: IPChoice
+  /** DrawBridge: backup exits of its proxy pass, first choice first (-1 = leave directly from here, last only). */
+  pass_backups: number[]
+  /** DrawBridge: the server address its traffic leaves for sites from ('' = as the server does). */
+  out_addr: string
   /** Advanced settings: Xray JSON or Hysteria2 YAML, merged on top of the generated configuration and taking precedence. */
   code: string
   sort: number
@@ -348,6 +358,8 @@ export interface Server {
     prepare?: boolean
     /** Installs its cores again on request (1.4 and later). */
     reinstall?: boolean
+    /** mieru, Snell and AnyTLS upgrade on request (agent 1.5.3 and later) */
+    upgrade_solo?: boolean
     /** Runs the security mode (1.4 and later). */
     guard?: boolean
     /** Runs the supervisor's setup script (1.4 and later). */
@@ -665,7 +677,7 @@ export interface Settings {
   /** The built-in logo, shown while none is uploaded: rose (Rosélune's own) or umbrella. */
   logo_mark: string
   logo_animation: string
-  /** The look pages open with for people who have not picked one: romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, time, minecraft - or auto (Ice, or Paper on light devices). */
+  /** The look pages open with for people who have not picked one: romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, time, minecraft, stranding - or auto (Ice, or Paper on light devices). */
   default_tone: string
   agent_port: number
   auto_update: boolean

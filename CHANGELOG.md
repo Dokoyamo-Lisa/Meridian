@@ -1,5 +1,85 @@
 # Changelog
 
+## 1.5.3 - 2026-11-25
+
+DrawBridge - lines of servers with backup routes - new ways to find servers and users among many, and
+the cores of November 2026, two of them with security fixes. Upgrade the panel (**Settings › Updates** -
+nobody is disconnected); agents follow by themselves. Then upgrade Xray on each server (its page ›
+More actions, or at night with automatic core upgrades): it restarts once.
+
+- **Security: Xray 26.11.9.** Xray 26.10.21 dropped three root certificates whose private keys were
+  broken, and 26.10.31 turned MPTCP off, which a Linux kernel flaw made a way in (update the servers'
+  kernels too). A panel whose Xray version in Settings is older than 26.10.31 moves to 26.11.9 by
+  itself; servers upgrade only on a click, as always. New servers also get Hysteria 2.14.0, mieru
+  3.40.0 (it fixes a way around its private-address check - Rosélune's own firewall rule for users'
+  servers already closed it) and sing-box 1.14.4.
+- **Upgrade mieru, Snell and AnyTLS on running servers** (the server's page › More actions, or
+  `upgrade_solo` in the API and MCP): they switch to the versions in Settings, and each user's own
+  server of a program that changes restarts once - its users reconnect by themselves. Needs agent
+  1.5.3.
+- **Security: golang.org/x/net 0.62.0 and golang.org/x/crypto 0.59.0** (GO-2026-6866, GO-2026-6860,
+  GO-2026-5932). Rosélune did not call the affected code; the libraries are updated all the same.
+- **The real addresses of users behind Cloudflare.** Xray 26.10 and later ignore X-Forwarded-For
+  unless told whom to trust, so behind the CDN every user looked like Cloudflare: Monitor showed its
+  addresses and IP limits counted them. CDN protocols now trust Cloudflare's CF-Connecting-IP (it
+  takes effect live).
+- **Loon: mieru, Snell, XHTTP and VLESS Encryption.** Loon's subscriptions now carry mieru (over TCP),
+  Snell, VMess, VLESS and Trojan over XHTTP, and VLESS Encryption, in the lines Loon's manual writes -
+  the newest of them reached Loon's TestFlight builds first.
+- **Hysteria 2.14's new rule syntax** (acl.rules, acl.rulesFile) in a protocol's own configuration is
+  refused with a reason, as acl.file was: the private-address rules cannot be put in front of it.
+  Write the rules under acl.inline.
+- **Fixed: a protocol with backup routes could not be changed in its form** (leaving directly, or
+  making a backup the main exit, answered with an error). The backups now follow: leaving directly
+  takes them along, and a backup made the main exit leaves the list.
+- **Fixed: a backup route could lead back to a server before it** in the line (A to B, then by B's
+  backup to C and back to A). Such a pass is now refused, backups included.
+
+- **DrawBridge: chains of servers.** On the Protocols page, draw a line: choose the servers traffic
+  should cross, in order, on a chart of all of them, pick a protocol on each (or have one made from a
+  preset), and lower the bridge. Each hop can prefer IPv4 or IPv6, or use only one, to reach the next
+  server, and the last server can do the same to reach sites. Applied live; raising a bridge takes its
+  first pass away.
+- **Backup lines.** Any hop can have backup exits in order of priority - ending at the same exit or
+  another, or as a last resort leaving directly. Xray checks every line each minute and traffic takes
+  the first that answers, going back as soon as the main line does (one Xray restart the first time,
+  on your click).
+- **Proxy pass chains have no length limit** (two passes at most before). Every hop still goes to
+  another server, and a chain never comes back to one it crossed.
+- **Choose the address traffic leaves from** on a server with several.
+- **DrawBridge's route map.** The passes between your servers are drawn as a route graph - from where
+  users connect to the Internet, backups dashed and ranked. Point at a server to light its lines, choose
+  it to set its backups, IP versions and the address it leaves from, drag it to arrange the picture.
+  Right-click a server, a strand or a line for what can be done there: edit the line or a backup
+  route, add a backup, make a backup the main line or change its place, take a server out, stop
+  passing on, delete - each asking first.
+- **One editor for lines and backup routes.** Choose servers on a chart of all of them (grouped by
+  country, with search and filters), open one to see its protocols, and pick one, have the panel make
+  a new one, or write your own from a template. A backup route can cross as many servers as a line;
+  hops can be dragged into another order, taken off or given another protocol, and every protocol on
+  the route can be named there - the one users connect to with the name their apps show. What a
+  change leaves unused - protocols made only for chains - is removed. The Lines list shows every
+  backup under its line.
+- **A Modern layout for the Protocols page** (Classic stays the default): one row per server with its
+  protocols as compact chips, numbers that filter, and the route map folded above - made for many
+  servers and long chains.
+- **The drawbridge as a built-in logo** (**Settings › Panel › Logo**), drawn like DrawBridge's own mark.
+- **Servers: an Explorer layout** (Classic stays the default). Numbers on top that filter (offline,
+  waiting, need a look, older agent, data nearly used, ending soon), countries as chips, protocol
+  filters, a search that also takes keys (`cc:jp`, `status:offline`, `kind:vless`, `is:v6`, `is:nat`),
+  groups by country, status or agent version, and nine orders. The page's link keeps the view.
+- **Monitor › Live: Sessions.** Everyone online drawn as sessions between users and servers, the
+  busiest first, each strand as thick as what it carries now. Type part of a name, an address, a place
+  or a network to find someone among many (Enter opens them); a user's card has their speed over the
+  last minutes, each server and protocol, and each address with where it is. The list is one click
+  away.
+- **The Stranding map stays readable with many servers.** Points of neighbouring countries move apart
+  instead of covering each other, and every name finds a free place around its point - further out
+  with a line to it when needed, the name alone where there is little room, and only on pointing where
+  there is none. Names stay where they are as the numbers update.
+- **The Stranding look in the panel.** The panel can now wear the Stranding look too (the palette
+  button, or as the site's default in **Settings**).
+
 ## 1.5.1 - 2026-11-12
 
 Two fixes, one of them for security. Upgrade the panel (**Settings › Updates** - nobody is

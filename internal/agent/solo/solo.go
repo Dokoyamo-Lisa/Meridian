@@ -643,7 +643,62 @@ func (e *Engine) RestartAll() (int, error) {
 	return e.restart(true)
 }
 
+// Upgrade switches each program the users' servers run here to the version in c, where it is not
+// that one already, and restarts the processes of those programs: their users' devices reconnect by
+// themselves. It says what changed ("mita 3.38.0 -> 3.40.0") and how many processes restarted.
+func (e *Engine) Upgrade(ctx context.Context, c proto.Cores) ([]string, int, error) {
+	if e == nil {
+		return nil, 0, nil
+	}
+	want := map[string]string{"mieru": c.Mita, "snell": c.Snell, "anytls": c.SingBox}
+	used := map[string]bool{}
+	e.mu.Lock()
+	for _, i := range e.running {
+		used[i.Kind] = true
+	}
+	e.mu.Unlock()
+	var changed []string
+	kinds := map[string]bool{}
+	var errs []string
+	for _, kind := range []string{"mieru", "snell", "anytls"} {
+		name, v := programs[kind], strings.TrimPrefix(want[kind], "v")
+		if !used[kind] || v == "" {
+			continue // nothing runs it here: the next start takes the version anyway
+		}
+		prev := cores.Current(e.Base, name)
+		if prev == v {
+			continue
+		}
+		if _, err := cores.Upgrade(ctx, e.Base, name, v, c.Mirror); err != nil {
+			errs = append(errs, fmt.Sprintf("%s %s: %v", name, v, err))
+			continue
+		}
+		changed = append(changed, fmt.Sprintf("%s %s -> %s", name, nzs(prev, "none"), v))
+		kinds[kind] = true
+	}
+	n, err := e.restartWhere(func(i Inst) bool { return kinds[i.Kind] })
+	if err != nil {
+		errs = append(errs, err.Error())
+	}
+	if len(errs) > 0 {
+		return changed, n, errors.New(strings.Join(errs, "; "))
+	}
+	return changed, n, nil
+}
+
+func nzs(s, alt string) string {
+	if s == "" {
+		return alt
+	}
+	return s
+}
+
 func (e *Engine) restart(all bool) (int, error) {
+	return e.restartWhere(func(i Inst) bool { return all || !i.Limited || i.Waits })
+}
+
+// restartWhere restarts the users' processes pick says yes to, each with the account.
+func (e *Engine) restartWhere(pick func(Inst) bool) (int, error) {
 	if e == nil {
 		return 0, nil
 	}
@@ -653,7 +708,7 @@ func (e *Engine) restart(all bool) (int, error) {
 	var errs []string
 	done := 0
 	for key, i := range e.running {
-		if !e.defined[i.Kind] || (i.Limited && !i.Waits && !all) {
+		if !e.defined[i.Kind] || !pick(i) {
 			continue // a template this agent has not written yet (with the account) would start it as root
 		}
 		if err := service.Restart(i.unit()); err != nil {

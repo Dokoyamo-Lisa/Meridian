@@ -1,0 +1,81 @@
+/* ------------------------------------------------------------------ Stranding (the panel)
+   The status page's Stranding look carried into the panel: one of two pictures behind everything (a green
+   valley, or a shore under Timefall with rain; strandingworld.ts) under a dark veil, and over it dark glass,
+   thin wide-set capitals, hairlines and one deep blue. Corners are nearly square; light is a soft blue glow,
+   never gold. Text keeps 4.5:1 on the glass, the faintest 3:1. */
+:root[data-theme="stranding"] {
+  color-scheme: dark;
+  --page: #070b12;
+  --surface: rgba(10, 17, 30, .86);
+  --raised: rgba(18, 28, 46, .9);
+  --hover: rgba(143, 184, 255, .07);
+  --line: rgba(150, 185, 240, .15);
+  --line-2: rgba(150, 185, 240, .32);
+  --ink: #eef3fb;
+  --ink-2: #c6d2e4;
+  --ink-3: #9aaac0;
+  --ink-4: #7a8aa2;
+  --accent: #3a74dc;
+  --accent-ink: #8fb8ff;
+  --accent-soft: rgba(58, 116, 220, .2);
+  --on-accent: #ffffff;
+  --grid: rgba(150, 185, 240, .07);
+  --baseline: rgba(150, 185, 240, .26);
+  --good: #7fd1a8;
+  --warn: #f3c48d;
+  --crit: #ef9a8e;
+  --good-soft: rgba(127, 209, 168, .13);
+  --warn-soft: rgba(243, 196, 141, .14);
+  --crit-soft: rgba(239, 154, 142, .15);
+  --scrim: rgba(2, 5, 10, .72);
+  --shadow-pop: 0 40px 90px -30px rgba(0, 0, 0, .9), 0 0 0 1px rgba(150, 185, 240, .24);
+  --pool: transparent;
+  --g-day: #8fa3bf;
+  --g-night: #142238;
+  --g-night-lum: .5;
+  --g-rim: rgba(150, 185, 240, .16);
+  --g-halo: rgba(58, 116, 220, .08);
+  --g-arc: #3a74dc;
+  --g-accent: #8fb8ff;
+  --g-hub: #ffffff;
+  --g-client: #7fd1a8;
+  --g-back: .03;
+  --font-d: var(--font);
+  --num-weight: 200;
+  --sd-glow: 0 0 10px rgba(80, 140, 255, .8), 0 0 2px rgba(200, 225, 255, .9);
+  --c1: #3a74dc; --c2: #8ec3c0; --c3: #a9b8c9; --c4: #c79a8a; --c5: #b9a7cf; --c6: #8fa59a; --c7: #d9c7a4; --c8: #7f8784;
+  scrollbar-color: rgba(150, 185, 240, .3) transparent;
+  caret-color: var(--accent-ink);
+}
+:root[data-theme="stranding"] ::selection { background: rgba(58, 116, 220, .55); color: #fff; }
+:root[data-theme="stranding"] body::before { background: none; }
+
+/* the world behind: a picture covering the window, the rain over it, a veil over both */
+.sd-world { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; background: #0b0f16; }
+.sd-world .sd-land, .sd-world canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.sd-world .sd-pic { position: absolute; background: center / 100% 100% no-repeat; }
+.sd-world .sd-pic-timefall { opacity: 0; }
+.sd-world::after { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(4, 8, 14, .5), rgba(4, 8, 14, .66) 40%, rgba(4, 8, 14, .74)); }
+
+/* the top bar: glass that fades into the picture */
+:root[data-theme="stranding"] .top { background: linear-gradient(rgba(4, 8, 14, .82) 60%, rgba(4, 8, 14, 0)); }
+:root[data-theme="stranding"] .brand { font-weight: 300; letter-spacing: .5em; }
+:root[data-theme="stranding"] .nav a { font-size: 11px; letter-spacing: .22em; text-transform: uppercase; }
+
+/* titles: thin, wide capitals with a blue mark before them */
+:root[data-theme="stranding"] :is(.page-head h1, .page-h h1) { position: relative; padding-left: 18px; font: 200 24px/1.2 var(--font); letter-spacing: .3em; text-transform: uppercase; }
+:root[data-theme="stranding"] :is(.page-head h1, .page-h h1)::before { content: ""; position: absolute; left: 0; top: .12em; bottom: .12em; width: 2px; background: var(--accent-ink); box-shadow: var(--sd-glow); }
+:root[data-theme="stranding"] :is(.ph .h, .ph h2, h2.h) { font-weight: 500; font-size: 10.5px; letter-spacing: .3em; text-transform: uppercase; color: var(--ink-3); }
+:root[data-theme="stranding"] .num { letter-spacing: .02em; }
+
+/* glass: cards, menus, windows */
+:root[data-theme="stranding"] :is(.card, .menu, .modal) { border-radius: 2px; -webkit-backdrop-filter: blur(16px) saturate(1.15); backdrop-filter: blur(16px) saturate(1.15); }
+:root[data-theme="stranding"] .card { background: rgba(10, 17, 30, .6); border-color: rgba(150, 185, 240, .16); }
+:root[data-theme="stranding"] :is(.menu, .modal) { background: linear-gradient(rgba(12, 22, 40, .92), rgba(5, 10, 19, .95)); box-shadow: var(--shadow-pop), inset 0 1px 0 rgba(170, 200, 255, .12); }
+
+/* controls: square, hairline, the main one lit blue */
+:root[data-theme="stranding"] :is(.btn, .pill-btn, input, select, textarea) { border-radius: 2px; }
+:root[data-theme="stranding"] .btn { letter-spacing: .08em; }
+:root[data-theme="stranding"] .btn.primary { border-color: rgba(120, 170, 255, .55); background: linear-gradient(rgba(58, 116, 220, .85), rgba(27, 69, 151, .9)); box-shadow: 0 0 18px rgba(58, 116, 220, .35); }
+:root[data-theme="stranding"] .btn.primary:hover { border-color: var(--accent-ink); box-shadow: 0 0 24px rgba(58, 116, 220, .55); }
+:root[data-theme="stranding"] :is(input, select, textarea) { background-color: rgba(4, 8, 14, .55); }

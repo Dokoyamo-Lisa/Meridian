@@ -26,9 +26,9 @@ checks each archive against its SHA-256 before unpacking it, and prints the prog
 the variables to set. Expected output ends with:
 
 ```
-sing-box version 1.14.3
-Mihomo Meta v1.19.32 ...
-Xray 26.3.27 (Xray, Penetrates Everything.) ...
+sing-box version 1.14.4
+Mihomo Meta v1.19.34 ...
+Xray 26.11.9 (Xray, Penetrates Everything.) ...
 
 Ready. Run the checks with:
 ...
@@ -66,7 +66,7 @@ or simply `make formats`. It takes about ten seconds. Expected output:
 1. Read the new release's file digests from GitHub, for example:
 
    ```bash
-   gh api repos/SagerNet/sing-box/releases/tags/v1.14.3 \
+   gh api repos/SagerNet/sing-box/releases/tags/v1.14.4 \
      --jq '.assets[] | select(.name | test("-(darwin|linux)-(amd64|arm64)\\.tar\\.gz$")) | .name + " " + .digest'
    ```
 

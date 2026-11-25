@@ -523,7 +523,7 @@ func (p *Panel) apiPutSettings(w http.ResponseWriter, r *http.Request, a *Accoun
 		s.LogoMark = p.settings().LogoMark
 	}
 	if !slices.Contains(logoMarks, s.LogoMark) {
-		return errStatus(http.StatusBadRequest, "logo_mark is rose (Rosélune's own) or umbrella")
+		return errStatus(http.StatusBadRequest, "logo_mark is "+strings.Join(logoMarks, ", ")+" (rose is Rosélune's own)")
 	}
 	if s.LogoAnimation != "" && !slices.Contains(logoAnimations, s.LogoAnimation) {
 		return errStatus(http.StatusBadRequest, "logo_animation is "+strings.Join(logoAnimations, ", "))
@@ -531,7 +531,7 @@ func (p *Panel) apiPutSettings(w http.ResponseWriter, r *http.Request, a *Accoun
 	for name, v := range map[string]string{"Xray": s.XrayVersion, "Hysteria": s.HysteriaVersion, "realm": s.RealmVersion, "mieru": s.MitaVersion,
 		"sing-box": s.SingBoxVersion} {
 		if v = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(v), "app/"), "v"); v != "" && !versionRE.MatchString(v) {
-			return errStatus(http.StatusBadRequest, name+" version must look like 26.3.27")
+			return errStatus(http.StatusBadRequest, name+" version must look like 26.11.9")
 		}
 	}
 	if err := validPublicURL(s.PublicURL); err != nil {

@@ -96,6 +96,12 @@ func TestRenderACL(t *testing.T) {
 		portInfo{Port: 1234}); err == nil || !strings.Contains(err.Error(), "acl.inline") {
 		t.Errorf("acl.file: %v", err)
 	}
+	// Hysteria 2.14's expression rules would leave the rejects out (or, beside acl.inline, stop it)
+	for _, custom := range []string{`{"acl":{"rules":[{"rule":"true","outbound":"direct"}]}}`, `{"acl":{"rulesFile":"/etc/rules.yaml"}}`, `{"acl":{"File":"/etc/acl.txt"}}`, `{"acl":{"RULES":[]}}`} {
+		if _, err := e.render(proto.HyNode{NodeID: 7, Port: 443, Custom: json.RawMessage(custom)}, portInfo{Port: 1234}); err == nil || !strings.Contains(err.Error(), "acl.inline") {
+			t.Errorf("%s: %v", custom, err)
+		}
+	}
 }
 
 // TestLogsAcrossRestarts: a restarted agent goes on reading a node's request log where the last one

@@ -14,6 +14,7 @@ import '../themes.css'
 import './postmodern.css'
 import './time.css'
 import './minecraft.css'
+import './stranding.css'
 import { LogoInfo, animClass, brand, logoSrc, markPieces, openInto, setBrand, transition } from '../mark'
 import { $, $$, append, clear, h, icon, numUnit, s, safeHref, setText } from './dom'
 import {
@@ -56,6 +57,7 @@ import { pluginCard, pluginData, pluginMe, pluginState, pluginView } from './plu
 import { Check, startCheck } from '../turnstile'
 import { startMcWorld } from '../mcworld'
 import { renderMcList } from './mclist'
+import { startStranding, strandingUpdate } from './stranding'
 import { startTimeDial } from '../timedial'
 import { ServerHistory, serverHistory } from './details'
 import { NetworkSection, networkSection } from './network'
@@ -726,10 +728,19 @@ function updateTable() {
       globe.kick(true)
     })
   }
+  drawStranding()
   scheduleFold()
 }
 
+// the Stranding look builds its own page from the same data (stranding.ts); what visitors may not see
+// of the overview it is not given
+function drawStranding() {
+  if (!S.pub) return
+  strandingUpdate(overviewOn() ? S.pub : null, (sv) => (!sv.online ? 'crit' : serverIssues(sv).length ? 'warn' : 'good'), { events: eventsOn() })
+}
+
 function updateTableRates() {
+  drawStranding()
   if (!S.pub || tableKey !== 'thru') return
   for (const sv of S.pub.servers) {
     const r = TRows.get(sv.id)
@@ -2559,8 +2570,9 @@ function toast(msg: string, warn = false) {
 
 startTimeDial()
 startMcWorld()
+startStranding()
 
-const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist', 'postmodern', 'time', 'minecraft']
+const TONES = ['romance', 'umbrella', 'ice', 'celadon', 'ink', 'paper', 'mist', 'postmodern', 'time', 'minecraft', 'stranding']
 function initTones() {
   const root = document.documentElement
   const btn = $('#palBtn')
@@ -2607,6 +2619,7 @@ function initTones() {
         const meta = $('meta[name="theme-color"]')
         if (meta) meta.setAttribute('content', getComputedStyle(root).getPropertyValue('--page').trim())
         if (S.flow === '30d') drawFlowBars(false)
+        drawStranding()
       }
       if ('startViewTransition' in document && !motion.reduced) {
         // the new tone spreads out from the palette button

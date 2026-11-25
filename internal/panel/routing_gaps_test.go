@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -534,29 +535,46 @@ func TestNewServerRuleExits(t *testing.T) {
 	}
 }
 
-// TestPassExtChainDepth: a protocol two passes deep cannot pass on to an external node - a chain has
-// two passes at most, as for a protocol exit.
+// TestPassExtChainDepth: a chain may be as long as there are servers - here fifteen, the far end
+// passing on to an external node - and a server joining it in front is fine too.
 func TestPassExtChainDepth(t *testing.T) {
 	h := newHarness(t)
 	b := h.browser()
 	b.login("owner", "owner-password-1")
-	mk := func(name, addr string) int64 {
-		return id(b.must("POST", "/api/servers", map[string]any{"name": name, "address": addr, "protocols": []string{}}, 201)["server"].(map[string]any)["id"])
-	}
-	node := func(srv int64, body map[string]any) int64 {
-		t.Helper()
-		return id(b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", srv), body, 201)["id"])
-	}
-	a, bs, c := mk("A", "203.0.113.31"), mk("B", "198.51.100.31"), mk("C", "198.51.100.32")
 	x := id(b.must("POST", "/api/external-nodes", map[string]any{"text": extVLESS}, 200)["added"].([]any)[0].(map[string]any)["id"])
-	r := node(bs, map[string]any{"kind": "vless"})
-	e := node(a, map[string]any{"kind": "vless", "pass_node": r})
-	node(c, map[string]any{"kind": "trojan", "pass_node": e})
-	if code, m, _ := b.do("PATCH", fmt.Sprintf("/api/nodes/%d", r), map[string]any{"pass_ext": x}); code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "two passes at most") {
-		t.Errorf("three passes: %d %v", code, m)
+	var nodes []int64
+	for i := 0; i < 15; i++ {
+		srv := id(b.must("POST", "/api/servers", map[string]any{"name": fmt.Sprintf("S%d", i), "address": fmt.Sprintf("198.51.100.%d", 100+i), "protocols": []string{}}, 201)["server"].(map[string]any)["id"])
+		body := map[string]any{"kind": "vless"}
+		if i > 0 {
+			body["pass_node"] = nodes[i-1]
+		}
+		nodes = append(nodes, id(b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", srv), body, 201)["id"]))
 	}
-	// one pass deep: it may pass on to the node
-	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", e), map[string]any{"pass_ext": x}, 200)
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", nodes[0]), map[string]any{"pass_ext": x}, 200)
+	srv := id(b.must("POST", "/api/servers", map[string]any{"name": "T", "address": "198.51.100.200", "protocols": []string{}}, 201)["server"].(map[string]any)["id"])
+	front := id(b.must("POST", fmt.Sprintf("/api/servers/%d/nodes", srv), map[string]any{"kind": "vless", "pass_node": nodes[len(nodes)-1]}, 201)["id"])
+	if _, _, why := h.p.passExit(context.Background(), mustServer(t, h, srv), mustNode(t, h, front)); why != "" {
+		t.Errorf("a chain of sixteen: %s", why)
+	}
+}
+
+func mustServer(t *testing.T, h *harness, id int64) *Server {
+	t.Helper()
+	s, err := h.p.serverByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func mustNode(t *testing.T, h *harness, id int64) *Node {
+	t.Helper()
+	n, err := h.p.nodeByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
 }
 
 // TestExternalNodeUses: the list says what uses each node - protocols passing through it, rules

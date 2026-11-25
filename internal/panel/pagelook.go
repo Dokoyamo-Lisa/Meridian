@@ -50,6 +50,9 @@ var pageTones = map[string]pageTone{
 	// Minecraft: the earth, the grass edge and the stone slabs come from the page's .look-minecraft rules (subserve.go)
 	"minecraft": {"dark", "#1d1610", "#2c2c2c", "rgba(255,255,255,.1)", "rgba(255,255,255,.22)", "#f4f4f4", "#cfcfcf", "#a8a8a8", "#7fe08a", "#6fdc6a", "#ffd23f",
 		`ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,"Courier New",monospace`, "normal", "700", "none"},
+	// Stranding: dark glass and one deep blue; the pictures behind it need the pages' script
+	"stranding": {"dark", "#0b0d0e", "#0d1524", "rgba(150,185,240,.15)", "rgba(150,185,240,.32)", "#eef3fb", "#c6d2e4", "#9aaac0", "#8fb8ff", "#7fd1a8", "#f3c48d",
+		sansDisplay, "normal", "200", "radial-gradient(60vw 40vw at 50% -10%,rgba(58,116,220,.12),transparent 70%)"},
 }
 
 func (t pageTone) vars() string {

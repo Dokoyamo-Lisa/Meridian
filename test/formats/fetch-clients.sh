@@ -11,9 +11,9 @@
 set -euo pipefail
 
 SINGBOX_OLD=1.12.25
-SINGBOX_NEW=1.14.3
-MIHOMO=1.19.32
-XRAY=26.3.27
+SINGBOX_NEW=1.14.4
+MIHOMO=1.19.34
+XRAY=26.11.9
 
 cache="${MERIDIAN_FORMATS_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/meridian/formats}"
 env_only=0
@@ -42,10 +42,10 @@ singbox_sum() { # version
 	1.12.25/darwin-amd64) echo fb9cb2a1d3160b9ef4a288818286ad27711907228232b8d84410cad7e42726d8 ;;
 	1.12.25/linux-amd64) echo a1ec76e2b6b139eb747a1b1ebee7d14b8d4be5a833596cad8070a31ef960301f ;;
 	1.12.25/linux-arm64) echo 719b76196c8b31efa636b2d8f669e314547e0da0a5ab38a75e1882d307bbd154 ;;
-	1.14.3/darwin-arm64) echo 0360ce634a04c26a6b4fd957517987bb4f6c8950f63435ce3c5af2fcae5860c5 ;;
-	1.14.3/darwin-amd64) echo 6d002b74d03b478547349cc10af89e007868596e5aa931816d45da9f544715a9 ;;
-	1.14.3/linux-amd64) echo e2bdf179c15a3652955dc44867e33ca0965c9c9b91b34267dcc5a5d639a5feee ;;
-	1.14.3/linux-arm64) echo 29dae24d76bea3bc62d07dd3e60cfc12003de7debbd6b768df9be9c68360174e ;;
+	1.14.4/darwin-arm64) echo 0d8c7f5ed5d587b0f1a5e9772a708ec3bfa4ac4c9329604b01d8d9c2ba406838 ;;
+	1.14.4/darwin-amd64) echo eae86b9b033bba50b7c44ab719e4bfac0aca05efd28483390ed3aa510f32db25 ;;
+	1.14.4/linux-amd64) echo 699a1b510aa4396b2176d32d1181920399ebf1e267835da6f3b598d0f7c24968 ;;
+	1.14.4/linux-arm64) echo 436441f76ee2f7fe21b5b2d426d3cb261a480455a704865789ad533e4273ec26 ;;
 	esac
 }
 mihomo_asset() {
@@ -56,10 +56,10 @@ mihomo_asset() {
 }
 mihomo_sum() {
 	case "$plat" in
-	darwin-arm64) echo 3312a6780652c622890fd4357c6a853bbf865464fd047ac7b7f52dab8de18652 ;;
-	darwin-amd64) echo 18b382df77bded2ad0fb3db27db5636cb15b20729d5ba995a357eeb9b46bf507 ;;
-	linux-amd64) echo ba3ce607747a07f948fc35780e108a4a7c7f552a38b9bd4d115f313ebcb89c20 ;;
-	linux-arm64) echo 9dd862e28b46ff7d775f169cceebc28deccaa0a9e804237d421cd2571e0caba0 ;;
+	darwin-arm64) echo 1a7a20eca63fbbaec90137717465bfde488d0db2a3a79b8fadebf9b2545b6e4c ;;
+	darwin-amd64) echo 703bceaa494732fa456f47e6ac2f06bf0bc5593d4c927d5f61e10f1a31039c37 ;;
+	linux-amd64) echo 2763f5b414527f7baf6dc57e3f82f3ab561eedf34bfd7c2f2cde1f7e592efe06 ;;
+	linux-arm64) echo daaf78a6240a282cdfd75bcbf98fe321f6bd52765cc29e79f344191198f0b50f ;;
 	esac
 }
 xray_asset() {
@@ -72,10 +72,10 @@ xray_asset() {
 }
 xray_sum() {
 	case "$plat" in
-	darwin-arm64) echo 2e93a67e8aa1936ecefb307e120830fcbd4c643ab9b1c46a2d0838d5f8409eaf ;;
-	darwin-amd64) echo f5b0471d3459eff1b82e48af0aeac186abcc3298210070afbbbd8437a4e8b203 ;;
-	linux-amd64) echo 23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae ;;
-	linux-arm64) echo 4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c ;;
+	darwin-arm64) echo 233f0c66681cd0726f81a6b2b6ed6a5710869e312047b522e46ed53035bebd26 ;;
+	darwin-amd64) echo 488963e676e06f5e48547f9dd38116aaca8de4234959b4272ae8f284e658dfd0 ;;
+	linux-amd64) echo b651f7e1d9966ee2c1b1ee1bf8b52c72771824d3065dce96bbc8bcc19ed95f82 ;;
+	linux-arm64) echo 64ed6858982a7f5eb85d88b811089063bd4f17561f4c8f44e0f1dc8e6f6430be ;;
 	esac
 }
 

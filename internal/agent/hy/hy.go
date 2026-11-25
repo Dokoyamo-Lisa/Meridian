@@ -281,14 +281,22 @@ func guardMasquerade(cfg map[string]any, reserved []int) error {
 
 // guardACL puts the private-address rejects in front of the rules a configuration ends up with: the
 // agent's own (everything else direct), or the protocol's own list. A rules file cannot be checked,
-// so it is refused.
+// and Hysteria 2.14's expression rules (acl.rules, acl.rulesFile) take no rejects in front, so they
+// are refused.
 func guardACL(cfg map[string]any) error {
 	acl, _ := cfg["acl"].(map[string]any)
 	if acl == nil {
 		acl = map[string]any{}
 	}
-	if _, ok := acl["file"]; ok {
-		return fmt.Errorf("its own acl.file cannot be used - write the rules under acl.inline")
+	// Hysteria 2.14 reads one of file, inline, rules and rulesFile; a file cannot be checked, and the
+	// new expression rules cannot have the private-address rejects put in front of them
+	// (Hysteria reads keys in any case: "File" is "file")
+	for k := range acl {
+		for _, bad := range []string{"file", "rulesFile", "rules"} {
+			if strings.EqualFold(k, bad) {
+				return fmt.Errorf("its own acl.%s cannot be used - write the rules under acl.inline (Hysteria's legacy syntax)", bad)
+			}
+		}
 	}
 	var rules []any
 	switch l := acl["inline"].(type) {

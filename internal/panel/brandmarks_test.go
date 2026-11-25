@@ -36,7 +36,7 @@ func TestBuiltinMarksMatchWeb(t *testing.T) {
 			t.Errorf("%s does not show the rose as markSVG draws it:\n%s", page, boot)
 		}
 	}
-	for file, mark := range map[string]string{"web/public/favicon.svg": "rose", "web/public/favicon-umbrella.svg": "umbrella", "web/public/favicon-confetti.svg": "confetti", "web/public/favicon-pixel.svg": "pixel"} {
+	for file, mark := range map[string]string{"web/public/favicon.svg": "rose", "web/public/favicon-umbrella.svg": "umbrella", "web/public/favicon-confetti.svg": "confetti", "web/public/favicon-pixel.svg": "pixel", "web/public/favicon-bridge.svg": "bridge"} {
 		icon := read(file)
 		for _, p := range builtinMarks[mark] {
 			if !strings.Contains(icon, p.d) {

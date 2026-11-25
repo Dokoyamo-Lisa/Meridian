@@ -17,14 +17,14 @@ func yamlOf(t *testing.T, m omap) string {
 	return string(b)
 }
 
-// TestSoloKinds: mieru goes to mihomo and Stash, Snell (version 4) to mihomo, Stash, Surge and
-// sing-box; every other app says why not.
+// TestSoloKinds: mieru goes to mihomo, Stash, Shadowrocket and Loon (over TCP), Snell (version 4)
+// to mihomo, Stash, Surge, sing-box and Loon; every other app says why not.
 func TestSoloKinds(t *testing.T) {
 	mieru := Endpoint{Name: "Tokyo · mieru", Kind: KindMieru, Host: "203.0.113.5", Port: 30001, Username: "u7", Password: "p-very-secret-1234", Transport: "tcp"}
 	snell := Endpoint{Name: "Tokyo · Snell", Kind: KindSnell, Host: "203.0.113.5", Port: 31001, Password: "psk-very-secret-12345"}
 	want := map[string]map[string]bool{
-		KindMieru: {"mihomo": true, "stash": true, "shadowrocket": true},
-		KindSnell: {"mihomo": true, "stash": true, "surge": true, "singbox": true},
+		KindMieru: {"mihomo": true, "stash": true, "shadowrocket": true, "loon": true},
+		KindSnell: {"mihomo": true, "stash": true, "surge": true, "singbox": true, "loon": true},
 	}
 	for _, e := range []Endpoint{mieru, snell} {
 		for _, s := range Support(e) {
@@ -50,6 +50,17 @@ func TestSoloKinds(t *testing.T) {
 	}
 	if l, _, why := surgeLine(snell, 0); why != "" || !strings.Contains(l, "= snell, 203.0.113.5, 31001, psk=psk-very-secret-12345, version=4") {
 		t.Errorf("Surge snell: %q %s", l, why)
+	}
+	if l, why := loonLine(snell); why != "" || l != `Tokyo · Snell=Snell,203.0.113.5,31001,"psk-very-secret-12345",version=4,udp=true` {
+		t.Errorf("Loon snell: %q %s", l, why)
+	}
+	if l, why := loonLine(mieru); why != "" || l != `Tokyo · mieru=mieru,203.0.113.5,30001,"u7","p-very-secret-1234",udp=true` {
+		t.Errorf("Loon mieru: %q %s", l, why)
+	}
+	overUDP := mieru
+	overUDP.Transport = "udp"
+	if _, why := loonLine(overUDP); why != whyMieruUDP {
+		t.Errorf("Loon mieru over UDP: %s", why)
 	}
 	if o, _, why := singboxOutbound(snell); why != "" || o == nil {
 		t.Errorf("sing-box snell: %s", why)
@@ -83,10 +94,19 @@ func TestShadowrocketReadsWhatItSupports(t *testing.T) {
 	if why != "" || !strings.Contains(u, "encryption=mlkem768x25519plus.native.0rtt."+gEncKey) {
 		t.Fatalf("link: %s %s", u, why)
 	}
-	for _, f := range []string{FormatSingBox, FormatHiddify, FormatQuanX, FormatLoon} {
+	for _, f := range []string{FormatSingBox, FormatHiddify, FormatQuanX} {
 		if why := WhyNot(f, enc); why != whyEncryption {
 			t.Errorf("%s: %s", f, why)
 		}
+	}
+	// Loon takes it in its own fields (encryption-mode, -rtt, -public-keys)
+	if l, why := loonLine(enc); why != "" || !strings.Contains(l, `,encryption-mode=native,encryption-rtt=0rtt,encryption-public-keys="`+gEncKey+`"`) || !strings.Contains(l, ",flow=xtls-rprx-vision") {
+		t.Errorf("Loon encryption: %q %s", l, why)
+	}
+	bad := enc
+	bad.Encryption = "mlkem768x25519plus.weird.0rtt." + gEncKey
+	if _, why := loonLine(bad); why != whyEncryption {
+		t.Errorf("Loon took an unknown mode: %s", why)
 	}
 	// Surge has no VLESS at all, so the reason is the protocol, not the encryption field.
 	if why := WhyNot(FormatSurge, enc); why != whyProtocol {

@@ -3,6 +3,7 @@ package panel
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -231,4 +232,23 @@ func TestProtocolLabels(t *testing.T) {
 		}
 	}
 	_ = fmt.Sprint()
+}
+
+// TestCDNTrustsTheVisitorHeader: behind the CDN, the server believes X-Forwarded-For only with
+// Cloudflare's CF-Connecting-IP (Xray 26.10 and later ignore it otherwise); no other inbound and no
+// outbound trusts it.
+func TestCDNTrustsTheVisitorHeader(t *testing.T) {
+	cdn := &xraySettings{Transport: tWS, Path: "/cdn", Security: secNone, CDN: true, CDNHost: "cdn.example.com", CDNPort: 443}
+	st := cdn.streamSettings(subgen.KindVLESS, true)
+	so, ok := st["sockopt"].(map[string]any)
+	if !ok || !reflect.DeepEqual(so["trustedXForwardedFor"], []string{"CF-Connecting-IP"}) {
+		t.Fatalf("CDN inbound: %v", st["sockopt"])
+	}
+	if out := cdn.streamSettings(subgen.KindVLESS, false); out["sockopt"] != nil {
+		t.Errorf("an outbound trusts it: %v", out["sockopt"])
+	}
+	plain := &xraySettings{Transport: tWS, Path: "/ws", Security: secNone}
+	if st := plain.streamSettings(subgen.KindVLESS, true); st["sockopt"] != nil {
+		t.Errorf("a protocol without the CDN trusts it: %v", st["sockopt"])
+	}
 }

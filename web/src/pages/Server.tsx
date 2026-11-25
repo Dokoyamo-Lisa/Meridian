@@ -248,6 +248,27 @@ export function ServerPage(props: { id: number }) {
                       Upgrade Hysteria…
                     </button>
                   )}
+                  {!srv.guest && srv.nodes.some((n) => n.kind === 'mieru' || n.kind === 'snell' || n.kind === 'anytls') && (
+                    <button
+                      disabled={!srv.caps?.upgrade_solo}
+                      title={srv.caps?.upgrade_solo ? undefined : 'Needs agent 1.5.3 or later - upgrade the agent first (nobody is disconnected by that)'}
+                      onClick={() =>
+                        action(
+                          'upgrade_solo',
+                          "Upgrade the users' own servers?",
+                          disruptive(
+                            `${srv.name} switches mieru, Snell and AnyTLS to the versions set in Settings. Each user's own server of a program that changes restarts once; one already on that version is left alone.`,
+                            'Everyone connected through mieru, Snell or AnyTLS on this server',
+                          ),
+                          'Upgrade them',
+                          true,
+                        )
+                      }
+                    >
+                      <Icon name="download" size="sm" />
+                      Upgrade mieru, Snell, AnyTLS…
+                    </button>
+                  )}
                   {!srv.guest && srv.forwards.some((f) => f.engine === 'realm') && (
                     <button
                       onClick={() =>

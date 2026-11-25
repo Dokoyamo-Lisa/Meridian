@@ -162,6 +162,7 @@ const (
 	whyReality       = "this app does not support REALITY"
 	whyEncryption    = "this app does not support VLESS Encryption"
 	whyTrojanReality = "this app does not support REALITY with Trojan - use VLESS with REALITY"
+	whyMieruUDP      = "this app runs mieru over TCP only - choose the TCP transport"
 	// Stash documents the Vision flow with VLESS Encryption over raw TCP and XHTTP only
 	whyVisionStash = "this app takes the Vision flow with VLESS Encryption only over raw TCP or XHTTP - turn the Vision flow off"
 )

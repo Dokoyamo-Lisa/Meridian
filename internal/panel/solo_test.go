@@ -84,7 +84,7 @@ func TestUsersOwnServers(t *testing.T) {
 	if len(at.Users) != 2 || len(sn.Users) != 2 {
 		t.Errorf("users: %d on AnyTLS, %d on Snell", len(at.Users), len(sn.Users))
 	}
-	if st.Cores.SingBox != "1.14.2" || st.Cores.Mita == "" || st.Cores.Snell == "" {
+	if st.Cores.SingBox != defaultSettings().SingBoxVersion || st.Cores.Mita == "" || st.Cores.Snell == "" {
 		t.Errorf("programs: %+v", st.Cores)
 	}
 

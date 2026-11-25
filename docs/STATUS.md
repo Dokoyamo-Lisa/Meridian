@@ -1,6 +1,37 @@
 # Meridian status
 
-Last updated 2026-11-12 (version 1.5.1).
+Last updated 2026-11-25 (version 1.5.3).
+
+## Tested for 1.5.3 (DrawBridge, Servers Explorer, Monitor sessions)
+
+- **The newest cores and apps**: every accepted protocol combination, on an IPv4 address, an IPv6
+  address and a domain, checked by Xray 26.11.9 (139 server configurations, 441 proxy-pass outbounds),
+  sing-box 1.12.25 and 1.14.4 (393) and mihomo 1.19.34 (447); the same with Xray 26.3.27, for servers
+  not upgraded yet. Xray 26.11.9's source was read for what it changed in what the panel writes:
+  X-Forwarded-For needs a trusted header now (CDN protocols name Cloudflare's), a REALITY minimum
+  client version is still off by default, unencrypted VLESS and Trojan outbounds to public addresses
+  are refused (the panel never writes one). Hysteria 2.14's source: one ACL key at a time.
+- **Loon's lines** for mieru, Snell, XHTTP and VLESS Encryption checked field by field against its
+  manual (nsloon.app, Node); not run in Loon itself (no parser to run).
+- **Upgrading mieru, Snell and AnyTLS**: the panel queues it only for agents that can do it, refuses a
+  read-only token, and the agent builds and vets for Linux; the upgrade itself (downloads, the users'
+  processes restarting) was not run - it needs a server with systemd and users on those protocols
+  (the VM).
+- **Not run**: snell-server 6 (a beta whose protocol may still change: servers stay on 5.0.1).
+
+- **DrawBridge on a local panel with 12 servers in 9 countries** (no agents: protocols wait for them):
+  drew new lines on the chart, edited a line (with the warning when a server is shared with another
+  line), added a backup route crossing two servers, reordered, promoted and deleted backups from their
+  right-click menus, took a server out of a line, deleted a line with the clean-up of protocols made
+  only for it; each change checked against the API afterwards. The map: dragging, Tidy up, and every
+  strand measured clear of the boxes it passes. Romance and Stranding looks, wide and narrow windows.
+- **Servers › Explorer**: every number filter, country chips (one and several), the search keys, the
+  groupings and orders, and the page link keeping the view; Classic unchanged.
+- **Monitor › Live › Sessions** with made-up live data for 45 users on 12 servers (the test servers
+  have no agents): finding a user by name, address, place and network, Enter, the orders, the card, and
+  the list view.
+- **Not run**: lines and backups carrying real traffic through agents (the VM); the PostgreSQL suite; an
+  upgrade on a real panel.
 
 ## Tested for 1.5.1 (the console, and reports read before their signature)
 
