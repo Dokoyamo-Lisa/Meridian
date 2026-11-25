@@ -500,15 +500,16 @@ func TestPassChains(t *testing.T) {
 		t.Errorf("the entry shows its chain: %v", got)
 	}
 
-	// three passes are refused, whichever end grows
+	// a chain may be longer: D passes through the whole of A -> B -> C
 	f := must(d, map[string]any{"kind": "vless"})
-	code, msg := node(d, map[string]any{"kind": "vless", "port": 8443, "pass_node": e})
-	refused("an entry through a chain of two", code, msg, "passes on twice already")
-	code, msg, _ = b.do("PATCH", fmt.Sprintf("/api/nodes/%d", x), map[string]any{"pass_node": f})
-	refused("the far exit passing on", code, msg, "which passes through this one")
-	z := must(d, map[string]any{"kind": "trojan", "pass_node": must(a, map[string]any{"kind": "vless", "port": 8443})})
-	code, msg, _ = b.do("PATCH", fmt.Sprintf("/api/nodes/%d", m), map[string]any{"pass_node": z})
-	refused("a relay passing to another relay", code, msg, "and the exit passes on too")
+	de := must(d, map[string]any{"kind": "vless", "port": 8443, "pass_node": e})
+	if got := card(d, de)["pass_name"]; got != "A · REALITY → B · REALITY → C · REALITY" {
+		t.Errorf("a chain of three passes shows whole: %v", got)
+	}
+	// but never back to a server it passed, whichever end grows
+	code, msg, _ := b.do("PATCH", fmt.Sprintf("/api/nodes/%d", x), map[string]any{"pass_node": f})
+	refused("the far exit passing on to the first server", code, msg, "protocols on D pass through this protocol")
+	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", de), map[string]any{"pass_node": 0}, 200)
 	// a chain never comes back to a server it passed
 	code, msg = node(c, map[string]any{"kind": "vless", "port": 8443, "pass_node": m})
 	refused("back to the exit's server", code, msg, "passes on back to C")
@@ -539,15 +540,15 @@ func TestPassChains(t *testing.T) {
 	}
 	b.must("PATCH", fmt.Sprintf("/api/nodes/%d", x), map[string]any{"enabled": true}, 200)
 
-	// stored before these checks: three passes - the first entry blocks, the relay drops its user
-	if _, err := h.p.db.Exec(`UPDATE nodes SET pass_node = ? WHERE id = ?`, f, x); err != nil {
+	// stored before these checks: a chain that comes back - the first entry blocks, the relay drops its user
+	if _, err := h.p.db.Exec(`UPDATE nodes SET pass_node = ? WHERE id = ?`, e, x); err != nil {
 		t.Fatal(err)
 	}
-	if why := fmt.Sprint(card(a, e)["pass_broken"]); !strings.Contains(why, "passes on twice") {
-		t.Errorf("a chain of three: %s", why)
+	if why := fmt.Sprint(card(a, e)["pass_broken"]); !strings.Contains(why, "passes on back to A") {
+		t.Errorf("a chain back to its start: %s", why)
 	}
 	if _, clientsB = compiled(bs); slices.Contains(clientsB[m], passEmail(e)) {
-		t.Error("the relay still takes the pass user of a chain of three")
+		t.Error("the relay still takes the pass user of a chain that comes back")
 	}
 }
 

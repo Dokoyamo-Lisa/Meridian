@@ -115,7 +115,7 @@ func (p *Panel) serveIcon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := "favicon.svg" // the rose
-	if m := p.settings().LogoMark; m == "umbrella" || m == "confetti" || m == "pixel" {
+	if m := p.settings().LogoMark; m == "umbrella" || m == "confetti" || m == "pixel" || m == "bridge" {
 		name = "favicon-" + m + ".svg"
 	}
 	var body []byte

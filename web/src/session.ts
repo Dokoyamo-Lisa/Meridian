@@ -112,6 +112,7 @@ export const tones: { id: string; name: string; a: string; b: string }[] = [
   { id: 'postmodern', name: 'Postmodernism', a: '#2346d8', b: '#ffd23f' },
   { id: 'time', name: 'Time', a: '#f2f4f8', b: '#020305' },
   { id: 'minecraft', name: 'Minecraft', a: '#5d9e34', b: '#6f4a2d' },
+  { id: 'stranding', name: 'Stranding', a: '#3a74dc', b: '#0b0d0e' },
 ]
 
 export function currentTone(): string {

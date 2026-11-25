@@ -1,6 +1,22 @@
 # Meridian status
 
-Last updated 2026-11-12 (version 1.5.1).
+Last updated 2026-11-25 (version 1.5.2).
+
+## Tested for 1.5.2 (DrawBridge, Servers Explorer, Monitor sessions)
+
+- **DrawBridge on a local panel with 12 servers in 9 countries** (no agents: protocols wait for them):
+  drew new lines on the chart, edited a line (with the warning when a server is shared with another
+  line), added a backup route crossing two servers, reordered, promoted and deleted backups from their
+  right-click menus, took a server out of a line, deleted a line with the clean-up of protocols made
+  only for it; each change checked against the API afterwards. The map: dragging, Tidy up, and every
+  strand measured clear of the boxes it passes. Romance and Stranding looks, wide and narrow windows.
+- **Servers › Explorer**: every number filter, country chips (one and several), the search keys, the
+  groupings and orders, and the page link keeping the view; Classic unchanged.
+- **Monitor › Live › Sessions** with made-up live data for 45 users on 12 servers (the test servers
+  have no agents): finding a user by name, address, place and network, Enter, the orders, the card, and
+  the list view.
+- **Not run**: lines and backups carrying real traffic through agents (the VM); the PostgreSQL suite; an
+  upgrade on a real panel.
 
 ## Tested for 1.5.1 (the console, and reports read before their signature)
 

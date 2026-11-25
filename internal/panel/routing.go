@@ -1122,7 +1122,7 @@ func (p *Panel) exitOutbound(ctx context.Context, srv *Server, plan *routePlan, 
 			return p.ownExit(ctx, srv, plan, n, tag)
 		}
 		// the same checks as a protocol's proxy pass: the exit must be on another server, the chain at
-		// most two passes, never back to this server
+		// never back to this server
 		fake := &Node{ID: -1, PassNode: id}
 		exit, xs, why := p.passExit(ctx, srv, fake)
 		if why != "" {
@@ -1179,6 +1179,9 @@ func (p *Panel) ownExit(ctx context.Context, srv *Server, plan *routePlan, n *No
 		}
 		return nil, fmt.Sprintf("the exit (%s) passes on, but %s", name, why)
 	default: // the same outbound as its own address or proxy pass, under this tag
+		if strings.HasPrefix(way, "fb-n") { // a pass with backups: its main line
+			way = failLine(n.ID, 0)
+		}
 		for _, ob := range plan.own {
 			if ob["tag"] == way {
 				cp := maps.Clone(ob)
@@ -1335,11 +1338,11 @@ func (p *Panel) routePlanFor(ctx context.Context, srv *Server, nodes []*Node, pa
 				if !slices.Contains(tags, t) {
 					continue
 				}
-				if n.BindIP == "" {
+				if n.BindIP == "" && n.OutIP == "" {
 					plain = append(plain, t)
 					continue
 				}
-				// its own address: the outbound is there unless the protocol passes through an exit
+				// its own address or IP version: the outbound is there unless the protocol passes through an exit
 				if bt := bindTag(n.ID); (n.PassNode != 0 || n.PassExt != 0) && !plan.tags[bt] {
 					plan.outbounds = append(plan.outbounds, bindOutbound(srv, n))
 					plan.tags[bt] = true
@@ -1424,8 +1427,13 @@ func (p *Panel) routePlanFor(ctx context.Context, srv *Server, nodes []*Node, pa
 	// what passes through this server's protocols keeps going the way those protocols send it
 	for _, n := range nodes {
 		if emails := passers[n.ID]; len(emails) > 0 && out[n.ID] != "" {
-			plan.rules = append(plan.rules, map[string]any{"ruleTag": fmt.Sprintf("passers-n%d", n.ID),
-				"inboundTag": []string{proto.InboundTag(n.ID)}, "user": emails, "outboundTag": out[n.ID]})
+			r := map[string]any{"ruleTag": fmt.Sprintf("passers-n%d", n.ID), "inboundTag": []string{proto.InboundTag(n.ID)}, "user": emails}
+			if strings.HasPrefix(out[n.ID], "fb-n") { // a pass with a backup: its failover balancer
+				r["balancerTag"] = out[n.ID]
+			} else {
+				r["outboundTag"] = out[n.ID]
+			}
+			plan.rules = append(plan.rules, r)
 		}
 	}
 	plan.rules = append(plan.rules, routeRules...)

@@ -56,9 +56,9 @@ type Settings struct {
 
 	AgentPort int `json:"agent_port" doc:"Where new agents put their two loopback-only ports: the Xray API on this port, Hysteria's auth hook on the next (1024-65534, default 50000). Agents already installed keep theirs."`
 
-	DefaultTone string `json:"default_tone" doc:"The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, time, minecraft - or auto: Ice, or Paper on a device set to light"`
+	DefaultTone string `json:"default_tone" doc:"The look pages open with for people who have not picked one themselves (the palette button): romance (the default), umbrella, ice, celadon, ink, paper, mist, postmodern, time, minecraft, stranding - or auto: Ice, or Paper on a device set to light"`
 
-	LogoMark      string `json:"logo_mark" doc:"The built-in logo, shown while no logo is uploaded: rose (Rosélune's own, the default) | umbrella | confetti | pixel"`
+	LogoMark      string `json:"logo_mark" doc:"The built-in logo, shown while no logo is uploaded: rose (Rosélune's own, the default) | umbrella | confetti | pixel | bridge"`
 	LogoAnimation string `json:"logo_animation" doc:"How the logo moves while pages load and when someone signs in: assemble (the built-in logo's pieces fly in - the rose's petals, the umbrella's panels; an uploaded logo rises instead) | rise | pulse | spin | none. The logo itself is uploaded with PUT /api/settings/logo"`
 
 	// when a user's data runs out (outofdata.go)
@@ -436,37 +436,45 @@ func (s *Server) BwUsed() int64 {
 // ---------------------------------------------------------------- nodes
 
 type Node struct {
-	ID        int64           `json:"id"`
-	ServerID  int64           `json:"server_id"`
-	Kind      string          `json:"kind"`
-	Name      string          `json:"name"`
-	Port      int             `json:"port"`
-	Enabled   bool            `json:"enabled"`
-	Settings  json.RawMessage `json:"settings"`
-	Host      string          `json:"host"`
-	PassNode  int64           `json:"pass_node"`
-	PassExt   int64           `json:"pass_ext" doc:"Proxy pass through an external node (its id); 0 = none. A protocol passes through a protocol (pass_node) or an external node, not both"`
-	PassOnly  bool            `json:"pass_only" doc:"Serves only proxy passes from other servers: users cannot connect to it directly and it is left out of their links"`
-	BindIP    string          `json:"bind_ip" doc:"The server address this protocol has to itself: it listens there, its traffic leaves from there and links use it (a public one). Empty = all of the server's addresses"`
-	Blocked   []string        `json:"blocked_sites" doc:"Sites this protocol does not reach, each with its subdomains (anthropic.com, google.com). Not for Snell and WireGuard, which cannot tell sites apart"`
-	Code      string          `json:"code" doc:"The protocol's own settings, merged on top of what the panel generates: JSON for Xray protocols (inbound fields, outbounds, rules for its traffic), YAML for Hysteria2. Only the syntax is checked"`
-	Sort      int             `json:"sort"`
-	CreatedAt int64           `json:"created_at"`
-	UpdatedAt int64           `json:"updated_at"`
+	ID          int64           `json:"id"`
+	ServerID    int64           `json:"server_id"`
+	Kind        string          `json:"kind"`
+	Name        string          `json:"name"`
+	Port        int             `json:"port"`
+	Enabled     bool            `json:"enabled"`
+	Settings    json.RawMessage `json:"settings"`
+	Host        string          `json:"host"`
+	PassNode    int64           `json:"pass_node"`
+	PassExt     int64           `json:"pass_ext" doc:"Proxy pass through an external node (its id); 0 = none. A protocol passes through a protocol (pass_node) or an external node, not both"`
+	PassOnly    bool            `json:"pass_only" doc:"Serves only proxy passes from other servers: users cannot connect to it directly and it is left out of their links"`
+	BindIP      string          `json:"bind_ip" doc:"The server address this protocol has to itself: it listens there, its traffic leaves from there and links use it (a public one). Empty = all of the server's addresses"`
+	Blocked     []string        `json:"blocked_sites" doc:"Sites this protocol does not reach, each with its subdomains (anthropic.com, google.com). Not for Snell and WireGuard, which cannot tell sites apart"`
+	Code        string          `json:"code" doc:"The protocol's own settings, merged on top of what the panel generates: JSON for Xray protocols (inbound fields, outbounds, rules for its traffic), YAML for Hysteria2. Only the syntax is checked"`
+	PassIP      string          `json:"pass_ip" doc:"Which IP version its proxy pass reaches the next server with: '' = as the servers allow, prefer-v4, prefer-v6 (the other when there is none), v4, v6 (that one only)"`
+	OutIP       string          `json:"out_ip" doc:"Which IP version its traffic reaches sites with (and so what arrives here through a proxy pass): '' = as the server does, prefer-v4, prefer-v6, v4, v6. Xray protocols only"`
+	PassBackups []int64         `json:"pass_backups" doc:"The backup exits of its proxy pass, first choice first (protocol ids; -1 = leave directly from this server, last only): while the main line does not answer, traffic takes the first backup that does, and goes back when the main one answers again. Xray checks every line each minute"`
+	OutAddr     string          `json:"out_addr" doc:"The server address its traffic leaves for sites from (one of the server's addrs; '' = as the server does), for a server with several. Xray protocols only"`
+	Sort        int             `json:"sort"`
+	CreatedAt   int64           `json:"created_at"`
+	UpdatedAt   int64           `json:"updated_at"`
 }
 
 const nodeCols = `id, server_id, kind, name, port, enabled, settings, host, pass_node, pass_only, bind_ip, code, sort,
-created_at, updated_at, pass_ext, blocked_sites`
+created_at, updated_at, pass_ext, blocked_sites, pass_ip, out_ip, pass_backups, out_addr`
 
 func scanNode(r interface{ Scan(...any) error }) (*Node, error) {
 	n := &Node{}
-	var settings, blocked string
+	var settings, blocked, backups string
 	err := r.Scan(&n.ID, &n.ServerID, &n.Kind, &n.Name, &n.Port, &n.Enabled, &settings, &n.Host, &n.PassNode, &n.PassOnly,
-		&n.BindIP, &n.Code, &n.Sort, &n.CreatedAt, &n.UpdatedAt, &n.PassExt, &blocked)
+		&n.BindIP, &n.Code, &n.Sort, &n.CreatedAt, &n.UpdatedAt, &n.PassExt, &blocked, &n.PassIP, &n.OutIP, &backups, &n.OutAddr)
 	if err != nil {
 		return nil, err
 	}
 	n.Settings = json.RawMessage(settings)
+	_ = json.Unmarshal([]byte(backups), &n.PassBackups)
+	if n.PassBackups == nil {
+		n.PassBackups = []int64{}
+	}
 	n.Blocked = []string{}
 	_ = json.Unmarshal([]byte(blocked), &n.Blocked)
 	return n, nil

@@ -1534,17 +1534,31 @@ func domainStrategy(srv *Server, bind string) string {
 
 func bindTag(node int64) string { return fmt.Sprintf("bind-n%d", node) }
 
-// bindOutbound sends a bound protocol's traffic out from its own address.
+// bindOutbound sends a protocol's traffic out its own way: from its own address, and with its own IP
+// version (out_ip) when it has one.
 func bindOutbound(srv *Server, n *Node) map[string]any {
-	return map[string]any{"tag": bindTag(n.ID), "protocol": "freedom", "sendThrough": n.BindIP,
-		"settings": map[string]any{"domainStrategy": domainStrategy(srv, n.BindIP)}}
+	ds := domainStrategy(srv, n.BindIP)
+	if s := ipStrategy(n.OutIP); s != "" {
+		ds = s
+	}
+	ob := map[string]any{"tag": bindTag(n.ID), "protocol": "freedom", "settings": map[string]any{"domainStrategy": ds}}
+	if n.BindIP != "" {
+		ob["sendThrough"] = n.BindIP
+	}
+	if n.OutAddr != "" { // the address it leaves from (DrawBridge)
+		ob["sendThrough"] = n.OutAddr
+		if ipStrategy(n.OutIP) == "" {
+			ob["settings"] = map[string]any{"domainStrategy": domainStrategy(srv, n.OutAddr)}
+		}
+	}
+	return ob
 }
 
 func passTag(entry int64) string { return fmt.Sprintf("pass-n%d", entry) }
 
-// A chain of proxy passes has two passes at most: from the entry to its exit, and from there - a
-// relay - once more to the protocol whose server leaves the internet. Every hop goes to another
-// server, and a chain never comes back to one it passed.
+// A chain of proxy passes goes from the entry to its exit, and from there - a relay - on to the next,
+// as far as it likes; the last one's server leaves the internet. Every hop goes to
+// another server, and a chain never comes back to one it passed.
 
 // hopProblem is why one pass of a chain cannot be used.
 type hopProblem int
@@ -1577,45 +1591,17 @@ func (p *Panel) passHop(ctx context.Context, from *Server, exitID int64) (*Node,
 
 // passExit returns the exit of entry node n on server srv - where its traffic goes first - and that
 // exit's server, or why the chain cannot be used right now (the entry then blocks its traffic). The
-// exit may pass on once more, as a relay, to a protocol on yet another server.
+// exit may pass on again and again, as relays, through other servers: the whole chain is checked
+// (walkPasses, drawbridge.go).
 func (p *Panel) passExit(ctx context.Context, srv *Server, n *Node) (*Node, *Server, string) {
-	exit, xs, prob := p.passHop(ctx, srv, n.PassNode)
-	switch prob {
-	case hopRemoved:
-		return nil, nil, "its exit protocol was removed"
-	case hopServerGone:
-		return nil, nil, "the exit's server was removed"
-	case hopUnusable:
-		return nil, nil, "its exit cannot be used as one any more"
-	case hopOff:
-		return nil, nil, fmt.Sprintf("its exit (%s · %s) is turned off", xs.Name, protocolLabel(exit.Kind, exit.Settings))
-	}
-	if exit.PassExt != 0 { // a relay to an external node: that leaves the internet itself
-		if _, why := p.extExit(ctx, xs.AccountID, exit.PassExt); why != "" {
-			return nil, nil, fmt.Sprintf("its exit (%s · %s) passes on, but %s", xs.Name, protocolLabel(exit.Kind, exit.Settings), why)
+	hops, why := p.walkPasses(ctx, srv, n.PassNode, nil)
+	if why != "" || len(hops) == 0 {
+		if why == "" {
+			why = "its exit protocol was removed"
 		}
-		return exit, xs, ""
+		return nil, nil, why
 	}
-	if exit.PassNode == 0 {
-		return exit, xs, ""
-	}
-	relay := xs.Name + " · " + protocolLabel(exit.Kind, exit.Settings)
-	next, ns, prob := p.passHop(ctx, xs, exit.PassNode)
-	switch {
-	case prob == hopRemoved:
-		return nil, nil, fmt.Sprintf("its exit (%s) passes on to a protocol that was removed", relay)
-	case prob == hopServerGone:
-		return nil, nil, fmt.Sprintf("its exit (%s) passes on to a server that was removed", relay)
-	case prob == hopUnusable:
-		return nil, nil, fmt.Sprintf("its exit (%s) passes on to a protocol that cannot be an exit", relay)
-	case prob == hopOff:
-		return nil, nil, fmt.Sprintf("its exit (%s) passes on to %s · %s, which is turned off", relay, ns.Name, protocolLabel(next.Kind, next.Settings))
-	case ns.ID == srv.ID:
-		return nil, nil, fmt.Sprintf("its exit (%s) passes on back to %s - every pass goes to another server", relay, srv.Name)
-	case next.PassNode != 0 || next.PassExt != 0:
-		return nil, nil, fmt.Sprintf("its exit (%s) passes on twice - a chain has two passes at most", relay)
-	}
-	return exit, xs, ""
+	return hops[0].n, hops[0].s, ""
 }
 
 // passOutbound renders the hop from an entry node's server to its exit node: the exit as a client
@@ -1636,7 +1622,15 @@ func passOutbound(entryServer *Server, entry *Node, exitServer *Server, exit *No
 		return nil, err
 	}
 	e.Host = reachHost(entryServer, exit, exitServer, e.Host) // the exit's address of a kind the entry has
-	return subgen.XrayOutbound(e, passTag(entry.ID))
+	e.Host = hopHost(entry.PassIP, exit, exitServer, e.Host)  // or of the kind DrawBridge asks for
+	ob, err := subgen.XrayOutbound(e, passTag(entry.ID))
+	if err != nil {
+		return nil, err
+	}
+	if ds := ipStrategy(entry.PassIP); ds != "" { // a name is looked up for that kind too
+		setSockopt(ob, "domainStrategy", ds)
+	}
+	return ob, nil
 }
 
 // passSSKey derives a Shadowsocks 2022 user key from a pass password.

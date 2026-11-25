@@ -5,6 +5,8 @@ import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import { Check, Code, Empty, ErrorBox, Field, Loading, Menu, Modal, PageHead, Search, Seg, Toggle, ask, errText, run, toast, useAsync, usePoll } from '../ui'
 import { AccessDialog, accessOf, accessText, setNodeUsers } from './ProtoAccess'
+import { DrawBridge } from './DrawBridge'
+import { ProtoModern } from './ProtoModern'
 
 // waitAction polls a queued server action until the agent reports back.
 export async function waitAction(id: number, timeoutMs = 90000): Promise<{ status: string; output: string }> {
@@ -60,6 +62,15 @@ const kindNames: Record<string, string> = {
   http: 'HTTP',
 }
 
+// the page's layout: Classic (cards or a list per server) or Modern (one row per server, for many)
+function savedLayout(): 'classic' | 'modern' {
+  try {
+    return localStorage.getItem('meridian.protocols.layout') === 'modern' ? 'modern' : 'classic'
+  } catch {
+    return 'classic'
+  }
+}
+
 function savedView(): 'cards' | 'list' {
   try {
     return localStorage.getItem('meridian.protocols.view') === 'list' ? 'list' : 'cards'
@@ -82,6 +93,17 @@ export function Protocols() {
   const [has, setHas] = useState<'all' | 'yes' | 'no'>('all')
   const [view, setViewState] = useState<'cards' | 'list'>(savedView)
   const [access, setAccess] = useState<{ n: NodeView; s: Server } | null>(null)
+  const [layout, setLayoutState] = useState<'classic' | 'modern'>(savedLayout)
+  const [mapOpen, setMapOpen] = useState(false)
+  const setLayout = (v: 'classic' | 'modern') => {
+    setLayoutState(v)
+    try {
+      localStorage.setItem('meridian.protocols.layout', v)
+    } catch {
+      /* a convenience only */
+    }
+  }
+  const modern = layout === 'modern' && !forUser
   const setView = (v: 'cards' | 'list') => {
     setViewState(v)
     try {
@@ -122,10 +144,21 @@ export function Protocols() {
         title="Protocols"
         sub={list.data ? `${count} protocol${count === 1 ? '' : 's'} on ${servers.length} server${servers.length === 1 ? '' : 's'}` : ' '}
         actions={
-          <button class="btn primary" disabled={servers.length === 0} onClick={() => setQuery('add', '1')}>
-            <Icon name="plus" size="sm" />
-            Add protocol
-          </button>
+          <>
+            <Seg
+              value={layout}
+              onChange={setLayout}
+              label="Layout"
+              options={[
+                ['classic', 'Classic'],
+                ['modern', 'Modern'],
+              ]}
+            />
+            <button class="btn primary" disabled={servers.length === 0} onClick={() => setQuery('add', '1')}>
+              <Icon name="plus" size="sm" />
+              Add protocol
+            </button>
+          </>
         }
       />
       {list.error && !list.data && <ErrorBox error={list.error} retry={list.reload} />}
@@ -135,7 +168,21 @@ export function Protocols() {
           Protocols run on your servers. Add one, then come back here.
         </Empty>
       )}
-      {list.data && count > 0 && (
+      {modern && list.data && servers.length > 0 && (
+        <>
+          <div class={'pm-map' + (mapOpen ? ' open' : '')}>
+            <button type="button" class="pm-map-head" onClick={() => setMapOpen(!mapOpen)} aria-expanded={mapOpen}>
+              <Icon name="route" size="sm" />
+              <span>DrawBridge · route map</span>
+              <small>{servers.reduce((a, s) => a + s.nodes.filter((n) => n.pass_node || n.pass_ext).length, 0)} passing</small>
+              <Icon name="chevron" size="sm" />
+            </button>
+            {mapOpen && <DrawBridge servers={servers} onChanged={reload} />}
+          </div>
+          <ProtoModern servers={only ? servers.filter((s) => s.id === only) : servers} onEdit={(n) => setQuery('edit', String(n.id))} onAdd={(s) => navigate(`/protocols?add=1&server=${s.id}`)} />
+        </>
+      )}
+      {!modern && list.data && count > 0 && (
         <div class="proto-tools">
           <Search value={q} onInput={setQ} placeholder="Find by name, port or server" />
           {kinds.length > 1 && (
@@ -182,6 +229,7 @@ export function Protocols() {
           />
         </div>
       )}
+      {!modern && list.data && servers.length > 0 && !user && !only && <DrawBridge servers={servers} onChanged={reload} />}
       {user && (
         <div class="proto-user">
           <div class="grow">
@@ -202,7 +250,7 @@ export function Protocols() {
           </button>
         </div>
       )}
-      {filtered && list.data && (
+      {!modern && filtered && list.data && (
         <p class="muted" style="margin:-6px 0 14px">
           {total === 0 ? 'No protocol matches.' : `${plural(total, 'protocol')} shown.`}{' '}
           <button
@@ -217,7 +265,7 @@ export function Protocols() {
           </button>
         </p>
       )}
-      {shown.map(({ s, nodes }) =>
+      {(modern ? [] : shown).map(({ s, nodes }) =>
         filtered && nodes.length === 0 ? null : (
           <section class="panel">
             <div class="ph">

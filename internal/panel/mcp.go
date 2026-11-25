@@ -1408,6 +1408,20 @@ var mcpTools = []mcpTool{
 			if v, ok := argInt(a, "exit_external_node_id"); ok {
 				b["pass_ext"] = v
 			}
+			if v, ok := a["backup_exit_protocol_ids"].([]any); ok {
+				ids := []int64{}
+				for _, x := range v {
+					if f, ok := x.(float64); ok {
+						ids = append(ids, int64(f))
+					}
+				}
+				b["pass_backups"] = ids
+			}
+			for _, k := range []string{"pass_ip", "out_ip", "out_addr"} {
+				if v, ok := argStr(a, k); ok {
+					b[k] = v
+				}
+			}
 			if v, ok := a["pass_only"].(bool); ok {
 				b["pass_only"] = v
 			}
@@ -1510,8 +1524,14 @@ var mcpTools = []mcpTool{
 			delete(m, "code")
 			m["protocol_id"] = pInt("Protocol id (list_servers)")
 			m["port"] = pInt("New port")
-			m["exit_protocol_id"] = pInt("Proxy pass: send its traffic out through that protocol on another server (it may pass on once more: a chain has two passes at most, each to another server); 0 turns the pass off")
+			m["exit_protocol_id"] = pInt("Proxy pass: send its traffic out through that protocol on another server (it may pass on, and so on: each hop to another server); 0 turns the pass off")
 			m["exit_external_node_id"] = pInt("Or a proxy pass through an external node (list_external_nodes); 0 turns it off")
+			m["pass_ip"] = pEnum("Which IP version the proxy pass reaches the next server with: '' as the servers allow, prefer-v4, prefer-v6, v4, v6 (that one only)", "", "prefer-v4", "prefer-v6", "v4", "v6")
+			m["out_ip"] = pEnum("Which IP version its traffic reaches sites with (and chains ending here): '' as the server does, prefer-v4, prefer-v6, v4, v6. Xray protocols only", "", "prefer-v4", "prefer-v6", "v4", "v6")
+			m["backup_exit_protocol_ids"] = pInts("DrawBridge: backup exits of its proxy pass, first choice first (protocols on other servers; -1 last = leave directly from here). Traffic takes the first line that answers; [] removes them")
+			m["out_addr"] = pStr("DrawBridge: the server address its traffic leaves for sites from (one of the server's addrs); empty = as the server does")
+			m["backup_exit_protocol_ids"] = pInts("DrawBridge: backup exits of its proxy pass, first choice first (protocols on other servers; -1 last = leave directly from here). Traffic takes the first line that answers; [] removes them")
+			m["out_addr"] = pStr("DrawBridge: the server address its traffic leaves for sites from (one of the server's addrs); empty = as the server does")
 			m["address_override"] = pStr("A different domain or IP in links for this protocol only; empty string = its own address or the server's")
 			return m
 		}(),
@@ -2200,9 +2220,9 @@ var mcpTools = []mcpTool{
 		Description: "What users see of the panel: its name, its logo and how the logo moves. Give the logo as SVG markup (logo_svg) or a base64 PNG, JPEG or WebP (logo_base64), up to 128 KB; SVGs may only draw - the answer says what to remove otherwise. reset_logo=true brings back the built-in logo (mark: the rose or the umbrella). Only the given fields change.",
 		Props: map[string]any{
 			"name":        pStr("The panel's name, shown on every page and in users' apps (up to 64 characters)"),
-			"mark":        pEnum("The built-in logo, shown while no logo is uploaded: rose (Rosélune's own: five petals, a blush bloom, the moon at its heart) umbrella (eight panels, red and white), confetti (a cobalt crescent moon cradling a canary sun, with a zigzag, a triangle and a dot - the Postmodernism look's colours) or pixel (the rose in square pixels)", logoMarks...),
+			"mark":        pEnum("The built-in logo, shown while no logo is uploaded: rose (Rosélune's own: five petals, a blush bloom, the moon at its heart) umbrella (eight panels, red and white), confetti (a cobalt crescent moon cradling a canary sun, with a zigzag, a triangle and a dot - the Postmodernism look's colours) , pixel (the rose in square pixels) or bridge (the drawbridge: an arch over the water, two towers, the leaves lowered on their cables and lit where they meet)", logoMarks...),
 			"animation":   pEnum("How the logo moves while pages load and when someone signs in (assemble flies in the built-in logo's pieces; an uploaded logo rises instead)", logoAnimations...),
-			"look":        pEnum("How the panel, the status page and users' pages look to people who have not picked a look themselves: romance (the default: blush paper, rose ink, a serif voice), umbrella (black, white and signal red, a laboratory's), postmodern (cream paper, black outlines, blocks of bright colour, laid out anew; no globe on the status page), time (a very large, minimal clock face at the edge of the page telling the right time, near black, great white Didone type and fine rules, laid out anew; no globe), minecraft (a world of blocks: dark earth with grass along the top, stone-slab cards and buttons with black outlines, block type with a hard shadow, emerald and yellow), the quiet tones ice, celadon, ink, paper, mist - or auto (Ice, Paper on light devices)", append(slices.Clone(siteTones), "auto")...),
+			"look":        pEnum("How the panel, the status page and users' pages look to people who have not picked a look themselves: romance (the default: blush paper, rose ink, a serif voice), umbrella (black, white and signal red, a laboratory's), postmodern (cream paper, black outlines, blocks of bright colour, laid out anew; no globe on the status page), time (a very large, minimal clock face at the edge of the page telling the right time, near black, great white Didone type and fine rules, laid out anew; no globe), minecraft (a world of blocks: dark earth with grass along the top, stone-slab cards and buttons with black outlines, block type with a hard shadow, emerald and yellow), stranding (a green valley or a shore under Timefall with rain behind dark glass, thin wide capitals and one deep blue), the quiet tones ice, celadon, ink, paper, mist - or auto (Ice, Paper on light devices)", append(slices.Clone(siteTones), "auto")...),
 			"logo_svg":    pStr("A new logo as SVG markup"),
 			"logo_base64": pStr("A new logo as a base64 PNG, JPEG or WebP image"),
 			"reset_logo":  pBool("Use the built-in logo again (see mark)"),
@@ -2411,8 +2431,10 @@ func protocolProps(withServer bool) map[string]any {
 		m["server_id"] = pInt("Server id")
 		m["port"] = pInt("Port; omit to pick a free common one")
 		m["label"] = pStr("Optional label shown in apps")
-		m["exit_protocol_id"] = pInt("Proxy pass: send this protocol's traffic out through that protocol on another server (an Xray entry; any exit but WireGuard). The exit may pass on once more (a relay): a chain has two passes at most, each to another server")
+		m["exit_protocol_id"] = pInt("Proxy pass: send this protocol's traffic out through that protocol on another server (an Xray entry; any exit but WireGuard). The exit may pass on (a relay), and so on: each hop goes to another server")
 		m["exit_external_node_id"] = pInt("Or a proxy pass through an external node (list_external_nodes): users then appear at that node")
+		m["pass_ip"] = pEnum("Which IP version the proxy pass reaches the next server with: '' as the servers allow, prefer-v4, prefer-v6, v4, v6 (that one only)", "", "prefer-v4", "prefer-v6", "v4", "v6")
+		m["out_ip"] = pEnum("Which IP version its traffic reaches sites with (and chains ending here): '' as the server does, prefer-v4, prefer-v6, v4, v6. Xray protocols only", "", "prefer-v4", "prefer-v6", "v4", "v6")
 		m["pass_only"] = map[string]any{"type": "boolean", "description": "Serve only proxy passes from other servers: users cannot connect to it directly and it is left out of their links. Use it for an exit that people should reach only through a relay"}
 		m["bind_ip"] = pStr("One of the server's addresses (addrs in get_server) for this protocol alone: it listens there, its traffic leaves from there, links use it. Protocols on different addresses may share a port. Omit for all addresses")
 		m["code"] = pStr(protocolCodeHelp)
@@ -2463,6 +2485,20 @@ func protocolChange(a map[string]any) map[string]any {
 	}
 	if v, ok := argInt(a, "exit_external_node_id"); ok {
 		b["pass_ext"] = v
+	}
+	if v, ok := a["backup_exit_protocol_ids"].([]any); ok {
+		ids := []int64{}
+		for _, x := range v {
+			if f, ok := x.(float64); ok {
+				ids = append(ids, int64(f))
+			}
+		}
+		b["pass_backups"] = ids
+	}
+	for _, k := range []string{"pass_ip", "out_ip", "out_addr"} {
+		if v, ok := argStr(a, k); ok {
+			b[k] = v
+		}
 	}
 	if v, ok := a["pass_only"].(bool); ok {
 		b["pass_only"] = v

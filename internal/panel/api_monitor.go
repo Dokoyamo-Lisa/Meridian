@@ -523,7 +523,7 @@ func (p *Panel) apiPutSettings(w http.ResponseWriter, r *http.Request, a *Accoun
 		s.LogoMark = p.settings().LogoMark
 	}
 	if !slices.Contains(logoMarks, s.LogoMark) {
-		return errStatus(http.StatusBadRequest, "logo_mark is rose (Rosélune's own) or umbrella")
+		return errStatus(http.StatusBadRequest, "logo_mark is "+strings.Join(logoMarks, ", ")+" (rose is Rosélune's own)")
 	}
 	if s.LogoAnimation != "" && !slices.Contains(logoAnimations, s.LogoAnimation) {
 		return errStatus(http.StatusBadRequest, "logo_animation is "+strings.Join(logoAnimations, ", "))

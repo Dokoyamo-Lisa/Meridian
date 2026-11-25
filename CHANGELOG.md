@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.5.2 - 2026-11-25
+
+DrawBridge - lines of servers with backup routes - and new ways to find servers and users among many.
+Upgrade the panel (**Settings › Updates** - nobody is disconnected); the agents need nothing.
+
+- **DrawBridge: chains of servers.** On the Protocols page, draw a line: choose the servers traffic
+  should cross, in order, on a chart of all of them, pick a protocol on each (or have one made from a
+  preset), and lower the bridge. Each hop can prefer IPv4 or IPv6, or use only one, to reach the next
+  server, and the last server can do the same to reach sites. Applied live; raising a bridge takes its
+  first pass away.
+- **Backup lines.** Any hop can have backup exits in order of priority - ending at the same exit or
+  another, or as a last resort leaving directly. Xray checks every line each minute and traffic takes
+  the first that answers, going back as soon as the main line does (one Xray restart the first time,
+  on your click).
+- **Proxy pass chains have no length limit** (two passes at most before). Every hop still goes to
+  another server, and a chain never comes back to one it crossed.
+- **Choose the address traffic leaves from** on a server with several.
+- **DrawBridge's route map.** The passes between your servers are drawn as a route graph - from where
+  users connect to the Internet, backups dashed and ranked. Point at a server to light its lines, choose
+  it to set its backups, IP versions and the address it leaves from, drag it to arrange the picture.
+  Right-click a server, a strand or a line for what can be done there: edit the line or a backup
+  route, add a backup, make a backup the main line or change its place, take a server out, stop
+  passing on, delete - each asking first.
+- **One editor for lines and backup routes.** Choose servers on a chart of all of them (grouped by
+  country, with search and filters), open one to see its protocols, and pick one, have the panel make
+  a new one, or write your own from a template. A backup route can cross as many servers as a line;
+  hops can be dragged into another order, taken off or given another protocol, and every protocol on
+  the route can be named there - the one users connect to with the name their apps show. What a
+  change leaves unused - protocols made only for chains - is removed. The Lines list shows every
+  backup under its line.
+- **A Modern layout for the Protocols page** (Classic stays the default): one row per server with its
+  protocols as compact chips, numbers that filter, and the route map folded above - made for many
+  servers and long chains.
+- **The drawbridge as a built-in logo** (**Settings › Panel › Logo**), drawn like DrawBridge's own mark.
+- **Servers: an Explorer layout** (Classic stays the default). Numbers on top that filter (offline,
+  waiting, need a look, older agent, data nearly used, ending soon), countries as chips, protocol
+  filters, a search that also takes keys (`cc:jp`, `status:offline`, `kind:vless`, `is:v6`, `is:nat`),
+  groups by country, status or agent version, and nine orders. The page's link keeps the view.
+- **Monitor › Live: Sessions.** Everyone online drawn as sessions between users and servers, the
+  busiest first, each strand as thick as what it carries now. Type part of a name, an address, a place
+  or a network to find someone among many (Enter opens them); a user's card has their speed over the
+  last minutes, each server and protocol, and each address with where it is. The list is one click
+  away.
+- **The Stranding look in the panel.** The panel can now wear the Stranding look too (the palette
+  button, or as the site's default in **Settings**).
+
 ## 1.5.1 - 2026-11-12
 
 Two fixes, one of them for security. Upgrade the panel (**Settings › Updates** - nobody is

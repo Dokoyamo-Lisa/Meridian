@@ -19,10 +19,9 @@ Add servers, give each person a link, and see everything that happens - for a te
 
 <br>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/status-dark.webp">
-  <img src="docs/img/status-light.webp" alt="Rosélune's status page: eight servers, their availability, load and throughput">
-</picture>
+<img src="docs/img/status-light.webp" alt="Rosélune's status page in Romance, its own look: eight servers on a live globe, their availability, load and throughput">
+
+<p align="center"><sub>The status page in <b>Romance</b>, Rosélune's own look</sub></p>
 
 <br>
 
@@ -44,7 +43,7 @@ Add servers, give each person a link, and see everything that happens - for a te
     <td width="50%"><img src="docs/img/users.webp" alt="Users: everyone's status, speed now and usage this cycle"></td>
   </tr>
   <tr>
-    <td align="center"><b>Monitor</b><br><sub>Who is on, how fast, from where, through what</sub></td>
+    <td align="center"><b>Monitor</b><br><sub>Who is on, how fast, from where, through what - and anyone among hundreds in a few letters</sub></td>
     <td align="center"><b>Users</b><br><sub>Status, speed now, quota and expiry at a glance</sub></td>
   </tr>
   <tr>
@@ -65,6 +64,7 @@ Add servers, give each person a link, and see everything that happens - for a te
 
 - **One command** installs the panel with HTTPS, and one more, copied from the panel, adds each server. The agent then fetches its cores from their official releases and checks them.
 - **Bring what you have.** The agent finds Xray, V2Ray, x-ui, 3x-ui, sing-box and Hysteria2 on a server and imports their protocols with the same keys and passwords, so devices keep working.
+- **Many servers, found fast.** Filter by country, status or protocol, search with keys like `cc:jp` or `status:offline`, and group them as you like.
 - **Servers anywhere.** Dynamic DNS with Cloudflare updates, IPv6-only servers, NAT and container hosts, and a relay for servers with a poor route to the panel.
 - **Reinstall or start over** a server in one click, every proxy rebuilt with the same ports, keys and links.
 
@@ -77,7 +77,7 @@ Add servers, give each person a link, and see everything that happens - for a te
 ### Decide where traffic goes
 
 - **Traffic rules:** sites, countries, ports or BitTorrent go directly, through another server, through a provider's proxy, across a load balancer, or nowhere.
-- **Proxy pass:** people connect to a nearby server and leave the internet from another.
+- **DrawBridge:** join servers into lines - people connect to a nearby server and leave the internet from another, across as many servers as you like. Choose them on a chart, give each line backup routes in order, and the route map shows it all; right-click anything there to change it.
 - **Blocked sites:** write *anthropic.com, google.com* on one protocol, or for one person on the protocols you tick.
 - **Country rules:** block countries on every server, and choose who may open the panel.
 
@@ -99,7 +99,7 @@ You mark each finding as yours or seen, here or on every server. Where the serve
 
 ### Make it yours
 
-- **Your name and logo** everywhere users look, in the apps too. The rose, the umbrella, confetti, or your own, with a choice of how it moves.
+- **Your name and logo** everywhere users look, in the apps too. The rose, the umbrella, confetti, the drawbridge, or your own, with a choice of how it moves.
 - **Automate it:** a documented REST API with scoped tokens, and an MCP server so AI assistants can answer *"who is sharing their link?"*, asking first before anything disruptive.
 - **A Telegram bot:** alerts, a daily report and commands in your chat, and a Mini App for users' pages.
 - **Plugins** restyle pages, add pages, routes, MCP tools and timers. They stay off until you agree to what each may do.
@@ -107,16 +107,22 @@ You mark each finding as yours or seen, here or on every server. Where the serve
 
 ## Looks
 
-Nine looks, for you and for each visitor to choose: Romance, Umbrella, Postmodernism and Time, and the quiet tones Ice, Celadon, Ink, Paper and Mist. Nothing to install.
+Romance is Rosélune's own: rose and blush, a serif that takes its time. Umbrella, Postmodernism and Time are there too, with the quiet tones Ice, Celadon, Ink, Paper and Mist. You and each visitor choose; nothing to install.
 
 <table>
   <tr>
-    <td width="33%"><img src="docs/img/status-umbrella.webp" alt="The Umbrella look: black glass, white type and one signal red"></td>
-    <td width="33%"><img src="docs/img/status-postmodern.webp" alt="The Postmodernism look: cream paper, black outlines and blocks of colour"></td>
-    <td width="33%"><img src="docs/img/status-dark.webp" alt="The Time look: a very large minimal clock face, running live behind a journal-like page"></td>
+    <td width="50%"><img src="docs/img/status-light.webp" alt="The Romance look: rose and blush, serif headings, a live globe"></td>
+    <td width="50%"><img src="docs/img/status-umbrella.webp" alt="The Umbrella look: black glass, white type and one signal red"></td>
   </tr>
   <tr>
+    <td align="center"><b>Romance</b><br><sub>Rosélune's own, and the default</sub></td>
     <td align="center"><b>Umbrella</b><br><sub>A laboratory after hours</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/img/status-postmodern.webp" alt="The Postmodernism look: cream paper, black outlines and blocks of colour"></td>
+    <td width="50%"><img src="docs/img/status-dark.webp" alt="The Time look: a very large minimal clock face, running live behind a journal-like page"></td>
+  </tr>
+  <tr>
     <td align="center"><b>Postmodernism</b><br><sub>Paper, outlines, blocks of colour</sub></td>
     <td align="center"><b>Time</b><br><sub>A great clock, running live behind the page</sub></td>
   </tr>
@@ -146,7 +152,7 @@ Nine looks, for you and for each visitor to choose: Romance, Umbrella, Postmoder
 
 - **Certificates** come from Let's Encrypt, are pasted in, self-signed, or **shared**: kept once and replaced once for every server. A self-signed certificate is pinned in every app that can check it and left out of the others. Certificate checks are never turned off.
 - **REALITY** can borrow a well-known site or front your own website on the server. A domain or camouflage site behind Cloudflare is flagged in red before you save.
-- **Proxy pass** can go through two servers with a relay in between, or through a provider's proxy imported as an external node. Links, subscriptions and Clash files can be imported as exits; any that would turn certificate checks off or travel unencrypted are refused.
+- **Proxy pass** can cross any number of your servers, each hop choosing IPv4 or IPv6, with backup routes Xray checks every minute; or go through a provider's proxy imported as an external node. Links, subscriptions and Clash files can be imported as exits; any that would turn certificate checks off or travel unencrypted are refused.
 - **Each protocol** can have its own server address, and anything the forms do not offer can be written as configuration code merged on top of the generated one.
 - **Users' own servers** (mieru, Snell, AnyTLS) run as an account without any rights that the firewall keeps away from the server itself and from private networks.
 

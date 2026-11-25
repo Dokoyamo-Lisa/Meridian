@@ -573,14 +573,6 @@ func (p *Panel) checkPassExt(ctx context.Context, entry *Node, entrySrv *Server,
 	if err != nil || x.AccountID != entrySrv.AccountID {
 		return errStatus(http.StatusBadRequest, "that external node does not exist")
 	}
-	// protocols that pass through this one make the chain one pass longer (as checkPass says)
-	if entry.ID > 0 {
-		for _, e := range p.passEntryNodes(ctx, entry.ID) {
-			if len(p.passEntryNodes(ctx, e.ID)) > 0 {
-				return errStatus(http.StatusBadRequest, fmt.Sprintf("protocols pass through %s, which passes through this one - a chain has two passes at most", p.nodeTitle(ctx, e)))
-			}
-		}
-	}
 	return checkExtReach(entrySrv, x)
 }
 
