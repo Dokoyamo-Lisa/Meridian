@@ -97,6 +97,7 @@ const marks: { id: string; name: string; hint: string }[] = [
   { id: 'umbrella', name: 'Umbrella', hint: 'Eight panels, red and white' },
   { id: 'confetti', name: 'Confetti', hint: 'A cobalt crescent moon cradling a canary sun, in the colours of the Postmodernism look' },
   { id: 'pixel', name: 'Pixel rose', hint: 'The rose in square pixels, with the crescent moon at its heart. The Minecraft look shows it in place of the rose' },
+  { id: 'bridge', name: 'DrawBridge', hint: 'An arch over the water, two towers and the leaves lowered on their cables, lit where they meet - in steel and blue' },
 ]
 
 function Brand(props: {
@@ -168,6 +169,8 @@ function Brand(props: {
             ? 'The sun, the zigzag, the triangle and the moon fly in from every side.'
             : markName === 'pixel'
               ? 'The rose’s four sides fly in, then its bloom and the moon.'
+              : markName === 'bridge'
+                ? 'The arch drops in, the towers slide in, the leaves swing up, then the cables and the water.'
               : 'The umbrella’s panels slide in one by one.'
       : props.anim === 'none'
         ? 'The logo stays still, and signing in goes straight to the page.'

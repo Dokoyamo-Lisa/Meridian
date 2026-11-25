@@ -10,8 +10,8 @@ case "$(uname -m)" in
   *) echo "unsupported CPU: $(uname -m)" >&2; exit 1 ;;
 esac
 if [ ! -x /tmp/sing-box ]; then
-  curl -fsSL -o sb.tgz "https://github.com/SagerNet/sing-box/releases/download/v1.14.2/sing-box-1.14.2-linux-$arch.tar.gz"
-  tar xzf sb.tgz && cp "sing-box-1.14.2-linux-$arch/sing-box" /tmp/sing-box
+  curl -fsSL -o sb.tgz "https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-linux-$arch.tar.gz"
+  tar xzf sb.tgz && cp "sing-box-1.14.4-linux-$arch/sing-box" /tmp/sing-box
 fi
 if [ ! -x /tmp/mihomo ]; then
   v=v1.19.32

@@ -95,8 +95,8 @@ func (p *Panel) reinstallServer(r *http.Request, a *Account, s *Server, clean bo
 					passed++
 				}
 			}
-			if n.PassNode > 0 { // its exit drops the pass user
-				if x, err := p.nodeByID(ctx, n.PassNode); err == nil {
+			for _, xid := range append([]int64{n.PassNode}, n.PassBackups...) { // its exits drop the pass user
+				if x, err := p.nodeByID(ctx, xid); xid > 0 && err == nil {
 					touch = append(touch, x.ServerID)
 				}
 			}

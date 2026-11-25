@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { mergeByAddress } from '../livegroup'
-import { DestRow, PanelEvent, IPRow, OnlineIP, Server, SpeedView, User, bits, dateTime, del, flag, get, post } from '../api'
+import { DestRow, PanelEvent, IPRow, Server, SpeedView, User, bits, dateTime, del, flag, get, post } from '../api'
 import { Icon } from '../icons'
 import { navigate, setQuery, useLocation } from '../router'
 import { Ago, Empty, ErrorBox, Field, Loading, Modal, PageHead, Search, Seg, Tabs, ask, errText, run, toast, useAsync, usePoll } from '../ui'
 import { useLivePace } from '../session'
 import { HealthTab } from './Health'
 import { PingTab } from './Ping'
+import { LiveGraph, LiveRow } from './LiveGraph'
 
 // ---------------------------------------------------------------- shared pieces
 
@@ -144,7 +145,7 @@ export function Monitor() {
           ['ping', 'Ping'],
         ]}
       />
-      {tab === 'live' && <LiveTab />}
+      {tab === 'live' && <LiveTab servers={servers.data || []} />}
       {tab === 'history' && (
         <>
           <div class="row wrap" style="margin-bottom:14px">
@@ -178,12 +179,6 @@ export function Monitor() {
   )
 }
 
-interface LiveRow extends OnlineIP {
-  user_id: number
-  user: string
-  ip_limit: number
-  user_ips: number
-}
 
 // LiveNow is the part of /api/overview the Live tab shows: what all servers' network carries now.
 interface LiveNow {
@@ -197,14 +192,39 @@ const updown = (d: number, u: number) => (
   </>
 )
 
-// LiveTab: everyone connected now, grouped by user - each user's speed (all servers and protocols,
-// counted once), and under them each address once, with the protocols it uses and their speeds.
-function LiveTab() {
+const VIEW_KEY = 'meridian.live.view'
+
+// LiveTab: everyone connected now. Sessions (LiveGraph) draws users and the servers they are on, the
+// busiest first, to find someone among many; the list groups by user - each user's speed (all servers
+// and protocols, counted once), and under them each address once, with its protocols and speeds.
+function LiveTab(props: { servers: Server[] }) {
   const live = useAsync(() => get<LiveRow[]>('/api/live'))
   const speed = useAsync(() => get<SpeedView>('/api/live/speed'))
   const now = useAsync(() => get<LiveNow>('/api/overview'))
   const [q, setQ] = useState('')
   const [block, setBlock] = useState<LiveRow | null>(null)
+  const [view, setViewState] = useState<'sessions' | 'list'>(() => (localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'sessions'))
+  const setView = (v: 'sessions' | 'list') => {
+    setViewState(v)
+    try {
+      localStorage.setItem(VIEW_KEY, v)
+    } catch {
+      /* private mode */
+    }
+  }
+  // each user's speed over the last few minutes, while the page is open (the sparklines)
+  const history = useRef(new Map<number, number[]>())
+  useEffect(() => {
+    const users = speed.data?.users || []
+    const seen = new Set<number>()
+    for (const u of users) {
+      const h = history.current.get(u.user_id) || []
+      h.push(u.up + u.down)
+      history.current.set(u.user_id, h.slice(-36))
+      seen.add(u.user_id)
+    }
+    for (const [id, h] of history.current) if (!seen.has(id)) history.current.set(id, [...h, 0].slice(-36))
+  }, [speed.data])
   const pace = useLivePace(5000)
   usePoll(() => {
     void live.reload()
@@ -264,9 +284,20 @@ function LiveTab() {
             </span>
           )}
         </span>
-        <Search value={q} onInput={setQ} placeholder="User, IP, server, place…" />
+        <Seg
+          value={view}
+          onChange={setView}
+          options={[
+            ['sessions', 'Sessions'],
+            ['list', 'List'],
+          ]}
+          label="Show"
+        />
+        {view === 'list' && <Search value={q} onInput={setQ} placeholder="User, IP, server, place…" />}
       </div>
-      {order.length === 0 ? (
+      {view === 'sessions' ? (
+        <LiveGraph rows={live.data} speed={sp} servers={props.servers} history={history.current} onBlock={setBlock} />
+      ) : order.length === 0 ? (
         <Empty title={live.data.length ? 'Nothing matches' : 'Nobody is connected right now'} />
       ) : (
         <div class="table-wrap">

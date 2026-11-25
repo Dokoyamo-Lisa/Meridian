@@ -309,25 +309,33 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 	// proxy pass, exit side: entry nodes elsewhere that pass through our nodes, while their whole chain
 	// can be used (a relay among ours passes their traffic on, as its own pass user, to its exit)
 	passByExit := map[int64][]passClient{}
-	if prow, err := p.db.QueryContext(ctx, `SELECT `+nodeCols+` FROM nodes WHERE enabled = 1 AND pass_node IN
-		(SELECT id FROM nodes WHERE server_id = ?)`, id); err == nil {
+	{
+		ours := map[int64]bool{}
+		for _, n := range nodes {
+			ours[n.ID] = true
+		}
 		var entries []*Node
-		for prow.Next() {
-			if n, err := scanNode(prow); err == nil {
-				entries = append(entries, n)
+		for _, e := range p.passingNodes(ctx) {
+			if e.Enabled && (ours[e.PassNode] || slices.ContainsFunc(e.PassBackups, func(x int64) bool { return ours[x] })) {
+				entries = append(entries, e)
 			}
 		}
-		prow.Close()
 		for _, e := range entries {
 			es, err := p.serverByID(ctx, e.ServerID)
 			if err != nil || es.DeletedAt > 0 || es.AccountID != srv.AccountID {
 				continue
 			}
-			if _, _, why := p.passExit(ctx, es, e); why != "" {
-				continue // its chain cannot be used: it blocks on its own server
-			}
 			uuid, pw := passCredentials(es, e)
-			passByExit[e.PassNode] = append(passByExit[e.PassNode], passClient{Entry: e, UUID: uuid, Password: pw})
+			// its main exit and its backup each take it while their line can be used
+			for _, x := range append([]int64{e.PassNode}, e.PassBackups...) {
+				if x <= 0 || !ours[x] {
+					continue
+				}
+				if _, _, why := p.passExit(ctx, es, &Node{ID: e.ID, PassNode: x}); why != "" {
+					continue // that line cannot be used: on its own server it blocks or takes the other
+				}
+				passByExit[x] = append(passByExit[x], passClient{Entry: e, UUID: uuid, Password: pw})
+			}
 		}
 	}
 	// and other servers whose traffic rules send traffic through our protocols
@@ -336,7 +344,7 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 	}
 	nodeOut := map[int64]string{} // how each Xray protocol's traffic leaves when no rule takes it
 
-	var passOut, passRules []map[string]any
+	var passOut, passRules, passBalancers, loopRules []map[string]any
 	var codeOut, codeRules []map[string]any // from protocols' own settings
 	codeTags := map[string]bool{}
 	xr := &proto.Xray{}
@@ -377,8 +385,9 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			}
 			xr.Inbounds = append(xr.Inbounds, in)
 			nodeOut[n.ID] = directTag(srv)
-			// a protocol with its own address sends its traffic from there (a proxy pass from there too)
-			if n.BindIP != "" && n.PassNode == 0 && n.PassExt == 0 {
+			// a protocol with its own address sends its traffic from there (a proxy pass from there too);
+			// one with its own IP version or way out reaches sites with that (DrawBridge)
+			if (n.BindIP != "" || n.OutIP != "" || n.OutAddr != "") && n.PassNode == 0 && n.PassExt == 0 {
 				passOut = append(passOut, bindOutbound(srv, n))
 				passRules = append(passRules, map[string]any{"ruleTag": bindTag(n.ID),
 					"inboundTag": []string{proto.InboundTag(n.ID)}, "outboundTag": bindTag(n.ID)})
@@ -407,21 +416,57 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 			// cannot be used (turned off, its server removed) the traffic is blocked: users who chose to
 			// appear at the exit must never leave from here instead without anyone noticing.
 			if n.PassNode > 0 {
-				out := "block"
-				if exit, xs, why := p.passExit(ctx, srv, n); why == "" {
-					if ob, err := passOutbound(srv, n, xs, exit); err == nil {
-						if n.BindIP != "" {
-							ob["sendThrough"] = n.BindIP
-						}
-						passOut = append(passOut, ob)
-						out = passTag(n.ID)
-					} else {
+				// the main exit, and the backup one (DrawBridge) when it has one: while both can be
+				// used, Xray checks the main line every minute and switches to the backup while it does
+				// not answer
+				way := func(exitID int64) map[string]any {
+					exit, xs, why := p.passExit(ctx, srv, &Node{ID: n.ID, ServerID: n.ServerID, Kind: n.Kind, PassNode: exitID, PassIP: n.PassIP})
+					if why != "" {
+						return nil
+					}
+					ob, err := passOutbound(srv, n, xs, exit)
+					if err != nil {
 						slog.Warn("proxy pass", "node", n.ID, "err", err)
+						return nil
+					}
+					if n.BindIP != "" {
+						ob["sendThrough"] = n.BindIP
+					}
+					return ob
+				}
+				// the lines in their order: the main one, then the backups that can be used now
+				var lines []map[string]any
+				if ob := way(n.PassNode); ob != nil {
+					lines = append(lines, ob)
+				}
+				for _, b := range n.PassBackups {
+					if b == -1 { // the last resort, by choice: directly from here
+						lines = append(lines, bindOutbound(srv, n))
+						continue
+					}
+					if ob := way(b); ob != nil {
+						lines = append(lines, ob)
 					}
 				}
-				passRules = append(passRules, map[string]any{"ruleTag": passTag(n.ID),
-					"inboundTag": []string{proto.InboundTag(n.ID)}, "outboundTag": out})
-				nodeOut[n.ID] = out
+				rule := map[string]any{"ruleTag": passTag(n.ID), "inboundTag": []string{proto.InboundTag(n.ID)}}
+				switch len(lines) {
+				case 0:
+					rule["outboundTag"] = "block"
+					nodeOut[n.ID] = "block"
+				case 1: // one line can be used: it carries everything, nothing to switch between
+					lines[0]["tag"] = passTag(n.ID)
+					passOut = append(passOut, lines[0])
+					rule["outboundTag"] = passTag(n.ID)
+					nodeOut[n.ID] = passTag(n.ID)
+				default:
+					outs, bals, loops := failover(n.ID, lines)
+					passOut = append(passOut, outs...)
+					passBalancers = append(passBalancers, bals...)
+					loopRules = append(loopRules, loops...)
+					rule["balancerTag"] = failTag(n.ID, 0)
+					nodeOut[n.ID] = failTag(n.ID, 0)
+				}
+				passRules = append(passRules, rule)
 			}
 		case "hysteria":
 			hn, err := hyNode(n, servingOf(subs, n, stopped), passByExit[n.ID], over)
@@ -517,7 +562,10 @@ func (p *Panel) compileServer(ctx context.Context, id int64) (*proto.State, erro
 	rules = append(append(blockedRules(nodes), userBlockedRules(nodes, subs)...), rules...)
 	// devices over a user's limit are turned away before anything else (limits.go)
 	rules = append(p.limitsFor(srv, nodes, subs, st), rules...)
-	xr.Base = xrayBase(srv, outs, rules, plan.balancers, plan.observe)
+	// a failover's later stages come back in through loopback inbounds of their own: their rules
+	// match only those, so they go first
+	rules = append(loopRules, rules...)
+	xr.Base = xrayBase(srv, outs, rules, append(plan.balancers, passBalancers...), plan.observe || len(passBalancers) > 0)
 	if srv.XrayCode != "" { // the operator's own configuration on top
 		if base, ins, err := mergeXray(xr.Base, xr.Inbounds, srv.XrayCode); err == nil {
 			xr.Base, xr.Inbounds = base, ins

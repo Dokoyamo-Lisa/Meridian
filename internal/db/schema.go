@@ -815,6 +815,15 @@ ALTER TABLE servers ADD COLUMN setup_version INTEGER NOT NULL DEFAULT 0;
 	`ALTER TABLE nodes ADD COLUMN blocked_sites TEXT NOT NULL DEFAULT '[]';`,
 	// the sites one user does not reach on protocols of the supervisor's choice
 	`ALTER TABLE subs ADD COLUMN site_block TEXT NOT NULL DEFAULT '';`,
+	// DrawBridge: which IP version a protocol dials the next hop of its proxy pass with, and which its
+	// traffic reaches sites with ('' = as the server does; prefer-v4 | prefer-v6 | v4 | v6); the backup
+	// exits its pass switches to, in order, while the lines before do not answer (-1: directly); the address its traffic leaves from
+	`
+ALTER TABLE nodes ADD COLUMN pass_ip TEXT NOT NULL DEFAULT '';
+ALTER TABLE nodes ADD COLUMN out_ip TEXT NOT NULL DEFAULT '';
+ALTER TABLE nodes ADD COLUMN pass_backups TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE nodes ADD COLUMN out_addr TEXT NOT NULL DEFAULT '';
+`,
 }
 
 // NextID is an SQL expression for the id of a new row of nodes or subs: above every id the table

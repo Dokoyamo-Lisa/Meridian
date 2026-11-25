@@ -379,6 +379,10 @@ const (
 	// settings and restart those cores (agents 0.7 and later); until then a server keeps its version
 	ActionUpgradeHysteria = "upgrade_hysteria"
 	ActionUpgradeRealm    = "upgrade_realm"
+	// ActionUpgradeSolo switches the users' own servers - mieru (mita), Snell and AnyTLS (sing-box) -
+	// to the versions in State.Cores, and restarts the users' processes of each program that changed
+	// (Caps.UpgradeSolo, 1.5.3 and later)
+	ActionUpgradeSolo = "upgrade_solo"
 	// ActionReinstall downloads the official release of the cores the server runs again (the versions
 	// in use), checks it, puts it in place and restarts those cores - or, with Reinstall.Rebuild or
 	// Reinstall.Clean, the whole server's proxies (Reinstall; Caps.Reinstall, 1.4)
@@ -576,6 +580,8 @@ type Caps struct {
 	Guard bool `json:"guard,omitempty"`
 	// Setup: the agent runs the supervisor's setup script after the cores (State.Setup, Live.Setup).
 	Setup bool `json:"setup,omitempty"`
+	// UpgradeSolo: the agent upgrades mieru, Snell and AnyTLS on request (ActionUpgradeSolo; 1.5.3).
+	UpgradeSolo bool `json:"upgrade_solo,omitempty"`
 	// Rates: the agent measures speed now per user and per client address (Live.Rates, IPRates).
 	Rates bool `json:"rates,omitempty"`
 }

@@ -5,6 +5,8 @@
 //     moon cradling it, a mint zigzag, a pink triangle and a cobalt dot
 //   - the pixel rose: the rose on a grid of 16 by 16, in square pixels; the Minecraft look shows it in
 //     place of the rose
+//   - the drawbridge: DrawBridge's own mark (bridgemark.tsx) with its leaves down - an arch over the water,
+//     two towers, the leaves on their cables meeting in a seam of light
 // dx/dy point away from the centre - where a piece comes from; i orders them (the animation delay).
 // internal/panel/brandmarks.go draws the same pieces for the loading screens and subscription pages.
 
@@ -17,7 +19,7 @@ export interface Wedge {
   i: number
 }
 
-export type BuiltinMark = 'rose' | 'umbrella' | 'confetti' | 'pixel'
+export type BuiltinMark = 'rose' | 'umbrella' | 'confetti' | 'pixel' | 'bridge'
 
 const ROSE = '#c13a66'
 const BLUSH = '#fbe1e9'
@@ -31,6 +33,10 @@ const SUN = '#ffd23f'
 const COBALT = '#2346d8'
 const PINK = '#ff9dc2'
 const MINT = '#6fdcb9'
+const STEEL = '#8193ad'
+const STEELSOFT = '#8193ad8c'
+const STEELFAINT = '#8193ad59'
+const BRGLOW = '#8fb8ff'
 
 export const MARKS: Record<BuiltinMark, Wedge[]> = {
   rose: [
@@ -80,10 +86,26 @@ export const MARKS: Record<BuiltinMark, Wedge[]> = {
     { d: 'M9 6h6v1.5h-6zM7.5 7.5h3v1.5h-3zM13.5 7.5h3v1.5h-3zM6 9h3v1.5h-3zM12 9h6v1.5h-6zM6 10.5h3v1.5h-3zM12 10.5h6v1.5h-6zM6 12h3v1.5h-3zM12 12h6v1.5h-6zM6 13.5h4.5v1.5h-4.5zM13.5 13.5h4.5v1.5h-4.5zM7.5 15h4.5v1.5h-4.5zM15 15h1.5v1.5h-1.5zM9 16.5h6v1.5h-6z', fill: BLUSH, white: true, dx: 0, dy: 0, i: 5 },
     { d: 'M10.5 7.5h3v1.5h-3zM9 9h3v1.5h-3zM9 10.5h3v1.5h-3zM9 12h3v1.5h-3zM10.5 13.5h3v1.5h-3zM12 15h3v1.5h-3z', fill: HEART, white: false, dx: 0, dy: 0, i: 6 },
   ],
+  bridge: [
+    { d: 'M1.8 16.33A10.2 10.2 0 0 1 22.2 16.33L21.92 16.33A9.92 9.92 0 0 0 2.08 16.33Z', fill: STEEL, white: false, dx: 0, dy: -1, i: 0 },
+    { d: 'M3.04 16.33A8.96 8.96 0 0 1 20.96 16.33L20.83 16.33A8.83 8.83 0 0 0 3.17 16.33Z', fill: STEELFAINT, white: false, dx: 0, dy: -1, i: 0.4 },
+    { d: 'M11.92 6.27L11.92 9.31L12.08 9.31L12.08 6.27Z', fill: STEELSOFT, white: false, dx: 0, dy: -1, i: 0.8 },
+    { d: 'M3.93 16.33L4.1 10.95L4.63 10.13L5.15 10.95L5.33 16.33ZM4.51 14.34L6.38 14.34L6.38 15.04L4.51 15.04ZM5.89 14.69A0.49 0.49 0 1 1 6.87 14.69A0.49 0.49 0 1 1 5.89 14.69ZM6.08 14.69A0.3 0.3 0 1 0 6.69 14.69A0.3 0.3 0 1 0 6.08 14.69Z', fill: STEEL, white: false, dx: -1, dy: 0, i: 1.2 },
+    { d: 'M18.67 16.33L18.85 10.95L19.37 10.13L19.9 10.95L20.07 16.33ZM17.62 14.34L19.49 14.34L19.49 15.04L17.62 15.04ZM17.13 14.69A0.49 0.49 0 1 1 18.11 14.69A0.49 0.49 0 1 1 17.13 14.69ZM17.31 14.69A0.3 0.3 0 1 0 17.92 14.69A0.3 0.3 0 1 0 17.31 14.69Z', fill: STEEL, white: false, dx: 1, dy: 0, i: 1.5 },
+    { d: 'M4.6 10.52L8.71 13.77L8.77 13.69L4.66 10.44ZM4.6 10.52L10.4 13.82L10.45 13.74L4.65 10.44ZM4.61 10.52L11.87 13.86L11.91 13.78L4.65 10.44Z', fill: STEELSOFT, white: false, dx: -0.7071, dy: -0.7071, i: 2.1 },
+    { d: 'M19.34 10.44L15.23 13.69L15.29 13.77L19.4 10.52ZM19.35 10.44L13.55 13.74L13.6 13.82L19.4 10.52ZM19.35 10.44L12.09 13.78L12.13 13.86L19.39 10.52Z', fill: STEELSOFT, white: false, dx: 0.7071, dy: -0.7071, i: 2.4 },
+    { d: 'M6.03 14.15L12 14.41L12 14.97L6.03 15.23Z', fill: STEEL, white: false, dx: -0.7071, dy: 0.7071, i: 2.9 },
+    { d: 'M17.97 14.15L12 14.41L12 14.97L17.97 15.23Z', fill: STEEL, white: false, dx: 0.7071, dy: 0.7071, i: 3.2 },
+    { d: 'M6.61 13.58L11.76 13.81L11.77 13.7L6.62 13.46ZM7.14 14.22L7.14 13.59L7.03 13.59L7.03 14.22ZM8.19 14.26L8.19 13.63L8.09 13.63L8.09 14.26ZM9.24 14.29L9.24 13.66L9.14 13.66L9.14 14.29ZM10.3 14.33L10.3 13.7L10.19 13.7L10.19 14.33ZM11.35 14.36L11.35 13.73L11.25 13.73L11.25 14.36Z', fill: STEELSOFT, white: false, dx: -0.7071, dy: 0.7071, i: 3.5 },
+    { d: 'M17.38 13.46L12.23 13.7L12.24 13.81L17.39 13.58ZM16.97 14.22L16.97 13.59L16.86 13.59L16.86 14.22ZM15.91 14.26L15.91 13.63L15.81 13.63L15.81 14.26ZM14.86 14.29L14.86 13.66L14.76 13.66L14.76 14.29ZM13.81 14.33L13.81 13.7L13.7 13.7L13.7 14.33ZM12.75 14.36L12.75 13.73L12.65 13.73L12.65 14.36Z', fill: STEELSOFT, white: false, dx: 0.7071, dy: 0.7071, i: 3.8 },
+    { d: 'M10.95 14.69A1.05 0.42 0 1 1 13.05 14.69A1.05 0.42 0 1 1 10.95 14.69Z', fill: BRGLOW, white: false, dx: 0, dy: 0, i: 4.4 },
+    { d: 'M1 16.41L23 16.41L23 16.25L1 16.25Z', fill: STEELSOFT, white: false, dx: 0, dy: 1, i: 4.8 },
+    { d: 'M4.28 17.08L4.98 17.08L4.98 16.98L4.28 16.98ZM5.56 17.08L6.27 17.08L6.27 16.98L5.56 16.98ZM6.85 17.08L7.55 17.08L7.55 16.98L6.85 16.98ZM8.14 17.08L8.84 17.08L8.84 16.98L8.14 16.98ZM9.43 17.08L10.13 17.08L10.13 16.98L9.43 16.98ZM13.64 17.08L14.34 17.08L14.34 16.98L13.64 16.98ZM14.93 17.08L15.63 17.08L15.63 16.98L14.93 16.98ZM16.21 17.08L16.91 17.08L16.91 16.98L16.21 16.98ZM17.5 17.08L18.2 17.08L18.2 16.98L17.5 16.98ZM18.79 17.08L19.49 17.08L19.49 16.98L18.79 16.98ZM8.02 17.79L8.72 17.79L8.72 17.68L8.02 17.68ZM9.31 17.79L10.01 17.79L10.01 17.68L9.31 17.68ZM10.6 17.79L11.3 17.79L11.3 17.68L10.6 17.68ZM11.88 17.79L12.59 17.79L12.59 17.68L11.88 17.68ZM13.17 17.79L13.87 17.79L13.87 17.68L13.17 17.68ZM14.46 17.79L15.16 17.79L15.16 17.68L14.46 17.68ZM15.74 17.79L15.98 17.79L15.98 17.68L15.74 17.68Z', fill: STEELFAINT, white: false, dx: 0, dy: 1, i: 5.2 },
+  ],
 }
 
 // markPieces are the pieces of a built-in mark: the chosen one, or another for a preview.
-export const builtinMark = (m?: string | null): BuiltinMark => (m === 'umbrella' || m === 'confetti' || m === 'pixel' ? m : 'rose')
+export const builtinMark = (m?: string | null): BuiltinMark => (m === 'umbrella' || m === 'confetti' || m === 'pixel' || m === 'bridge' ? m : 'rose')
 export const markPieces = (mark?: string): Wedge[] => {
   const m = builtinMark(mark || brand.mark)
   // the look of blocks has no curves: its rose is the pixel one
@@ -92,7 +114,7 @@ export const markPieces = (mark?: string): Wedge[] => {
 
 export type MarkMode = 'still' | 'once' | 'loop'
 
-// The logo the operator chose (Settings › Panel › Logo): a built-in mark (the rose, the umbrella, confetti or the pixel rose) or
+// The logo the operator chose (Settings › Panel › Logo): a built-in mark (the rose, the umbrella, confetti, the pixel rose or the drawbridge) or
 // an uploaded image, and how it moves. Both pages set it from /api/meta.
 export interface LogoInfo {
   custom: boolean

@@ -278,7 +278,7 @@ func (a *Agent) runGuestAction(ctx context.Context, g *guest, act proto.Action) 
 		switch act.Kind {
 		case proto.ActionConsole:
 			return "", errors.New("the console of a shared server is its own panel's alone")
-		case proto.ActionUpgradeAgent, proto.ActionUpgradeXray, proto.ActionUpgradeHysteria, proto.ActionUpgradeRealm:
+		case proto.ActionUpgradeAgent, proto.ActionUpgradeXray, proto.ActionUpgradeHysteria, proto.ActionUpgradeRealm, proto.ActionUpgradeSolo:
 			return "", errors.New("on a shared server the server's own panel upgrades the agent and the cores")
 		}
 		return "", fmt.Errorf("%s is the server's own panel's to ask for on a shared server", act.Kind)

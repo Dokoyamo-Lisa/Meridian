@@ -1029,6 +1029,19 @@ func (a *Agent) runAction(ctx context.Context, st *proto.State, act proto.Action
 			return "", err
 		}
 		return fmt.Sprintf("%s %s -> %s (%d restarted)", label, nzs(prev, "none"), want, n), nil
+	case proto.ActionUpgradeSolo:
+		changed, n, err := a.solo.Upgrade(ctx, st.Cores)
+		if len(changed) > 0 {
+			a.event("core_restarted", "warn", fmt.Sprintf("Users' own servers upgraded on request: %s (%d restarted)", strings.Join(changed, ", "), n))
+			a.reapply()
+		}
+		if err != nil {
+			return "", fmt.Errorf("upgrading the users' own servers: %w", err)
+		}
+		if len(changed) == 0 {
+			return "mieru, Snell and AnyTLS already run the versions in the panel's settings", nil
+		}
+		return fmt.Sprintf("%s (%d restarted)", strings.Join(changed, ", "), n), nil
 	case proto.ActionUpgradeAgent:
 		sums, _ := args["sha256"].(map[string]any)
 		want, _ := sums[runtime.GOARCH].(string)
@@ -1453,18 +1466,19 @@ func (a *Agent) report(ctx context.Context) {
 	caps.PortHop = true // redirects Hysteria2's port hopping ranges
 	caps.Limits = true  // enforces users' speed limits and turns away devices over a limit
 	caps.Console = consoleAllowed()
-	caps.Share = true      // can be shared with other panels (share.go)
-	caps.Cut = true        // cuts the open connections of users taken off (xray/cuts.go, hy)
-	caps.Solo = true       // runs mieru and Snell, one process per user (solo/)
-	caps.AnyTLS = true     // and AnyTLS, with sing-box
-	caps.BlockSites = true // keeps them from a protocol's blocked sites (solo/)
-	caps.RestartAll = true // restarts everything on request (restartAll)
-	caps.Protect = true    // offers fixes with findings and does them on request (protect/)
-	caps.Prepare = true    // prepares the server by itself and says how it goes (prepare.go)
-	caps.Reinstall = true  // installs its cores again on request (prepare.go)
-	caps.Guard = true      // runs the security mode the supervisor turns on (guard.go)
-	caps.Setup = true      // runs the supervisor's setup script after the cores (setup.go)
-	caps.Rates = true      // measures speed now, per user and per client address (rates.go)
+	caps.Share = true       // can be shared with other panels (share.go)
+	caps.Cut = true         // cuts the open connections of users taken off (xray/cuts.go, hy)
+	caps.Solo = true        // runs mieru and Snell, one process per user (solo/)
+	caps.AnyTLS = true      // and AnyTLS, with sing-box
+	caps.BlockSites = true  // keeps them from a protocol's blocked sites (solo/)
+	caps.RestartAll = true  // restarts everything on request (restartAll)
+	caps.Protect = true     // offers fixes with findings and does them on request (protect/)
+	caps.Prepare = true     // prepares the server by itself and says how it goes (prepare.go)
+	caps.Reinstall = true   // installs its cores again on request (prepare.go)
+	caps.Guard = true       // runs the security mode the supervisor turns on (guard.go)
+	caps.Setup = true       // runs the supervisor's setup script after the cores (setup.go)
+	caps.Rates = true       // measures speed now, per user and per client address (rates.go)
+	caps.UpgradeSolo = true // upgrades mieru, Snell and AnyTLS on request (solo/)
 	addrs := sys.LocalAddrs()
 	// the host's name servers changed: the users' servers' account may ask the new ones (nft solo_out)
 	if a.resolvers != nil && !slices.Equal(a.resolvers, sys.Resolvers()) {

@@ -7,11 +7,13 @@ import (
 )
 
 // Loon reads proxies in its own line format ("name=protocol,host,port,..."), as its manual writes
-// them (Loon documentation, Node › Single-Node Configuration): protocol names as written there, the
-// TLS server name in "sni", a self-signed certificate pinned by "tls-cert-sha256". AnyTLS is the
-// manual's line (Build 945 and later), with a self-signed certificate pinned the same way.
-// Certificate checks are never turned off. It does not read wireguard:// share links, and
-// its own format has no gRPC, HTTPUpgrade, XHTTP, VLESS Encryption or mieru.
+// them (Loon documentation, Node, https://nsloon.app/docs/Node/): protocol names as written there,
+// the TLS server name in "sni", a self-signed certificate pinned by "tls-cert-sha256". AnyTLS is the
+// manual's line (Build 945 and later), with a self-signed certificate pinned the same way; Snell
+// (version 4 and 5, 3.5.4 build 1017), mieru (over TCP: its "udp" carries UDP inside the TCP
+// connection), XHTTP and VLESS Encryption are the manual's lines too - the newest of them reached
+// TestFlight builds first. Certificate checks are never turned off. It does not read wireguard://
+// share links, and its own format has no gRPC or HTTPUpgrade.
 
 // loonTLS returns the TLS options of a Loon VMess / VLESS / Trojan line: a self-signed certificate
 // is pinned (tls-cert-sha256), never left unchecked.
@@ -57,6 +59,15 @@ func loonTransport(e Endpoint) (string, string) {
 			s += ",host=" + e.HostHeader
 		}
 		return s, ""
+	case TransportXHTTP: // modes as Xray names them: auto, packet-up, stream-up, stream-one
+		s := ",transport=xhttp,path=" + nz(e.Path, "/")
+		if e.HostHeader != "" {
+			s += ",host=" + e.HostHeader
+		}
+		if e.XHTTPMode != "" {
+			s += ",xhttp-mode=" + e.XHTTPMode
+		}
+		return s, ""
 	}
 	return "", whyTransport
 }
@@ -69,8 +80,9 @@ func loonLine(e Endpoint) (string, string) {
 	}
 	switch e.Kind {
 	case KindVLESS, KindVMess, KindTrojan:
-		if e.encrypted() {
-			return "", whyEncryption
+		enc, why := loonEncryption(e)
+		if why != "" {
+			return "", why
 		}
 		tr, why := loonTransport(e)
 		if why != "" {
@@ -100,7 +112,7 @@ func loonLine(e Endpoint) (string, string) {
 			}
 			line += ",flow=" + e.Flow
 		}
-		return line + loonTLS(e) + ",udp=true", ""
+		return line + enc + loonTLS(e) + ",udp=true", ""
 	case KindShadowsocks:
 		return fmt.Sprintf(`%s=Shadowsocks,%s,%d,%s,"%s",udp=true`, name, e.Host, e.Port, e.Method, e.Password), ""
 	case KindHysteria2:
@@ -162,6 +174,13 @@ func loonLine(e Endpoint) (string, string) {
 		}
 		b.WriteString("}]")
 		return b.String(), ""
+	case KindSnell: // the version every app speaks (snell-server 5 takes it)
+		return fmt.Sprintf(`%s=Snell,%s,%d,"%s",version=%d,udp=true`, name, e.Host, e.Port, e.Password, nzInt(e.Version, SnellVersion)), ""
+	case KindMieru: // Loon's mieru runs over TCP only
+		if t := nz(e.Transport, "tcp"); t != "tcp" {
+			return "", whyMieruUDP
+		}
+		return fmt.Sprintf(`%s=mieru,%s,%d,"%s","%s",udp=true`, name, e.Host, e.Port, e.Username, e.Password), ""
 	case KindAnyTLS: // Loon manual, Node › AnyTLS (Build 945 and later)
 		line := fmt.Sprintf(`%s=AnyTLS,%s,%d,"%s",sni=%s`, name, e.Host, e.Port, e.Password, e.SNI)
 		line += loonProfile(e)
@@ -171,6 +190,42 @@ func loonLine(e Endpoint) (string, string) {
 		return line + ",udp=true", ""
 	}
 	return "", whyProtocol
+}
+
+// loonEncryption returns the VLESS Encryption options of a Loon line: the client value
+// ("mlkem768x25519plus.<mode>.<rtt>.<key>") in Loon's own fields.
+func loonEncryption(e Endpoint) (string, string) {
+	if !e.encrypted() {
+		return "", ""
+	}
+	p := strings.Split(e.Encryption, ".")
+	if len(p) < 4 || p[0] != "mlkem768x25519plus" {
+		return "", whyEncryption
+	}
+	switch p[1] {
+	case "native", "xorpub", "random":
+	default:
+		return "", whyEncryption
+	}
+	if p[2] != "0rtt" && p[2] != "1rtt" {
+		return "", whyEncryption
+	}
+	var pad, keys []string
+	for _, x := range p[3:] { // padding blocks are digits and dashes; keys are base64url
+		if strings.Trim(x, "0123456789-") == "" && strings.Contains(x, "-") {
+			pad = append(pad, x)
+		} else {
+			keys = append(keys, x)
+		}
+	}
+	if len(keys) == 0 {
+		return "", whyEncryption
+	}
+	out := fmt.Sprintf(`,encryption-mode=%s,encryption-rtt=%s,encryption-public-keys="%s"`, p[1], p[2], strings.Join(keys, "."))
+	if len(pad) > 0 {
+		out += `,encryption-padding="` + strings.Join(pad, ".") + `"`
+	}
+	return out, ""
 }
 
 // Loon renders a Loon node subscription: one proxy line per endpoint Loon can use.

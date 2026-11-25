@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"meridian/internal/db"
+	"meridian/internal/update"
 )
 
 // TestUpgradeFrom074 opens a panel database made by Meridian 0.7.4 (testdata/upgrade-0.7.4: servers
@@ -89,6 +90,14 @@ func normState(t *testing.T, raw []byte) map[string]any {
 	}
 	if c, ok := m["cores"].(map[string]any); ok {
 		delete(c, "digests")
+		// past the last security fix (models.go): only what a server installs first - an installed
+		// core changes only on a click
+		d := defaultSettings()
+		for k, f := range map[string][2]string{"xray": {xraySafe, d.XrayVersion}, "mita": {mitaSafe, d.MitaVersion}} {
+			if v, _ := c[k].(string); update.Newer(f[0], v) {
+				c[k] = f[1]
+			}
+		}
 	}
 	if acts, ok := m["actions"].([]any); ok {
 		for _, x := range acts {
